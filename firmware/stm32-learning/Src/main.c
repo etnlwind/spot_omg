@@ -42,6 +42,9 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
 
+uint8_t ledState = 0;
+uint8_t prevButton = GPIO_PIN_SET;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -95,19 +98,36 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+//  while (1)
+//  {
+//
+//    if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET)
+//    {
+//      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+//    }
+//    else
+//    {
+//      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+//    }
+//
+//  }
+	while (1)
+	{
+	  GPIO_PinState currentButton =
+		  HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
 
-    if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET)
-    {
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-    }
-    else
-    {
-      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-    }
+	  if (prevButton == GPIO_PIN_SET &&
+		  currentButton == GPIO_PIN_RESET)
+	  {
+		  ledState = !ledState;
+		  HAL_GPIO_WritePin(GPIOA,
+							GPIO_PIN_5,
+							ledState);
+	  }
+	  prevButton = currentButton;
+	  HAL_Delay(20);
+	}
 
-  }
   /* USER CODE END 3 */
 }
 
