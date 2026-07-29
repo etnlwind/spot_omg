@@ -42,9 +42,6 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
 
-uint8_t ledState = 0;
-uint8_t prevButton = GPIO_PIN_SET;
-
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -98,36 +95,12 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-//  while (1)
-//  {
-//
-//    if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET)
-//    {
-//      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-//    }
-//    else
-//    {
-//      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-//    }
-//
-//  }
-	while (1)
-	{
-	  GPIO_PinState currentButton =
-		  HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
+  while (1)
+  {
+    /* USER CODE END WHILE */
 
-	  if (prevButton == GPIO_PIN_SET &&
-		  currentButton == GPIO_PIN_RESET)
-	  {
-		  ledState = !ledState;
-		  HAL_GPIO_WritePin(GPIOA,
-							GPIO_PIN_5,
-							ledState);
-	  }
-	  prevButton = currentButton;
-	  HAL_Delay(20);
-	}
-
+    /* USER CODE BEGIN 3 */
+  }
   /* USER CODE END 3 */
 }
 
@@ -226,7 +199,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
@@ -237,12 +210,29 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+
+{
+
+    if (GPIO_Pin == GPIO_PIN_13)
+
+    {
+
+        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
+    }
+
+}
 
 /* USER CODE END 4 */
 
