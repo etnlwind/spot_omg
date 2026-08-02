@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from .bus import ServoBus
@@ -15,8 +16,20 @@ class ServoState:
     load: int
     voltage: float
     temperature: int
+    hardware_error: int
     moving: bool
     current: int
+
+
+@dataclass(frozen=True)
+class ServoDiagnostics:
+    operating_mode: int
+    torque_enabled: bool
+    acceleration: int
+    goal_position: int
+    goal_speed: int
+    torque_limit: int
+    state: ServoState
 
 
 class STS3215:
@@ -26,6 +39,7 @@ class STS3215:
     MAX_POSITION = 4095
 
     ADDR_ID = 5
+    ADDR_OPERATING_MODE = 33
     ADDR_TORQUE_ENABLE = 40
     ADDR_ACCELERATION = 41
     ADDR_GOAL_POSITION = 42
@@ -38,6 +52,7 @@ class STS3215:
     ADDR_PRESENT_LOAD = 60
     ADDR_PRESENT_VOLTAGE = 62
     ADDR_PRESENT_TEMPERATURE = 63
+    ADDR_HARDWARE_ERROR = 65
     ADDR_MOVING = 66
     ADDR_PRESENT_CURRENT = 69
 
@@ -71,23 +86,45 @@ class STS3215:
     def read_id(self) -> int:
         return self._read_u8(self.ADDR_ID)
 
-    def change_id(self, new_id: int) -> None:
-        if not 0 <= new_id <= 253:
-            raise ValueError("new servo id must be between 0 and 253")
+    def change_id(self, new_id: int, *, eeprom_wait: float = 1.0) -> None:
+        """Change, lock, and verify the servo's EEPROM-backed ID."""
+        if not 1 <= new_id <= 253:
+            raise ValueError("new servo id must be between 1 and 253")
+        if eeprom_wait < 0:
+            raise ValueError("eeprom_wait cannot be negative")
         old_id = self.id
+        if new_id == old_id:
+            return
+        if self.bus.ping(new_id):
+            raise RuntimeError(f"servo ID {new_id} is already in use")
+
         self.unlock()
         try:
             # The response, if enabled, is sent using the old ID.
-            self._write_u8(self.ADDR_ID, new_id, expect_response=False)
+            self._write_u8(self.ADDR_ID, new_id)
             self.id = new_id
+            self.lock()
+            time.sleep(eeprom_wait)
             if not self.ping():
-                self.id = old_id
                 raise RuntimeError(
                     f"ID write completed, but servo {new_id} did not respond"
                 )
-        finally:
-            if self.id == new_id:
-                self.lock()
+            if self.bus.ping(old_id):
+                raise RuntimeError(
+                    f"servo still responds to its previous ID {old_id}"
+                )
+        except Exception:
+            # The write may have succeeded even when its acknowledgement was
+            # lost. Lock whichever address responds so EEPROM is not left open.
+            for candidate in (new_id, old_id):
+                self.id = candidate
+                if self.bus.ping(candidate):
+                    try:
+                        self.lock()
+                    except Exception:
+                        pass
+                    break
+            raise
 
     def lock(self) -> None:
         self._write_u8(self.ADDR_LOCK, 1)
@@ -149,12 +186,26 @@ class STS3215:
             start = address - offset
             return raw[start : start + size]
 
+        load_raw = decode_u16(at(self.ADDR_PRESENT_LOAD, 2))
+        load_magnitude = load_raw & 0x03FF
         return ServoState(
             position=decode_u16(at(self.ADDR_PRESENT_POSITION, 2)),
             speed=decode_sign_magnitude(at(self.ADDR_PRESENT_SPEED, 2)),
-            load=decode_sign_magnitude(at(self.ADDR_PRESENT_LOAD, 2)),
+            load=-load_magnitude if load_raw & 0x0400 else load_magnitude,
             voltage=at(self.ADDR_PRESENT_VOLTAGE)[0] / 10.0,
             temperature=at(self.ADDR_PRESENT_TEMPERATURE)[0],
+            hardware_error=at(self.ADDR_HARDWARE_ERROR)[0],
             moving=bool(at(self.ADDR_MOVING)[0]),
             current=decode_sign_magnitude(at(self.ADDR_PRESENT_CURRENT, 2)),
+        )
+
+    def read_diagnostics(self) -> ServoDiagnostics:
+        return ServoDiagnostics(
+            operating_mode=self._read_u8(self.ADDR_OPERATING_MODE),
+            torque_enabled=bool(self._read_u8(self.ADDR_TORQUE_ENABLE)),
+            acceleration=self._read_u8(self.ADDR_ACCELERATION),
+            goal_position=self._read_u16(self.ADDR_GOAL_POSITION),
+            goal_speed=self._read_u16(self.ADDR_GOAL_SPEED),
+            torque_limit=self._read_u16(self.ADDR_TORQUE_LIMIT),
+            state=self.read_state(),
         )

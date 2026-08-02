@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spot-omg-servo"
+version = "0.1.0"
+description = "STS3215 and URT-2 control tools for Spot OMG"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pyserial>=3.5,<4"]
+
+[project.scripts]
+spotctl = "servo.cli:main"
+
+[tool.setuptools]
+packages = ["servo"]

@@ -17,6 +17,7 @@ Spot OMG 로봇을 설정하고 점검하기 위한 개발 도구 모음입니�
 - 토크 활성화 및 비활성화
 - 목표 위치 이동
 - 위치, 속도, 부하, 전압, 온도 등의 상태 진단
+- 12개 관절의 동기 자세와 대각선 트롯 시험
 
 ## 빠른 시작
 
@@ -24,22 +25,27 @@ Spot OMG 로봇을 설정하고 점검하기 위한 개발 도구 모음입니�
 
 ```bash
 cd tools/servo_tool
-python3 -m venv .venv
+./setup.sh
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
+
+환경이 활성화되면 프롬프트에 `(somg)`가 표시되고 `spotctl` 명령을 사용할 수
+있습니다.
 
 시리얼 포트와 연결된 서보를 확인합니다.
 
 ```bash
-python examples/list_ports.py
-python examples/scan.py /dev/ttyUSB0
+spotctl ports
+spotctl --port /dev/ttyUSB0 scan
+spotctl --port /dev/ttyUSB0 change-id 1 2
+spotctl --port /dev/ttyUSB0 calibrate
 ```
 
 서보를 중앙 위치로 이동합니다.
 
 ```bash
-python examples/move.py /dev/ttyUSB0 2048 --id 1
+spotctl --port /dev/ttyUSB0 pose neutral
+spotctl --port /dev/ttyUSB0 save-pose custom
 ```
 
 포트 이름은 환경에 따라 달라집니다.
@@ -50,6 +56,11 @@ python examples/move.py /dev/ttyUSB0 2048 --id 1
 
 자세한 사용법과 하드웨어 연결 주의사항은
 [`servo_tool/README.md`](./servo_tool/README.md)를 참고하세요.
+
+2026-08-01~02에 수행한 URT-2 연결, 보정, 속도별 공중 무부하 트롯 시험과
+최종 조립 후 재검증 항목은
+[`servo_tool/HARDWARE_TEST_LOG.md`](./servo_tool/HARDWARE_TEST_LOG.md)에
+기록되어 있습니다.
 
 ## 안전
 

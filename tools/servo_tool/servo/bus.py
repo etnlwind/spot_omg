@@ -9,10 +9,8 @@ from typing import Iterable
 
 try:
     import serial
-except ImportError as exc:  # pragma: no cover - depends on local environment
-    raise ImportError(
-        "pyserial is required; run: pip install -r requirements.txt"
-    ) from exc
+except ImportError:  # pragma: no cover - depends on local environment
+    serial = None
 
 from .protocol import (
     HEADER,
@@ -53,6 +51,10 @@ class ServoBus:
 
     def open(self) -> "ServoBus":
         if not self.is_open:
+            if serial is None:
+                raise ImportError(
+                    "pyserial is required; run: pip install -r requirements.txt"
+                )
             self._serial = serial.Serial(
                 self.port,
                 self.baudrate,
