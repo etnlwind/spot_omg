@@ -46,17 +46,21 @@ pip install -e .
 | ID 1~12 검색 | `spotctl --port PORT scan --max-id 12` |
 | 단일 서보 정밀 진단 | `spotctl --port PORT diagnose --id ID` |
 | 서보 ID 변경 | `spotctl --port PORT change-id OLD_ID NEW_ID` |
+| 장착된 두 서보 ID 교환 | `spotctl --port PORT swap-ids ID_A ID_B --temp-id FREE_ID` |
 | 관절 ID 배치 설정 | `spotctl configure-mapping` |
-| 관절 중립점 보정 | `spotctl --port PORT calibrate` |
-| 보행 방향 설정 | `spotctl configure-directions` |
+| 관절 중립점 보정 | `spotctl --port PORT calibrate --reference setup-j2-minus90` |
 | 전체 상태 확인 | `spotctl --port PORT status` |
 | 보정된 중립 자세 | `spotctl --port PORT stand` |
+| 한 다리만 곧게 펴기 | `spotctl --port PORT stand --leg FL` |
 | 보정값 기반 45도 자세 | `spotctl --port PORT stand45` |
+| 보정값 기반 착지 자세 | `spotctl --port PORT landing` |
 | 저장 포즈 적용 | `spotctl --port PORT pose NAME` |
 | 현재 자세 저장 | `spotctl --port PORT save-pose NAME` |
 | 전체 raw 2048 이동 | `spotctl --port PORT raw-center` |
 | 대각선 트로트 시험 | `spotctl --port PORT walk --gait trot --preset test --cycles 1` |
 | 전체 토크 해제 | `spotctl --port PORT relax` |
+| 한 다리만 토크 해제 | `spotctl --port PORT relax --leg RL` |
+| 현재 위치에서 한 다리 토크 활성화 | `spotctl --port PORT hold --leg RL` |
 
 포트는 `--port`로 지정하거나 `SPOT_SERVO_PORT` 환경 변수에 저장할 수 있습니다.
 
@@ -111,11 +115,20 @@ macOS에서는 포트가 보통 `/dev/cu.usbserial-*`, Windows에서는 `COM3` �
 spotctl configure-mapping
 ```
 
-중립점 보정은 12개 서보의 연결을 먼저 확인한 후 토크를 활성화합니다.
+중립점 보정은 12개 서보의 연결을 먼저 확인한 후 토크를 활성화합니다. 몸체를
+지지대에 고정하고 네 다리가 바닥과 프레임에 닿지 않는 상태에서 실행하세요.
+현재 조립 상태에서는 뒤로 수평하게 편 다리를 눈으로 비교하기 쉽도록 다음 기준을
+사용합니다.
 
 ```bash
-spotctl --port /dev/cu.usbmodem5B790788341 calibrate
+spotctl --port /dev/cu.usbmodem5B790788341 calibrate \
+  --reference setup-j2-minus90 --speed 60 --accel 30
 ```
+
+명령을 시작하면 12개 관절이 동시에 설정 기준 자세로 이동합니다. J1과 J3는 논리
+`0°`, J2는 논리 `-90°`(-1024 tick)입니다. 이 자세는 일반 동작 포즈나 논리
+원점이 아니라 중립점을 눈으로 확인하기 위한 설정용 자세입니다. 캡처할 때 J2의
+현재 위치에서 -90°를 역산해 실제 논리 `0°` 중립점을 계산합니다.
 
 보정 화면에서 사용할 수 있는 명령은 다음과 같습니다.
 
@@ -130,15 +143,57 @@ show         전체 보정값과 현재 위치 확인
 quit         종료
 ```
 
-성공한 조정은 매번 `config/joints.json`에 자동 저장됩니다. 보행 방향도 대화형
-명령으로 설정할 수 있습니다.
+성공한 조정은 해당 모터를 기준 자세 안에서 즉시 움직이고, 중립점 offset을 매번
+`config/joints.json`에 자동 저장합니다. 즉 J2가 -90° 설정 위치에 있더라도 저장되는
+값은 현재 raw 위치가 아니라 -90°를 역산한 논리 0° 중립점입니다. 보행
+방향도 대화형 명령으로 설정할 수 있습니다.
+
+기계적인 장착각 때문에 중심이 2048에서 크게 떨어진 J2도 조정할 수 있도록
+`--max-offset` 기본값은 1500 tick입니다.
+
+토크를 해제한 뒤 손으로 기준 자세를 맞췄다면 현재 12개 위치를 한 번에 캡처할 수
+있습니다. 이 명령은 서보를 움직이거나 토크를 켜지 않습니다.
 
 ```bash
-spotctl configure-directions
+spotctl --port /dev/cu.usbmodem5B790788341 calibrate \
+  --reference setup-j2-minus90 --capture-current
+```
+
+한 다리만 손으로 맞춘 경우에는 다른 다리의 보정값을 유지한 채 선택한 다리만
+논리 0으로 캡처할 수 있습니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 calibrate \
+  --reference neutral --capture-current --leg RL
 ```
 
 JSON을 저장할 때 사람이 확인하기 쉬운 `config/servo_calibration.md`,
 `config/gait_config.md`, `config/servo_poses.md`도 함께 갱신됩니다.
+
+## 관절 좌표 계층
+
+포즈와 보행 코드는 STS3215의 raw 위치를 직접 계산하지 않습니다. 모든 관절의
+캘리브레이션 중립점을 논리 좌표 `0`으로 사용합니다.
+
+```text
+포즈·보행: logical position (중립점 = 0)
+    ↓
+SpotRobot 관절 변환: raw = center + direction × logical
+    ↓
+STS3215 통신: raw position (0..4095)
+```
+
+`stand`는 다리를 몸체 아래로 곧게 내린 기본 자세이며 12개 관절 모두 논리값
+`0`입니다. 생성형 `stand45`는 모든 다리에서 J1 `0`, J2 `-512`(-45°),
+J3 `+1024`(+90°)입니다. 네 다리의 `<` 모양이 같으므로 상위 관절 데이터의 값과
+부호도 모두 같습니다. 실제 조립 상태에서 확인한 ID 3·6의 회전 방향을 포함한
+좌우 서보의 반대 장착 방향은 각 모터의 `direction`, 장착 위치 차이는 `center`가
+저수준 변환 계층에서만 흡수합니다. 따라서 캘리브레이션이나 모터 장착 방향이
+바뀌어도 포즈·보행 계산에는 모터별 조건을 추가하지 않습니다.
+
+`raw-center`, 진단, ID 설정과 캘리브레이션 캡처만 의도적으로 raw 좌표를
+사용합니다. 기존 `landing` 및 저장형 `stand45` 포즈도 호환성을 위해 raw 값으로
+보존하지만, 적용할 때는 논리 좌표로 변환한 뒤 같은 관절 명령 계층을 통과합니다.
 
 `raw-center`는 보정값을 무시하고 모든 서보를 정확히 2048로 이동합니다.
 기구적으로 안전한 상태에서 초기 조립을 확인할 때만 사용하세요.
@@ -178,6 +233,7 @@ spotctl --port /dev/cu.usbmodem5B790788341 status
 ```bash
 spotctl --port /dev/cu.usbmodem5B790788341 stand
 spotctl --port /dev/cu.usbmodem5B790788341 stand45
+spotctl --port /dev/cu.usbmodem5B790788341 landing
 spotctl --port /dev/cu.usbmodem5B790788341 pose landing
 spotctl --port /dev/cu.usbmodem5B790788341 relax
 ```
@@ -192,6 +248,10 @@ spotctl --port /dev/cu.usbmodem5B790788341 pose crouch
 `stand45` 명령과 보행 기준 자세는 현재 중립 보정값에 원본의 관절 방향을 적용해
 매번 계산합니다. 반면 `pose stand45`는 2026-08-01에 직접 저장했던 위치를
 그대로 재현합니다.
+
+`landing`도 `stand`와 같은 생성형 자세입니다. 현재 캘리브레이션을 기준으로 J1
+`0°`, J2 `-45°`, J3 `+135°`를 계산합니다. 반면 `pose landing`은 과거에 저장한
+raw 위치를 그대로 재현합니다.
 
 포즈 이동은 모든 서보의 `Moving` 상태가 끝날 때까지 기다린 후 목표 위치와 실제
 위치의 차이를 검사합니다. 기본 제한은 10초와 30 tick이며 필요하면 조절합니다.
