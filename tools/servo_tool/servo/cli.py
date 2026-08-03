@@ -16,8 +16,8 @@ DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
 PRESETS = {
     "test": GaitParameters(
         period=4.0,
-        hip_amplitude=100,
-        lift_amplitude=140,
+        hip_amplitude=8.8,
+        lift_amplitude=12.3,
         crouch_amplitude=0,
         speed=60,
         acceleration=30,
@@ -63,7 +63,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "configure-mapping", help="interactively assign three servo IDs per leg"
     )
     commands.add_parser(
-        "configure-directions", help="interactively set gait joint directions"
+        "configure-directions", help="interactively set canonical joint directions"
     )
     calibrate = commands.add_parser(
         "calibrate", help="interactively adjust and save neutral offsets"
@@ -71,6 +71,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     calibrate.add_argument("--speed", type=int, default=200)
     calibrate.add_argument("--accel", type=int, default=20)
     calibrate.add_argument("--max-offset", type=int, default=500)
+    commands.add_parser(
+        "capture-stand",
+        aliases=["save-stand"],
+        help="save all current positions as calibrated stand centers",
+    )
     commands.add_parser("status", help="read all configured servo health values")
 
     commands.add_parser("relax", help="disable torque on all servos")
@@ -87,6 +92,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     for command, help_text in (
         ("stand", "move to the calibrated neutral stance"),
         ("stand45", "generate a 45-degree stance from current calibration"),
+        ("landing", "move to the calibrated landing stance"),
     ):
         stance = commands.add_parser(command, help=help_text)
         stance.add_argument("--speed", type=int, default=1000)
@@ -117,9 +123,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     walk.add_argument("--preset", choices=PRESETS, default="test")
     walk.add_argument("--cycles", type=int, default=1)
     walk.add_argument("--period", type=float)
-    walk.add_argument("--hip", type=int)
-    walk.add_argument("--lift", type=int)
-    walk.add_argument("--crouch", type=int)
+    walk.add_argument("--hip", type=float, help="J2 amplitude in degrees")
+    walk.add_argument("--lift", type=float, help="J3 lift amplitude in degrees")
+    walk.add_argument("--crouch", type=float, help="J3 crouch angle in degrees")
     walk.add_argument(
         "--speed", type=int, help="maximum STS speed-register value"
     )
@@ -261,20 +267,22 @@ def read_direction(prompt: str) -> int:
 
 
 def configure_directions(config: SpotConfig) -> None:
-    print("J2: +1 when increasing its value moves the foot forward.")
-    print("J3: +1 when increasing its value lifts the foot.")
+    print("Set motor signs for positive canonical joint angles.")
+    print("Use the same geometric positive direction for every leg.")
     directions = {}
     for leg in ("FL", "FR", "RL", "RR"):
+        side_id = config.joint(leg, 1).servo_id
         hip_id = config.joint(leg, 2).servo_id
         knee_id = config.joint(leg, 3).servo_id
-        print(f"{leg}: J2=ID {hip_id}, J3=ID {knee_id}")
+        print(f"{leg}: J1=ID {side_id}, J2=ID {hip_id}, J3=ID {knee_id}")
         directions[leg] = (
-            read_direction("  J2 forward sign (+1/-1): "),
-            read_direction("  J3 lift sign    (+1/-1): "),
+            read_direction("  J1 positive-angle motor sign (+1/-1): "),
+            read_direction("  J2 positive-angle motor sign (+1/-1): "),
+            read_direction("  J3 positive-angle motor sign (+1/-1): "),
         )
-    config.set_directions(directions)
+    config.set_joint_directions(directions)
     config.save()
-    print(f"Saved gait directions: {config.path}")
+    print(f"Saved canonical joint directions: {config.path}")
 
 
 def configure_mapping(config: SpotConfig) -> None:
@@ -370,6 +378,16 @@ def run_calibration(
             print("Unknown command. Use leg, joint, +/-1/5/10, zero, show, or quit.")
 
 
+def capture_stand(robot: SpotRobot) -> dict[int, int]:
+    """Capture the current physical pose as calibrated neutral centers."""
+    robot.require_all()
+    positions = robot.read_positions()
+    for servo_id, position in positions.items():
+        robot.config.set_joint_center(servo_id, position)
+    robot.config.save()
+    return positions
+
+
 def change_servo_id(
     port: str,
     old_id: int,
@@ -419,7 +437,14 @@ def apply_pose(
     timeout: float,
     tolerance: int,
 ) -> None:
-    targets = robot.config.pose(name)
+    if name in {"neutral", "stand"}:
+        targets = robot.config.pose("neutral")
+    elif name == "stand45":
+        targets = robot.config.stand45_targets()
+    elif name == "landing":
+        targets = robot.config.landing_targets()
+    else:
+        targets = robot.config.pose(name)
     apply_targets(
         robot,
         targets,
@@ -550,6 +575,11 @@ def main(argv: list[str] | None = None) -> int:
                     acceleration=args.accel,
                     max_offset=args.max_offset,
                 )
+            elif args.command in {"capture-stand", "save-stand"}:
+                positions = capture_stand(robot)
+                for servo_id in sorted(positions):
+                    print(f"ID {servo_id:2}: center={positions[servo_id]}")
+                print(f"Captured current pose as stand: {config.path}")
             elif args.command == "save-pose":
                 robot.require_all()
                 config.set_pose(args.name, robot.read_positions())
@@ -585,12 +615,13 @@ def main(argv: list[str] | None = None) -> int:
                     tolerance=args.tolerance,
                 )
                 print(f"Applied pose: {args.name}")
-            elif args.command in {"stand", "stand45"}:
-                targets = (
-                    config.pose("neutral")
-                    if args.command == "stand"
-                    else config.stand45_targets()
-                )
+            elif args.command in {"stand", "stand45", "landing"}:
+                if args.command == "stand":
+                    targets = config.pose("neutral")
+                elif args.command == "stand45":
+                    targets = config.stand45_targets()
+                else:
+                    targets = config.landing_targets()
                 apply_targets(
                     robot,
                     targets,
@@ -606,6 +637,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"{gait.pattern.title()} gait: {args.preset}, "
                     f"{args.cycles} cycle(s), "
                     f"period={gait.period:.1f}s, rate={gait.control_rate:.0f}Hz, "
+                    f"J2={gait.hip_amplitude:g}deg, "
+                    f"J3={gait.lift_amplitude:g}deg, "
                     f"speed cap={gait.speed}, accel={gait.acceleration}"
                 )
                 run_walk(robot, gait, args.cycles)

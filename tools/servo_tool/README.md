@@ -48,10 +48,12 @@ pip install -e .
 | 서보 ID 변경 | `spotctl --port PORT change-id OLD_ID NEW_ID` |
 | 관절 ID 배치 설정 | `spotctl configure-mapping` |
 | 관절 중립점 보정 | `spotctl --port PORT calibrate` |
+| 현재 자세를 중립점으로 저장 | `spotctl --port PORT capture-stand` |
 | 보행 방향 설정 | `spotctl configure-directions` |
 | 전체 상태 확인 | `spotctl --port PORT status` |
 | 보정된 중립 자세 | `spotctl --port PORT stand` |
 | 보정값 기반 45도 자세 | `spotctl --port PORT stand45` |
+| 보정값 기반 착지 자세 | `spotctl --port PORT landing` |
 | 저장 포즈 적용 | `spotctl --port PORT pose NAME` |
 | 현재 자세 저장 | `spotctl --port PORT save-pose NAME` |
 | 전체 raw 2048 이동 | `spotctl --port PORT raw-center` |
@@ -117,6 +119,17 @@ spotctl configure-mapping
 spotctl --port /dev/cu.usbmodem5B790788341 calibrate
 ```
 
+서보혼을 손으로 정렬한 현재 자세를 그대로 `stand` 중앙값으로 저장하려면 다음을
+실행합니다. `capture-stand`는 모터를 움직이거나 토크를 켜지 않고 현재 위치를
+읽어 각 관절의 `center`, `offset`, `neutral` 포즈에 함께 저장합니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 capture-stand
+```
+
+`save-stand`도 같은 명령의 별칭으로 사용할 수 있습니다. 저장 후 `calibrate`로
+필요한 관절만 미세 조정하세요.
+
 보정 화면에서 사용할 수 있는 명령은 다음과 같습니다.
 
 ```text
@@ -135,6 +148,35 @@ quit         종료
 
 ```bash
 spotctl configure-directions
+```
+
+## 관절 좌표계
+
+애플리케이션과 시뮬레이터는 네 다리에 같은 의미의 관절각(degree)을 사용합니다.
+모터마다 다른 장착 방향은 각 관절의 `direction` 하나로만 관리하며, 모든 포즈와
+보행이 같은 변환을 사용합니다.
+
+```text
+raw = center + direction * round(angle_deg * 4096 / 360)
+```
+
+전진·후진은 모터 `direction`을 바꾸지 않고 보행 궤적의 진행 부호로 결정합니다.
+현재 제어기는 Cartesian IK 전 단계의 관절 파형 방식이므로 앞·뒤 다리의 기구학적
+차이는 `gait_forward_signs`로 분리합니다. 실제 관찰에 따라 FL/FR은 `-1`,
+RL/RR은 `+1`을 사용하며, 이 값은 자세용 모터 방향과 독립적입니다.
+
+예를 들어 네 다리 J3에 모두 같은 각도를 명령해도 하드웨어 raw 값은 각 모터의
+`center`와 `direction`에 따라 서로 다르게 계산됩니다. `stand45`는 11자 중립
+자세에서 J2를 `+45°`, 상대 관절인 J3를 `+90°`로 접어 위·아래 링크가 각각
+반대쪽 45°를 향하는 `>` 형태를 만듭니다. `walk --hip`, `--lift`, `--crouch`도
+모두 degree 단위입니다.
+
+Python에서 같은 변환을 사용할 수 있습니다.
+
+```python
+target = config.angle_to_position("FL", 3, 90.0)
+angle = config.position_to_angle("FL", 3, target)
+targets = config.angles_to_targets({("FL", 3): 45.0})
 ```
 
 JSON을 저장할 때 사람이 확인하기 쉬운 `config/servo_calibration.md`,
@@ -178,7 +220,7 @@ spotctl --port /dev/cu.usbmodem5B790788341 status
 ```bash
 spotctl --port /dev/cu.usbmodem5B790788341 stand
 spotctl --port /dev/cu.usbmodem5B790788341 stand45
-spotctl --port /dev/cu.usbmodem5B790788341 pose landing
+spotctl --port /dev/cu.usbmodem5B790788341 landing
 spotctl --port /dev/cu.usbmodem5B790788341 relax
 ```
 
@@ -189,9 +231,18 @@ spotctl --port /dev/cu.usbmodem5B790788341 save-pose crouch
 spotctl --port /dev/cu.usbmodem5B790788341 pose crouch
 ```
 
-`stand45` 명령과 보행 기준 자세는 현재 중립 보정값에 원본의 관절 방향을 적용해
-매번 계산합니다. 반면 `pose stand45`는 2026-08-01에 직접 저장했던 위치를
-그대로 재현합니다.
+`stand45` 명령과 보행 기준 자세는 현재 중립 보정값에 canonical J2 `+45°`,
+J3 `+90°`를 적용해 매번 계산합니다. `pose landing`은 다리를 더 낮게 눕히는
+하단 링크가 바닥과 수평이 되도록 J2 `+40°`, J3 `+130°`를 최신 보정값에서
+동적으로 계산합니다. 두 상대 관절각의 차이는 `90°`입니다. 과거에
+저장된 동명의 raw 포즈는 실행하지 않습니다. `neutral`, `stand`, `stand45`,
+`landing` 이름은 일반 `save-pose`로 덮어쓸 수 없습니다.
+
+```bash
+spotctl --port PORT landing --speed 100 --accel 5
+```
+
+기존 `spotctl pose landing`도 같은 동적 자세를 적용하는 호환 명령입니다.
 
 포즈 이동은 모든 서보의 `Moving` 상태가 끝날 때까지 기다린 후 목표 위치와 실제
 위치의 차이를 검사합니다. 기본 제한은 10초와 30 tick이며 필요하면 조절합니다.
@@ -250,7 +301,7 @@ spotctl --port PORT walk --gait trot --preset test --cycles 1
 
 ```bash
 spotctl walk --gait trot --preset natural --cycles 10 \
-  --hip 280 --lift 400 \
+  --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
@@ -258,15 +309,15 @@ spotctl walk --gait trot --preset natural --cycles 10 \
 
 ```bash
 # 빠른 무부하 후보
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.8 --speed 1000 --accel 100 --rate 100
 
 # 중간값
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.9 --speed 1000 --accel 100 --rate 100
 
 # 보폭과 속도의 균형값
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 

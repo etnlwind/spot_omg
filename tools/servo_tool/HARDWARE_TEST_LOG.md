@@ -69,7 +69,7 @@
 
 ## 프리셋
 
-| Preset | Period | Hip | Lift | Crouch | Speed | Accel | Rate |
+| Preset | Period | Hip (tick) | Lift (tick) | Crouch (tick) | Speed | Accel | Rate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | test | 4.0s | 100 | 140 | 0 | 60 | 30 | 30Hz |
 | natural | 2.4s | 220 | 340 | 70 | 60 | 25 | 30Hz |
@@ -77,7 +77,7 @@
 고속 무부하 시험에서는 프리셋을 기준으로 다음 값을 명시적으로 덮어썼습니다.
 
 ```text
-hip=280, lift=400, speed=1000, accel=100, rate=100Hz
+hip=280 tick, lift=400 tick, speed=1000, accel=100, rate=100Hz
 ```
 
 `speed`는 보행 주기가 아니라 서보의 속도 상한입니다. 실제 동작 템포는
@@ -152,22 +152,25 @@ spotctl walk --gait trot --preset test --cycles 1
 
 현재 무부하 비교 기준:
 
+> v3 CLI는 관절 진폭을 degree로 받으므로 당시 raw 280/400 tick을
+> 각각 24.6°/35.2°로 환산했습니다.
+
 ```bash
 spotctl walk --gait trot --preset natural --cycles 10 \
-  --hip 280 --lift 400 \
+  --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
 period 0.8/0.9/1.0 비교:
 
 ```bash
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.8 --speed 1000 --accel 100 --rate 100
 
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.9 --speed 1000 --accel 100 --rate 100
 
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
