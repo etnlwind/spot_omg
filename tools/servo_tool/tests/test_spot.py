@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -5,6 +6,9 @@ from unittest.mock import patch
 
 from servo import GaitParameters, ServoState, SpotConfig, SpotRobot, STS3215
 from servo.cli import (
+    apply_pose,
+    capture_stand,
+    configure_directions,
     configure_mapping,
     parse_args,
     resolve_gait,
@@ -98,118 +102,124 @@ class SpotConfigTest(unittest.TestCase):
 
     def test_hardware_mapping_and_saved_pose(self) -> None:
         self.assertEqual(self.config.servo_ids, tuple(range(1, 13)))
+        first = self.config.joint("FL", 1)
         self.assertEqual(
-            self.config.pose("neutral")[1], self.config.joint("FL", 1).center
+            first.center, self.config.reference_center + first.offset
         )
         self.assertEqual(self.config.pose("landing")[9], 3238)
         self.assertEqual(self.config.pose("stand45")[12], 1522)
         generated = self.config.stand45_targets()
-        self.assertTrue(all(generated[servo_id] == 0 for servo_id in (1, 4, 7, 10)))
-        self.assertTrue(all(generated[servo_id] == -512 for servo_id in (2, 5, 8, 11)))
-        self.assertTrue(all(generated[servo_id] == 1024 for servo_id in (3, 6, 9, 12)))
-        generated_raw = self.config.logical_to_raw(generated)
-        self.assertEqual(generated_raw[2], self.config.joint("FL", 2).center - 512)
-        self.assertEqual(generated_raw[5], self.config.joint("FR", 2).center + 512)
-        self.assertEqual(generated_raw[3], self.config.joint("FL", 3).center - 1024)
-        self.assertEqual(generated_raw[6], self.config.joint("FR", 3).center + 1024)
-        self.assertEqual(generated_raw[9], self.config.joint("RL", 3).center + 1024)
-        self.assertEqual(generated_raw[12], self.config.joint("RR", 3).center - 1024)
+        expected = {
+            2: 1723,
+            3: 1036,
+            5: 2511,
+            6: 3001,
+            8: 1630,
+            9: 3020,
+            11: 2552,
+            12: 1023,
+        }
+        for servo_id, position in expected.items():
+            self.assertEqual(generated[servo_id], position)
         self.assertEqual(
-            tuple(self.config.joint_direction(servo_id) for servo_id in (1, 4, 7, 10)),
+            tuple(
+                self.config.joint(leg, 1).direction
+                for leg in ("FL", "FR", "RL", "RR")
+            ),
             (1, -1, -1, 1),
         )
-        setup_minus90 = self.config.calibration_targets("setup-j2-minus90")
-        self.assertEqual(setup_minus90[1], self.config.joint("FL", 1).center)
-        self.assertEqual(
-            setup_minus90[2], self.config.joint("FL", 2).center - 1024
-        )
-        self.assertEqual(setup_minus90[3], self.config.joint("FL", 3).center)
-        self.assertEqual(
-            setup_minus90[5], self.config.joint("FR", 2).center + 1024
-        )
-        self.assertEqual(setup_minus90[6], self.config.joint("FR", 3).center)
-        self.assertEqual(
-            setup_minus90[8], self.config.joint("RL", 2).center - 1024
-        )
-        self.assertEqual(
-            setup_minus90[11], self.config.joint("RR", 2).center + 1024
-        )
 
-    def test_logical_coordinates_round_trip_around_calibrated_zero(self) -> None:
-        logical = self.config.stand45_targets()
-        self.assertEqual(self.config.raw_to_logical(self.config.logical_to_raw(logical)), logical)
-        self.assertEqual(self.config.logical_to_raw(self.config.neutral_targets()), self.config.pose("neutral"))
-
-    def test_stand45_uses_relative_knee_angle_for_bent_leg_shape(self) -> None:
+    def test_all_legs_share_the_same_canonical_stand45_angles(self) -> None:
         targets = self.config.stand45_targets()
-        per_leg = set()
         for leg in ("FL", "FR", "RL", "RR"):
-            per_leg.add(
-                tuple(
-                    targets[self.config.joint(leg, joint_number).servo_id]
-                    for joint_number in (1, 2, 3)
+            for joint_number, expected_angle in ((2, 45.0), (3, 90.0)):
+                servo_id = self.config.joint(leg, joint_number).servo_id
+                angle = self.config.position_to_angle(
+                    leg, joint_number, targets[servo_id]
                 )
-            )
-            self.assertEqual(
-                targets[self.config.joint(leg, 2).servo_id], -512
-            )
-            self.assertEqual(targets[self.config.joint(leg, 3).servo_id], 1024)
-        self.assertEqual(per_leg, {(0, -512, 1024)})
+                self.assertAlmostEqual(angle, expected_angle, delta=0.05)
 
-    def test_landing_is_generated_from_current_calibration(self) -> None:
-        targets = self.config.landing_targets()
+    def test_joint_angle_raw_conversion_round_trip(self) -> None:
         for leg in ("FL", "FR", "RL", "RR"):
-            self.assertEqual(targets[self.config.joint(leg, 1).servo_id], 0)
-            self.assertEqual(targets[self.config.joint(leg, 2).servo_id], -512)
-            self.assertEqual(targets[self.config.joint(leg, 3).servo_id], 1536)
-        raw = self.config.logical_to_raw(targets)
-        self.assertNotEqual(raw, self.config.pose("landing"))
+            for joint_number in (1, 2, 3):
+                for requested in (-20.0, 0.0, 20.0):
+                    raw = self.config.angle_to_position(
+                        leg, joint_number, requested
+                    )
+                    restored = self.config.position_to_angle(
+                        leg, joint_number, raw
+                    )
+                    self.assertAlmostEqual(restored, requested, delta=0.05)
 
-    def test_setup_minus90_reference_does_not_redefine_logical_zero(self) -> None:
-        zero = self.config.neutral_targets()
-        setup = self.config.calibration_reference("setup-j2-minus90")
-        self.assertTrue(all(value == 0 for value in zero.values()))
-        for leg in ("FL", "FR", "RL", "RR"):
-            j1 = self.config.joint(leg, 1).servo_id
-            j2 = self.config.joint(leg, 2).servo_id
-            j3 = self.config.joint(leg, 3).servo_id
-            self.assertEqual(setup[j1], 0)
-            self.assertEqual(setup[j2], -1024)
-            self.assertEqual(setup[j3], 0)
+    def test_v3_serializes_one_direction_per_joint(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "joints.json"
+            self.config.save(path)
+            data = json.loads(path.read_text())
+        self.assertEqual(data["version"], 3)
+        self.assertNotIn("gait_directions", data)
+        self.assertNotIn("stand45_directions", data)
+        self.assertTrue(
+            all(joint["direction"] in (-1, 1) for joint in data["joints"])
+        )
+        self.assertEqual(
+            data["canonical_poses"]["landing"], {"2": 40.0, "3": 130.0}
+        )
+        self.assertEqual(
+            data["gait_forward_signs"],
+            {"FL": -1, "FR": -1, "RL": 1, "RR": 1},
+        )
+
+    def test_v2_direction_tables_are_migrated_when_loading(self) -> None:
+        data = json.loads(CONFIG.read_text())
+        data["version"] = 2
+        for joint in data["joints"]:
+            joint.pop("direction")
+        data["stand45_directions"] = {
+            "FL": {"upper": -1, "lower": -1},
+            "FR": {"upper": 1, "lower": 1},
+            "RL": {"upper": -1, "lower": 1},
+            "RR": {"upper": 1, "lower": -1},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "joints.json"
+            path.write_text(json.dumps(data))
+            loaded = SpotConfig.load(path)
+        self.assertEqual(loaded.directions["FL"], (-1, -1))
+        self.assertEqual(loaded.directions["RR"], (1, -1))
 
     def test_sync_move_uses_sts_position_packet_layout(self) -> None:
         bus = RecordingBus()
         robot = SpotRobot(bus, self.config)
-        robot.sync_joints(
-            self.config.neutral_targets(), speed=1000, acceleration=80
+        robot.sync_move(
+            self.config.pose("neutral"), speed=1000, acceleration=80
         )
         address, item_size, values = bus.calls[0]
         self.assertEqual((address, item_size), (41, 7))
-        center = self.config.joint("FL", 1).center
-        self.assertEqual(
-            values[1], bytes((80, center & 0xFF, center >> 8, 0, 0, 0xE8, 0x03))
-        )
+        position = self.config.pose("neutral")[1].to_bytes(2, "little")
+        self.assertEqual(values[1], bytes((80,)) + position + bytes((0, 0, 0xE8, 0x03)))
 
     def test_position_stream_does_not_rewrite_speed_or_acceleration(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
-        robot.stream_joints(self.config.neutral_targets())
+        robot.sync_positions(self.config.pose("neutral"))
         address, item_size, values = robot.bus.calls[0]
         self.assertEqual((address, item_size), (42, 2))
-        center = self.config.joint("FL", 1).center
-        self.assertEqual(values[1], bytes((center & 0xFF, center >> 8)))
+        self.assertEqual(
+            values[1], self.config.pose("neutral")[1].to_bytes(2, "little")
+        )
 
     def test_test_gait_keeps_hip_axis_fixed(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
         gait = GaitParameters(
             pattern="crawl",
             period=5.0,
-            hip_amplitude=50,
-            lift_amplitude=70,
+            hip_amplitude=5.0,
+            lift_amplitude=7.0,
             crouch_amplitude=0,
             speed=30,
             acceleration=20,
         )
-        base = self.config.stand45_targets()
+        base = self.config.pose("stand45")
         targets = robot.gait_targets(0.125, base, gait)
         for servo_id in (1, 4, 7, 10):
             self.assertEqual(targets[servo_id], base[servo_id])
@@ -220,8 +230,8 @@ class SpotConfigTest(unittest.TestCase):
         gait = GaitParameters(
             pattern="trot",
             period=4.0,
-            hip_amplitude=80,
-            lift_amplitude=100,
+            hip_amplitude=8.0,
+            lift_amplitude=10.0,
             crouch_amplitude=0,
             speed=100,
             acceleration=20,
@@ -232,10 +242,18 @@ class SpotConfigTest(unittest.TestCase):
 
         def normalized(leg: str, joint_number: int) -> int:
             servo_id = self.config.joint(leg, joint_number).servo_id
-            delta = targets[servo_id] - base[servo_id]
-            if joint_number == 2:
-                return delta * robot.HIP_KINEMATIC_SIGNS[leg]
-            return delta
+            target_angle = self.config.position_to_angle(
+                leg, joint_number, targets[servo_id]
+            )
+            base_angle = self.config.position_to_angle(
+                leg, joint_number, base[servo_id]
+            )
+            delta = target_angle - base_angle
+            return (
+                delta * self.config.gait_forward_signs[leg]
+                if joint_number == 2
+                else delta
+            )
 
         self.assertEqual(normalized("FL", 2), normalized("RR", 2))
         self.assertEqual(normalized("FL", 3), normalized("RR", 3))
@@ -243,38 +261,45 @@ class SpotConfigTest(unittest.TestCase):
         self.assertEqual(normalized("FR", 3), normalized("RL", 3))
         self.assertEqual(normalized("FL", 2), -normalized("FR", 2))
 
-    def test_trot_uses_the_same_logical_knee_bend_on_every_leg(self) -> None:
+    def test_forward_stance_restores_hardware_verified_j2_raw_direction(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
         gait = GaitParameters(
             pattern="trot",
-            period=0.8,
-            hip_amplitude=280,
-            lift_amplitude=400,
-            crouch_amplitude=70,
-            speed=1000,
-            acceleration=100,
-            duty_factor=0.75,
-            control_rate=100,
+            period=4.0,
+            hip_amplitude=8.0,
+            lift_amplitude=10.0,
+            crouch_amplitude=0,
+            duty_factor=0.65,
         )
         base = self.config.stand45_targets()
-        ranges = set()
-        for leg in ("FL", "FR", "RL", "RR"):
-            servo_id = self.config.joint(leg, 3).servo_id
-            values = [
-                robot.gait_targets(phase / 100, base, gait)[servo_id]
-                for phase in range(100)
-            ]
-            self.assertGreaterEqual(min(values), base[servo_id])
-            ranges.add((min(values), max(values)))
-        self.assertEqual(len(ranges), 1)
+
+        # Hardware observation: rear-leg direction was correct while both
+        # front legs moved backward. Front kinematic signs therefore invert
+        # the canonical trajectory without changing motor directions.
+        for leg in ("FL", "RR"):
+            servo_id = self.config.joint(leg, 2).servo_id
+            offset = robot.PHASE_OFFSETS["trot"][leg]
+            stance_start = robot.gait_targets((-offset) % 1.0, base, gait)
+            stance_end = robot.gait_targets(
+                (gait.duty_factor - offset) % 1.0, base, gait
+            )
+            self.assertLess(stance_start[servo_id], stance_end[servo_id])
+        for leg in ("FR", "RL"):
+            servo_id = self.config.joint(leg, 2).servo_id
+            offset = robot.PHASE_OFFSETS["trot"][leg]
+            stance_start = robot.gait_targets((-offset) % 1.0, base, gait)
+            stance_end = robot.gait_targets(
+                (gait.duty_factor - offset) % 1.0, base, gait
+            )
+            self.assertGreater(stance_start[servo_id], stance_end[servo_id])
 
     def test_trot_has_four_foot_support_before_each_diagonal_swing(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
         gait = GaitParameters(
             pattern="trot",
             period=2.0,
-            hip_amplitude=80,
-            lift_amplitude=100,
+            hip_amplitude=8.0,
+            lift_amplitude=10.0,
             crouch_amplitude=0,
             speed=60,
             acceleration=30,
@@ -310,8 +335,8 @@ class SpotConfigTest(unittest.TestCase):
         gait = GaitParameters(
             pattern="trot",
             period=2.0,
-            hip_amplitude=50,
-            lift_amplitude=70,
+            hip_amplitude=5.0,
+            lift_amplitude=7.0,
             crouch_amplitude=0,
             speed=20,
             acceleration=10,
@@ -354,32 +379,58 @@ class SpotConfigTest(unittest.TestCase):
         self.assertIn("| FL | 2 | 2 | +5 | 2053 |", calibration_report)
         self.assertIn("| custom |", pose_report)
 
-    def test_capture_setup_minus90_pose_infers_neutral_centers(self) -> None:
-        positions = self.config.calibration_targets("setup-j2-minus90")
-        old_center = self.config.joint("FL", 2).center
-        positions[2] += 70
-        centers = self.config.capture_calibration(positions, "setup-j2-minus90")
-        self.assertEqual(centers[2], old_center + 70)
-        self.assertEqual(
-            self.config.joint("FL", 2).offset,
-            old_center + 70 - self.config.reference_center,
-        )
-        self.assertEqual(
-            self.config.calibration_targets("setup-j2-minus90")[2],
-            old_center + 70 - 1024,
-        )
+    def test_calibrated_pose_names_cannot_be_overwritten(self) -> None:
+        targets = self.config.pose("neutral")
+        for name in ("neutral", "stand", "stand45", "landing"):
+            with self.assertRaisesRegex(ValueError, "reserved"):
+                self.config.set_pose(name, targets)
 
-    def test_capture_can_update_only_one_leg(self) -> None:
-        positions = self.config.logical_to_raw(self.config.neutral_targets())
-        old_fl_center = self.config.joint("FL", 1).center
-        positions[7] += 5
-        positions[8] -= 7
-        positions[9] += 9
-        centers = self.config.capture_calibration(
-            positions, "neutral", servo_ids={7, 8, 9}
+    def test_capture_stand_saves_present_positions_as_centers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "joints.json"
+            config = SpotConfig.load(CONFIG)
+            config.save(path)
+            positions = {
+                servo_id: 2000 + servo_id for servo_id in config.servo_ids
+            }
+
+            class CaptureRobot:
+                def __init__(self) -> None:
+                    self.config = config
+                    self.required_all = False
+
+                def require_all(self) -> None:
+                    self.required_all = True
+
+                def read_positions(self) -> dict[int, int]:
+                    return positions
+
+            robot = CaptureRobot()
+            captured = capture_stand(robot)
+            loaded = SpotConfig.load(path)
+
+        self.assertTrue(robot.required_all)
+        self.assertEqual(captured, positions)
+        self.assertEqual(loaded.pose("neutral"), positions)
+        for servo_id, position in positions.items():
+            joint = next(
+                joint for joint in loaded.joints if joint.servo_id == servo_id
+            )
+            self.assertEqual(joint.center, position)
+
+    def test_landing_uses_same_canonical_angles_on_every_leg(self) -> None:
+        self.assertEqual(
+            self.config.canonical_poses["landing"], {2: 40.0, 3: 130.0}
         )
-        self.assertEqual(centers, {7: positions[7], 8: positions[8], 9: positions[9]})
-        self.assertEqual(self.config.joint("FL", 1).center, old_fl_center)
+        targets = self.config.landing_targets()
+        for leg in ("FL", "FR", "RL", "RR"):
+            for joint_number, expected_angle in ((2, 40.0), (3, 130.0)):
+                servo_id = self.config.joint(leg, joint_number).servo_id
+                angle = self.config.position_to_angle(
+                    leg, joint_number, targets[servo_id]
+                )
+                self.assertAlmostEqual(angle, expected_angle, delta=0.05)
+        self.assertEqual(130.0 - 40.0, 90.0)
 
     def test_wait_until_stopped_verifies_final_positions(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
@@ -427,55 +478,73 @@ class CommandLineTest(unittest.TestCase):
         args = parse_args(["pose", "stand45"])
         self.assertEqual(args.name, "stand45")
 
-    def test_landing_pose_has_a_shortcut_command(self) -> None:
-        args = parse_args(["landing", "--speed", "60", "--accel", "30"])
-        self.assertEqual(args.command, "landing")
-        self.assertEqual((args.speed, args.accel), (60, 30))
-
-    def test_stand_can_select_one_leg(self) -> None:
-        args = parse_args(["stand", "--leg", "FL"])
-        self.assertEqual(args.leg, "FL")
-
-    def test_setup_minus90_calibration_reference_is_available(self) -> None:
-        args = parse_args(
-            ["calibrate", "--reference", "setup-j2-minus90", "--capture-current"]
-        )
-        self.assertEqual(args.command, "calibrate")
-        self.assertEqual(args.reference, "setup-j2-minus90")
-        self.assertTrue(args.capture_current)
-
-    def test_calibration_offset_limit_covers_current_joint_mounting(self) -> None:
-        args = parse_args(["calibrate"])
-        self.assertEqual(args.max_offset, 1500)
-
-    def test_calibration_capture_can_select_one_leg(self) -> None:
-        args = parse_args(
-            ["calibrate", "--reference", "neutral", "--capture-current", "--leg", "RL"]
-        )
-        self.assertEqual(args.leg, "RL")
-
-    def test_relax_can_select_one_leg(self) -> None:
-        args = parse_args(["relax", "--leg", "RL"])
-        self.assertEqual(args.leg, "RL")
-
-    def test_hold_can_select_one_leg(self) -> None:
-        args = parse_args(["hold", "--leg", "RL"])
-        self.assertEqual(args.leg, "RL")
-        self.assertEqual((args.speed, args.accel), (60, 30))
-
     def test_original_apply_pose_command_is_available_as_alias(self) -> None:
         args = parse_args(["apply-pose", "landing"])
         self.assertEqual(args.command, "apply-pose")
         self.assertEqual(args.name, "landing")
 
-    def test_change_id_command_defaults_to_full_scan(self) -> None:
-        args = parse_args(["change-id", "1", "12"])
-        self.assertEqual((args.old_id, args.new_id), (1, 12))
-        self.assertEqual(args.scan_max, 253)
+    def test_pose_stand45_uses_current_calibration_not_saved_raw_pose(self) -> None:
+        config = SpotConfig.load(CONFIG)
+
+        class Robot:
+            def __init__(self) -> None:
+                self.config = config
+
+        with patch("servo.cli.apply_targets") as apply:
+            apply_pose(
+                Robot(),
+                "stand45",
+                speed=100,
+                acceleration=5,
+                timeout=10,
+                tolerance=30,
+            )
+        self.assertEqual(apply.call_args.args[1], config.stand45_targets())
+        self.assertNotEqual(apply.call_args.args[1], config.pose("stand45"))
+
+    def test_pose_landing_uses_current_calibration_not_saved_raw_pose(self) -> None:
+        config = SpotConfig.load(CONFIG)
+
+        class Robot:
+            def __init__(self) -> None:
+                self.config = config
+
+        with patch("servo.cli.apply_targets") as apply:
+            apply_pose(
+                Robot(),
+                "landing",
+                speed=100,
+                acceleration=5,
+                timeout=10,
+                tolerance=30,
+            )
+        self.assertEqual(apply.call_args.args[1], config.landing_targets())
+        self.assertNotEqual(apply.call_args.args[1], config.pose("landing"))
+
+    def test_capture_stand_command_and_alias_are_available(self) -> None:
+        self.assertEqual(parse_args(["capture-stand"]).command, "capture-stand")
+        self.assertEqual(parse_args(["save-stand"]).command, "save-stand")
+        self.assertEqual(parse_args(["capture-stand", "--leg", "RL"]).leg, "RL")
+
+    def test_leg_scoped_torque_and_stand_commands_are_available(self) -> None:
+        self.assertEqual(parse_args(["relax", "--leg", "FL"]).leg, "FL")
+        self.assertEqual(parse_args(["hold", "--leg", "RR"]).leg, "RR")
+        self.assertEqual(parse_args(["stand", "--leg", "RL"]).leg, "RL")
 
     def test_swap_ids_command_uses_temporary_id(self) -> None:
         args = parse_args(["swap-ids", "9", "12", "--temp-id", "13"])
         self.assertEqual((args.first_id, args.second_id, args.temp_id), (9, 12, 13))
+
+    def test_landing_is_a_direct_stance_command(self) -> None:
+        args = parse_args(["landing", "--speed", "100", "--accel", "5"])
+        self.assertEqual(args.command, "landing")
+        self.assertEqual(args.speed, 100)
+        self.assertEqual(args.accel, 5)
+
+    def test_change_id_command_defaults_to_full_scan(self) -> None:
+        args = parse_args(["change-id", "1", "12"])
+        self.assertEqual((args.old_id, args.new_id), (1, 12))
+        self.assertEqual(args.scan_max, 253)
 
     def test_walk_defaults_to_diagonal_trot(self) -> None:
         args = parse_args(["walk"])
@@ -485,7 +554,19 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(gait.control_rate, 30.0)
         self.assertEqual(gait.speed, 60)
         self.assertEqual(gait.period, 4.0)
-        self.assertEqual(gait.hip_amplitude, 100)
+        self.assertEqual(gait.hip_amplitude, 8.8)
+
+    def test_direction_configuration_is_saved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "joints.json"
+            config = SpotConfig.load(CONFIG)
+            config.save(path)
+            with patch("builtins.input", side_effect=["-1"] * 12):
+                configure_directions(config)
+            loaded = SpotConfig.load(path)
+        self.assertEqual(loaded.directions["FL"], (-1, -1))
+        self.assertEqual(loaded.directions["RR"], (-1, -1))
+        self.assertEqual(loaded.joint("FL", 1).direction, -1)
 
     def test_mapping_configuration_preserves_pose_by_joint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -46,12 +46,14 @@ pip install -e .
 | ID 1~12 검색 | `spotctl --port PORT scan --max-id 12` |
 | 단일 서보 정밀 진단 | `spotctl --port PORT diagnose --id ID` |
 | 서보 ID 변경 | `spotctl --port PORT change-id OLD_ID NEW_ID` |
-| 장착된 두 서보 ID 교환 | `spotctl --port PORT swap-ids ID_A ID_B --temp-id FREE_ID` |
+| 장착된 두 서보 ID 교환 | `spotctl --port PORT swap-ids FIRST_ID SECOND_ID` |
 | 관절 ID 배치 설정 | `spotctl configure-mapping` |
-| 관절 중립점 보정 | `spotctl --port PORT calibrate --reference setup-j2-minus90` |
+| 관절 중립점 보정 | `spotctl --port PORT calibrate` |
+| 현재 자세를 중립점으로 저장 | `spotctl --port PORT capture-stand` |
+| 선택한 다리만 중립점 저장 | `spotctl --port PORT capture-stand --leg RL` |
+| 보행 방향 설정 | `spotctl configure-directions` |
 | 전체 상태 확인 | `spotctl --port PORT status` |
 | 보정된 중립 자세 | `spotctl --port PORT stand` |
-| 한 다리만 곧게 펴기 | `spotctl --port PORT stand --leg FL` |
 | 보정값 기반 45도 자세 | `spotctl --port PORT stand45` |
 | 보정값 기반 착지 자세 | `spotctl --port PORT landing` |
 | 저장 포즈 적용 | `spotctl --port PORT pose NAME` |
@@ -59,8 +61,9 @@ pip install -e .
 | 전체 raw 2048 이동 | `spotctl --port PORT raw-center` |
 | 대각선 트로트 시험 | `spotctl --port PORT walk --gait trot --preset test --cycles 1` |
 | 전체 토크 해제 | `spotctl --port PORT relax` |
-| 한 다리만 토크 해제 | `spotctl --port PORT relax --leg RL` |
-| 현재 위치에서 한 다리 토크 활성화 | `spotctl --port PORT hold --leg RL` |
+| 선택한 다리 토크 해제 | `spotctl --port PORT relax --leg RL` |
+| 현재 위치에서 토크 유지 | `spotctl --port PORT hold [--leg RL]` |
+| 선택한 다리만 중립 자세 | `spotctl --port PORT stand --leg RL` |
 
 포트는 `--port`로 지정하거나 `SPOT_SERVO_PORT` 환경 변수에 저장할 수 있습니다.
 
@@ -103,6 +106,14 @@ EEPROM을 변경합니다. 변경 직후와 포트 재연결 후에 새 ID가 �
 spotctl --port /dev/ttyUSB0 change-id 1 2
 ```
 
+장착된 두 서보의 ID가 서로 뒤바뀐 경우에는 중간 임시 ID를 사용해 안전하게
+교환할 수 있습니다. 세 ID가 버스에서 충돌하지 않는지 확인한 후 EEPROM을
+순서대로 변경하고 결과를 다시 검사합니다.
+
+```bash
+spotctl --port /dev/ttyUSB0 swap-ids 9 12
+```
+
 macOS에서는 포트가 보통 `/dev/cu.usbserial-*`, Windows에서는 `COM3` 같은
 이름으로 나타납니다.
 
@@ -115,20 +126,23 @@ macOS에서는 포트가 보통 `/dev/cu.usbserial-*`, Windows에서는 `COM3` �
 spotctl configure-mapping
 ```
 
-중립점 보정은 12개 서보의 연결을 먼저 확인한 후 토크를 활성화합니다. 몸체를
-지지대에 고정하고 네 다리가 바닥과 프레임에 닿지 않는 상태에서 실행하세요.
-현재 조립 상태에서는 뒤로 수평하게 편 다리를 눈으로 비교하기 쉽도록 다음 기준을
-사용합니다.
+중립점 보정은 12개 서보의 연결을 먼저 확인한 후 토크를 활성화합니다.
 
 ```bash
-spotctl --port /dev/cu.usbmodem5B790788341 calibrate \
-  --reference setup-j2-minus90 --speed 60 --accel 30
+spotctl --port /dev/cu.usbmodem5B790788341 calibrate
 ```
 
-명령을 시작하면 12개 관절이 동시에 설정 기준 자세로 이동합니다. J1과 J3는 논리
-`0°`, J2는 논리 `-90°`(-1024 tick)입니다. 이 자세는 일반 동작 포즈나 논리
-원점이 아니라 중립점을 눈으로 확인하기 위한 설정용 자세입니다. 캡처할 때 J2의
-현재 위치에서 -90°를 역산해 실제 논리 `0°` 중립점을 계산합니다.
+서보혼을 손으로 정렬한 현재 자세를 그대로 `stand` 중앙값으로 저장하려면 다음을
+실행합니다. `capture-stand`는 모터를 움직이거나 토크를 켜지 않고 현재 위치를
+읽어 각 관절의 `center`, `offset`, `neutral` 포즈에 함께 저장합니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 capture-stand
+spotctl --port /dev/cu.usbmodem5B790788341 capture-stand --leg RL
+```
+
+`save-stand`도 같은 명령의 별칭으로 사용할 수 있습니다. 저장 후 `calibrate`로
+필요한 관절만 미세 조정하세요.
 
 보정 화면에서 사용할 수 있는 명령은 다음과 같습니다.
 
@@ -143,57 +157,44 @@ show         전체 보정값과 현재 위치 확인
 quit         종료
 ```
 
-성공한 조정은 해당 모터를 기준 자세 안에서 즉시 움직이고, 중립점 offset을 매번
-`config/joints.json`에 자동 저장합니다. 즉 J2가 -90° 설정 위치에 있더라도 저장되는
-값은 현재 raw 위치가 아니라 -90°를 역산한 논리 0° 중립점입니다. 보행
-방향도 대화형 명령으로 설정할 수 있습니다.
-
-기계적인 장착각 때문에 중심이 2048에서 크게 떨어진 J2도 조정할 수 있도록
-`--max-offset` 기본값은 1500 tick입니다.
-
-토크를 해제한 뒤 손으로 기준 자세를 맞췄다면 현재 12개 위치를 한 번에 캡처할 수
-있습니다. 이 명령은 서보를 움직이거나 토크를 켜지 않습니다.
+성공한 조정은 매번 `config/joints.json`에 자동 저장됩니다. 보행 방향도 대화형
+명령으로 설정할 수 있습니다.
 
 ```bash
-spotctl --port /dev/cu.usbmodem5B790788341 calibrate \
-  --reference setup-j2-minus90 --capture-current
+spotctl configure-directions
 ```
 
-한 다리만 손으로 맞춘 경우에는 다른 다리의 보정값을 유지한 채 선택한 다리만
-논리 0으로 캡처할 수 있습니다.
+## 관절 좌표계
 
-```bash
-spotctl --port /dev/cu.usbmodem5B790788341 calibrate \
-  --reference neutral --capture-current --leg RL
+애플리케이션과 시뮬레이터는 네 다리에 같은 의미의 관절각(degree)을 사용합니다.
+모터마다 다른 장착 방향은 각 관절의 `direction` 하나로만 관리하며, 모든 포즈와
+보행이 같은 변환을 사용합니다.
+
+```text
+raw = center + direction * round(angle_deg * 4096 / 360)
+```
+
+전진·후진은 모터 `direction`을 바꾸지 않고 보행 궤적의 진행 부호로 결정합니다.
+현재 제어기는 Cartesian IK 전 단계의 관절 파형 방식이므로 앞·뒤 다리의 기구학적
+차이는 `gait_forward_signs`로 분리합니다. 실제 관찰에 따라 FL/FR은 `-1`,
+RL/RR은 `+1`을 사용하며, 이 값은 자세용 모터 방향과 독립적입니다.
+
+예를 들어 네 다리 J3에 모두 같은 각도를 명령해도 하드웨어 raw 값은 각 모터의
+`center`와 `direction`에 따라 서로 다르게 계산됩니다. `stand45`는 11자 중립
+자세에서 J2를 `+45°`, 상대 관절인 J3를 `+90°`로 접어 위·아래 링크가 각각
+반대쪽 45°를 향하는 `>` 형태를 만듭니다. `walk --hip`, `--lift`, `--crouch`도
+모두 degree 단위입니다.
+
+Python에서 같은 변환을 사용할 수 있습니다.
+
+```python
+target = config.angle_to_position("FL", 3, 90.0)
+angle = config.position_to_angle("FL", 3, target)
+targets = config.angles_to_targets({("FL", 3): 45.0})
 ```
 
 JSON을 저장할 때 사람이 확인하기 쉬운 `config/servo_calibration.md`,
 `config/gait_config.md`, `config/servo_poses.md`도 함께 갱신됩니다.
-
-## 관절 좌표 계층
-
-포즈와 보행 코드는 STS3215의 raw 위치를 직접 계산하지 않습니다. 모든 관절의
-캘리브레이션 중립점을 논리 좌표 `0`으로 사용합니다.
-
-```text
-포즈·보행: logical position (중립점 = 0)
-    ↓
-SpotRobot 관절 변환: raw = center + direction × logical
-    ↓
-STS3215 통신: raw position (0..4095)
-```
-
-`stand`는 다리를 몸체 아래로 곧게 내린 기본 자세이며 12개 관절 모두 논리값
-`0`입니다. 생성형 `stand45`는 모든 다리에서 J1 `0`, J2 `-512`(-45°),
-J3 `+1024`(+90°)입니다. 네 다리의 `<` 모양이 같으므로 상위 관절 데이터의 값과
-부호도 모두 같습니다. 실제 조립 상태에서 확인한 ID 3·6의 회전 방향을 포함한
-좌우 서보의 반대 장착 방향은 각 모터의 `direction`, 장착 위치 차이는 `center`가
-저수준 변환 계층에서만 흡수합니다. 따라서 캘리브레이션이나 모터 장착 방향이
-바뀌어도 포즈·보행 계산에는 모터별 조건을 추가하지 않습니다.
-
-`raw-center`, 진단, ID 설정과 캘리브레이션 캡처만 의도적으로 raw 좌표를
-사용합니다. 기존 `landing` 및 저장형 `stand45` 포즈도 호환성을 위해 raw 값으로
-보존하지만, 적용할 때는 논리 좌표로 변환한 뒤 같은 관절 명령 계층을 통과합니다.
 
 `raw-center`는 보정값을 무시하고 모든 서보를 정확히 2048로 이동합니다.
 기구적으로 안전한 상태에서 초기 조립을 확인할 때만 사용하세요.
@@ -234,7 +235,6 @@ spotctl --port /dev/cu.usbmodem5B790788341 status
 spotctl --port /dev/cu.usbmodem5B790788341 stand
 spotctl --port /dev/cu.usbmodem5B790788341 stand45
 spotctl --port /dev/cu.usbmodem5B790788341 landing
-spotctl --port /dev/cu.usbmodem5B790788341 pose landing
 spotctl --port /dev/cu.usbmodem5B790788341 relax
 ```
 
@@ -245,13 +245,18 @@ spotctl --port /dev/cu.usbmodem5B790788341 save-pose crouch
 spotctl --port /dev/cu.usbmodem5B790788341 pose crouch
 ```
 
-`stand45` 명령과 보행 기준 자세는 현재 중립 보정값에 원본의 관절 방향을 적용해
-매번 계산합니다. 반면 `pose stand45`는 2026-08-01에 직접 저장했던 위치를
-그대로 재현합니다.
+`stand45` 명령과 보행 기준 자세는 현재 중립 보정값에 canonical J2 `+45°`,
+J3 `+90°`를 적용해 매번 계산합니다. `pose landing`은 다리를 더 낮게 눕히는
+하단 링크가 바닥과 수평이 되도록 J2 `+40°`, J3 `+130°`를 최신 보정값에서
+동적으로 계산합니다. 두 상대 관절각의 차이는 `90°`입니다. 과거에
+저장된 동명의 raw 포즈는 실행하지 않습니다. `neutral`, `stand`, `stand45`,
+`landing` 이름은 일반 `save-pose`로 덮어쓸 수 없습니다.
 
-`landing`도 `stand`와 같은 생성형 자세입니다. 현재 캘리브레이션을 기준으로 J1
-`0°`, J2 `-45°`, J3 `+135°`를 계산합니다. 반면 `pose landing`은 과거에 저장한
-raw 위치를 그대로 재현합니다.
+```bash
+spotctl --port PORT landing --speed 100 --accel 5
+```
+
+기존 `spotctl pose landing`도 같은 동적 자세를 적용하는 호환 명령입니다.
 
 포즈 이동은 모든 서보의 `Moving` 상태가 끝날 때까지 기다린 후 목표 위치와 실제
 위치의 차이를 검사합니다. 기본 제한은 10초와 30 tick이며 필요하면 조절합니다.
@@ -310,7 +315,7 @@ spotctl --port PORT walk --gait trot --preset test --cycles 1
 
 ```bash
 spotctl walk --gait trot --preset natural --cycles 10 \
-  --hip 280 --lift 400 \
+  --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
@@ -318,15 +323,15 @@ spotctl walk --gait trot --preset natural --cycles 10 \
 
 ```bash
 # 빠른 무부하 후보
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.8 --speed 1000 --accel 100 --rate 100
 
 # 중간값
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.9 --speed 1000 --accel 100 --rate 100
 
 # 보폭과 속도의 균형값
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
@@ -368,7 +373,7 @@ spotctl pose stand45
 - FL이 한 차례 느리고 작게 보였으나 설정과 EEPROM은 다른 J2/J3와 같았고 이후
   같은 조건에서 재현되지 않았습니다.
 - RR J1(ID 10)에서 오류 값 `8`이 간헐적으로 검출됐습니다.
-- 단위 테스트 21개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
+- 단위 테스트 36개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
 
 세부 조건, 단계별 시간과 최종 조립 후 체크리스트는
 [`HARDWARE_TEST_LOG.md`](./HARDWARE_TEST_LOG.md)를 참고하세요.

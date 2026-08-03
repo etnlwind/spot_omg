@@ -16,6 +16,7 @@ from .sts3215 import STS3215, ServoState
 LEG_ORDER = ("FL", "FR", "RL", "RR")
 JOINTS_PER_LEG = 3
 ADDR_ACCELERATION = STS3215.ADDR_ACCELERATION
+TICKS_PER_REVOLUTION = STS3215.STEPS_PER_REVOLUTION
 
 
 @dataclass
@@ -28,16 +29,16 @@ class JointConfig:
     offset: int
     minimum: int
     maximum: int
-    direction: int
+    direction: int = 1
 
 
 @dataclass(frozen=True)
 class GaitParameters:
     pattern: str = "trot"
     period: float = 2.4
-    hip_amplitude: int = 220
-    lift_amplitude: int = 340
-    crouch_amplitude: int = 70
+    hip_amplitude: float = 19.3
+    lift_amplitude: float = 29.9
+    crouch_amplitude: float = 6.2
     speed: int = 60
     acceleration: int = 25
     duty_factor: float = 0.75
@@ -48,12 +49,12 @@ class GaitParameters:
             raise ValueError("gait pattern must be 'trot' or 'crawl'")
         if not 0.6 <= self.period <= 10.0:
             raise ValueError("period must be between 0.6 and 10.0 seconds")
-        if not 1 <= self.hip_amplitude <= 300:
-            raise ValueError("hip amplitude must be between 1 and 300")
-        if not 1 <= self.lift_amplitude <= 450:
-            raise ValueError("lift amplitude must be between 1 and 450")
-        if not 0 <= self.crouch_amplitude <= 150:
-            raise ValueError("crouch amplitude must be between 0 and 150")
+        if not 0.1 <= self.hip_amplitude <= 30.0:
+            raise ValueError("hip amplitude must be between 0.1 and 30 degrees")
+        if not 0.1 <= self.lift_amplitude <= 40.0:
+            raise ValueError("lift amplitude must be between 0.1 and 40 degrees")
+        if not 0 <= self.crouch_amplitude <= 15.0:
+            raise ValueError("crouch amplitude must be between 0 and 15 degrees")
         if not 1 <= self.speed <= 3400:
             raise ValueError("speed must be between 1 and 3400")
         if not 0 <= self.acceleration <= 254:
@@ -72,19 +73,32 @@ class SpotConfig:
         joints: list[JointConfig],
         poses: dict[str, dict[int, int]],
         *,
+        canonical_poses: dict[str, dict[int, float]] | None = None,
+        gait_forward_signs: dict[str, int] | None = None,
         path: Path | None = None,
         reference_center: int = 2048,
         pose_saved_at: dict[str, str] | None = None,
         source: str = "",
         calibration_saved_at: str = "",
+        gait_saved_at: str = "",
     ) -> None:
         self.joints = joints
         self.poses = poses
+        self.canonical_poses = canonical_poses or {
+            "landing": {2: 40.0, 3: 130.0}
+        }
+        self.gait_forward_signs = gait_forward_signs or {
+            "FL": -1,
+            "FR": -1,
+            "RL": 1,
+            "RR": 1,
+        }
         self.path = path
         self.reference_center = reference_center
         self.pose_saved_at = pose_saved_at or {}
         self.source = source
         self.calibration_saved_at = calibration_saved_at
+        self.gait_saved_at = gait_saved_at
         self._reindex()
         self._validate()
 
@@ -99,17 +113,19 @@ class SpotConfig:
         source = Path(path)
         data = json.loads(source.read_text(encoding="utf-8"))
         reference_center = int(data.get("reference_center", 2048))
-        legacy_directions = data.get("stand45_directions", {})
+        legacy_stand = data.get("stand45_directions", {})
+        legacy_gait = data.get("gait_directions", {})
 
-        def device_direction(item: dict[str, object]) -> int:
-            if "direction" in item:
-                return int(item["direction"])
+        def legacy_direction(item: dict) -> int:
             joint_number = int(item["joint"])
             if joint_number == 1:
                 return 1
-            values = legacy_directions[item["leg"]]
-            configured = int(values["upper" if joint_number == 2 else "lower"])
-            return -configured if joint_number == 2 else configured
+            leg = item["leg"]
+            key = "upper" if joint_number == 2 else "lower"
+            if leg in legacy_stand:
+                return int(legacy_stand[leg][key])
+            gait_key = "hip_forward" if joint_number == 2 else "knee_lift"
+            return int(legacy_gait.get(leg, {}).get(gait_key, 1))
 
         joints = [
             JointConfig(
@@ -123,7 +139,7 @@ class SpotConfig:
                 ),
                 minimum=int(item["min"]),
                 maximum=int(item["max"]),
-                direction=device_direction(item),
+                direction=int(item.get("direction", legacy_direction(item))),
             )
             for item in data["joints"]
         ]
@@ -131,14 +147,25 @@ class SpotConfig:
             name: {int(servo_id): int(position) for servo_id, position in pose.items()}
             for name, pose in data["poses"].items()
         }
+        canonical_poses = {
+            name: {int(joint): float(angle) for joint, angle in values.items()}
+            for name, values in data.get("canonical_poses", {}).items()
+        }
+        gait_forward_signs = {
+            leg: int(sign)
+            for leg, sign in data.get("gait_forward_signs", {}).items()
+        }
         return cls(
             joints,
             poses,
+            canonical_poses=canonical_poses or None,
+            gait_forward_signs=gait_forward_signs or None,
             path=source,
             reference_center=reference_center,
             pose_saved_at=dict(data.get("pose_saved_at", {})),
             source=str(data.get("source", "")),
             calibration_saved_at=str(data.get("calibration_saved_at", "")),
+            gait_saved_at=str(data.get("gait_saved_at", "")),
         )
 
     @property
@@ -149,120 +176,103 @@ class SpotConfig:
         return self._by_leg_joint[(leg, joint_number)]
 
     def pose(self, name: str) -> dict[int, int]:
-        """Return a legacy saved pose in raw servo coordinates."""
         try:
             return dict(self.poses[name])
         except KeyError as exc:
             available = ", ".join(sorted(self.poses))
             raise KeyError(f"unknown pose {name!r}; available: {available}") from exc
 
-    def joint_direction(self, servo_id: int) -> int:
-        """Return the raw-servo sign for positive logical joint motion."""
-        return self._by_id[servo_id].direction
-
-    def logical_to_raw(self, targets: dict[int, int]) -> dict[int, int]:
-        """Convert zero-centered robot joint coordinates to STS3215 positions."""
-        self.validate_logical_targets(targets)
-        return self.logical_subset_to_raw(targets)
-
-    def logical_subset_to_raw(self, targets: dict[int, int]) -> dict[int, int]:
-        """Convert one or more calibrated logical joints to raw positions."""
-        if not targets or not set(targets) <= set(self.servo_ids):
-            raise ValueError("logical joint targets must use configured servo IDs")
-        raw = {
-            servo_id: self._by_id[servo_id].center
-            + self.joint_direction(servo_id) * position
-            for servo_id, position in targets.items()
-        }
-        for servo_id, position in raw.items():
-            joint = self._by_id[servo_id]
-            if not joint.minimum <= position <= joint.maximum:
-                raise ValueError(
-                    f"{joint.name} (ID {servo_id}) target {position} is outside "
-                    f"{joint.minimum}..{joint.maximum}"
-                )
-        return raw
-
-    def raw_to_logical(self, targets: dict[int, int]) -> dict[int, int]:
-        """Convert STS3215 positions to zero-centered robot joint coordinates."""
-        self.validate_targets(targets)
+    @property
+    def directions(self) -> dict[str, tuple[int, int]]:
+        """Compatibility view of canonical J2/J3 motor directions."""
         return {
-            servo_id: self.joint_direction(servo_id)
-            * (position - self._by_id[servo_id].center)
-            for servo_id, position in targets.items()
+            leg: (self.joint(leg, 2).direction, self.joint(leg, 3).direction)
+            for leg in LEG_ORDER
         }
 
-    def neutral_targets(self) -> dict[int, int]:
-        """Return the default straight-down stance: every logical joint is zero."""
-        return {servo_id: 0 for servo_id in self.servo_ids}
+    @property
+    def stand45_directions(self) -> dict[str, tuple[int, int]]:
+        """Compatibility alias; stance and gait now share one direction."""
+        return self.directions
 
-    def logical_pose(self, name: str) -> dict[int, int]:
-        return self.raw_to_logical(self.pose(name))
+    @staticmethod
+    def degrees_to_ticks(angle_degrees: float) -> int:
+        return round(angle_degrees * TICKS_PER_REVOLUTION / 360.0)
+
+    @staticmethod
+    def ticks_to_degrees(ticks: int) -> float:
+        return ticks * 360.0 / TICKS_PER_REVOLUTION
+
+    def angle_to_position(
+        self, leg: str, joint_number: int, angle_degrees: float
+    ) -> int:
+        """Convert one canonical joint angle to a hardware raw position."""
+        if not math.isfinite(angle_degrees):
+            raise ValueError("joint angle must be finite")
+        joint = self.joint(leg, joint_number)
+        position = joint.center + joint.direction * self.degrees_to_ticks(
+            angle_degrees
+        )
+        if not joint.minimum <= position <= joint.maximum:
+            raise ValueError(
+                f"{joint.name} angle {angle_degrees:g} degrees maps outside "
+                f"{joint.minimum}..{joint.maximum}"
+            )
+        return position
+
+    def position_to_angle(
+        self, leg: str, joint_number: int, position: int
+    ) -> float:
+        """Convert a hardware raw position to a canonical joint angle."""
+        joint = self.joint(leg, joint_number)
+        if not joint.minimum <= position <= joint.maximum:
+            raise ValueError(f"{joint.name} position is outside its limits")
+        ticks = (position - joint.center) * joint.direction
+        return self.ticks_to_degrees(ticks)
+
+    def angles_to_targets(
+        self, angles: dict[tuple[str, int], float]
+    ) -> dict[int, int]:
+        """Build absolute raw targets from canonical per-joint angles."""
+        expected = {
+            (leg, joint_number)
+            for leg in LEG_ORDER
+            for joint_number in range(1, JOINTS_PER_LEG + 1)
+        }
+        unknown = set(angles) - expected
+        if unknown:
+            raise ValueError(f"unknown joint angle keys: {sorted(unknown)}")
+        targets = self.pose("neutral")
+        for (leg, joint_number), angle in angles.items():
+            joint = self.joint(leg, joint_number)
+            targets[joint.servo_id] = self.angle_to_position(
+                leg, joint_number, angle
+            )
+        self.validate_targets(targets)
+        return targets
 
     def stand45_targets(self) -> dict[int, int]:
-        """Build a 45-degree stance in calibrated logical coordinates."""
-        targets = self.neutral_targets()
-        for leg in LEG_ORDER:
-            upper_id = self.joint(leg, 2).servo_id
-            lower_id = self.joint(leg, 3).servo_id
-            targets[upper_id] = -512
-            # The knee angle is relative to J2. With the upper link at -45°,
-            # +90° at J3 places the lower link at +45° and forms a '<' shape.
-            targets[lower_id] = 1024
-        self.validate_logical_targets(targets)
-        return targets
+        # From a straight neutral leg, J2 tilts the upper link by 45 degrees.
+        # J3 is relative to that upper link, so a 90-degree knee bend places
+        # the lower link 45 degrees on the other side, forming a ">" shape.
+        angles = {
+            (leg, joint_number): angle
+            for leg in LEG_ORDER
+            for joint_number, angle in ((2, 45.0), (3, 90.0))
+        }
+        return self.angles_to_targets(angles)
 
     def landing_targets(self) -> dict[int, int]:
-        """Build the calibrated deep landing stance in logical coordinates."""
-        targets = self.neutral_targets()
-        for leg in LEG_ORDER:
-            targets[self.joint(leg, 2).servo_id] = -512
-            targets[self.joint(leg, 3).servo_id] = 1536
-        self.validate_logical_targets(targets)
-        self.logical_to_raw(targets)
-        return targets
-
-    def calibration_reference(self, reference: str = "neutral") -> dict[int, int]:
-        """Return a visual calibration pose without redefining logical zero."""
-        targets = self.neutral_targets()
-        if reference == "neutral":
-            return targets
-        if reference != "setup-j2-minus90":
-            raise ValueError(f"unknown calibration reference: {reference}")
-        for leg in LEG_ORDER:
-            targets[self.joint(leg, 2).servo_id] = -1024
-        self.validate_logical_targets(targets)
-        return targets
-
-    def calibration_targets(self, reference: str = "neutral") -> dict[int, int]:
-        """Build a known reference pose while preserving saved center offsets."""
-        return self.logical_to_raw(self.calibration_reference(reference))
-
-    def capture_calibration(
-        self,
-        positions: dict[int, int],
-        reference: str = "neutral",
-        servo_ids: set[int] | None = None,
-    ) -> dict[int, int]:
-        """Infer neutral centers from measured positions in a known reference pose."""
-        self.validate_targets(positions)
-        reference_targets = self.calibration_targets(reference)
-        reference_deltas = {
-            joint.servo_id: reference_targets[joint.servo_id] - joint.center
-            for joint in self.joints
+        """Build the calibrated landing pose from canonical joint angles."""
+        # Keep the lower link horizontal: J3 is relative to J2, so their
+        # canonical angle difference is 90 degrees.
+        landing = self.canonical_poses["landing"]
+        angles = {
+            (leg, joint_number): angle
+            for leg in LEG_ORDER
+            for joint_number, angle in landing.items()
         }
-        all_centers = {
-            servo_id: position - reference_deltas[servo_id]
-            for servo_id, position in positions.items()
-        }
-        selected = set(self.servo_ids) if servo_ids is None else set(servo_ids)
-        if not selected or not selected <= set(self.servo_ids):
-            raise ValueError("calibration servo IDs must be configured")
-        centers = {servo_id: all_centers[servo_id] for servo_id in selected}
-        for servo_id, center in centers.items():
-            self.set_joint_center(servo_id, center)
-        self._validate()
-        return centers
+        return self.angles_to_targets(angles)
 
     def set_joint_center(self, servo_id: int, center: int) -> None:
         joint = self._by_id[servo_id]
@@ -276,10 +286,38 @@ class SpotConfig:
         self.poses["neutral"][servo_id] = center
         self.calibration_saved_at = self._now()
 
+    def set_directions(self, directions: dict[str, tuple[int, int]]) -> None:
+        """Compatibility setter for J2/J3 directions."""
+        if set(directions) != set(LEG_ORDER):
+            raise ValueError("directions are required for all four legs")
+        for leg, values in directions.items():
+            self.joint(leg, 2).direction = values[0]
+            self.joint(leg, 3).direction = values[1]
+        self._validate()
+        self.gait_saved_at = self._now()
+
+    def set_joint_directions(
+        self, directions: dict[str, tuple[int, int, int]]
+    ) -> None:
+        """Set the one canonical motor sign used by every motion path."""
+        if set(directions) != set(LEG_ORDER):
+            raise ValueError("directions are required for all four legs")
+        for leg, values in directions.items():
+            if len(values) != JOINTS_PER_LEG:
+                raise ValueError("each leg requires J1, J2, J3 directions")
+            for joint_number, direction in enumerate(values, start=1):
+                self.joint(leg, joint_number).direction = direction
+        self._validate()
+        self.gait_saved_at = self._now()
+
     def set_pose(self, name: str, targets: dict[int, int]) -> None:
         clean_name = name.strip()
         if not clean_name or any(character in clean_name for character in "\r\n"):
             raise ValueError("pose name must be non-empty and fit on one line")
+        if clean_name.lower() in {"neutral", "stand", "stand45", "landing"}:
+            raise ValueError(
+                f"pose name {clean_name!r} is reserved for calibrated stances"
+            )
         self.validate_targets(targets)
         self.poses[clean_name] = dict(targets)
         self.pose_saved_at[clean_name] = self._now()
@@ -313,10 +351,11 @@ class SpotConfig:
         if destination is None:
             raise ValueError("configuration has no destination path")
         data = {
-            "version": 4,
+            "version": 3,
             "source": self.source,
             "reference_center": self.reference_center,
             "calibration_saved_at": self.calibration_saved_at,
+            "gait_saved_at": self.gait_saved_at,
             "joints": [
                 {
                     "name": joint.name,
@@ -332,6 +371,11 @@ class SpotConfig:
                 for joint in self.joints
             ],
             "pose_saved_at": self.pose_saved_at,
+            "canonical_poses": {
+                name: {str(joint): angle for joint, angle in values.items()}
+                for name, values in self.canonical_poses.items()
+            },
+            "gait_forward_signs": self.gait_forward_signs,
             "poses": {
                 name: {str(servo_id): value for servo_id, value in pose.items()}
                 for name, pose in self.poses.items()
@@ -355,16 +399,29 @@ class SpotConfig:
             f"- 기준 위치: `{self.reference_center}`",
             f"- 마지막 저장: `{self.calibration_saved_at or 'unknown'}`",
             "- 목표 위치 계산: `기준 위치 + Offset`",
-            "- 관절 명령 변환: `Raw = Target + Joint Direction × Logical`",
             "",
-            "| Leg | Joint | Servo ID | Offset | Target | Joint Direction |",
-            "|---|---:|---:|---:|---:|---:|",
+            "| Leg | Joint | Servo ID | Offset | Target |",
+            "|---|---:|---:|---:|---:|",
         ]
         for joint in self.joints:
             calibration.append(
                 f"| {joint.leg} | {joint.joint} | {joint.servo_id} | "
-                f"{joint.offset:+d} | {joint.center} | "
-                f"{self.joint_direction(joint.servo_id):+d} |"
+                f"{joint.offset:+d} | {joint.center} |"
+            )
+        calibration.extend(
+            [
+                "",
+                "## 확인된 관절 방향",
+                "",
+                "| Leg | J1 | J2 | J3 |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+        for leg in LEG_ORDER:
+            values = tuple(self.joint(leg, number).direction for number in (1, 2, 3))
+            calibration.append(
+                f"| {leg} | {values[0]:+d} | {values[1]:+d} | "
+                f"{values[2]:+d} |"
             )
         calibration.append("")
 
@@ -373,16 +430,18 @@ class SpotConfig:
             "",
             "> `config/joints.json`에서 자동 생성됩니다. 직접 수정하지 마세요.",
             "",
-            "- 네 다리는 같은 논리 관절 부호를 사용합니다.",
-            "- 대각선 다리 쌍은 관절값 부호가 아니라 위상만 다릅니다.",
+            f"- 마지막 저장: `{self.gait_saved_at or 'unknown'}`",
+            "- 모든 포즈와 보행은 동일한 관절별 `Direction`을 사용합니다.",
+            "- 애플리케이션 각도는 degree, 모터 출력만 raw tick입니다.",
             "",
-            "| Leg | J2 Kinematic Sign | J3 Bend Sign | Trot Phase |",
+            "| Leg | J1 Direction | J2 Direction | J3 Direction |",
             "|---|---:|---:|---:|",
         ]
         for leg in LEG_ORDER:
-            phase = 0.0 if leg in {"FL", "RR"} else 0.5
-            hip_sign = -1 if leg in {"FL", "FR"} else 1
-            gait.append(f"| {leg} | {hip_sign:+d} | +1 | {phase:.1f} |")
+            values = tuple(self.joint(leg, number).direction for number in (1, 2, 3))
+            gait.append(
+                f"| {leg} | {values[0]:+d} | {values[1]:+d} | {values[2]:+d} |"
+            )
         gait.append("")
 
         poses = [
@@ -426,12 +485,6 @@ class SpotConfig:
                     f"{joint.minimum}..{joint.maximum}"
                 )
 
-    def validate_logical_targets(self, targets: dict[int, int]) -> None:
-        if set(targets) != set(self.servo_ids):
-            raise ValueError(
-                "logical targets must contain every configured servo exactly once"
-            )
-
     def _validate(self) -> None:
         expected_pairs = {
             (leg, joint) for leg in LEG_ORDER for joint in range(1, 4)
@@ -450,6 +503,17 @@ class SpotConfig:
             if joint.direction not in (-1, 1):
                 raise ValueError(f"{joint.name} direction must be +1 or -1")
         expected_ids = set(ids)
+        for name, angles in self.canonical_poses.items():
+            if not name or not angles:
+                raise ValueError("canonical pose names and angles cannot be empty")
+            if any(joint not in (1, 2, 3) for joint in angles):
+                raise ValueError(f"canonical pose {name!r} has an unknown joint")
+            if any(not math.isfinite(angle) for angle in angles.values()):
+                raise ValueError(f"canonical pose {name!r} has a non-finite angle")
+        if set(self.gait_forward_signs) != set(LEG_ORDER):
+            raise ValueError("gait forward signs are required for all four legs")
+        if any(sign not in (-1, 1) for sign in self.gait_forward_signs.values()):
+            raise ValueError("gait forward signs must be +1 or -1")
         for name, targets in self.poses.items():
             if set(targets) != expected_ids:
                 raise ValueError(f"pose {name!r} does not contain all servo IDs")
@@ -458,10 +522,6 @@ class SpotConfig:
 
 class SpotRobot:
     """High-level synchronized control for the twelve-servo robot."""
-
-    # The same fore-aft foot trajectory maps to opposite J2 changes on the
-    # front and rear mechanisms. This is kinematics, not servo polarity.
-    HIP_KINEMATIC_SIGNS = {"FL": -1, "FR": -1, "RL": 1, "RR": 1}
 
     PHASE_OFFSETS = {
         # Diagonal pairs: FL+RR and FR+RL, separated by half a cycle.
@@ -515,7 +575,11 @@ class SpotRobot:
         speed: int = 60,
         acceleration: int = 30,
     ) -> dict[int, int]:
-        """Enable torque safely after replacing stale goals with current positions."""
+        """Enable selected servos without jumping to stale goal positions."""
+        if not 1 <= speed <= 3400:
+            raise ValueError("speed must be between 1 and 3400")
+        if not 0 <= acceleration <= 254:
+            raise ValueError("acceleration must be between 0 and 254")
         selected = set(self.config.servo_ids) if servo_ids is None else set(servo_ids)
         if not selected or not selected <= set(self.config.servo_ids):
             raise ValueError("hold servo IDs must be configured")
@@ -561,21 +625,7 @@ class SpotRobot:
         }
         self.bus.sync_write(STS3215.ADDR_GOAL_POSITION, 2, values)
 
-    def sync_joints(
-        self,
-        targets: dict[int, int],
-        *,
-        speed: int | dict[int, int] = 1000,
-        acceleration: int = 80,
-    ) -> None:
-        """Move calibrated joints expressed around logical zero."""
-        self.sync_move(
-            self.config.logical_to_raw(targets),
-            speed=speed,
-            acceleration=acceleration,
-        )
-
-    def move_joint_subset_and_wait(
+    def move_subset_and_wait(
         self,
         targets: dict[int, int],
         *,
@@ -585,19 +635,40 @@ class SpotRobot:
         tolerance: int = 50,
         poll_interval: float = 0.1,
     ) -> dict[int, ServoState]:
-        """Synchronously move selected logical joints without changing other goals."""
-        raw_targets = self.config.logical_subset_to_raw(targets)
-        values = {
-            servo_id: self._motion_data(position, speed, acceleration)
-            for servo_id, position in raw_targets.items()
+        """Move selected raw joint targets without changing other servo goals."""
+        if not 1 <= speed <= 3400:
+            raise ValueError("speed must be between 1 and 3400")
+        if not 0 <= acceleration <= 254:
+            raise ValueError("acceleration must be between 0 and 254")
+        if not targets or not set(targets) <= set(self.config.servo_ids):
+            raise ValueError("subset targets must use configured servo IDs")
+        for servo_id, position in targets.items():
+            joint = self.config._by_id[servo_id]
+            if not joint.minimum <= position <= joint.maximum:
+                raise ValueError(f"{joint.name} target is outside its limits")
+        self.require_all()
+        current = self.read_positions()
+        current_values = {
+            servo_id: self._motion_data(
+                current[servo_id], speed, acceleration
+            )
+            for servo_id in targets
         }
-        self.bus.sync_write(ADDR_ACCELERATION, 7, values)
+        self.bus.sync_write(ADDR_ACCELERATION, 7, current_values)
+        for servo_id in sorted(targets):
+            STS3215(self.bus, servo_id).enable_torque(True)
+
+        target_values = {
+            servo_id: self._motion_data(position, speed, acceleration)
+            for servo_id, position in targets.items()
+        }
+        self.bus.sync_write(ADDR_ACCELERATION, 7, target_values)
         deadline = time.monotonic() + timeout
         time.sleep(poll_interval)
         while True:
             states = {
                 servo_id: STS3215(self.bus, servo_id).read_state()
-                for servo_id in raw_targets
+                for servo_id in targets
             }
             if all(not state.moving for state in states.values()):
                 break
@@ -605,9 +676,9 @@ class SpotRobot:
                 raise TimeoutError("selected joints did not stop before timeout")
             time.sleep(poll_interval)
         errors = {
-            servo_id: state.position - raw_targets[servo_id]
+            servo_id: state.position - targets[servo_id]
             for servo_id, state in states.items()
-            if abs(state.position - raw_targets[servo_id]) > tolerance
+            if abs(state.position - targets[servo_id]) > tolerance
         }
         if errors:
             detail = ", ".join(
@@ -615,10 +686,6 @@ class SpotRobot:
             )
             raise RuntimeError(f"target position verification failed: {detail}")
         return states
-
-    def stream_joints(self, targets: dict[int, int]) -> None:
-        """Stream calibrated logical positions without rewriting motion profile."""
-        self.sync_positions(self.config.logical_to_raw(targets))
 
     def wait_until_stopped(
         self,
@@ -678,25 +745,6 @@ class SpotRobot:
             targets, timeout=timeout, tolerance=tolerance
         )
 
-    def move_joints_and_wait(
-        self,
-        targets: dict[int, int],
-        *,
-        speed: int = 1000,
-        acceleration: int = 80,
-        timeout: float = 10.0,
-        tolerance: int = 30,
-    ) -> dict[int, ServoState]:
-        """Move logical joints and verify the resulting raw servo positions."""
-        raw_targets = self.config.logical_to_raw(targets)
-        return self.move_and_wait(
-            raw_targets,
-            speed=speed,
-            acceleration=acceleration,
-            timeout=timeout,
-            tolerance=tolerance,
-        )
-
     def prepare_for_motion(self, *, speed: int, acceleration: int) -> None:
         """Enable torque without jumping to a stale goal position."""
         self.require_all()
@@ -739,10 +787,17 @@ class SpotRobot:
                 hip_wave = -1.0 + 2.0 * self._cosine_ease(progress)
                 lift_wave = math.sin(math.pi * progress) ** 2
 
-            hip_id = self.config.joint(leg, 2).servo_id
-            knee_id = self.config.joint(leg, 3).servo_id
-            targets[hip_id] += round(
-                self.HIP_KINEMATIC_SIGNS[leg]
+            hip_joint = self.config.joint(leg, 2)
+            knee_joint = self.config.joint(leg, 3)
+            hip_base = self.config.position_to_angle(
+                leg, 2, base[hip_joint.servo_id]
+            )
+            knee_base = self.config.position_to_angle(
+                leg, 3, base[knee_joint.servo_id]
+            )
+            hip_angle = (
+                hip_base
+                - self.config.gait_forward_signs[leg]
                 * parameters.hip_amplitude
                 * hip_wave
                 * amplitude_scale
@@ -751,7 +806,12 @@ class SpotRobot:
                 parameters.crouch_amplitude
                 + parameters.lift_amplitude * lift_wave
             ) * amplitude_scale
-            targets[knee_id] += round(knee_bend)
+            targets[hip_joint.servo_id] = self.config.angle_to_position(
+                leg, 2, hip_angle
+            )
+            targets[knee_joint.servo_id] = self.config.angle_to_position(
+                leg, 3, knee_base + knee_bend
+            )
 
-        self.config.logical_to_raw(targets)
+        self.config.validate_targets(targets)
         return targets

@@ -1,16 +1,17 @@
 {
-  "version": 4,
+  "version": 3,
   "source": "URT-2 hardware test, 2026-08-01",
   "reference_center": 2048,
-  "calibration_saved_at": "2026-08-02T11:19:33+09:00",
+  "calibration_saved_at": "2026-08-03T10:13:39+09:00",
+  "gait_saved_at": "2026-08-03T10:27:30+09:00",
   "joints": [
     {
       "name": "front_left_hip",
       "leg": "FL",
       "joint": 1,
       "id": 1,
-      "center": 2047,
-      "offset": -1,
+      "center": 2091,
+      "offset": 43,
       "min": 0,
       "max": 4095,
       "direction": 1
@@ -20,19 +21,19 @@
       "leg": "FL",
       "joint": 2,
       "id": 2,
-      "center": 2221,
-      "offset": 173,
+      "center": 2235,
+      "offset": 187,
       "min": 0,
       "max": 4095,
-      "direction": 1
+      "direction": -1
     },
     {
       "name": "front_left_lower",
       "leg": "FL",
       "joint": 3,
       "id": 3,
-      "center": 1560,
-      "offset": -488,
+      "center": 2060,
+      "offset": 12,
       "min": 0,
       "max": 4095,
       "direction": -1
@@ -42,8 +43,8 @@
       "leg": "FR",
       "joint": 1,
       "id": 4,
-      "center": 2078,
-      "offset": 30,
+      "center": 2087,
+      "offset": 39,
       "min": 0,
       "max": 4095,
       "direction": -1
@@ -53,19 +54,19 @@
       "leg": "FR",
       "joint": 2,
       "id": 5,
-      "center": 2002,
-      "offset": -46,
+      "center": 1999,
+      "offset": -49,
       "min": 0,
       "max": 4095,
-      "direction": -1
+      "direction": 1
     },
     {
       "name": "front_right_lower",
       "leg": "FR",
       "joint": 3,
       "id": 6,
-      "center": 2484,
-      "offset": 436,
+      "center": 1977,
+      "offset": -71,
       "min": 0,
       "max": 4095,
       "direction": 1
@@ -75,8 +76,8 @@
       "leg": "RL",
       "joint": 1,
       "id": 7,
-      "center": 2134,
-      "offset": 86,
+      "center": 2103,
+      "offset": 55,
       "min": 0,
       "max": 4095,
       "direction": -1
@@ -86,19 +87,19 @@
       "leg": "RL",
       "joint": 2,
       "id": 8,
-      "center": 2115,
-      "offset": 67,
+      "center": 2142,
+      "offset": 94,
       "min": 0,
       "max": 4095,
-      "direction": 1
+      "direction": -1
     },
     {
       "name": "rear_left_lower",
       "leg": "RL",
       "joint": 3,
       "id": 9,
-      "center": 2522,
-      "offset": 474,
+      "center": 1996,
+      "offset": -52,
       "min": 0,
       "max": 4095,
       "direction": 1
@@ -108,8 +109,8 @@
       "leg": "RR",
       "joint": 1,
       "id": 10,
-      "center": 1920,
-      "offset": -128,
+      "center": 1958,
+      "offset": -90,
       "min": 0,
       "max": 4095,
       "direction": 1
@@ -119,19 +120,19 @@
       "leg": "RR",
       "joint": 2,
       "id": 11,
-      "center": 2047,
-      "offset": -1,
+      "center": 2040,
+      "offset": -8,
       "min": 0,
       "max": 4095,
-      "direction": -1
+      "direction": 1
     },
     {
       "name": "rear_right_lower",
       "leg": "RR",
       "joint": 3,
       "id": 12,
-      "center": 1667,
-      "offset": -381,
+      "center": 2047,
+      "offset": -1,
       "min": 0,
       "max": 4095,
       "direction": -1
@@ -139,23 +140,34 @@
   ],
   "pose_saved_at": {
     "landing": "2026-08-01T21:51:56+09:00",
-    "stand45": "2026-08-01T21:52:54+09:00",
-    "setup-j2-minus90": "2026-08-02T10:50:52+09:00"
+    "stand45": "2026-08-01T21:52:54+09:00"
+  },
+  "canonical_poses": {
+    "landing": {
+      "2": 40.0,
+      "3": 130.0
+    }
+  },
+  "gait_forward_signs": {
+    "FL": -1,
+    "FR": -1,
+    "RL": 1,
+    "RR": 1
   },
   "poses": {
     "neutral": {
-      "1": 2047,
-      "2": 2221,
-      "3": 1560,
-      "4": 2078,
-      "5": 2002,
-      "6": 2484,
-      "7": 2134,
-      "8": 2115,
-      "9": 2522,
-      "10": 1920,
-      "11": 2047,
-      "12": 1667
+      "1": 2091,
+      "2": 2235,
+      "3": 2060,
+      "4": 2087,
+      "5": 1999,
+      "6": 1977,
+      "7": 2103,
+      "8": 2142,
+      "9": 1996,
+      "10": 1958,
+      "11": 2040,
+      "12": 2047
     },
     "landing": {
       "1": 2084,
@@ -184,20 +196,6 @@
       "10": 2026,
       "11": 2553,
       "12": 1522
-    },
-    "setup-j2-minus90": {
-      "1": 2047,
-      "2": 1197,
-      "3": 1560,
-      "4": 2078,
-      "5": 3026,
-      "6": 2484,
-      "7": 2134,
-      "8": 1147,
-      "9": 2522,
-      "10": 1920,
-      "11": 3071,
-      "12": 1592
     }
   }
 }

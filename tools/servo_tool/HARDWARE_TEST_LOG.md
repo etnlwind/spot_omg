@@ -69,7 +69,7 @@
 
 ## 프리셋
 
-| Preset | Period | Hip | Lift | Crouch | Speed | Accel | Rate |
+| Preset | Period | Hip (tick) | Lift (tick) | Crouch (tick) | Speed | Accel | Rate |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | test | 4.0s | 100 | 140 | 0 | 60 | 30 | 30Hz |
 | natural | 2.4s | 220 | 340 | 70 | 60 | 25 | 30Hz |
@@ -77,7 +77,7 @@
 고속 무부하 시험에서는 프리셋을 기준으로 다음 값을 명시적으로 덮어썼습니다.
 
 ```text
-hip=280, lift=400, speed=1000, accel=100, rate=100Hz
+hip=280 tick, lift=400 tick, speed=1000, accel=100, rate=100Hz
 ```
 
 `speed`는 보행 주기가 아니라 서보의 속도 상한입니다. 실제 동작 템포는
@@ -92,7 +92,11 @@ hip=280, lift=400, speed=1000, accel=100, rate=100Hz
 - ID 변경은 EEPROM unlock → ID 쓰기 → lock → 재연결 검증 순서로 보완했습니다.
 - `spotctl` 명령과 `(somg)` 가상환경 설치 흐름을 추가했습니다.
 
-## 2026-08-02 12관절 캘리브레이션 및 좌표 계층
+## 2026-08-02 12관절 캘리브레이션 및 좌표 계층 (구 좌표계 기록)
+
+> 이 절은 조립 중 사용한 임시 설정 자세의 이력입니다. 2026-08-03부터는 아래의
+> canonical joint coordinate (표준 관절 좌표계)를 사용하므로
+> `setup-j2-minus90` 기준과 tick 단위 논리값은 현재 명령에 적용하지 않습니다.
 
 - 몸체를 지지대에 고정하고 토크를 해제한 뒤, 네 다리가 뒤로 수평한 11자 자세가
   되도록 손으로 맞췄습니다.
@@ -118,6 +122,19 @@ hip=280, lift=400, speed=1000, accel=100, rate=100Hz
 - 수정 후 뒷다리는 정상이나 앞다리가 뒤로 걷는 것처럼 보이는 현상을 확인했습니다.
   동일한 전후 발 궤적을 만들도록 기구학 계층에서 front J2 변환 부호를 반전하고,
   디바이스 방향·캘리브레이션·정지 포즈는 유지했습니다.
+
+## 2026-08-03 표준 관절 좌표계와 병합 결과
+
+- 네 다리는 같은 canonical angle (표준 관절 각도) 데이터를 사용합니다.
+- 다리를 아래로 곧게 내린 `stand`는 모든 관절이 `0°`입니다.
+- `<` 형태의 `stand45`는 모든 다리에서 `(J1, J2, J3) = (0°, +45°, +90°)`입니다.
+- 모터 장착 방향 차이는 저수준 `direction` 변환에서만 처리합니다.
+- J1의 양수는 몸체 기준 바깥쪽 움직임으로 통일했으며 실제 시험 결과에 따라
+  FL/RR은 `+1`, FR/RL은 `-1` 방향을 사용합니다.
+- trot gait (트로트 보행)의 전후 궤적은 FL/FR에 `-1`, RL/RR에 `+1`을 적용해
+  대각선 쌍 `FL+RR`, `FR+RL`이 같은 방향으로 진행하도록 정리했습니다.
+- 회사에서 갱신한 중심점과 degree 기반 포즈를 기준으로 삼고, 로컬의 ID 교환,
+  다리별 토크/중립 제어, 현재 위치 유지 기능을 함께 병합했습니다.
 
 ## 2026-08-02 무부하 트롯 시험
 
@@ -168,17 +185,21 @@ export SPOT_SERVO_PORT=/dev/cu.usbmodem5B790788341
 ```bash
 spotctl status
 spotctl stand45
+spotctl hold
 spotctl relax
 ```
 
-12관절 중립점 캘리브레이션(몸체 고정, 다리는 공중에 둔 상태):
+현재 위치를 12관절 중립점으로 캡처한 뒤 미세 조정하는 절차(몸체 고정, 다리는
+공중에 둔 상태):
 
 ```bash
-spotctl calibrate --reference setup-j2-minus90 --speed 60 --accel 30
+spotctl capture-stand
+spotctl calibrate --speed 60 --accel 30
 ```
 
-이 기준은 일반 포즈가 아닙니다. J1/J3는 논리 0°, J2는 논리 -90°에 두고 각 관절을 눈으로
-비교하며 `+/-1`, `+/-5`, `+/-10`으로 중립 오프셋을 미세조정합니다.
+특정 다리만 손으로 조정했다면 `spotctl capture-stand --leg RL`처럼 해당 다리만
+저장할 수 있습니다. 이어서 `calibrate`에서 각 관절을 눈으로 비교하며
+`+/-1`, `+/-5`, `+/-10` tick으로 중립 오프셋을 미세 조정합니다.
 
 기본 소진폭 시험:
 
@@ -188,28 +209,31 @@ spotctl walk --gait trot --preset test --cycles 1
 
 현재 무부하 비교 기준:
 
+> v3 CLI는 관절 진폭을 degree로 받으므로 당시 raw 280/400 tick을
+> 각각 24.6°/35.2°로 환산했습니다.
+
 ```bash
 spotctl walk --gait trot --preset natural --cycles 10 \
-  --hip 280 --lift 400 \
+  --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
 period 0.8/0.9/1.0 비교:
 
 ```bash
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.8 --speed 1000 --accel 100 --rate 100
 
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 0.9 --speed 1000 --accel 100 --rate 100
 
-spotctl walk --preset natural --cycles 10 --hip 280 --lift 400 \
+spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
   --period 1.0 --speed 1000 --accel 100 --rate 100
 ```
 
 ## 소프트웨어 검증
 
-2026-08-02 기준 단위 테스트 21개가 통과했습니다.
+2026-08-03 병합 기준 단위 테스트 36개가 통과했습니다.
 
 ```bash
 python -m unittest discover -s tests -v

@@ -16,8 +16,8 @@ DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
 PRESETS = {
     "test": GaitParameters(
         period=4.0,
-        hip_amplitude=100,
-        lift_amplitude=140,
+        hip_amplitude=8.8,
+        lift_amplitude=12.3,
         crouch_amplitude=0,
         speed=60,
         acceleration=30,
@@ -68,27 +68,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     commands.add_parser(
         "configure-mapping", help="interactively assign three servo IDs per leg"
     )
+    commands.add_parser(
+        "configure-directions", help="interactively set canonical joint directions"
+    )
     calibrate = commands.add_parser(
         "calibrate", help="interactively adjust and save neutral offsets"
     )
     calibrate.add_argument("--speed", type=int, default=200)
     calibrate.add_argument("--accel", type=int, default=20)
-    calibrate.add_argument("--max-offset", type=int, default=1500)
-    calibrate.add_argument(
-        "--reference",
-        choices=("neutral", "setup-j2-minus90"),
-        default="neutral",
-        help="visual alignment pose only; it does not redefine logical zero",
+    calibrate.add_argument("--max-offset", type=int, default=500)
+    capture_stand = commands.add_parser(
+        "capture-stand",
+        aliases=["save-stand"],
+        help="save all current positions as calibrated stand centers",
     )
-    calibrate.add_argument(
-        "--capture-current",
-        action="store_true",
-        help="save the current physical pose as the selected calibration reference",
-    )
-    calibrate.add_argument(
+    capture_stand.add_argument(
         "--leg",
         choices=("FL", "FR", "RL", "RR"),
-        help="with --capture-current, update only the selected leg",
+        help="update only the selected leg",
     )
     commands.add_parser("status", help="read all configured servo health values")
 
@@ -119,9 +116,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     pose.add_argument("--tolerance", type=int, default=30)
 
     for command, help_text in (
-        ("stand", "move to logical zero with all four legs straight down"),
+        ("stand", "move to the calibrated neutral stance"),
         ("stand45", "generate a 45-degree stance from current calibration"),
-        ("landing", "move to the saved landing pose"),
+        ("landing", "move to the calibrated landing stance"),
     ):
         stance = commands.add_parser(command, help=help_text)
         stance.add_argument("--speed", type=int, default=1000)
@@ -132,7 +129,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             stance.add_argument(
                 "--leg",
                 choices=("FL", "FR", "RL", "RR"),
-                help="move only the selected leg to logical zero",
+                help="move only the selected leg to calibrated neutral",
             )
 
     save_pose = commands.add_parser(
@@ -158,9 +155,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     walk.add_argument("--preset", choices=PRESETS, default="test")
     walk.add_argument("--cycles", type=int, default=1)
     walk.add_argument("--period", type=float)
-    walk.add_argument("--hip", type=int)
-    walk.add_argument("--lift", type=int)
-    walk.add_argument("--crouch", type=int)
+    walk.add_argument("--hip", type=float, help="J2 amplitude in degrees")
+    walk.add_argument("--lift", type=float, help="J3 lift amplitude in degrees")
+    walk.add_argument("--crouch", type=float, help="J3 crouch angle in degrees")
     walk.add_argument(
         "--speed", type=int, help="maximum STS speed-register value"
     )
@@ -291,6 +288,35 @@ def diagnose_servo(bus: ServoBus, servo_id: int) -> None:
     print(f"Moving:         {'yes' if state.moving else 'no'}")
 
 
+def read_direction(prompt: str) -> int:
+    while True:
+        value = input(prompt).strip()
+        if value in {"1", "+1"}:
+            return 1
+        if value == "-1":
+            return -1
+        print("Enter +1 or -1.")
+
+
+def configure_directions(config: SpotConfig) -> None:
+    print("Set motor signs for positive canonical joint angles.")
+    print("Use the same geometric positive direction for every leg.")
+    directions = {}
+    for leg in ("FL", "FR", "RL", "RR"):
+        side_id = config.joint(leg, 1).servo_id
+        hip_id = config.joint(leg, 2).servo_id
+        knee_id = config.joint(leg, 3).servo_id
+        print(f"{leg}: J1=ID {side_id}, J2=ID {hip_id}, J3=ID {knee_id}")
+        directions[leg] = (
+            read_direction("  J1 positive-angle motor sign (+1/-1): "),
+            read_direction("  J2 positive-angle motor sign (+1/-1): "),
+            read_direction("  J3 positive-angle motor sign (+1/-1): "),
+        )
+    config.set_joint_directions(directions)
+    config.save()
+    print(f"Saved canonical joint directions: {config.path}")
+
+
 def configure_mapping(config: SpotConfig) -> None:
     print("Enter three servo IDs for each leg in J1 J2 J3 order.")
     mapping = {}
@@ -318,16 +344,14 @@ def configure_mapping(config: SpotConfig) -> None:
     print(f"Saved servo mapping: {config.path}")
 
 
-def show_calibration(robot: SpotRobot, reference: str = "neutral") -> None:
-    print("Leg Joint ID Offset Center RefTarget Present")
-    print("--- ----- -- ------ ------ --------- -------")
+def show_calibration(robot: SpotRobot) -> None:
+    print("Leg Joint ID Offset Center Present")
+    print("--- ----- -- ------ ------ -------")
     positions = robot.read_positions()
-    reference_targets = robot.config.calibration_targets(reference)
     for joint in robot.config.joints:
         print(
             f"{joint.leg:>3} {joint.joint:>5} {joint.servo_id:>2} "
             f"{joint.offset:>+6} {joint.center:>6} "
-            f"{reference_targets[joint.servo_id]:>9} "
             f"{positions[joint.servo_id]:>7}"
         )
 
@@ -338,28 +362,18 @@ def run_calibration(
     speed: int,
     acceleration: int,
     max_offset: int,
-    reference: str,
 ) -> None:
     if not 1 <= speed <= 3400 or not 0 <= acceleration <= 254:
         raise ValueError("invalid calibration speed or acceleration")
-    if not 1 <= max_offset <= 2048:
-        raise ValueError("max-offset must be between 1 and 2048")
+    if not 1 <= max_offset <= 1000:
+        raise ValueError("max-offset must be between 1 and 1000")
     robot.prepare_for_motion(speed=speed, acceleration=acceleration)
-    reference_targets = robot.config.calibration_targets(reference)
-    # STS3215 can keep Moving asserted while holding a lightly loaded joint.
-    # Calibration is visually supervised, so send one synchronized reference
-    # target and allow it to settle without blocking the adjustment prompt.
-    robot.sync_move(
-        reference_targets, speed=speed, acceleration=acceleration
-    )
-    time.sleep(1.0)
     selected_leg = "FL"
     selected_joint = 1
     adjustments = {"+1": 1, "-1": -1, "+5": 5, "-5": -5,
                    "+10": 10, "-10": -10}
-    print(f"Calibration reference: {reference}")
     print("Commands: leg FL | joint 1 | +/-1 | +/-5 | +/-10 | zero | show | quit")
-    show_calibration(robot, reference)
+    show_calibration(robot)
     while True:
         joint = robot.config.joint(selected_leg, selected_joint)
         command = input(
@@ -378,58 +392,41 @@ def run_calibration(
             if abs(new_offset) > max_offset:
                 print(f"Offset is limited to +/-{max_offset}.")
                 continue
-            current_reference = robot.config.calibration_targets(reference)
-            reference_delta = current_reference[joint.servo_id] - joint.center
-            calibrated_center = robot.config.reference_center + new_offset
-            target = calibrated_center + reference_delta
+            target = robot.config.reference_center + new_offset
             if not joint.minimum <= target <= joint.maximum:
                 print("Target is outside this joint's limits.")
                 continue
             STS3215(robot.bus, joint.servo_id).move(
                 target, speed=speed, acceleration=acceleration
             )
-            robot.config.set_joint_center(joint.servo_id, calibrated_center)
+            robot.config.set_joint_center(joint.servo_id, target)
             robot.config.save()
-            print(
-                f"Saved ID {joint.servo_id}: offset={new_offset:+d}, "
-                f"center={calibrated_center}, reference target={target}"
-            )
+            print(f"Saved ID {joint.servo_id}: offset={new_offset:+d}, center={target}")
         elif parts == ["SHOW"]:
-            show_calibration(robot, reference)
+            show_calibration(robot)
         elif parts in (["QUIT"], ["EXIT"], ["Q"]):
             return
         elif command:
             print("Unknown command. Use leg, joint, +/-1/5/10, zero, show, or quit.")
 
 
-def capture_calibration(
-    robot: SpotRobot, reference: str, leg: str | None = None
-) -> None:
+def capture_stand(robot: SpotRobot, leg: str | None = None) -> dict[int, int]:
+    """Capture the current physical pose as calibrated neutral centers."""
     robot.require_all()
     positions = robot.read_positions()
-    servo_ids = (
+    selected = (
         {
             robot.config.joint(leg, joint_number).servo_id
             for joint_number in (1, 2, 3)
         }
-        if leg else None
+        if leg else set(robot.config.servo_ids)
     )
-    centers = robot.config.capture_calibration(
-        positions, reference, servo_ids=servo_ids
-    )
-    robot.config.save()
-    scope = leg if leg else "all legs"
-    print(f"Captured {scope} as calibration reference: {reference}")
-    print("Leg Joint ID Present Center Offset")
-    print("--- ----- -- ------- ------ ------")
-    for joint in robot.config.joints:
-        if joint.servo_id not in centers:
+    for servo_id, position in positions.items():
+        if servo_id not in selected:
             continue
-        print(
-            f"{joint.leg:>3} {joint.joint:>5} {joint.servo_id:>2} "
-            f"{positions[joint.servo_id]:>7} {centers[joint.servo_id]:>6} "
-            f"{joint.offset:>+6}"
-        )
+        robot.config.set_joint_center(servo_id, position)
+    robot.config.save()
+    return {servo_id: positions[servo_id] for servo_id in sorted(selected)}
 
 
 def change_servo_id(
@@ -485,9 +482,15 @@ def swap_servo_ids_on_bus(
         raise ValueError("servo IDs must be between 1 and 253")
     if len(set(ids)) != 3:
         raise ValueError("first, second, and temporary IDs must be different")
-    missing = [servo_id for servo_id in (first_id, second_id) if not bus.ping(servo_id)]
+    missing = [
+        servo_id
+        for servo_id in (first_id, second_id)
+        if not bus.ping(servo_id)
+    ]
     if missing:
-        raise RuntimeError("servo IDs did not respond: " + ", ".join(map(str, missing)))
+        raise RuntimeError(
+            "servo IDs did not respond: " + ", ".join(map(str, missing))
+        )
     if bus.ping(temp_id):
         raise RuntimeError(f"temporary servo ID {temp_id} is already in use")
 
@@ -537,7 +540,14 @@ def apply_pose(
     timeout: float,
     tolerance: int,
 ) -> None:
-    targets = robot.config.logical_pose(name)
+    if name in {"neutral", "stand"}:
+        targets = robot.config.pose("neutral")
+    elif name == "stand45":
+        targets = robot.config.stand45_targets()
+    elif name == "landing":
+        targets = robot.config.landing_targets()
+    else:
+        targets = robot.config.pose(name)
     apply_targets(
         robot,
         targets,
@@ -566,7 +576,7 @@ def apply_targets(
     if not 0 <= tolerance <= 500:
         raise ValueError("tolerance must be between 0 and 500 ticks")
     robot.prepare_for_motion(speed=speed, acceleration=acceleration)
-    robot.move_joints_and_wait(
+    robot.move_and_wait(
         targets,
         speed=speed,
         acceleration=acceleration,
@@ -582,7 +592,7 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
     base = robot.config.stand45_targets()
     # Set one ordinary STS position profile, enable torque, and then only
     # stream absolute goal positions. No status reads or arrival polling.
-    robot.sync_joints(
+    robot.sync_move(
         base, speed=gait.speed, acceleration=gait.acceleration
     )
     robot.set_torque(True)
@@ -607,7 +617,7 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
             targets = robot.gait_targets(
                 phase, base, gait, amplitude_scale=amplitude
             )
-            robot.stream_joints(targets)
+            robot.sync_positions(targets)
 
             deadline = started_at + (frame + 1) * interval
             delay = deadline - time.monotonic()
@@ -615,7 +625,7 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
                 time.sleep(delay)
     finally:
         try:
-            robot.sync_joints(
+            robot.sync_move(
                 base, speed=gait.speed, acceleration=gait.acceleration
             )
         except Exception:
@@ -629,9 +639,12 @@ def main(argv: list[str] | None = None) -> int:
             show_ports()
             return 0
 
-        if args.command == "configure-mapping":
+        if args.command in {"configure-mapping", "configure-directions"}:
             config = SpotConfig.load(args.config)
-            configure_mapping(config)
+            if args.command == "configure-mapping":
+                configure_mapping(config)
+            else:
+                configure_directions(config)
             return 0
 
         port = resolve_port(args.port)
@@ -671,18 +684,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "status":
                 show_status(robot)
             elif args.command == "calibrate":
-                if args.capture_current:
-                    capture_calibration(robot, args.reference, args.leg)
-                else:
-                    if args.leg:
-                        raise ValueError("--leg requires --capture-current")
-                    run_calibration(
-                        robot,
-                        speed=args.speed,
-                        acceleration=args.accel,
-                        max_offset=args.max_offset,
-                        reference=args.reference,
-                    )
+                run_calibration(
+                    robot,
+                    speed=args.speed,
+                    acceleration=args.accel,
+                    max_offset=args.max_offset,
+                )
+            elif args.command in {"capture-stand", "save-stand"}:
+                positions = capture_stand(robot, args.leg)
+                for servo_id in sorted(positions):
+                    print(f"ID {servo_id:2}: center={positions[servo_id]}")
+                scope = args.leg if args.leg else "all legs"
+                print(f"Captured current pose as stand ({scope}): {config.path}")
             elif args.command == "save-pose":
                 robot.require_all()
                 config.set_pose(args.name, robot.read_positions())
@@ -752,32 +765,26 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command in {"stand", "stand45", "landing"}:
                 if args.command == "stand" and args.leg:
                     robot.require_all()
+                    neutral = config.pose("neutral")
                     targets = {
-                        config.joint(args.leg, joint_number).servo_id: 0
+                        config.joint(args.leg, joint_number).servo_id:
+                        neutral[config.joint(args.leg, joint_number).servo_id]
                         for joint_number in (1, 2, 3)
                     }
-                    robot.move_joint_subset_and_wait(
+                    robot.move_subset_and_wait(
                         targets,
                         speed=args.speed,
                         acceleration=args.accel,
                         timeout=args.timeout,
                         tolerance=args.tolerance,
                     )
-                elif args.command == "landing":
-                    apply_targets(
-                        robot,
-                        config.landing_targets(),
-                        speed=args.speed,
-                        acceleration=args.accel,
-                        timeout=args.timeout,
-                        tolerance=args.tolerance,
-                    )
+                elif args.command == "stand":
+                    targets = config.pose("neutral")
+                elif args.command == "stand45":
+                    targets = config.stand45_targets()
                 else:
-                    targets = (
-                        config.neutral_targets()
-                        if args.command == "stand"
-                        else config.stand45_targets()
-                    )
+                    targets = config.landing_targets()
+                if not (args.command == "stand" and args.leg):
                     apply_targets(
                         robot,
                         targets,
@@ -794,6 +801,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"{gait.pattern.title()} gait: {args.preset}, "
                     f"{args.cycles} cycle(s), "
                     f"period={gait.period:.1f}s, rate={gait.control_rate:.0f}Hz, "
+                    f"J2={gait.hip_amplitude:g}deg, "
+                    f"J3={gait.lift_amplitude:g}deg, "
                     f"speed cap={gait.speed}, accel={gait.acceleration}"
                 )
                 run_walk(robot, gait, args.cycles)
