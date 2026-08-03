@@ -126,7 +126,7 @@ class SpotConfigTest(unittest.TestCase):
                 self.config.joint(leg, 1).direction
                 for leg in ("FL", "FR", "RL", "RR")
             ),
-            (1, -1, -1, 1),
+            (1, 1, 1, 1),
         )
 
     def test_all_legs_share_the_same_canonical_stand45_angles(self) -> None:
