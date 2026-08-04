@@ -3,7 +3,8 @@
 STS3215 서보를 검색하고 설정하며 움직이기 위한 작은 Python 도구입니다.
 기본 통신 속도는 `1,000,000 bps`, 위치 범위는 `0..4095`입니다.
 
-2026-08-01~02의 실제 URT-2 연결, 보정과 무부하 트롯 시험 결과는
+2026-08-01~05의 실제 URT-2 연결, 보정, 무부하 트롯, IMU 시뮬레이션과
+모터 부하 기반 접촉 추정 결과는
 [`HARDWARE_TEST_LOG.md`](./HARDWARE_TEST_LOG.md)에 정리되어 있습니다.
 
 ## 설치
@@ -53,6 +54,8 @@ pip install -e .
 | 선택한 다리만 중립점 저장 | `spotctl --port PORT capture-stand --leg RL` |
 | 보행 방향 설정 | `spotctl configure-directions` |
 | 전체 상태 확인 | `spotctl --port PORT status` |
+| 모터 부하 기반 발 접촉 확인 | `spotctl --port PORT contacts` |
+| 공중 보행 동적 부하 기록 | `spotctl --port PORT walk ... --profile-loads` |
 | 보정된 중립 자세 | `spotctl --port PORT stand` |
 | 보정값 기반 45도 자세 | `spotctl --port PORT stand45` |
 | 보정값 기반 착지 자세 | `spotctl --port PORT landing` |
@@ -230,6 +233,113 @@ with ServoBus("/dev/ttyUSB0") as bus:
 spotctl ports
 spotctl --port /dev/cu.usbmodem5B790788341 status
 ```
+
+### 모터 부하 기반 발 접촉 감지
+
+STS3215 Load Estimate (모터 부하 추정값)로 각 발의 접촉을 관찰할 수 있습니다.
+이 명령은 모터 목표 위치와 Torque Enable (토크 활성화) 상태를 바꾸지 않습니다.
+접촉력이 관절에 전달되려면 먼저 현재 위치에서 토크가 걸려 있어야 합니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 hold
+spotctl --port /dev/cu.usbmodem5B790788341 contacts \
+  --baseline 2 --duration 15 --rate 10
+```
+
+`contacts` 실행 후 처음 2초 동안에는 몸체를 지지대에 두고 네 발 모두 지면에서
+떨어뜨립니다. 이때 각 다리 J2/J3의 Unloaded baseline (무부하 기준값)을
+측정합니다. `Monitoring` 문구가 출력된 뒤 한 발씩 손으로 눌러 접촉 판정을
+확인합니다.
+
+출력의 `ON`은 Estimated contact (추정 접촉), `off`는 비접촉이며 숫자는 해당
+다리 J2/J3 중 큰 Baseline delta (기준 대비 부하 변화량)입니다. `--verbose`에서는
+점수 뒤 괄호에 `(J2 delta,J3 delta)`도 표시합니다. 기본 판정은 2회 연속 `24`
+이상일 때 ON, 3회 연속 `8` 이하일 때 OFF입니다. 이는 실제 힘의 단위가 아니라
+STS3215 내부 추정값이므로 실측 결과에 맞춰 조정합니다.
+
+2026-08-05 지지대 위 `stand45` 정지 시험에서는 무부하 변화가 거의 `0`, 발을
+눌렀을 때 Peak score (최대 변화량)가 FL `32`, FR `36`, RL `56`, RR `52`로
+관측되어 위 기본값을 선택했습니다. 이 값은 정지 접촉 감지용이며 보행 중에는
+관절 가속과 기어 마찰에 의한 Dynamic load (동적 부하)를 따로 측정해야 합니다.
+
+```bash
+# 접촉이 약해 기본값 24에 도달하지 않을 때만 더 민감하게
+spotctl --port PORT contacts --threshold 16 --release 4 --duration 15
+
+# 모든 10 Hz 표본과 점수를 확인할 때
+spotctl --port PORT contacts --duration 15 --verbose
+```
+
+Hysteresis (히스테리시스)와 Debounce (연속 표본 확인)를 사용하므로 임계값 주변의
+작은 진동이 ON/OFF를 반복하는 것을 줄입니다. 모터 움직임과 기어 마찰도 부하로
+나타나므로 이 단계는 접촉 관찰용이며 아직 실제 보행 피드백에는 연결하지 않습니다.
+
+### 공중 보행 동적 부하 프로파일
+
+정지 접촉 임계값은 실제 보행에 직접 사용하지 않습니다. 몸체를 지지대에 고정하고
+발이 아무것에도 닿지 않는 상태에서 실제 트롯을 실행하면서 No-contact dynamic
+baseline (공중 보행 동적 기준값)을 CSV로 기록합니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 walk \
+  --gait trot --preset power --cycles 10 \
+  --period 2.0 --hip 8 --lift 20 \
+  --speed 800 --accel 80 --rate 50 \
+  --profile-loads --load-rate 5
+```
+
+파일은 기본적으로 `tools/servo_tool/logs/air_gait_loads_YYYYMMDD_HHMMSS.csv`에
+생성됩니다. 위치를 지정하려면 `--profile-output PATH`를 사용하며, 이 옵션만으로도
+프로파일 기록이 활성화됩니다.
+
+각 행에는 다음 값이 기록됩니다.
+
+- Global/leg phase (전체·다리별 보행 위상)와 진폭 Ramp (램프)
+- Planned contact (보행 위상상 예정된 지지/스윙 상태)
+- 목표 위치, 현재 위치, Position error (위치 오차)
+- 속도, Load estimate (부하 추정), Current (전류), Moving 상태
+- 모터 상태 읽기 시간과 Control-frame lateness (제어 프레임 지연)
+
+50Hz Sync Write (동기 위치 전송)는 그대로 유지합니다. J2/J3 8개는 한 프레임에
+최대 한 모터만 Round-robin sampling (순환 표본화)하며 기본적으로 모터당 5Hz로
+읽습니다. 요청한 `--load-rate`가 `control rate / 8`보다 높으면 보행을 방해하지
+않도록 자동으로 낮춥니다. 종료 출력의 `max read`와 `late frames`로 실제 URT-2
+읽기가 보행 주기를 방해했는지 확인합니다.
+
+기록이 끝나면 Phase-aligned baseline (위상 정렬 기준 모델)을 생성합니다. 이
+명령은 시리얼 포트나 실제 로봇을 사용하지 않습니다.
+
+```bash
+spotctl analyze-loads tools/servo_tool/logs/air_gait_loads_YYYYMMDD_HHMMSS.csv
+```
+
+같은 이름의 `.baseline.json`이 생성되고 관절별 반복 잡음과 권장 Engage/Release
+(접촉/해제) 임계값이 출력됩니다. 같은 공중 보행을 한 번 더 실행하며 모델의
+False positive (오접촉 판정)를 검증할 수 있습니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 walk \
+  --gait trot --preset power --cycles 10 \
+  --period 2.0 --hip 8 --lift 20 \
+  --speed 800 --accel 80 --rate 50 \
+  --load-rate 5 \
+  --load-baseline tools/servo_tool/logs/air_gait_loads_YYYYMMDD_HHMMSS.baseline.json
+```
+
+두 번째 CSV에는 Expected load (위상별 예상 부하), Load residual (부하 잔차),
+관절별 임계값과 초과 여부가 추가됩니다. 종료 시 다리별 `peak / threshold
+exceedances`가 출력됩니다. 프로파일과 비교 보행의 자세·주기·보폭·리프트·속도·
+가속도는 반드시 같아야 합니다. 이 검증도 관찰 전용이며 접촉 결과가 보행 목표를
+바꾸지는 않습니다.
+
+STS3215는 같은 동작에서도 Load direction (부하 방향 부호)이 바뀔 수 있으므로
+모델은 Signed load (부호 부하)가 아니라 Absolute load magnitude (절대 부하
+크기)를 사용합니다. 시작·종료 진폭 램프와 첫 Warm-up cycle (준비 1주기)은
+접촉 판정에서 제외합니다.
+
+2026-08-05 동일 조건의 두 번째 공중 보행 검증에서는 안정 구간 8주기 동안 다리당
+160개 표본을 비교해 FL/FR/RL/RR 모두 임계값 초과 `0회`를 기록했습니다. 최대
+잔차는 각각 `26`, `32`, `26`, `20`이었습니다.
 
 다음 명령은 실행 즉시 로봇 상태를 변경합니다.
 

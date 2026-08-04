@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import csv
+from datetime import datetime
 import os
+import statistics
 import sys
 import time
 from pathlib import Path
 
 from .bus import ServoBus
+from .contact import LEGS, LoadContactEstimator
+from .load_profile import DynamicLoadBaseline
 from .spot import GaitParameters, SpotConfig, SpotRobot
 from .sts3215 import STS3215
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
+DEFAULT_PROFILE_DIR = Path(__file__).resolve().parents[1] / "logs"
 PRESETS = {
     "test": GaitParameters(
         period=4.0,
@@ -104,6 +110,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="update only the selected leg",
     )
     commands.add_parser("status", help="read all configured servo health values")
+    contacts = commands.add_parser(
+        "contacts", help="monitor estimated foot contact from J2/J3 motor load"
+    )
+    contacts.add_argument("--baseline", type=float, default=2.0)
+    contacts.add_argument("--duration", type=float, default=10.0)
+    contacts.add_argument("--rate", type=float, default=10.0)
+    contacts.add_argument("--threshold", type=int, default=24)
+    contacts.add_argument("--release", type=int, default=8)
+    contacts.add_argument("--on-samples", type=int, default=2)
+    contacts.add_argument("--off-samples", type=int, default=3)
+    contacts.add_argument(
+        "--verbose", action="store_true", help="print every load sample"
+    )
+    analyze_loads = commands.add_parser(
+        "analyze-loads",
+        help="build a phase-aligned no-contact baseline from a gait CSV",
+    )
+    analyze_loads.add_argument("profile", type=Path)
+    analyze_loads.add_argument("--output", type=Path)
 
     relax = commands.add_parser("relax", help="disable torque on all or one leg")
     relax.add_argument(
@@ -200,6 +225,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     walk.add_argument(
         "--rate", type=float, help="position update rate in Hz (default: 30)"
+    )
+    walk.add_argument(
+        "--profile-loads",
+        action="store_true",
+        help="record phase-aligned J2/J3 states without changing the gait",
+    )
+    walk.add_argument(
+        "--load-rate",
+        type=float,
+        default=5.0,
+        help="samples per second for each J2/J3 servo (default: 5)",
+    )
+    walk.add_argument(
+        "--profile-output",
+        type=Path,
+        help="CSV path; implies --profile-loads",
+    )
+    walk.add_argument(
+        "--load-baseline",
+        type=Path,
+        help="compare live loads with a phase baseline; observation only",
     )
     return parser.parse_args(argv)
 
@@ -324,6 +370,137 @@ def show_status(robot: SpotRobot) -> None:
             f"{state.hardware_error:>2} {state.current:>7} "
             f"{'yes' if state.moving else 'no':>6}"
         )
+
+
+def monitor_contacts(
+    robot: SpotRobot,
+    *,
+    baseline_seconds: float,
+    duration: float,
+    rate: float,
+    threshold: int,
+    release: int,
+    on_samples: int,
+    off_samples: int,
+    verbose: bool,
+) -> None:
+    """Calibrate unloaded load values, then report inferred foot contact."""
+    if not 0.2 <= baseline_seconds <= 10.0:
+        raise ValueError("baseline must be between 0.2 and 10 seconds")
+    if not 0.5 <= duration <= 300.0:
+        raise ValueError("duration must be between 0.5 and 300 seconds")
+    if not 1.0 <= rate <= 50.0:
+        raise ValueError("contact rate must be between 1 and 50 Hz")
+
+    # Validate threshold and debounce options before starting a timed read.
+    empty_baseline = {
+        (leg, joint_number): 0
+        for leg in LEGS
+        for joint_number in (2, 3)
+    }
+    LoadContactEstimator(
+        empty_baseline,
+        engage_threshold=threshold,
+        release_threshold=release,
+        engage_samples=on_samples,
+        release_samples=off_samples,
+    )
+
+    robot.require_all()
+    interval = 1.0 / rate
+    sample_count = max(2, round(baseline_seconds * rate))
+    samples = []
+    print(
+        f"Collecting unloaded baseline for {sample_count / rate:.1f}s; "
+        "keep all four feet clear of the ground."
+    )
+    started_at = time.monotonic()
+    for index in range(sample_count):
+        samples.append(robot.read_leg_loads())
+        deadline = started_at + (index + 1) * interval
+        delay = deadline - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+
+    baseline = {
+        key: round(statistics.median(sample[key] for sample in samples))
+        for key in empty_baseline
+    }
+    estimator = LoadContactEstimator(
+        baseline,
+        engage_threshold=threshold,
+        release_threshold=release,
+        engage_samples=on_samples,
+        release_samples=off_samples,
+    )
+    print("Unloaded baseline (signed STS load units):")
+    for leg in LEGS:
+        print(f"  {leg}: J2={baseline[(leg, 2)]:+d}, J3={baseline[(leg, 3)]:+d}")
+    print(
+        f"Monitoring for {duration:g}s at {rate:g}Hz; "
+        f"contact >= {threshold}, release <= {release}."
+    )
+    print("Time    FL          FR          RL          RR")
+
+    started_at = time.monotonic()
+    frame = 0
+    next_periodic_report = 0.0
+    peak_scores = {leg: 0 for leg in LEGS}
+    contact_events = {leg: 0 for leg in LEGS}
+    while True:
+        elapsed = time.monotonic() - started_at
+        if elapsed >= duration:
+            break
+        estimates = estimator.update(robot.read_leg_loads())
+        for leg, estimate in estimates.items():
+            peak_scores[leg] = max(peak_scores[leg], estimate.score)
+            if estimate.changed and estimate.contact:
+                contact_events[leg] += 1
+        changed = any(estimate.changed for estimate in estimates.values())
+        if verbose or changed or elapsed >= next_periodic_report:
+            cells = []
+            for leg in LEGS:
+                estimate = estimates[leg]
+                marker = "ON " if estimate.contact else "off"
+                if verbose:
+                    cells.append(
+                        f"{marker}:{estimate.score:>3}"
+                        f"({estimate.j2_delta:+d},{estimate.j3_delta:+d})"
+                    )
+                else:
+                    cells.append(f"{marker}:{estimate.score:>3}")
+            print(f"{elapsed:5.1f}s  " + "  ".join(cells))
+            next_periodic_report = elapsed + 1.0
+        frame += 1
+        deadline = started_at + frame * interval
+        delay = deadline - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+    print("Summary (peak score / contact events):")
+    print(
+        "  "
+        + ", ".join(
+            f"{leg}={peak_scores[leg]}/{contact_events[leg]}"
+            for leg in LEGS
+        )
+    )
+
+
+def analyze_load_profile(profile: Path, output: Path | None = None) -> Path:
+    baseline = DynamicLoadBaseline.from_csv(profile)
+    destination = output or profile.with_suffix(".baseline.json")
+    baseline.save(destination)
+    print("Leg Joint ID NoiseP90 NoiseP95 NoiseMax Engage Release")
+    print("--- ----- -- -------- -------- -------- ------ -------")
+    for servo_id, model in sorted(baseline.models.items()):
+        print(
+            f"{model['leg']:>3} {model['joint']:>5} {servo_id:>2} "
+            f"{model['noise_p90']:>8g} {model['noise_p95']:>8g} "
+            f"{model['noise_max']:>8g} {model['engage_threshold']:>6} "
+            f"{model['release_threshold']:>7}"
+        )
+    print(f"Dynamic load baseline: {destination}")
+    return destination
 
 
 def diagnose_servo(bus: ServoBus, servo_id: int) -> None:
@@ -654,9 +831,24 @@ def apply_targets(
     )
 
 
-def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
+def default_load_profile_path() -> Path:
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    return DEFAULT_PROFILE_DIR / f"air_gait_loads_{timestamp}.csv"
+
+
+def run_walk(
+    robot: SpotRobot,
+    gait: GaitParameters,
+    cycles: int,
+    *,
+    profile_path: Path | None = None,
+    load_rate: float = 5.0,
+    load_baseline: DynamicLoadBaseline | None = None,
+) -> None:
     if not 1 <= cycles <= 20:
         raise ValueError("cycles must be between 1 and 20")
+    if profile_path is not None and not 0.5 <= load_rate <= 10.0:
+        raise ValueError("load-rate must be between 0.5 and 10 Hz per servo")
 
     base = robot.config.angles_to_targets(
         {
@@ -683,6 +875,56 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
     ramp_duration = min(0.5, total_duration / 2.0)
     started_at = time.monotonic()
 
+    profile_file = None
+    profile_writer = None
+    sample_schedule: dict[tuple[str, int], float] = {}
+    profile_samples = 0
+    maximum_read_time = 0.0
+    late_frames = 0
+    residual_peaks = {leg: 0.0 for leg in LEGS}
+    residual_exceedances = {leg: 0 for leg in LEGS}
+    effective_load_rate = min(load_rate, gait.control_rate / 8.0)
+    if profile_path is not None:
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profile_file = profile_path.open("w", encoding="utf-8", newline="")
+        profile_writer = csv.writer(profile_file)
+        profile_writer.writerow(
+            (
+                "elapsed_s",
+                "phase",
+                "amplitude",
+                "leg",
+                "leg_phase",
+                "planned_contact",
+                "joint",
+                "servo_id",
+                "target_position",
+                "present_position",
+                "position_error",
+                "speed",
+                "load",
+                "current",
+                "moving",
+                "read_time_ms",
+                "frame_late_ms",
+                "expected_load",
+                "load_residual",
+                "residual_threshold",
+                "residual_exceeded",
+            )
+        )
+        sample_keys = [
+            (leg, joint_number)
+            for leg in ("FL", "FR", "RL", "RR")
+            for joint_number in (2, 3)
+        ]
+        # Stagger the eight servos so at most one request is sent per 50 Hz
+        # position-control frame at the default 5 Hz per-servo rate.
+        sample_schedule = {
+            key: index / (len(sample_keys) * effective_load_rate)
+            for index, key in enumerate(sample_keys)
+        }
+
     try:
         for frame in range(total_frames):
             elapsed = frame * interval
@@ -698,17 +940,110 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
             )
             robot.sync_positions(targets)
 
+            if profile_writer is not None:
+                due = [
+                    (due_at, key)
+                    for key, due_at in sample_schedule.items()
+                    if due_at <= elapsed + 1e-9
+                ]
+                if due:
+                    _, (leg, joint_number) = min(due)
+                    joint = robot.config.joint(leg, joint_number)
+                    read_started = time.monotonic()
+                    state = STS3215(robot.bus, joint.servo_id).read_state()
+                    read_finished = time.monotonic()
+                    read_time = read_finished - read_started
+                    deadline = started_at + (frame + 1) * interval
+                    frame_late = max(0.0, read_finished - deadline)
+                    leg_phase = (
+                        phase + SpotRobot.PHASE_OFFSETS[gait.pattern][leg]
+                    ) % 1.0
+                    expected_load = ""
+                    load_residual = ""
+                    residual_threshold = ""
+                    residual_exceeded = ""
+                    residual_active = (
+                        load_baseline is not None
+                        and amplitude >= 0.999999
+                        and elapsed >= gait.period
+                    )
+                    if residual_active:
+                        expected = load_baseline.expected_load(
+                            joint.servo_id, leg_phase
+                        )
+                        residual = abs(state.load) - expected
+                        threshold = load_baseline.models[joint.servo_id][
+                            "engage_threshold"
+                        ]
+                        exceeded = abs(residual) >= threshold
+                        expected_load = f"{expected:.3f}"
+                        load_residual = f"{residual:.3f}"
+                        residual_threshold = threshold
+                        residual_exceeded = int(exceeded)
+                        residual_peaks[leg] = max(
+                            residual_peaks[leg], abs(residual)
+                        )
+                        residual_exceedances[leg] += int(exceeded)
+                    profile_writer.writerow(
+                        (
+                            f"{elapsed:.6f}",
+                            f"{phase:.6f}",
+                            f"{amplitude:.6f}",
+                            leg,
+                            f"{leg_phase:.6f}",
+                            int(leg_phase < gait.duty_factor),
+                            joint_number,
+                            joint.servo_id,
+                            targets[joint.servo_id],
+                            state.position,
+                            state.position - targets[joint.servo_id],
+                            state.speed,
+                            state.load,
+                            state.current,
+                            int(state.moving),
+                            f"{read_time * 1000.0:.3f}",
+                            f"{frame_late * 1000.0:.3f}",
+                            expected_load,
+                            load_residual,
+                            residual_threshold,
+                            residual_exceeded,
+                        )
+                    )
+                    profile_samples += 1
+                    maximum_read_time = max(maximum_read_time, read_time)
+                    late_frames += int(frame_late > 0.0)
+                    sample_schedule[(leg, joint_number)] += (
+                        1.0 / effective_load_rate
+                    )
+
             deadline = started_at + (frame + 1) * interval
             delay = deadline - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
     finally:
+        if profile_file is not None:
+            profile_file.close()
         try:
             robot.sync_move(
                 base, speed=gait.speed, acceleration=gait.acceleration
             )
         except Exception:
             pass
+    if profile_path is not None:
+        print(
+            f"Load profile: {profile_path} ({profile_samples} samples, "
+            f"{effective_load_rate:.2f}Hz/servo, "
+            f"max read={maximum_read_time * 1000.0:.2f}ms, "
+            f"late frames={late_frames})"
+        )
+    if load_baseline is not None:
+        print(
+            "Residual check (peak / threshold exceedances): "
+            + ", ".join(
+                f"{leg}={residual_peaks[leg]:.0f}/{residual_exceedances[leg]}"
+                for leg in LEGS
+            )
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -716,6 +1051,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "ports":
             show_ports()
+            return 0
+
+        if args.command == "analyze-loads":
+            analyze_load_profile(args.profile, args.output)
             return 0
 
         if args.command in {"configure-mapping", "configure-directions"}:
@@ -762,6 +1101,18 @@ def main(argv: list[str] | None = None) -> int:
             robot = SpotRobot(bus, config)
             if args.command == "status":
                 show_status(robot)
+            elif args.command == "contacts":
+                monitor_contacts(
+                    robot,
+                    baseline_seconds=args.baseline,
+                    duration=args.duration,
+                    rate=args.rate,
+                    threshold=args.threshold,
+                    release=args.release,
+                    on_samples=args.on_samples,
+                    off_samples=args.off_samples,
+                    verbose=args.verbose,
+                )
             elif args.command == "calibrate":
                 run_calibration(
                     robot,
@@ -876,6 +1227,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Applied stance: {args.command}{scope}")
             elif args.command == "walk":
                 gait = resolve_gait(args)
+                profile_path = args.profile_output
+                if (
+                    args.profile_loads or args.load_baseline is not None
+                ) and profile_path is None:
+                    profile_path = default_load_profile_path()
+                if args.profile_output is not None:
+                    profile_path = args.profile_output
+                load_baseline = (
+                    DynamicLoadBaseline.load(args.load_baseline)
+                    if args.load_baseline is not None
+                    else None
+                )
                 print(
                     f"{gait.pattern.title()} gait: {args.preset}, "
                     f"{args.cycles} cycle(s), "
@@ -890,7 +1253,14 @@ def main(argv: list[str] | None = None) -> int:
                     f"shift={gait.weight_shift_amplitude:g}deg, "
                     f"preload={gait.preload_amplitude:g}deg"
                 )
-                run_walk(robot, gait, args.cycles)
+                run_walk(
+                    robot,
+                    gait,
+                    args.cycles,
+                    profile_path=profile_path,
+                    load_rate=args.load_rate,
+                    load_baseline=load_baseline,
+                )
                 print("Gait complete; returned to the selected walking stance.")
         return 0
     except KeyboardInterrupt:

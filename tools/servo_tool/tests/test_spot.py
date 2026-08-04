@@ -4,7 +4,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from servo import GaitParameters, ServoState, SpotConfig, SpotRobot, STS3215
+from servo import (
+    AttitudeController,
+    DynamicLoadBaseline,
+    GaitParameters,
+    ImuSample,
+    LoadContactEstimator,
+    ServoState,
+    SpotConfig,
+    SpotRobot,
+    STS3215,
+)
 from servo.cli import (
     apply_pose,
     capture_stand,
@@ -99,6 +109,110 @@ class FakeClock:
 class SpotConfigTest(unittest.TestCase):
     def setUp(self) -> None:
         self.config = SpotConfig.load(CONFIG)
+
+    def test_attitude_controller_extends_the_low_side(self) -> None:
+        controller = AttitudeController(kp=1.0, kd=0.0, correction_limit=0.2)
+        corrections = controller.leg_length_corrections(
+            ImuSample(roll=0.1, pitch=0.0, roll_rate=0.0, pitch_rate=0.0)
+        )
+        self.assertEqual(corrections["FL"], -0.1)
+        self.assertEqual(corrections["RL"], -0.1)
+        self.assertEqual(corrections["FR"], 0.1)
+        self.assertEqual(corrections["RR"], 0.1)
+
+    def test_attitude_controller_combines_pitch_rate_and_clamps(self) -> None:
+        controller = AttitudeController(kp=1.0, kd=0.5, correction_limit=0.15)
+        corrections = controller.leg_length_corrections(
+            ImuSample(roll=0.0, pitch=0.1, roll_rate=0.0, pitch_rate=0.2)
+        )
+        self.assertEqual(corrections["FL"], 0.15)
+        self.assertEqual(corrections["FR"], 0.15)
+        self.assertEqual(corrections["RL"], -0.15)
+        self.assertEqual(corrections["RR"], -0.15)
+
+    def test_attitude_controller_exposes_axis_efforts_for_foot_placement(self) -> None:
+        controller = AttitudeController(kp=0.8, kd=0.1, correction_limit=0.15)
+        roll, pitch = controller.axis_controls(
+            ImuSample(roll=0.1, pitch=-0.2, roll_rate=0.3, pitch_rate=0.4)
+        )
+        self.assertAlmostEqual(roll, 0.11)
+        self.assertAlmostEqual(pitch, -0.12)
+
+    def test_load_contact_estimator_debounces_engage_and_release(self) -> None:
+        baseline = {
+            (leg, joint): 10
+            for leg in ("FL", "FR", "RL", "RR")
+            for joint in (2, 3)
+        }
+        detector = LoadContactEstimator(
+            baseline,
+            engage_threshold=100,
+            release_threshold=60,
+            engage_samples=2,
+            release_samples=3,
+        )
+        unloaded = dict(baseline)
+        loaded = dict(baseline)
+        loaded[("FL", 3)] = -120
+
+        self.assertFalse(detector.update(loaded)["FL"].contact)
+        engaged = detector.update(loaded)["FL"]
+        self.assertTrue(engaged.contact)
+        self.assertTrue(engaged.changed)
+        self.assertEqual(engaged.score, 130)
+        self.assertTrue(detector.update(unloaded)["FL"].contact)
+        self.assertTrue(detector.update(unloaded)["FL"].contact)
+        released = detector.update(unloaded)["FL"]
+        self.assertFalse(released.contact)
+        self.assertTrue(released.changed)
+
+    def test_load_contact_estimator_tracks_legs_independently(self) -> None:
+        baseline = {
+            (leg, joint): 0
+            for leg in ("FL", "FR", "RL", "RR")
+            for joint in (2, 3)
+        }
+        detector = LoadContactEstimator(
+            baseline,
+            engage_threshold=100,
+            release_threshold=50,
+            engage_samples=1,
+            release_samples=1,
+        )
+        sample = dict(baseline)
+        sample[("RR", 2)] = 150
+        estimates = detector.update(sample)
+        self.assertEqual(
+            {leg for leg, estimate in estimates.items() if estimate.contact},
+            {"RR"},
+        )
+
+    def test_dynamic_load_baseline_uses_phase_medians_and_round_trips(self) -> None:
+        header = (
+            "elapsed_s,phase,amplitude,leg,joint,servo_id,leg_phase,load\n"
+        )
+        lines = [header]
+        servo_id = 1
+        for leg in ("FL", "FR", "RL", "RR"):
+            for joint in (2, 3):
+                for phase in (0.0, 0.2, 0.4, 0.6, 0.8):
+                    for variation in (-4, 0, 4):
+                        lines.append(
+                            f"{phase},{phase},1,{leg},{joint},{servo_id},{phase},"
+                            f"{servo_id * 10 + round(phase * 100) + variation}\n"
+                        )
+                servo_id += 1
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory) / "loads.csv"
+            saved = Path(directory) / "baseline.json"
+            profile.write_text("".join(lines), encoding="utf-8")
+            baseline = DynamicLoadBaseline.from_csv(profile)
+            baseline.save(saved)
+            restored = DynamicLoadBaseline.load(saved)
+
+        self.assertEqual(restored.expected_load(1, 0.21), 30.0)
+        self.assertEqual(restored.residual(1, 0.21, 42), 12.0)
+        self.assertEqual(restored.models[1]["engage_threshold"], 24)
 
     def test_hardware_mapping_and_saved_pose(self) -> None:
         self.assertEqual(self.config.servo_ids, tuple(range(1, 13)))
@@ -568,6 +682,54 @@ class SpotConfigTest(unittest.TestCase):
             )
         )
 
+    def test_walk_load_profile_round_robins_j2_j3_without_extra_writes(self) -> None:
+        bus = RecordingBus()
+        robot = SpotRobot(bus, self.config)
+        gait = GaitParameters(
+            pattern="trot",
+            period=1.0,
+            hip_amplitude=5.0,
+            lift_amplitude=7.0,
+            crouch_amplitude=0,
+            speed=20,
+            acceleration=10,
+            duty_factor=0.5,
+            control_rate=20.0,
+        )
+        state = ServoState(
+            position=2048,
+            speed=12,
+            load=-32,
+            voltage=12.0,
+            temperature=30,
+            hardware_error=0,
+            moving=True,
+            current=50,
+        )
+        clock = FakeClock()
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory) / "loads.csv"
+            with (
+                patch.object(robot, "set_torque"),
+                patch("servo.cli.STS3215.read_state", return_value=state) as read,
+                patch("servo.cli.time.monotonic", side_effect=clock.monotonic),
+                patch("servo.cli.time.sleep", side_effect=clock.sleep),
+            ):
+                run_walk(
+                    robot,
+                    gait,
+                    cycles=1,
+                    profile_path=profile,
+                    load_rate=1.0,
+                )
+            rows = profile.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(read.call_count, 8)
+        self.assertEqual(len(rows), 9)
+        self.assertIn("planned_contact", rows[0])
+        self.assertIn("position_error", rows[0])
+        self.assertEqual(len(bus.calls), 22)
+
     def test_power_stance_is_extended_but_not_singular(self) -> None:
         args = parse_args(["walk", "--preset", "power"])
         gait = resolve_gait(args)
@@ -735,6 +897,18 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(args.command, "status")
         self.assertEqual(resolve_port(args.port), "/dev/test-urt2")
 
+    def test_contacts_command_has_safe_observation_defaults(self) -> None:
+        args = parse_args(["contacts"])
+        self.assertEqual(args.command, "contacts")
+        self.assertEqual(args.baseline, 2.0)
+        self.assertEqual(args.duration, 10.0)
+        self.assertEqual(args.threshold, 24)
+        self.assertEqual(args.release, 8)
+
+    def test_analyze_loads_command_does_not_require_a_serial_port(self) -> None:
+        args = parse_args(["analyze-loads", "loads.csv"])
+        self.assertEqual(args.profile, Path("loads.csv"))
+
     def test_pose_command_needs_no_confirmation_flag(self) -> None:
         args = parse_args(["pose", "stand45"])
         self.assertEqual(args.name, "stand45")
@@ -838,6 +1012,22 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(gait.stance_j2_angle, 32.0)
         self.assertEqual(gait.stance_j3_angle, 64.0)
         self.assertEqual(gait.duty_factor, 0.78)
+
+    def test_walk_load_profile_options_are_available(self) -> None:
+        args = parse_args(
+            [
+                "walk",
+                "--profile-output",
+                "loads.csv",
+                "--load-rate",
+                "5",
+                "--load-baseline",
+                "baseline.json",
+            ]
+        )
+        self.assertEqual(args.profile_output, Path("loads.csv"))
+        self.assertEqual(args.load_rate, 5.0)
+        self.assertEqual(args.load_baseline, Path("baseline.json"))
 
     def test_direction_configuration_is_saved(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

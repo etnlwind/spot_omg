@@ -43,6 +43,29 @@ def build_scene() -> mujoco.MjSpec:
         raise ValueError("URDF base_link was not found")
     base.add_freejoint(name="root")
 
+    imu = spec.body("imu_link")
+    if imu is None:
+        raise ValueError("URDF imu_link was not found")
+    imu.add_site(
+        name="body_imu_site",
+        type=mujoco.mjtGeom.mjGEOM_SPHERE,
+        size=[0.005, 0.0, 0.0],
+        rgba=[0.1, 0.7, 1.0, 0.35],
+    )
+    # Match the useful BNO086 outputs: fused orientation plus calibrated gyro.
+    spec.add_sensor(
+        name="body_imu_orientation",
+        type=mujoco.mjtSensor.mjSENS_FRAMEQUAT,
+        objtype=mujoco.mjtObj.mjOBJ_SITE,
+        objname="body_imu_site",
+    )
+    spec.add_sensor(
+        name="body_imu_gyro",
+        type=mujoco.mjtSensor.mjSENS_GYRO,
+        objtype=mujoco.mjtObj.mjOBJ_SITE,
+        objname="body_imu_site",
+    )
+
     foot_friction = [
         simulation["foot_static_friction_initial"],
         0.005,

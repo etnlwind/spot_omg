@@ -580,6 +580,16 @@ class SpotRobot:
             for servo_id in self.config.servo_ids
         }
 
+    def read_leg_loads(self) -> dict[tuple[str, int], int]:
+        """Read the eight J2/J3 load estimates used for foot contact."""
+        return {
+            (leg, joint_number): STS3215(
+                self.bus, self.config.joint(leg, joint_number).servo_id
+            ).read_state().load
+            for leg in LEG_ORDER
+            for joint_number in (2, 3)
+        }
+
     def set_torque(self, enabled: bool) -> None:
         for servo_id in self.config.servo_ids:
             STS3215(self.bus, servo_id).enable_torque(enabled)

@@ -1,7 +1,7 @@
 # Spot OMG URT-2 하드웨어 시험 기록
 
-이 문서는 2026-08-01부터 2026-08-02까지 Feetech URT-2와 STS3215 서보
-12개로 확인한 설정, 보행 시험과 판단을 정리한 기록입니다.
+이 문서는 2026-08-01부터 2026-08-05까지 Feetech URT-2와 STS3215 서보
+12개로 확인한 설정, 보행·시뮬레이션·부하 시험과 판단을 정리한 기록입니다.
 
 ## 시험 범위와 현재 한계
 
@@ -279,6 +279,267 @@ python -m unittest discover -s tests -v
 - 최종 위치 검증이 필요한 일반 포즈 명령
 - EEPROM ID 변경 안전 절차
 - CLI 명령과 별칭
+
+## 2026-08-05 단일 IMU 자세 제어와 모터 부하 기반 접촉 추정
+
+### 목표와 시험 조건
+
+오늘 작업의 목표는 Spot처럼 몸체가 공중에 고정된 것처럼 보이는 Body
+stabilization (몸체 안정화)을 단계적으로 구현하고, 별도 Foot contact sensor
+(발 접촉 센서) 없이 STS3215 Load estimate (모터 부하 추정값)로 실제 발 접촉을
+구분할 수 있는지 확인하는 것이었습니다.
+
+실제 하드웨어 부하 시험 조건은 다음과 같습니다.
+
+| 항목 | 값 |
+|---|---|
+| 로봇 상태 | 몸체를 지지대에 고정, 다리는 공중에서 동작 |
+| 서보 | STS3215 12개, J2/J3 부하 측정은 8개 |
+| 어댑터와 포트 | URT-2, `/dev/cu.usbmodem5B790788341` |
+| Baud rate (통신 속도) | 1,000,000 bps |
+| 보행 | Diagonal trot (대각선 트롯), FL+RR / FR+RL |
+| 하드웨어 동적 시험 자세 | Power preset (고하중 프리셋), J1 4°, J2 30°, J3 60° |
+| 동적 시험 궤적 | period 2.0s, hip 8°, lift 20°, duty 0.58 |
+| 모터 프로파일 | speed 800, acceleration 80 |
+| 제어와 측정 | 위치 전송 50Hz, 모터별 상태 읽기 5Hz |
+| 횟수 | 10 cycles, 총 20초 |
+
+MuJoCo 비교는 Simulator-only `sim-trot`을 사용했습니다. 조건은 period `0.8s`,
+duty `0.50`, lift `30°`, control rate `50Hz`, stance `(J1,J2,J3) =
+(4°,45°,90°)`, 10 cycles입니다.
+
+### 중앙 Virtual IMU (가상 IMU) 1개 구현
+
+URDF의 몸체 중앙 `imu_link`에 MuJoCo sensor site를 추가하고 다음 두 센서값만
+읽도록 했습니다.
+
+- Orientation quaternion (자세 쿼터니언): Roll/Pitch 계산
+- Gyroscope (자이로스코프): Roll/Pitch angular rate (각속도) 계산
+
+제어 입력은 실제 BNO086으로 교체할 수 있도록 `ImuSample`과
+`AttitudeController`로 분리했습니다. 좌표계는 X 전방, Y 좌측, Z 위쪽이며,
+PD attitude control (PD 자세 제어)은 다음 형태입니다.
+
+```text
+roll effort  = Kp × roll  + Kd × roll rate
+pitch effort = Kp × pitch + Kd × pitch rate
+```
+
+초기 네 다리 J2/J3 높이 보정에서 `sim-trot`의 이득을 탐색했습니다. 실제
+Gyroscope rate를 사용한 뒤 기존 수치 미분용 `Kp=1.2`, `Kd=0.08`은 과보정되어
+전진 방향과 대각선 접촉을 망쳤습니다. 탐색 결과 초기 안정값은 `Kp=0.9`,
+`Kd=0.04`, normalized leg-length correction limit (정규화 다리 길이 보정 제한)
+`0.15`였습니다.
+
+초기 이득 탐색의 대표 결과는 다음과 같습니다.
+
+| Kp | Kd | Limit | Max Roll | Max Pitch | Diagonal contact | Delta X | Delta Y |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.5 | 0.00 | 0.10 | 14.96° | 7.21° | 62.5% | +1.043m | -0.048m |
+| 0.8 | 0.02 | 0.12 | 12.13° | 6.91° | 65.3% | +1.062m | -0.045m |
+| 0.9 | 0.04 | 0.15 | 9.45° | 5.95° | 73.6% | +1.066m | +0.015m |
+| 1.2 | 0.04 | 0.15 | 9.35° | 5.99° | 71.9% | +0.988m | +0.098m |
+
+### Contact-aware J1 control (접촉 인식 J1 제어)
+
+처음에는 보행 위상상 Stance leg (지지 다리)에만 J2/J3 높이 보정을 적용했습니다.
+그러나 Position-controlled servo (위치제어 서보)에서 스윙과 착지 경계의 목표
+높이가 불연속적으로 바뀌면서 결과가 나빠졌습니다.
+
+| 방식 | Max Roll | Max Pitch | Attitude RMS | Body Z range | Diagonal contact | Delta Y |
+|---|---:|---:|---:|---:|---:|---:|
+| 예정 지지 다리 J2/J3만 보정 | 15.55° | 9.13° | 8.39° | 0.044m | 50.1% | +0.455m |
+| 실제 접촉 다리 J2/J3만 보정 | 13.72° | 8.57° | 6.78° | 0.040m | 64.9% | +0.403m |
+
+따라서 J2/J3의 수직 IK 보정은 네 다리에 연속 적용하고, 실제 접촉 여부에 따라
+J1의 역할만 나눴습니다.
+
+- Stance leg (지지 다리): 고정된 발을 통해 몸체를 기울기의 반대쪽으로 밀기
+- Swing leg (스윙 다리): 넘어지는 방향으로 발을 옮겨 다음 지지점 만들기
+- MuJoCo 접촉값이 없을 때는 Gait phase (보행 위상)를 fallback (대체값)으로 사용
+
+J1 roll gain (J1 좌우 보정 이득)은 `2~10`을 비교했습니다. `5`에서 전진거리와
+좌우 표류를 유지하면서 Max Roll, Attitude RMS와 대각선 접촉이 함께 개선되어
+기본값으로 선택했습니다. 최종 이득은 `Kp=1.0`, `Kd=0.04`, leg correction
+limit `0.15`, J1 gain `5`, J1 limit `5°`입니다.
+
+최종 동일 조건 비교는 다음과 같습니다.
+
+| 제어 | Max Roll | Max Pitch | Attitude RMS | Body Z range | Diagonal contact | Delta X | Delta Y | 판정 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Open-loop (개루프) | 30.15° | 8.30° | 13.08° | 0.056m | 41.3% | +0.884m | +0.102m | UPRIGHT / NON_TROT |
+| J2/J3 all-leg feedback | 9.96° | 6.34° | 3.51° | 0.032m | 73.6% | +1.004m | -0.125m | UPRIGHT / TROT |
+| Contact-aware J1 포함 | 7.61° | 5.44° | 3.03° | 0.031m | 74.7% | +1.034m | -0.042m | UPRIGHT / TROT |
+
+Sagittal foot placement (전후 착지 위치 보정)도 구현해 시험했지만 현재 질량
+모델에서는 Pitch와 표류가 증가했습니다. 예를 들어 forward placement gain
+`0.05`만 사용했을 때 Max Roll `11.14°`, Max Pitch `6.66°`, Attitude RMS
+`3.82°`, diagonal contact `72.3%`였습니다. 따라서 기능은 유지하되 기본 이득은
+`0`으로 두었습니다. 배터리 위치와 링크 질량을 실측 모델에 반영한 후 다시
+조정합니다.
+
+### 정지 Motor-load contact detection (모터 부하 접촉 감지)
+
+`spotctl contacts`를 추가해 모터 목표나 Torque Enable (토크 활성화) 상태를
+바꾸지 않고 J2/J3 부하를 관찰하도록 했습니다. `spotctl hold`로 현재 위치에
+토크를 건 뒤, 네 발이 공중인 상태에서 2초 동안 무부하 중앙값을 측정했습니다.
+
+시험 시작 위치는 다음과 같았습니다.
+
+```text
+ID 1=2088, 2=1726, 3=1040, 4=2086, 5=2505, 6=3003,
+ID 7=2107, 8=1635, 9=3020, 10=1957, 11=2548, 12=1024
+```
+
+무부하 기준은 FL J2 `+32`, FL J3 `0`, 나머지 FR/RL/RR J2/J3는 모두 `0`으로
+측정됐습니다. 한 발씩 힘을 가했을 때 각 다리의 Static peak score (정지 최대
+점수)는 FL `32`, FR `36`, RL `56`, RR `52`였습니다.
+
+초기 공통 임계값 `engage=120`, `release=80`은 모든 접촉을 놓쳤습니다. 정지
+관찰용 기본값을 다음처럼 수정했습니다.
+
+```text
+Engage: 부하 변화가 2개 연속 표본에서 24 이상
+Release: 부하 변화가 3개 연속 표본에서 8 이하
+Sample rate: 10Hz
+```
+
+Hysteresis (히스테리시스)와 Debounce (연속 표본 확인)를 사용합니다. FR은 첫 힘
+입력 후 약 `32`, RL은 `24`, RR은 `32~40`의 잔류값이 관찰됐습니다. 실제로 힘을
+제거했는데도 이 값이 남는 경우에는 Load만으로 Release를 확정할 수 없으므로
+Position error (위치 오차)와 Current (전류)를 함께 사용해야 합니다.
+
+### 공중 Dynamic load profile (동적 부하 프로파일)
+
+정지 임계값이 실제 보행에 유효한지 확인하기 위해 `walk --profile-loads`를
+구현했습니다. 50Hz Sync Write (동기 위치 전송)를 유지하면서 J2/J3 8개를 한
+제어 프레임당 최대 한 개씩 Round-robin sampling (순환 표본화)했습니다.
+
+첫 프로파일 명령은 다음과 같습니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 walk \
+  --gait trot --preset power --cycles 10 \
+  --period 2.0 --hip 8 --lift 20 \
+  --speed 800 --accel 80 --rate 50 \
+  --profile-loads --load-rate 5
+```
+
+생성 파일은 `logs/air_gait_loads_20260805_024609.csv`입니다.
+
+- 실행 시간: 20초
+- 총 표본: 800개와 header 1행
+- 모터별 표본: 100개, 주기당 10개
+- 최대 상태 읽기 시간: `1.247ms`
+- 늦어진 50Hz Control frame (제어 프레임): `0개`
+
+공중 보행 중 절대 부하는 정지 접촉 점수보다 훨씬 컸습니다.
+
+| Leg/Joint | Signed load range | Absolute median | Absolute P95 | Absolute max | Position error P95 / max |
+|---|---:|---:|---:|---:|---:|
+| FL J2 | -232..+204 | 108 | 220 | 232 | 87 / 89 tick |
+| FL J3 | -284..+276 | 60 | 272 | 284 | 152 / 155 tick |
+| FR J2 | -220..+244 | 112 | 236 | 244 | 89 / 106 tick |
+| FR J3 | -280..+268 | 86 | 264 | 280 | 170 / 173 tick |
+| RL J2 | -184..+208 | 92 | 204 | 208 | 79 / 81 tick |
+| RL J3 | -280..+256 | 128 | 272 | 280 | 170 / 173 tick |
+| RR J2 | -228..+184 | 132 | 216 | 228 | 107 / 108 tick |
+| RR J3 | -272..+264 | 72 | 264 | 272 | 223 / 225 tick |
+
+따라서 `abs(load) > static threshold` 방식은 보행 중 사용할 수 없습니다. 대신
+동일한 Gait phase (보행 위상)의 공중 예상 부하를 빼는 Dynamic-load residual
+(동적 부하 잔차)을 사용하도록 변경했습니다.
+
+```text
+residual = abs(measured load) - expected abs(load at the same leg phase)
+```
+
+STS3215는 같은 위상에서도 부하 방향 부호가 바뀌었습니다. FL J3 local phase
+`0.52`에서 첫 시험은 `-20, -24, +20, +20, 0, +24, +32, +24, +28, +28`, 두 번째
+시험은 `-20, +28, -32, +20, -20, +20, -24, -20, +28, -20`이었습니다. 부호는
+불안정하지만 크기는 대부분 `20~32`로 반복됐기 때문에 Signed load가 아니라
+Absolute load magnitude (절대 부하 크기)를 모델링했습니다.
+
+Amplitude ramp (진폭 램프)와 첫 Warm-up cycle (준비 1주기)을 제외한 완전한
+주기만 사용해 `air_gait_loads_20260805_024609.baseline.json`을 생성했습니다.
+관절별 Noise residual (반복 잡음)과 최종 임계값은 다음과 같습니다.
+
+| Leg/Joint | Noise P90 | Noise P95 | Noise max | Engage | Release |
+|---|---:|---:|---:|---:|---:|
+| FL J2 | 8 | 10 | 12 | 28 | 12 |
+| FL J3 | 8 | 12 | 24 | 28 | 12 |
+| FR J2 | 10 | 10 | 12 | 28 | 16 |
+| FR J3 | 14 | 18 | 32 | 36 | 20 |
+| RL J2 | 8 | 12 | 26 | 28 | 12 |
+| RL J3 | 8 | 10 | 20 | 28 | 12 |
+| RR J2 | 8 | 10 | 12 | 28 | 12 |
+| RR J3 | 8 | 14 | 36 | 32 | 12 |
+
+Engage 값은 기본적으로 `max(24, P95 + 16을 4단위 올림)`으로 계산했습니다.
+Release는 P90을 기준으로 더 낮게 설정해 경계에서 상태가 반복되는 것을 막습니다.
+
+### 두 번째 공중 재현 시험
+
+같은 보행 명령과 생성한 baseline을 사용해 두 번째 20초 시험을 수행했습니다.
+파일은 `logs/air_gait_loads_20260805_025228.csv`입니다.
+
+- 총 표본: 800개
+- 최대 읽기 시간: `1.779ms`
+- 늦어진 50Hz 제어 프레임: `0개`
+- 시작·종료 램프와 첫 주기를 제외한 평가 구간: 8 cycles
+- 평가 표본: 다리당 160개, 총 640개
+
+최종 Absolute residual validation (절대 부하 잔차 검증) 결과입니다.
+
+| Leg | Max residual | Threshold exceedance | False-positive rate |
+|---|---:|---:|---:|
+| FL | 26 | 0 / 160 | 0% |
+| FR | 32 | 0 / 160 | 0% |
+| RL | 26 | 0 / 160 | 0% |
+| RR | 20 | 0 / 160 | 0% |
+
+즉 동일한 자세와 속도의 공중 보행에서는 Phase-aligned absolute-load baseline
+(위상 정렬 절대 부하 기준 모델)이 재현됐습니다. 오늘 결과는 False positive를
+제거한 단계이며, 실제 접촉에 대한 True positive (정접촉 판정)는 아직 시험하지
+않았습니다.
+
+### 구현 파일과 현재 안전 경계
+
+- `servo/attitude.py`: 실제 BNO086과 MuJoCo가 공유할 IMU sample 및 PD 제어
+- `servo/contact.py`: 정지 부하 기준 Hysteresis/Debounce 접촉 판정
+- `servo/load_profile.py`: 보행 위상별 절대 부하 baseline 생성·저장·조회
+- `simulation/mujoco/generate_scene.py`: 몸체 중앙 IMU site와 quaternion/gyro 센서
+- `simulation/mujoco/walk.py`: 단일 IMU, J1/J2/J3 자세 보정과 접촉 통계
+- `spotctl contacts`: 정지 상태 접촉 관찰
+- `spotctl walk --profile-loads`: 공중 동적 부하 CSV 기록
+- `spotctl analyze-loads`: CSV에서 `.baseline.json` 생성
+- `spotctl walk --load-baseline`: 실시간 잔차 비교 기록
+
+접촉 판정은 아직 Observation only (관찰 전용)이며 실제 보행 목표나 모터 위치를
+변경하지 않습니다. BNO086 실제 드라이버, 과도 기울기 정지, 접촉 결과를 사용한
+J1/J2/J3 폐루프 보정도 아직 실제 로봇에는 연결하지 않았습니다.
+
+오늘 최종 검증 시 Servo tool unit test (서보 도구 단위 테스트) `55개`, URDF
+validation, MuJoCo 10-cycle `UPRIGHT/TROT` 검증이 모두 통과했습니다.
+
+### 다음 시험
+
+몸체를 계속 지지대에 고정하고 완성된 발이 평평한 판에 가볍게 닿도록 한 뒤,
+동일한 느린 보행에서 Supported-contact profile (지지대 고정 접촉 프로파일)을
+수집합니다. 발 부품이 모두 장착됐고 스윙 다리가 판에 걸리지 않을 때만 실행합니다.
+
+```bash
+spotctl --port /dev/cu.usbmodem5B790788341 walk \
+  --gait trot --preset power --cycles 5 \
+  --period 2.0 --hip 8 --lift 20 \
+  --speed 800 --accel 80 --rate 50 \
+  --load-rate 5 \
+  --load-baseline tools/servo_tool/logs/air_gait_loads_20260805_024609.baseline.json \
+  --profile-output tools/servo_tool/logs/supported_contact.csv
+```
+
+이 데이터에서 stance 구간 True-positive rate, swing 구간 False-positive rate,
+접촉 판정 지연을 확인한 뒤에만 실제 자세 제어 입력으로 연결합니다.
 
 ## 최종 조립 후 다시 확인할 항목
 

@@ -55,8 +55,9 @@ python simulation/mujoco/generate_scene.py --check
 ```
 
 `--dynamic`을 추가하면 중력, 평면 지면, 발 마찰, Floating Base (자유 몸체),
-12개 STS3215 Position Actuator (위치 구동기)가 활성화됩니다. 첫 시험은 안정적인
-`test` 프리셋을 사용합니다.
+12개 STS3215 Position Actuator (위치 구동기)가 활성화됩니다. `test` 프리셋은
+4초 주기의 느린 Phase/Actuator Test (위상·구동기 시험)이며 실제 접촉 기준 트롯은
+아닙니다.
 
 ```bash
 mjpython simulation/mujoco/walk.py \
@@ -72,11 +73,11 @@ python simulation/mujoco/walk.py \
 
 2026-08-05 초기 모델의 Headless Test (화면 없는 시험) 결과는 다음과 같습니다.
 
-| 설정 | 결과 | 전방 X 이동 | 종료 몸체 높이 |
-|---|---|---:|---:|
-| `test`, 10 cycles | upright (직립 유지) | +0.429 m | 0.222 m |
-| 하드웨어 시험용 `power`, 10 cycles | upright (직립 유지) | +0.157 m | 0.276 m |
-| `natural`, 5 cycles | fallen (넘어짐) | 유효하지 않음 | 0.035 m |
+| 설정 | 결과 | 대각선 접촉 | 전방 X 이동 | 종료 몸체 높이 |
+|---|---|---:|---:|---:|
+| `test`, 10 cycles | non-trot contact | 11.8% | +0.429 m | 0.222 m |
+| 하드웨어 시험용 `power`, 10 cycles | upright (직립 유지) | 미측정 | +0.157 m | 0.276 m |
+| `natural`, 5 cycles | fallen (넘어짐) | 유효하지 않음 | 유효하지 않음 | 0.035 m |
 
 `natural` 결과는 시뮬레이터 오류가 아니라 현재 Open-Loop Control (개루프 제어)이
 질량·마찰 오차와 좌우 기울기를 복구하지 못한다는 진단입니다. IMU Feedback
@@ -86,6 +87,81 @@ python simulation/mujoco/walk.py \
 현재 물리 초기값은 `2 ms` timestep, 발 미끄럼 마찰 `0.9`, STS3215 최대 토크
 `2.942 Nm`, position gain `35`, velocity damping `0.8`입니다. 배터리 위치와
 각 링크 질량이 확정되면 다시 맞춰야 합니다.
+
+## 실제 접촉 기준 트롯
+
+`sim-trot`은 MuJoCo 전용 Dynamic Trot (동적 트롯) 프리셋입니다. `period=0.8 s`,
+`duty=0.50`, `lift=30°`, `rate=50 Hz`, `J1 stance=4°`를 사용합니다. 통일된
+후방 굽힘 URDF에 맞는 전진 부호는 시뮬레이터 안에서만 적용하므로 실제 로봇의
+`joints.json`은 변경하지 않습니다.
+
+```bash
+mjpython simulation/mujoco/walk.py \
+  --dynamic --balance --gait trot --preset sim-trot --cycles 10
+```
+
+10주기 Headless Test (화면 없는 시험) 결과는 대각선 접촉 `74.7%`, 전진
+`+1.034 m`, 최대 Roll `7.61°`, 최대 Pitch `5.44°`, `state=UPRIGHT`,
+`gait=TROT`입니다. 출력의 `diagonal_contact`는 실제 지면 접촉이 정확히
+`FL+RR` 또는 `FR+RL`인 물리 프레임 비율이며, 50% 이상일 때 접촉 기준 트롯으로
+판정합니다.
+
+## 몸체 수평 유지
+
+기본 `--dynamic`은 Open-Loop Control (개루프 제어)이라 몸체 기울기를 관절
+명령에 되먹임하지 않습니다. `--balance`를 추가하면 몸체 중앙 `imu_link`에 단
+하나 설치한 Virtual IMU (가상 IMU)의 Orientation Quaternion (자세 쿼터니언)과
+Gyroscope (자이로스코프)를 읽습니다. 이 값으로 네 다리의 J2/J3 IK 목표 높이를
+연속적으로 차등 보정하고, 지면 접촉과 보행 위상을 이용해 J1의 역할을 나누는
+Body Attitude Feedback (몸체 자세 피드백)이 활성화됩니다.
+
+- Stance leg (지지 다리): 고정된 발을 통해 몸체를 기울기의 반대쪽으로 밉니다.
+- Swing leg (스윙 다리, 내딛는 발): 넘어지는 쪽으로 발을 옮겨 다음 지지점을
+  만듭니다.
+- J2/J3: Position-controlled Servo (위치제어 서보)의 착지 목표가 끊기지 않도록
+  스윙과 지지 구간 모두에서 연속적인 높이 보정을 유지합니다.
+
+```bash
+mjpython simulation/mujoco/walk.py \
+  --dynamic --balance --gait trot --preset sim-trot --cycles 10
+```
+
+`sim-trot` 10주기 비교 결과입니다. 세 방식은 최종 `Kp=1.0`, `Kd=0.04`,
+다리 길이 보정 제한 `0.15`를 기준으로 다시 측정했습니다.
+
+| 자세 제어 | Max Roll | Max Pitch | Attitude RMS | Body Z range | 대각선 접촉 | 전방 X | 좌우 Y |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 없음 | 30.15° | 8.30° | 13.08° | 0.056m | 41.3% | +0.884m | +0.102m |
+| J2/J3 전체 다리 보정 | 9.96° | 6.34° | 3.51° | 0.032m | 73.6% | +1.004m | -0.125m |
+| 접촉 인식 J1 포함 | 7.61° | 5.44° | 3.03° | 0.031m | 74.7% | +1.034m | -0.042m |
+
+일반 프리셋의 기본 이득은 `Kp=0.6`, `Kd=0.04`, 다리 길이 보정 제한 `0.10`이며,
+`sim-trot`은 각각 `1.0`, `0.04`, `0.15`를 사용합니다. J1 Roll Compensation
+(J1 좌우 기울기 보정) 이득은 `5.0`, 제한은 `5°`입니다. 필요하면
+`--balance-kp`, `--balance-kd`, `--balance-limit`으로 변경할 수 있지만, 강한
+이득은 발 접촉을 방해해 진행 방향을 바꿀 수 있으므로 기본값부터 사용합니다.
+
+Sagittal Foot Placement (전후 착지 위치 보정)는 구현되어 있지만 현재 질량 모델의
+시험에서 Pitch와 좌우 표류를 증가시켜 기본 이득을 `0`으로 두었습니다. 배터리
+위치와 링크 질량을 실측한 뒤 `--foot-placement-gain`으로 다시 조정합니다.
+
+트롯은 두 대각선 발만 지지하는 구간이 있어 Roll/Pitch가 항상 `0°`일 수는
+없습니다. 목표는 화면상 완전 고정이 아니라 기울기 진폭과 누적 Drift (표류)를
+줄이면서 대각선 접촉을 유지하는 것입니다.
+
+제어 계산은 `servo.attitude.AttitudeController`에 분리했습니다. 시뮬레이터는
+MuJoCo 센서값을 `ImuSample`로 변환합니다. 실제 로봇에서는 같은 입력 자리에
+BNO086의 Rotation Vector (회전 벡터)에서 얻은 Roll/Pitch와 Calibrated Gyro
+(보정 자이로) 각속도를 넣어 STM32 제어 주기에 연결하면 됩니다. 현재 단계는 센서
+1개를 사용한 자세 제어 구조 검증입니다. MuJoCo에서는 발 접촉을 직접 읽지만 실제
+로봇에서는 우선 보행 위상을 사용하고, 이후 발 접촉 센서나 STS3215 Load Estimate
+(부하 추정)를 추가할 수 있습니다. 실제 하드웨어용 BNO086 드라이버와 비상
+정지·과도 기울기 제한은 아직 포함하지 않습니다.
+
+2026-08-05의 이득 탐색, 실패한 지지 다리 전용 보정, 실제 STS3215 정지·동적
+부하 측정과 위상 기준 모델 결과는
+[`HARDWARE_TEST_LOG.md`](../../tools/servo_tool/HARDWARE_TEST_LOG.md)에
+수치와 함께 기록했습니다.
 
 ## 초기 실험 예제
 

@@ -11,7 +11,9 @@
       <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="1.8" diaginertia="0.0383438 0.038235 0.00157875"/>
       <joint name="root" type="free"/>
       <geom size="0.25 0.0375 0.035" type="box" rgba="0.08 0.1 0.13 1"/>
-      <body name="imu_link" pos="0 0 0.035"/>
+      <body name="imu_link" pos="0 0 0.035">
+        <site name="body_imu_site" pos="0 0 0" rgba="0.1 0.7 1 0.35"/>
+      </body>
       <body name="fl_hip_link" pos="0.25 0.0375 0">
         <inertial pos="0 0.025 0" quat="0.707107 0.707107 0 0" mass="0.12" diaginertia="4.525e-05 4.1e-05 3.625e-05"/>
         <joint name="fl_j1" pos="0 0 0" axis="1 0 0" range="-0.523599 0.523599" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
@@ -105,4 +107,9 @@
     <general name="rr_j2_position" joint="rr_j2" ctrllimited="true" ctrlrange="-0.785398 1.74533" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
     <general name="rr_j3_position" joint="rr_j3" ctrllimited="true" ctrlrange="0 2.61799" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
   </actuator>
+
+  <sensor>
+    <framequat objtype="site" objname="body_imu_site" name="body_imu_orientation"/>
+    <gyro site="body_imu_site" name="body_imu_gyro"/>
+  </sensor>
 </mujoco>
