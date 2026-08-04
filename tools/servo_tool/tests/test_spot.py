@@ -256,7 +256,7 @@ class SpotConfigTest(unittest.TestCase):
             speed=30,
             acceleration=20,
         )
-        base = self.config.pose("stand45")
+        base = self.config.stand45_targets()
         targets = robot.gait_targets(0.125, base, gait)
         for servo_id in (1, 4, 7, 10):
             self.assertEqual(targets[servo_id], base[servo_id])
@@ -277,28 +277,33 @@ class SpotConfigTest(unittest.TestCase):
         base = self.config.stand45_targets()
         targets = robot.gait_targets(0.125, base, gait)
 
-        def normalized(leg: str, joint_number: int) -> int:
-            servo_id = self.config.joint(leg, joint_number).servo_id
-            target_angle = self.config.position_to_angle(
-                leg, joint_number, targets[servo_id]
-            )
-            base_angle = self.config.position_to_angle(
-                leg, joint_number, base[servo_id]
-            )
-            delta = target_angle - base_angle
-            return (
-                delta * self.config.gait_forward_signs[leg]
-                if joint_number == 2
-                else delta
-            )
+        def normalized_foot(leg: str) -> tuple[float, float]:
+            upper_id = self.config.joint(leg, 2).servo_id
+            knee_id = self.config.joint(leg, 3).servo_id
+            upper = self.config.position_to_angle(leg, 2, targets[upper_id])
+            knee = self.config.position_to_angle(leg, 3, targets[knee_id])
+            forward, down = robot.leg_forward_kinematics(upper, knee)
+            return forward * self.config.gait_forward_signs[leg], down
 
-        self.assertEqual(normalized("FL", 2), normalized("RR", 2))
-        self.assertEqual(normalized("FL", 3), normalized("RR", 3))
-        self.assertEqual(normalized("FR", 2), normalized("RL", 2))
-        self.assertEqual(normalized("FR", 3), normalized("RL", 3))
-        self.assertEqual(normalized("FL", 2), -normalized("FR", 2))
+        fl = normalized_foot("FL")
+        fr = normalized_foot("FR")
+        rl = normalized_foot("RL")
+        rr = normalized_foot("RR")
+        self.assertAlmostEqual(fl[0], rr[0], delta=0.002)
+        self.assertAlmostEqual(fl[1], rr[1], delta=0.002)
+        self.assertAlmostEqual(fr[0], rl[0], delta=0.002)
+        self.assertAlmostEqual(fr[1], rl[1], delta=0.002)
+        self.assertAlmostEqual(fl[0], -fr[0], delta=0.002)
 
-    def test_forward_stance_restores_hardware_verified_j2_raw_direction(self) -> None:
+    def test_planar_leg_ik_round_trip(self) -> None:
+        robot = SpotRobot(RecordingBus(), self.config)
+        for upper, knee in ((45.0, 90.0), (35.0, 105.0), (55.0, 80.0)):
+            foot = robot.leg_forward_kinematics(upper, knee)
+            restored = robot.leg_inverse_kinematics(*foot)
+            self.assertAlmostEqual(restored[0], upper, places=7)
+            self.assertAlmostEqual(restored[1], knee, places=7)
+
+    def test_forward_ik_stance_pushes_ground_backward(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
         gait = GaitParameters(
             pattern="trot",
@@ -310,9 +315,9 @@ class SpotConfigTest(unittest.TestCase):
         )
         base = self.config.stand45_targets()
 
-        # Hardware observation: rear-leg direction was correct while both
-        # front legs moved backward. Front kinematic signs therefore invert
-        # the canonical trajectory without changing motor directions.
+        # Loaded hardware trials establish this progression as forward: during
+        # stance each planted foot travels front-to-rear relative to the body,
+        # so ground reaction drives the body forward.
         for leg in ("FL", "RR"):
             servo_id = self.config.joint(leg, 2).servo_id
             offset = robot.PHASE_OFFSETS["trot"][leg]
@@ -320,7 +325,7 @@ class SpotConfigTest(unittest.TestCase):
             stance_end = robot.gait_targets(
                 (gait.duty_factor - offset) % 1.0, base, gait
             )
-            self.assertLess(stance_start[servo_id], stance_end[servo_id])
+            self.assertGreater(stance_start[servo_id], stance_end[servo_id])
         for leg in ("FR", "RL"):
             servo_id = self.config.joint(leg, 2).servo_id
             offset = robot.PHASE_OFFSETS["trot"][leg]
@@ -328,7 +333,7 @@ class SpotConfigTest(unittest.TestCase):
             stance_end = robot.gait_targets(
                 (gait.duty_factor - offset) % 1.0, base, gait
             )
-            self.assertGreater(stance_start[servo_id], stance_end[servo_id])
+            self.assertLess(stance_start[servo_id], stance_end[servo_id])
 
     def test_trot_has_four_foot_support_before_each_diagonal_swing(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
@@ -346,16 +351,34 @@ class SpotConfigTest(unittest.TestCase):
 
         all_ground = robot.gait_targets(0.0, base, gait)
         for leg in ("FL", "FR", "RL", "RR"):
+            upper_id = self.config.joint(leg, 2).servo_id
             knee_id = self.config.joint(leg, 3).servo_id
-            self.assertEqual(all_ground[knee_id], base[knee_id])
+            base_foot = robot.leg_forward_kinematics(45.0, 90.0)
+            upper = self.config.position_to_angle(leg, 2, all_ground[upper_id])
+            knee = self.config.position_to_angle(leg, 3, all_ground[knee_id])
+            foot = robot.leg_forward_kinematics(upper, knee)
+            self.assertAlmostEqual(foot[1], base_foot[1], delta=0.002)
 
         pair_b_swing = robot.gait_targets(0.25, base, gait)
         for leg in ("FL", "RR"):
+            upper_id = self.config.joint(leg, 2).servo_id
             knee_id = self.config.joint(leg, 3).servo_id
-            self.assertEqual(pair_b_swing[knee_id], base[knee_id])
+            upper = self.config.position_to_angle(leg, 2, pair_b_swing[upper_id])
+            knee = self.config.position_to_angle(leg, 3, pair_b_swing[knee_id])
+            self.assertAlmostEqual(
+                robot.leg_forward_kinematics(upper, knee)[1],
+                robot.leg_forward_kinematics(45.0, 90.0)[1],
+                delta=0.002,
+            )
         for leg in ("FR", "RL"):
+            upper_id = self.config.joint(leg, 2).servo_id
             knee_id = self.config.joint(leg, 3).servo_id
-            self.assertNotEqual(pair_b_swing[knee_id], base[knee_id])
+            upper = self.config.position_to_angle(leg, 2, pair_b_swing[upper_id])
+            knee = self.config.position_to_angle(leg, 3, pair_b_swing[knee_id])
+            self.assertLess(
+                robot.leg_forward_kinematics(upper, knee)[1],
+                robot.leg_forward_kinematics(45.0, 90.0)[1] - 0.01,
+            )
 
     def test_zero_amplitude_returns_the_stance_without_a_jump(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
@@ -397,6 +420,33 @@ class SpotConfigTest(unittest.TestCase):
                 for address, item_size, values in bus.calls[1:-1]
             )
         )
+
+    def test_power_stance_is_extended_but_not_singular(self) -> None:
+        args = parse_args(["walk", "--preset", "power"])
+        gait = resolve_gait(args)
+        robot = SpotRobot(RecordingBus(), self.config)
+
+        power_foot = robot.leg_forward_kinematics(
+            gait.stance_j2_angle, gait.stance_j3_angle
+        )
+        standard_foot = robot.leg_forward_kinematics(45.0, 90.0)
+        self.assertAlmostEqual(power_foot[0], 0.0, places=7)
+        self.assertGreater(power_foot[1], standard_foot[1])
+        self.assertEqual(
+            (gait.stance_j2_angle, gait.stance_j3_angle), (30.0, 60.0)
+        )
+        self.assertEqual(gait.duty_factor, 0.80)
+        self.assertLess(gait.hip_amplitude, 19.3)
+
+        base = self.config.angles_to_targets(
+            {
+                (leg, joint_number): angle
+                for leg in ("FL", "FR", "RL", "RR")
+                for joint_number, angle in ((2, 30.0), (3, 60.0))
+            }
+        )
+        for phase in (0.0, 0.25, 0.5, 0.75):
+            self.assertEqual(len(robot.gait_targets(phase, base, gait)), 12)
 
     def test_calibration_and_pose_round_trip(self) -> None:
         self.config.set_joint_center(2, 2053)
@@ -592,6 +642,25 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(gait.speed, 60)
         self.assertEqual(gait.period, 4.0)
         self.assertEqual(gait.hip_amplitude, 8.8)
+
+    def test_power_preset_can_override_stance_and_duty(self) -> None:
+        args = parse_args(
+            [
+                "walk",
+                "--preset",
+                "power",
+                "--stance-j2",
+                "32",
+                "--stance-j3",
+                "64",
+                "--duty",
+                "0.78",
+            ]
+        )
+        gait = resolve_gait(args)
+        self.assertEqual(gait.stance_j2_angle, 32.0)
+        self.assertEqual(gait.stance_j3_angle, 64.0)
+        self.assertEqual(gait.duty_factor, 0.78)
 
     def test_direction_configuration_is_saved(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

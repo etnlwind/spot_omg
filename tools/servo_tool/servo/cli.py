@@ -21,8 +21,21 @@ PRESETS = {
         crouch_amplitude=0,
         speed=60,
         acceleration=30,
+        duty_factor=0.65,
     ),
-    "natural": GaitParameters(),
+    "natural": GaitParameters(duty_factor=0.65),
+    "power": GaitParameters(
+        period=2.4,
+        hip_amplitude=10.0,
+        lift_amplitude=16.0,
+        crouch_amplitude=0.0,
+        speed=800,
+        acceleration=80,
+        duty_factor=0.80,
+        control_rate=50.0,
+        stance_j2_angle=30.0,
+        stance_j3_angle=60.0,
+    ),
 }
 
 
@@ -159,6 +172,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     walk.add_argument("--lift", type=float, help="J3 lift amplitude in degrees")
     walk.add_argument("--crouch", type=float, help="J3 crouch angle in degrees")
     walk.add_argument(
+        "--stance-j2", type=float, help="walking stance J2 angle in degrees"
+    )
+    walk.add_argument(
+        "--stance-j3", type=float, help="walking stance J3 angle in degrees"
+    )
+    walk.add_argument(
+        "--duty", type=float, help="fraction of each cycle spent on the ground"
+    )
+    walk.add_argument(
         "--speed", type=int, help="maximum STS speed-register value"
     )
     walk.add_argument(
@@ -229,9 +251,23 @@ def resolve_gait(args: argparse.Namespace) -> GaitParameters:
         acceleration=(
             args.accel if args.accel is not None else preset.acceleration
         ),
-        duty_factor=0.65 if args.gait == "trot" else 0.75,
+        duty_factor=(
+            args.duty
+            if args.duty is not None
+            else preset.duty_factor if args.gait == "trot" else 0.75
+        ),
         control_rate=(
             args.rate if args.rate is not None else preset.control_rate
+        ),
+        stance_j2_angle=(
+            args.stance_j2
+            if args.stance_j2 is not None
+            else preset.stance_j2_angle
+        ),
+        stance_j3_angle=(
+            args.stance_j3
+            if args.stance_j3 is not None
+            else preset.stance_j3_angle
         ),
     )
     gait.validate()
@@ -595,7 +631,16 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
     if not 1 <= cycles <= 20:
         raise ValueError("cycles must be between 1 and 20")
 
-    base = robot.config.stand45_targets()
+    base = robot.config.angles_to_targets(
+        {
+            (leg, joint_number): angle
+            for leg in ("FL", "FR", "RL", "RR")
+            for joint_number, angle in (
+                (2, gait.stance_j2_angle),
+                (3, gait.stance_j3_angle),
+            )
+        }
+    )
     # Set one ordinary STS position profile, enable torque, and then only
     # stream absolute goal positions. No status reads or arrival polling.
     robot.sync_move(
@@ -809,10 +854,13 @@ def main(argv: list[str] | None = None) -> int:
                     f"period={gait.period:.1f}s, rate={gait.control_rate:.0f}Hz, "
                     f"J2={gait.hip_amplitude:g}deg, "
                     f"J3={gait.lift_amplitude:g}deg, "
-                    f"speed cap={gait.speed}, accel={gait.acceleration}"
+                    f"speed cap={gait.speed}, accel={gait.acceleration}, "
+                    f"stance=J2 {gait.stance_j2_angle:g}deg/"
+                    f"J3 {gait.stance_j3_angle:g}deg, "
+                    f"duty={gait.duty_factor:.2f}"
                 )
                 run_walk(robot, gait, args.cycles)
-                print("Gait complete; returned to stand45.")
+                print("Gait complete; returned to the selected walking stance.")
         return 0
     except KeyboardInterrupt:
         print("\nStopped by user.", file=sys.stderr)

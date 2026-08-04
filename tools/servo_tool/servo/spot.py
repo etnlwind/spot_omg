@@ -43,6 +43,8 @@ class GaitParameters:
     acceleration: int = 25
     duty_factor: float = 0.75
     control_rate: float = 30.0
+    stance_j2_angle: float = 45.0
+    stance_j3_angle: float = 90.0
 
     def validate(self) -> None:
         if self.pattern not in {"trot", "crawl"}:
@@ -63,6 +65,10 @@ class GaitParameters:
             raise ValueError("duty factor must be at least 0.5 and below 1.0")
         if not 10.0 <= self.control_rate <= 100.0:
             raise ValueError("control rate must be between 10 and 100 Hz")
+        if not 15.0 <= self.stance_j2_angle <= 60.0:
+            raise ValueError("stance J2 angle must be between 15 and 60 degrees")
+        if not 30.0 <= self.stance_j3_angle <= 120.0:
+            raise ValueError("stance J3 angle must be between 30 and 120 degrees")
 
 
 class SpotConfig:
@@ -823,6 +829,45 @@ class SpotRobot:
         """Periodic joint interpolation with less endpoint dwell than smootherstep."""
         return 0.5 - 0.5 * math.cos(math.pi * value)
 
+    @staticmethod
+    def leg_forward_kinematics(
+        upper_angle: float,
+        knee_angle: float,
+        *,
+        upper_length: float = 1.0,
+        lower_length: float = 1.0,
+    ) -> tuple[float, float]:
+        """Return canonical foot (forward, down) for the planar J2/J3 chain."""
+        upper = math.radians(upper_angle)
+        lower = math.radians(upper_angle - knee_angle)
+        forward = upper_length * math.sin(upper) + lower_length * math.sin(lower)
+        down = upper_length * math.cos(upper) + lower_length * math.cos(lower)
+        return forward, down
+
+    @staticmethod
+    def leg_inverse_kinematics(
+        forward: float,
+        down: float,
+        *,
+        upper_length: float = 1.0,
+        lower_length: float = 1.0,
+    ) -> tuple[float, float]:
+        """Solve canonical J2/J3 angles for a planar foot coordinate."""
+        radius_squared = forward * forward + down * down
+        cosine_knee = (
+            radius_squared - upper_length**2 - lower_length**2
+        ) / (2.0 * upper_length * lower_length)
+        if not -1.0 <= cosine_knee <= 1.0:
+            raise ValueError(
+                f"foot target ({forward:.3f}, {down:.3f}) is outside IK workspace"
+            )
+        knee = math.acos(max(-1.0, min(1.0, cosine_knee)))
+        upper = math.atan2(forward, down) + math.atan2(
+            lower_length * math.sin(knee),
+            upper_length + lower_length * math.cos(knee),
+        )
+        return math.degrees(upper), math.degrees(knee)
+
     def gait_targets(
         self,
         phase: float,
@@ -834,6 +879,8 @@ class SpotRobot:
         parameters.validate()
         if not 0.0 <= amplitude_scale <= 1.0:
             raise ValueError("amplitude scale must be between 0 and 1")
+        if amplitude_scale == 0.0:
+            return dict(base)
         targets = dict(base)
         phase_offsets = self.PHASE_OFFSETS[parameters.pattern]
         for leg in LEG_ORDER:
@@ -857,22 +904,35 @@ class SpotRobot:
             knee_base = self.config.position_to_angle(
                 leg, 3, base[knee_joint.servo_id]
             )
-            hip_angle = (
-                hip_base
-                - self.config.gait_forward_signs[leg]
-                * parameters.hip_amplitude
+            base_forward, base_down = self.leg_forward_kinematics(
+                hip_base, knee_base
+            )
+
+            # CLI amplitudes remain intuitive degree values, but are converted
+            # into a Cartesian foot path before solving both joints together.
+            stride = base_down * math.sin(math.radians(parameters.hip_amplitude))
+            nominal_knee = knee_base + parameters.crouch_amplitude * amplitude_scale
+            _, nominal_down = self.leg_forward_kinematics(hip_base, nominal_knee)
+            lifted_knee = nominal_knee + parameters.lift_amplitude * amplitude_scale
+            _, lifted_down = self.leg_forward_kinematics(hip_base, lifted_knee)
+            lift_height = max(0.0, nominal_down - lifted_down)
+
+            foot_forward = (
+                base_forward
+                + self.config.gait_forward_signs[leg]
+                * stride
                 * hip_wave
                 * amplitude_scale
             )
-            knee_bend = (
-                parameters.crouch_amplitude
-                + parameters.lift_amplitude * lift_wave
-            ) * amplitude_scale
+            foot_down = nominal_down - lift_height * lift_wave
+            hip_angle, knee_angle = self.leg_inverse_kinematics(
+                foot_forward, foot_down
+            )
             targets[hip_joint.servo_id] = self.config.angle_to_position(
                 leg, 2, hip_angle
             )
             targets[knee_joint.servo_id] = self.config.angle_to_position(
-                leg, 3, knee_base + knee_bend
+                leg, 3, knee_angle
             )
 
         self.config.validate_targets(targets)
