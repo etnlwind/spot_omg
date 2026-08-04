@@ -625,6 +625,65 @@ class SpotRobot:
         }
         self.bus.sync_write(STS3215.ADDR_GOAL_POSITION, 2, values)
 
+    @staticmethod
+    def synchronized_arrival_speeds(
+        current: dict[int, int],
+        targets: dict[int, int],
+        *,
+        speed_cap: int,
+        acceleration: int,
+    ) -> dict[int, int]:
+        """Choose per-servo speeds for approximately simultaneous arrival."""
+        if set(current) != set(targets):
+            raise ValueError("current positions and targets must use the same servo IDs")
+        if not 1 <= speed_cap <= 3400:
+            raise ValueError("speed cap must be between 1 and 3400")
+        if not 0 <= acceleration <= 254:
+            raise ValueError("acceleration must be between 0 and 254")
+
+        distances = {
+            servo_id: abs(targets[servo_id] - position)
+            for servo_id, position in current.items()
+        }
+        longest = max(distances.values(), default=0)
+        if longest == 0:
+            return {servo_id: 1 for servo_id in targets}
+
+        # Acceleration 0 delegates to the servo's unrestricted internal ramp,
+        # whose exact value is unavailable. Distance-proportional speeds are
+        # the best deterministic approximation in that mode.
+        if acceleration == 0:
+            return {
+                servo_id: max(
+                    1, round(speed_cap * distance / longest)
+                )
+                for servo_id, distance in distances.items()
+            }
+
+        acceleration_steps = acceleration * 100.0
+        ramp_distance = speed_cap**2 / acceleration_steps
+        if longest <= ramp_distance:
+            common_time = 2.0 * math.sqrt(longest / acceleration_steps)
+        else:
+            common_time = longest / speed_cap + speed_cap / acceleration_steps
+
+        speeds = {}
+        for servo_id, distance in distances.items():
+            if distance == 0:
+                speeds[servo_id] = 1
+                continue
+            discriminant = max(
+                0.0,
+                common_time**2 - 4.0 * distance / acceleration_steps,
+            )
+            profile_speed = 0.5 * acceleration_steps * (
+                common_time - math.sqrt(discriminant)
+            )
+            speeds[servo_id] = min(
+                speed_cap, max(1, round(profile_speed))
+            )
+        return speeds
+
     def move_subset_and_wait(
         self,
         targets: dict[int, int],
@@ -735,7 +794,7 @@ class SpotRobot:
         self,
         targets: dict[int, int],
         *,
-        speed: int = 1000,
+        speed: int | dict[int, int] = 1000,
         acceleration: int = 80,
         timeout: float = 10.0,
         tolerance: int = 30,
@@ -745,12 +804,15 @@ class SpotRobot:
             targets, timeout=timeout, tolerance=tolerance
         )
 
-    def prepare_for_motion(self, *, speed: int, acceleration: int) -> None:
+    def prepare_for_motion(
+        self, *, speed: int, acceleration: int
+    ) -> dict[int, int]:
         """Enable torque without jumping to a stale goal position."""
         self.require_all()
         current = self.read_positions()
         self.sync_move(current, speed=speed, acceleration=acceleration)
         self.set_torque(True)
+        return current
 
     @staticmethod
     def _smoothstep(value: float) -> float:

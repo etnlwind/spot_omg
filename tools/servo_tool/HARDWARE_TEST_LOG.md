@@ -234,7 +234,17 @@ spotctl walk --preset natural --cycles 10 --hip 24.6 --lift 35.2 \
 
 ## 소프트웨어 검증
 
-2026-08-03 병합 기준 단위 테스트 36개가 통과했습니다.
+2026-08-03 동시 도착 속도 프로파일 반영 기준 단위 테스트 38개가 통과했습니다.
+
+- 일반 포즈 전환은 12개 서보 목표를 한 Sync Write (동기식 일괄 쓰기)로 보내
+  동시에 출발합니다.
+- 현재 위치에서 목표까지의 tick 이동량과 STS3215 acceleration
+  (`설정값 × 100 step/s²`)을 이용해 관절별 speed를 역산합니다.
+- 기본 `speed=1000`, `accel=80`에서 `stand → stand45`는 J2 약 `470`,
+  J3 `1000`; `stand → landing`은 J2 약 `290`, J3 `1000`으로 계산됩니다.
+- 이 계산은 무부하 기준 trapezoidal velocity profile (사다리꼴 속도 프로파일)
+  모델입니다. 실제 장착 상태에서는 하중, 전압과 마찰에 따른 작은 도착 오차가
+  생길 수 있으므로 하드웨어 시험으로 확인해야 합니다.
 
 ```bash
 python -m unittest discover -s tests -v

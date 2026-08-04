@@ -259,7 +259,11 @@ spotctl --port PORT landing --speed 100 --accel 5
 기존 `spotctl pose landing`도 같은 동적 자세를 적용하는 호환 명령입니다.
 
 포즈 이동은 모든 서보의 `Moving` 상태가 끝날 때까지 기다린 후 목표 위치와 실제
-위치의 차이를 검사합니다. 기본 제한은 10초와 30 tick이며 필요하면 조절합니다.
+위치의 차이를 검사합니다. 이동을 시작하기 전에 현재 위치와 목표 위치의 차이를
+읽고, STS3215의 speed/acceleration profile (속도·가속도 프로파일)을 역산해
+이동거리가 서로 다른 J2와 J3가 같은 시점에 도착하도록 관절별 속도를 지정합니다.
+`--speed`는 가장 멀리 이동하는 관절의 speed cap (속도 상한)입니다. 기본 제한은
+10초와 30 tick이며 필요하면 조절합니다.
 
 ```bash
 spotctl --port PORT pose stand45 --timeout 15 --tolerance 50
@@ -355,7 +359,8 @@ spotctl pose stand45
 기존 `python examples/spot.py ...` 진입점도 호환용으로 남아 있지만 새 사용법은
 `spotctl`을 기준으로 합니다.
 
-12관절 명령은 STS3215의 `Sync Write`를 사용해 같은 패킷에서 적용됩니다.
+12관절 명령은 STS3215의 `Sync Write`를 사용해 같은 패킷에서 출발하며, 일반
+포즈 전환은 이동거리와 가속도를 고려한 관절별 속도로 동시 도착을 맞춥니다.
 보행 도중 `Ctrl+C`를 누르면 계산된 `stand45` 포즈 복귀 명령을
 전송합니다. 통신이나 전원이 끊긴 경우에는 이 복귀가 보장되지 않으므로 실제
 전원 차단 수단도 손이 닿는 곳에 두세요.
@@ -373,7 +378,7 @@ spotctl pose stand45
 - FL이 한 차례 느리고 작게 보였으나 설정과 EEPROM은 다른 J2/J3와 같았고 이후
   같은 조건에서 재현되지 않았습니다.
 - RR J1(ID 10)에서 오류 값 `8`이 간헐적으로 검출됐습니다.
-- 단위 테스트 36개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
+- 단위 테스트 38개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
 
 세부 조건, 단계별 시간과 최종 조립 후 체크리스트는
 [`HARDWARE_TEST_LOG.md`](./HARDWARE_TEST_LOG.md)를 참고하세요.

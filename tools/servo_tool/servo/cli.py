@@ -575,10 +575,16 @@ def apply_targets(
         raise ValueError("timeout must be between 0.1 and 60 seconds")
     if not 0 <= tolerance <= 500:
         raise ValueError("tolerance must be between 0 and 500 ticks")
-    robot.prepare_for_motion(speed=speed, acceleration=acceleration)
+    current = robot.prepare_for_motion(speed=speed, acceleration=acceleration)
+    synchronized_speeds = robot.synchronized_arrival_speeds(
+        current,
+        targets,
+        speed_cap=speed,
+        acceleration=acceleration,
+    )
     robot.move_and_wait(
         targets,
-        speed=speed,
+        speed=synchronized_speeds,
         acceleration=acceleration,
         timeout=timeout,
         tolerance=tolerance,

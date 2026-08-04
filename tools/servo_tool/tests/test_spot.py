@@ -208,6 +208,43 @@ class SpotConfigTest(unittest.TestCase):
             values[1], self.config.pose("neutral")[1].to_bytes(2, "little")
         )
 
+    def test_stance_speeds_are_scaled_for_simultaneous_arrival(self) -> None:
+        current = self.config.pose("neutral")
+        targets = self.config.stand45_targets()
+        speeds = SpotRobot.synchronized_arrival_speeds(
+            current, targets, speed_cap=1000, acceleration=80
+        )
+
+        for leg in ("FL", "FR", "RL", "RR"):
+            j1 = self.config.joint(leg, 1).servo_id
+            j2 = self.config.joint(leg, 2).servo_id
+            j3 = self.config.joint(leg, 3).servo_id
+            self.assertEqual(speeds[j1], 1)
+            self.assertEqual(speeds[j3], 1000)
+            self.assertLess(speeds[j2], speeds[j3])
+
+            acceleration_steps = 80 * 100.0
+            j2_distance = abs(targets[j2] - current[j2])
+            j3_distance = abs(targets[j3] - current[j3])
+            j2_time = (
+                j2_distance / speeds[j2]
+                + speeds[j2] / acceleration_steps
+            )
+            j3_time = (
+                j3_distance / speeds[j3]
+                + speeds[j3] / acceleration_steps
+            )
+            self.assertAlmostEqual(j2_time, j3_time, delta=0.002)
+
+    def test_zero_acceleration_uses_distance_proportional_speeds(self) -> None:
+        speeds = SpotRobot.synchronized_arrival_speeds(
+            {1: 1000, 2: 1000, 3: 1000},
+            {1: 1000, 2: 1500, 3: 2000},
+            speed_cap=1200,
+            acceleration=0,
+        )
+        self.assertEqual(speeds, {1: 1, 2: 600, 3: 1200})
+
     def test_test_gait_keeps_hip_axis_fixed(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
         gait = GaitParameters(
