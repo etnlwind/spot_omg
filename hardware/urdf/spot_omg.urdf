@@ -1,0 +1,479 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="spot_omg">
+  <!-- Generated from spot_omg_parameters.json. Do not hand-edit this URDF; regenerate it. -->
+  <material name="body_dark">
+    <color rgba="0.08 0.10 0.13 1" />
+  </material>
+  <material name="leg_yellow">
+    <color rgba="0.95 0.72 0.05 1" />
+  </material>
+  <material name="foot_black">
+    <color rgba="0.03 0.03 0.03 1" />
+  </material>
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.5 0.075 0.07" />
+      </geometry>
+      <material name="body_dark" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.5 0.075 0.07" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="1.8" />
+      <inertia ixx="0.00157875" ixy="0" ixz="0" iyy="0.038235" iyz="0" izz="0.03834375" />
+    </inertial>
+  </link>
+  <link name="imu_link" />
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link" />
+    <child link="imu_link" />
+    <origin xyz="0 0 0.035" rpy="0 0 0" />
+  </joint>
+  <!-- FL: J1/J2/J3 servo IDs 1/2/3 -->
+  <link name="fl_hip_link">
+    <visual>
+      <origin xyz="0 0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0.025 0" rpy="0 0 0" />
+      <mass value="0.12" />
+      <inertia ixx="4.525e-05" ixy="0" ixz="0" iyy="3.625e-05" iyz="0" izz="4.1e-05" />
+    </inertial>
+  </link>
+  <link name="fl_upper_link">
+    <visual>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <mass value="0.15" />
+      <inertia ixx="0.0002703125" ixy="0" ixz="0" iyy="0.0002603125" iyz="0" izz="4.0625e-05" />
+    </inertial>
+  </link>
+  <link name="fl_lower_link">
+    <visual>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <mass value="0.1" />
+      <inertia ixx="0.000192708333" ixy="0" ixz="0" iyy="0.000192708333" iyz="0" izz="1.04166667e-05" />
+    </inertial>
+  </link>
+  <link name="fl_foot_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+      <material name="foot_black" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.03" />
+      <inertia ixx="4.8e-06" ixy="0" ixz="0" iyy="4.8e-06" iyz="0" izz="4.8e-06" />
+    </inertial>
+  </link>
+  <joint name="fl_j1" type="revolute">
+    <parent link="base_link" />
+    <child link="fl_hip_link" />
+    <origin xyz="0.25 0.0375 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.523598776" upper="0.523598776" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="fl_j2" type="revolute">
+    <parent link="fl_hip_link" />
+    <child link="fl_upper_link" />
+    <origin xyz="0 0.05 0" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.785398163" upper="1.74532925" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="fl_j3" type="revolute">
+    <parent link="fl_upper_link" />
+    <child link="fl_lower_link" />
+    <origin xyz="0 0 -0.14" rpy="0 0 0" />
+    <axis xyz="0 -1 0" />
+    <limit lower="0" upper="2.61799388" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="fl_foot_fixed" type="fixed">
+    <parent link="fl_lower_link" />
+    <child link="fl_foot_link" />
+    <origin xyz="0 0 -0.15" rpy="0 0 0" />
+  </joint>
+  <!-- FR: J1/J2/J3 servo IDs 4/5/6 -->
+  <link name="fr_hip_link">
+    <visual>
+      <origin xyz="0 -0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 -0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 -0.025 0" rpy="0 0 0" />
+      <mass value="0.12" />
+      <inertia ixx="4.525e-05" ixy="0" ixz="0" iyy="3.625e-05" iyz="0" izz="4.1e-05" />
+    </inertial>
+  </link>
+  <link name="fr_upper_link">
+    <visual>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <mass value="0.15" />
+      <inertia ixx="0.0002703125" ixy="0" ixz="0" iyy="0.0002603125" iyz="0" izz="4.0625e-05" />
+    </inertial>
+  </link>
+  <link name="fr_lower_link">
+    <visual>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <mass value="0.1" />
+      <inertia ixx="0.000192708333" ixy="0" ixz="0" iyy="0.000192708333" iyz="0" izz="1.04166667e-05" />
+    </inertial>
+  </link>
+  <link name="fr_foot_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+      <material name="foot_black" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.03" />
+      <inertia ixx="4.8e-06" ixy="0" ixz="0" iyy="4.8e-06" iyz="0" izz="4.8e-06" />
+    </inertial>
+  </link>
+  <joint name="fr_j1" type="revolute">
+    <parent link="base_link" />
+    <child link="fr_hip_link" />
+    <origin xyz="0.25 -0.0375 0" rpy="0 0 0" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-0.523598776" upper="0.523598776" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="fr_j2" type="revolute">
+    <parent link="fr_hip_link" />
+    <child link="fr_upper_link" />
+    <origin xyz="0 -0.05 0" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.785398163" upper="1.74532925" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="fr_j3" type="revolute">
+    <parent link="fr_upper_link" />
+    <child link="fr_lower_link" />
+    <origin xyz="0 0 -0.14" rpy="0 0 0" />
+    <axis xyz="0 -1 0" />
+    <limit lower="0" upper="2.61799388" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="fr_foot_fixed" type="fixed">
+    <parent link="fr_lower_link" />
+    <child link="fr_foot_link" />
+    <origin xyz="0 0 -0.15" rpy="0 0 0" />
+  </joint>
+  <!-- RL: J1/J2/J3 servo IDs 7/8/9 -->
+  <link name="rl_hip_link">
+    <visual>
+      <origin xyz="0 0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0.025 0" rpy="0 0 0" />
+      <mass value="0.12" />
+      <inertia ixx="4.525e-05" ixy="0" ixz="0" iyy="3.625e-05" iyz="0" izz="4.1e-05" />
+    </inertial>
+  </link>
+  <link name="rl_upper_link">
+    <visual>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <mass value="0.15" />
+      <inertia ixx="0.0002703125" ixy="0" ixz="0" iyy="0.0002603125" iyz="0" izz="4.0625e-05" />
+    </inertial>
+  </link>
+  <link name="rl_lower_link">
+    <visual>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <mass value="0.1" />
+      <inertia ixx="0.000192708333" ixy="0" ixz="0" iyy="0.000192708333" iyz="0" izz="1.04166667e-05" />
+    </inertial>
+  </link>
+  <link name="rl_foot_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+      <material name="foot_black" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.03" />
+      <inertia ixx="4.8e-06" ixy="0" ixz="0" iyy="4.8e-06" iyz="0" izz="4.8e-06" />
+    </inertial>
+  </link>
+  <joint name="rl_j1" type="revolute">
+    <parent link="base_link" />
+    <child link="rl_hip_link" />
+    <origin xyz="-0.25 0.0375 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.523598776" upper="0.523598776" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="rl_j2" type="revolute">
+    <parent link="rl_hip_link" />
+    <child link="rl_upper_link" />
+    <origin xyz="0 0.05 0" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.785398163" upper="1.74532925" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="rl_j3" type="revolute">
+    <parent link="rl_upper_link" />
+    <child link="rl_lower_link" />
+    <origin xyz="0 0 -0.14" rpy="0 0 0" />
+    <axis xyz="0 -1 0" />
+    <limit lower="0" upper="2.61799388" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="rl_foot_fixed" type="fixed">
+    <parent link="rl_lower_link" />
+    <child link="rl_foot_link" />
+    <origin xyz="0 0 -0.15" rpy="0 0 0" />
+  </joint>
+  <!-- RR: J1/J2/J3 servo IDs 10/11/12 -->
+  <link name="rr_hip_link">
+    <visual>
+      <origin xyz="0 -0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 -0.025 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.05 0.045" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 -0.025 0" rpy="0 0 0" />
+      <mass value="0.12" />
+      <inertia ixx="4.525e-05" ixy="0" ixz="0" iyy="3.625e-05" iyz="0" izz="4.1e-05" />
+    </inertial>
+  </link>
+  <link name="rr_upper_link">
+    <visual>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <geometry>
+        <box size="0.035 0.045 0.14" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.07" rpy="0 0 0" />
+      <mass value="0.15" />
+      <inertia ixx="0.0002703125" ixy="0" ixz="0" iyy="0.0002603125" iyz="0" izz="4.0625e-05" />
+    </inertial>
+  </link>
+  <link name="rr_lower_link">
+    <visual>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+      <material name="leg_yellow" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <geometry>
+        <box size="0.025 0.025 0.15" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 -0.075" rpy="0 0 0" />
+      <mass value="0.1" />
+      <inertia ixx="0.000192708333" ixy="0" ixz="0" iyy="0.000192708333" iyz="0" izz="1.04166667e-05" />
+    </inertial>
+  </link>
+  <link name="rr_foot_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+      <material name="foot_black" />
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.03" />
+      <inertia ixx="4.8e-06" ixy="0" ixz="0" iyy="4.8e-06" iyz="0" izz="4.8e-06" />
+    </inertial>
+  </link>
+  <joint name="rr_j1" type="revolute">
+    <parent link="base_link" />
+    <child link="rr_hip_link" />
+    <origin xyz="-0.25 -0.0375 0" rpy="0 0 0" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-0.523598776" upper="0.523598776" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="rr_j2" type="revolute">
+    <parent link="rr_hip_link" />
+    <child link="rr_upper_link" />
+    <origin xyz="0 -0.05 0" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.785398163" upper="1.74532925" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="rr_j3" type="revolute">
+    <parent link="rr_upper_link" />
+    <child link="rr_lower_link" />
+    <origin xyz="0 0 -0.14" rpy="0 0 0" />
+    <axis xyz="0 -1 0" />
+    <limit lower="0" upper="2.61799388" effort="0.981" velocity="4.717" />
+    <dynamics damping="0.05" friction="0.02" />
+  </joint>
+  <joint name="rr_foot_fixed" type="fixed">
+    <parent link="rr_lower_link" />
+    <child link="rr_foot_link" />
+    <origin xyz="0 0 -0.15" rpy="0 0 0" />
+  </joint>
+</robot>

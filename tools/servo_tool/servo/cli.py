@@ -31,10 +31,13 @@ PRESETS = {
         crouch_amplitude=0.0,
         speed=800,
         acceleration=80,
-        duty_factor=0.80,
+        duty_factor=0.58,
         control_rate=50.0,
+        stance_j1_angle=4.0,
         stance_j2_angle=30.0,
         stance_j3_angle=60.0,
+        weight_shift_amplitude=1.5,
+        preload_amplitude=1.5,
     ),
 }
 
@@ -172,6 +175,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     walk.add_argument("--lift", type=float, help="J3 lift amplitude in degrees")
     walk.add_argument("--crouch", type=float, help="J3 crouch angle in degrees")
     walk.add_argument(
+        "--stance-j1", type=float, help="walking stance J1 abduction angle"
+    )
+    walk.add_argument(
         "--stance-j2", type=float, help="walking stance J2 angle in degrees"
     )
     walk.add_argument(
@@ -179,6 +185,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     walk.add_argument(
         "--duty", type=float, help="fraction of each cycle spent on the ground"
+    )
+    walk.add_argument(
+        "--weight-shift", type=float, help="diagonal J1 load-transfer amplitude"
+    )
+    walk.add_argument(
+        "--preload", type=float, help="stance-pair preload in degree-equivalent units"
     )
     walk.add_argument(
         "--speed", type=int, help="maximum STS speed-register value"
@@ -259,6 +271,11 @@ def resolve_gait(args: argparse.Namespace) -> GaitParameters:
         control_rate=(
             args.rate if args.rate is not None else preset.control_rate
         ),
+        stance_j1_angle=(
+            args.stance_j1
+            if args.stance_j1 is not None
+            else preset.stance_j1_angle
+        ),
         stance_j2_angle=(
             args.stance_j2
             if args.stance_j2 is not None
@@ -268,6 +285,16 @@ def resolve_gait(args: argparse.Namespace) -> GaitParameters:
             args.stance_j3
             if args.stance_j3 is not None
             else preset.stance_j3_angle
+        ),
+        weight_shift_amplitude=(
+            args.weight_shift
+            if args.weight_shift is not None
+            else preset.weight_shift_amplitude
+        ),
+        preload_amplitude=(
+            args.preload
+            if args.preload is not None
+            else preset.preload_amplitude
         ),
     )
     gait.validate()
@@ -636,6 +663,7 @@ def run_walk(robot: SpotRobot, gait: GaitParameters, cycles: int) -> None:
             (leg, joint_number): angle
             for leg in ("FL", "FR", "RL", "RR")
             for joint_number, angle in (
+                (1, gait.stance_j1_angle),
                 (2, gait.stance_j2_angle),
                 (3, gait.stance_j3_angle),
             )
@@ -855,9 +883,12 @@ def main(argv: list[str] | None = None) -> int:
                     f"J2={gait.hip_amplitude:g}deg, "
                     f"J3={gait.lift_amplitude:g}deg, "
                     f"speed cap={gait.speed}, accel={gait.acceleration}, "
-                    f"stance=J2 {gait.stance_j2_angle:g}deg/"
+                    f"stance=J1 {gait.stance_j1_angle:g}deg/"
+                    f"J2 {gait.stance_j2_angle:g}deg/"
                     f"J3 {gait.stance_j3_angle:g}deg, "
-                    f"duty={gait.duty_factor:.2f}"
+                    f"duty={gait.duty_factor:.2f}, "
+                    f"shift={gait.weight_shift_amplitude:g}deg, "
+                    f"preload={gait.preload_amplitude:g}deg"
                 )
                 run_walk(robot, gait, args.cycles)
                 print("Gait complete; returned to the selected walking stance.")

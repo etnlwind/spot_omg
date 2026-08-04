@@ -43,8 +43,11 @@ class GaitParameters:
     acceleration: int = 25
     duty_factor: float = 0.75
     control_rate: float = 30.0
+    stance_j1_angle: float = 0.0
     stance_j2_angle: float = 45.0
     stance_j3_angle: float = 90.0
+    weight_shift_amplitude: float = 0.0
+    preload_amplitude: float = 0.0
 
     def validate(self) -> None:
         if self.pattern not in {"trot", "crawl"}:
@@ -65,10 +68,16 @@ class GaitParameters:
             raise ValueError("duty factor must be at least 0.5 and below 1.0")
         if not 10.0 <= self.control_rate <= 100.0:
             raise ValueError("control rate must be between 10 and 100 Hz")
+        if not -15.0 <= self.stance_j1_angle <= 15.0:
+            raise ValueError("stance J1 angle must be between -15 and 15 degrees")
         if not 15.0 <= self.stance_j2_angle <= 60.0:
             raise ValueError("stance J2 angle must be between 15 and 60 degrees")
         if not 30.0 <= self.stance_j3_angle <= 120.0:
             raise ValueError("stance J3 angle must be between 30 and 120 degrees")
+        if not 0.0 <= self.weight_shift_amplitude <= 5.0:
+            raise ValueError("weight shift amplitude must be between 0 and 5 degrees")
+        if not 0.0 <= self.preload_amplitude <= 5.0:
+            raise ValueError("preload amplitude must be between 0 and 5 degrees")
 
 
 class SpotConfig:
@@ -535,6 +544,7 @@ class SpotRobot:
         # Original single-leg crawl: FR -> RR -> FL -> RL.
         "crawl": {"FR": 0.00, "RR": 0.25, "FL": 0.50, "RL": 0.75},
     }
+    TROT_PAIR_SIGNS = {"FL": 1, "RR": 1, "FR": -1, "RL": -1}
 
     def __init__(self, bus: ServoBus, config: SpotConfig) -> None:
         self.bus = bus
@@ -829,6 +839,26 @@ class SpotRobot:
         """Periodic joint interpolation with less endpoint dwell than smootherstep."""
         return 0.5 - 0.5 * math.cos(math.pi * value)
 
+    @classmethod
+    def _trot_support_transfer(cls, phase: float, duty_factor: float) -> float:
+        """Return -1..+1 load transfer aligned to trot support phases.
+
+        Positive selects FL+RR and negative selects FR+RL.  With a duty
+        factor above 0.5, the transition happens only while all four feet
+        are planted; the selected value is then held through diagonal swing.
+        """
+        phase %= 1.0
+        overlap = duty_factor - 0.5
+        if overlap <= 1e-9:
+            return 1.0 if phase < 0.5 else -1.0
+        if phase < overlap:
+            return -1.0 + 2.0 * cls._cosine_ease(phase / overlap)
+        if phase < 0.5:
+            return 1.0
+        if phase < 0.5 + overlap:
+            return 1.0 - 2.0 * cls._cosine_ease((phase - 0.5) / overlap)
+        return -1.0
+
     @staticmethod
     def leg_forward_kinematics(
         upper_angle: float,
@@ -883,21 +913,61 @@ class SpotRobot:
             return dict(base)
         targets = dict(base)
         phase_offsets = self.PHASE_OFFSETS[parameters.pattern]
+        transfer_wave = (
+            self._trot_support_transfer(phase, parameters.duty_factor)
+            if parameters.pattern == "trot"
+            else 0.0
+        )
         for leg in LEG_ORDER:
             leg_phase = (phase + phase_offsets[leg]) % 1.0
             if leg_phase < parameters.duty_factor:
                 progress = leg_phase / parameters.duty_factor
-                hip_wave = 1.0 - 2.0 * self._cosine_ease(progress)
+                # Touch down in front, then keep the foot planted while it
+                # travels to the rear relative to the advancing body.
+                body_forward_wave = 1.0 - 2.0 * self._cosine_ease(progress)
                 lift_wave = 0.0
             else:
                 progress = (leg_phase - parameters.duty_factor) / (
                     1.0 - parameters.duty_factor
                 )
-                hip_wave = -1.0 + 2.0 * self._cosine_ease(progress)
-                lift_wave = math.sin(math.pi * progress) ** 2
+                # Use a three-stage swing so the toe clears the floor before
+                # moving forward: lift, transfer at full clearance, lower.
+                lift_end = 0.20
+                lower_start = 0.80
+                if progress < lift_end:
+                    body_forward_wave = -1.0
+                    lift_wave = self._cosine_ease(progress / lift_end)
+                elif progress < lower_start:
+                    transfer_progress = (progress - lift_end) / (
+                        lower_start - lift_end
+                    )
+                    body_forward_wave = -1.0 + 2.0 * self._cosine_ease(
+                        transfer_progress
+                    )
+                    lift_wave = 1.0
+                else:
+                    body_forward_wave = 1.0
+                    lift_wave = 1.0 - self._cosine_ease(
+                        (progress - lower_start) / (1.0 - lower_start)
+                    )
 
             hip_joint = self.config.joint(leg, 2)
             knee_joint = self.config.joint(leg, 3)
+            lateral_joint = self.config.joint(leg, 1)
+            lateral_base = self.config.position_to_angle(
+                leg, 1, base[lateral_joint.servo_id]
+            )
+            pair_sign = self.TROT_PAIR_SIGNS.get(leg, 0)
+            lateral_angle = (
+                lateral_base
+                + pair_sign
+                * parameters.weight_shift_amplitude
+                * transfer_wave
+                * amplitude_scale
+            )
+            targets[lateral_joint.servo_id] = self.config.angle_to_position(
+                leg, 1, lateral_angle
+            )
             hip_base = self.config.position_to_angle(
                 leg, 2, base[hip_joint.servo_id]
             )
@@ -916,15 +986,25 @@ class SpotRobot:
             lifted_knee = nominal_knee + parameters.lift_amplitude * amplitude_scale
             _, lifted_down = self.leg_forward_kinematics(hip_base, lifted_knee)
             lift_height = max(0.0, nominal_down - lifted_down)
+            preload_height = base_down * math.sin(
+                math.radians(parameters.preload_amplitude)
+            )
 
             foot_forward = (
                 base_forward
                 + self.config.gait_forward_signs[leg]
                 * stride
-                * hip_wave
+                * body_forward_wave
                 * amplitude_scale
             )
             foot_down = nominal_down - lift_height * lift_wave
+            if leg_phase < parameters.duty_factor:
+                foot_down += (
+                    pair_sign
+                    * preload_height
+                    * transfer_wave
+                    * amplitude_scale
+                )
             hip_angle, knee_angle = self.leg_inverse_kinematics(
                 foot_forward, foot_down
             )

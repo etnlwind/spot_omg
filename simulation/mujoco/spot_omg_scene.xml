@@ -1,0 +1,108 @@
+<mujoco model="spot_omg_dynamic">
+  <!--Generated from hardware/urdf/spot_omg.urdf; do not hand-edit.-->
+  <compiler angle="radian"/>
+
+  <option integrator="implicitfast" noslip_iterations="10"/>
+
+  <worldbody>
+    <geom name="ground" size="5 5 0.1" type="plane" friction="0.9" rgba="0.18 0.22 0.26 1"/>
+    <light name="sun" pos="0 0 3" dir="0 0 -1" type="directional" ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8"/>
+    <body name="base_link">
+      <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="1.8" diaginertia="0.0383438 0.038235 0.00157875"/>
+      <joint name="root" type="free"/>
+      <geom size="0.25 0.0375 0.035" type="box" rgba="0.08 0.1 0.13 1"/>
+      <body name="imu_link" pos="0 0 0.035"/>
+      <body name="fl_hip_link" pos="0.25 0.0375 0">
+        <inertial pos="0 0.025 0" quat="0.707107 0.707107 0 0" mass="0.12" diaginertia="4.525e-05 4.1e-05 3.625e-05"/>
+        <joint name="fl_j1" pos="0 0 0" axis="1 0 0" range="-0.523599 0.523599" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+        <geom size="0.02 0.025 0.0225" pos="0 0.025 0" type="box" rgba="0.95 0.72 0.05 1"/>
+        <body name="fl_upper_link" pos="0 0.05 0">
+          <inertial pos="0 0 -0.07" mass="0.15" diaginertia="0.000270312 0.000260313 4.0625e-05"/>
+          <joint name="fl_j2" pos="0 0 0" axis="0 1 0" range="-0.785398 1.74533" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+          <geom size="0.0175 0.0225 0.07" pos="0 0 -0.07" type="box" rgba="0.95 0.72 0.05 1"/>
+          <body name="fl_lower_link" pos="0 0 -0.14">
+            <inertial pos="0 0 -0.075" mass="0.1" diaginertia="0.000192708 0.000192708 1.04167e-05"/>
+            <joint name="fl_j3" pos="0 0 0" axis="0 -1 0" range="0 2.61799" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+            <geom size="0.0125 0.0125 0.075" pos="0 0 -0.075" type="box" rgba="0.95 0.72 0.05 1"/>
+            <body name="fl_foot_link" pos="0 0 -0.15">
+              <inertial pos="0 0 0" mass="0.03" diaginertia="4.8e-06 4.8e-06 4.8e-06"/>
+              <geom name="fl_foot_geom" size="0.02" friction="0.9" rgba="0.03 0.03 0.03 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="fr_hip_link" pos="0.25 -0.0375 0">
+        <inertial pos="0 -0.025 0" quat="0.707107 0.707107 0 0" mass="0.12" diaginertia="4.525e-05 4.1e-05 3.625e-05"/>
+        <joint name="fr_j1" pos="0 0 0" axis="-1 0 0" range="-0.523599 0.523599" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+        <geom size="0.02 0.025 0.0225" pos="0 -0.025 0" type="box" rgba="0.95 0.72 0.05 1"/>
+        <body name="fr_upper_link" pos="0 -0.05 0">
+          <inertial pos="0 0 -0.07" mass="0.15" diaginertia="0.000270312 0.000260313 4.0625e-05"/>
+          <joint name="fr_j2" pos="0 0 0" axis="0 1 0" range="-0.785398 1.74533" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+          <geom size="0.0175 0.0225 0.07" pos="0 0 -0.07" type="box" rgba="0.95 0.72 0.05 1"/>
+          <body name="fr_lower_link" pos="0 0 -0.14">
+            <inertial pos="0 0 -0.075" mass="0.1" diaginertia="0.000192708 0.000192708 1.04167e-05"/>
+            <joint name="fr_j3" pos="0 0 0" axis="0 -1 0" range="0 2.61799" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+            <geom size="0.0125 0.0125 0.075" pos="0 0 -0.075" type="box" rgba="0.95 0.72 0.05 1"/>
+            <body name="fr_foot_link" pos="0 0 -0.15">
+              <inertial pos="0 0 0" mass="0.03" diaginertia="4.8e-06 4.8e-06 4.8e-06"/>
+              <geom name="fr_foot_geom" size="0.02" friction="0.9" rgba="0.03 0.03 0.03 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="rl_hip_link" pos="-0.25 0.0375 0">
+        <inertial pos="0 0.025 0" quat="0.707107 0.707107 0 0" mass="0.12" diaginertia="4.525e-05 4.1e-05 3.625e-05"/>
+        <joint name="rl_j1" pos="0 0 0" axis="1 0 0" range="-0.523599 0.523599" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+        <geom size="0.02 0.025 0.0225" pos="0 0.025 0" type="box" rgba="0.95 0.72 0.05 1"/>
+        <body name="rl_upper_link" pos="0 0.05 0">
+          <inertial pos="0 0 -0.07" mass="0.15" diaginertia="0.000270312 0.000260313 4.0625e-05"/>
+          <joint name="rl_j2" pos="0 0 0" axis="0 1 0" range="-0.785398 1.74533" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+          <geom size="0.0175 0.0225 0.07" pos="0 0 -0.07" type="box" rgba="0.95 0.72 0.05 1"/>
+          <body name="rl_lower_link" pos="0 0 -0.14">
+            <inertial pos="0 0 -0.075" mass="0.1" diaginertia="0.000192708 0.000192708 1.04167e-05"/>
+            <joint name="rl_j3" pos="0 0 0" axis="0 -1 0" range="0 2.61799" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+            <geom size="0.0125 0.0125 0.075" pos="0 0 -0.075" type="box" rgba="0.95 0.72 0.05 1"/>
+            <body name="rl_foot_link" pos="0 0 -0.15">
+              <inertial pos="0 0 0" mass="0.03" diaginertia="4.8e-06 4.8e-06 4.8e-06"/>
+              <geom name="rl_foot_geom" size="0.02" friction="0.9" rgba="0.03 0.03 0.03 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="rr_hip_link" pos="-0.25 -0.0375 0">
+        <inertial pos="0 -0.025 0" quat="0.707107 0.707107 0 0" mass="0.12" diaginertia="4.525e-05 4.1e-05 3.625e-05"/>
+        <joint name="rr_j1" pos="0 0 0" axis="-1 0 0" range="-0.523599 0.523599" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+        <geom size="0.02 0.025 0.0225" pos="0 -0.025 0" type="box" rgba="0.95 0.72 0.05 1"/>
+        <body name="rr_upper_link" pos="0 -0.05 0">
+          <inertial pos="0 0 -0.07" mass="0.15" diaginertia="0.000270312 0.000260313 4.0625e-05"/>
+          <joint name="rr_j2" pos="0 0 0" axis="0 1 0" range="-0.785398 1.74533" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+          <geom size="0.0175 0.0225 0.07" pos="0 0 -0.07" type="box" rgba="0.95 0.72 0.05 1"/>
+          <body name="rr_lower_link" pos="0 0 -0.14">
+            <inertial pos="0 0 -0.075" mass="0.1" diaginertia="0.000192708 0.000192708 1.04167e-05"/>
+            <joint name="rr_j3" pos="0 0 0" axis="0 -1 0" range="0 2.61799" actuatorfrclimited="true" actuatorfrcrange="-2.942 2.942" armature="0.002" damping="0.05" frictionloss="0.02"/>
+            <geom size="0.0125 0.0125 0.075" pos="0 0 -0.075" type="box" rgba="0.95 0.72 0.05 1"/>
+            <body name="rr_foot_link" pos="0 0 -0.15">
+              <inertial pos="0 0 0" mass="0.03" diaginertia="4.8e-06 4.8e-06 4.8e-06"/>
+              <geom name="rr_foot_geom" size="0.02" friction="0.9" rgba="0.03 0.03 0.03 1"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <general name="fl_j1_position" joint="fl_j1" ctrllimited="true" ctrlrange="-0.523599 0.523599" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="fl_j2_position" joint="fl_j2" ctrllimited="true" ctrlrange="-0.785398 1.74533" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="fl_j3_position" joint="fl_j3" ctrllimited="true" ctrlrange="0 2.61799" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="fr_j1_position" joint="fr_j1" ctrllimited="true" ctrlrange="-0.523599 0.523599" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="fr_j2_position" joint="fr_j2" ctrllimited="true" ctrlrange="-0.785398 1.74533" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="fr_j3_position" joint="fr_j3" ctrllimited="true" ctrlrange="0 2.61799" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="rl_j1_position" joint="rl_j1" ctrllimited="true" ctrlrange="-0.523599 0.523599" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="rl_j2_position" joint="rl_j2" ctrllimited="true" ctrlrange="-0.785398 1.74533" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="rl_j3_position" joint="rl_j3" ctrllimited="true" ctrlrange="0 2.61799" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="rr_j1_position" joint="rr_j1" ctrllimited="true" ctrlrange="-0.523599 0.523599" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="rr_j2_position" joint="rr_j2" ctrllimited="true" ctrlrange="-0.785398 1.74533" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+    <general name="rr_j3_position" joint="rr_j3" ctrllimited="true" ctrlrange="0 2.61799" forcelimited="true" forcerange="-2.942 2.942" biastype="affine" gainprm="35" biasprm="0 -35 -0.8"/>
+  </actuator>
+</mujoco>

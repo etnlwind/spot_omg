@@ -289,21 +289,40 @@ spotctl --port /dev/cu.usbmodem5B790788341 walk \
 
 실제 하중을 지지하면서 천천히 시험할 때는 power stance (고하중 자세)를 사용합니다.
 이 프리셋은 J2 `30°`, J3 `60°`로 다리를 더 펴서 수직 하중에 대한 mechanical
-advantage (기계적 이득)를 높이고, 보폭과 발 들기 높이는 줄이며 지지율을 `80%`로
-늘립니다. 완전히 편 다리는 특이점과 충격 흡수 문제가 있으므로 사용하지 않습니다.
+advantage (기계적 이득)를 높이고, 보폭과 발 들기 높이는 줄입니다. 지지율은
+`58%`로 두어 대각선 전환 전에 주기의 `16%` 동안 네 발이 함께 지면을 지지합니다.
+이 구간에서 J1 weight shift (J1 하중 이동)와 stance preload (지지 다리 선행 하중)를
+먼저 적용한 뒤 스윙 발을 듭니다. 완전히 편 다리는 특이점과 충격 흡수 문제가
+있으므로 사용하지 않습니다.
 
 ```bash
 spotctl --port PORT walk --gait trot --preset power --cycles 1
 ```
 
 기본값은 `period=2.4`, `hip=10°`, `lift=16°`, `speed=800`, `accel=80`,
-`rate=50Hz`입니다. 고정 시험 후 실제 바닥에서는 먼저 1주기만 실행하세요.
+`rate=50Hz`, `stance-j1=4°`입니다. 고정 시험 후 실제 바닥에서는 먼저
+1주기만 실행하세요.
 자세와 지지율은 다음처럼 직접 조정할 수 있습니다.
 
 ```bash
 spotctl --port PORT walk --preset power --cycles 1 \
-  --stance-j2 32 --stance-j3 64 --duty 0.78
+  --stance-j1 4 --stance-j2 32 --stance-j3 64 --duty 0.60 \
+  --weight-shift 1.5 --preload 1.5
 ```
+
+`--stance-j1`은 J1 abduction (J1 외전) 논리 각도입니다. 양수값을 주면 네 다리
+모두 동일한 `+` 각도를 사용합니다. 실제 장착 방향 차이는 저수준 `direction`에서
+FL/RR `+1`, FR/RL `-1`로 변환합니다. 먼저 `2~5°` 범위에서 시험하세요.
+
+`--weight-shift`는 대각선 지지 쌍에 먼저 적용하는 J1 각도입니다. 네 발이
+모두 닿은 overlap (중복 지지) 구간에서 다음 지지 쌍으로 부드럽게 넘기고,
+반대 대각선 발이 공중에 있는 동안 그 보정값을 유지합니다.
+`--preload`는 지지 다리를 먼저 밀어 하중을 넘기는 degree-equivalent
+(각도 상당값)입니다. IMU가 없는 open-loop 값이므로 둘 다 `1~2°`부터 조정하세요.
+
+Swing trajectory (스윙 궤적)는 발을 먼저 완전히 든 뒤 앞으로 옮기고 마지막에
+내리는 3단계 경로를 사용합니다. 따라서 `--lift`는 발을 앞으로 옮기는 동안
+유지되는 clearance (지면 여유) 크기를 조절합니다.
 
 기존 한 다리씩 움직이는 크롤 패턴도 유지됩니다.
 
@@ -314,7 +333,8 @@ spotctl --port /dev/cu.usbmodem5B790788341 walk \
 
 ### Cartesian IK 트롯 제어
 
-트롯은 `stand45`를 기준으로 J1을 고정하고 `FL+RR`과 `FR+RL`을 정확히 반
+트롯은 선택한 stance (지지 자세)를 기준으로 J1 체중 이동을 적용하고
+`FL+RR`과 `FR+RL`을 정확히 반
 주기 차이로 움직입니다. 각 발은 주기의 65% 동안 지면에 머물고 35% 동안만
 스윙하므로, 대각선 쌍이 바뀌기 전에 주기의 15% 동안 네 발이 모두 접지합니다.
 시작과 종료에서는 0.5초 동안 진폭을 부드럽게 증감합니다.
@@ -322,6 +342,8 @@ spotctl --port /dev/cu.usbmodem5B790788341 walk \
 `--hip`은 전후 보폭, `--lift`는 스윙 높이를 degree 상당값으로 지정합니다.
 두 값은 직접 관절에 더하지 않고 정규화된 발끝 좌표로 변환된 뒤 IK를 통해
 J2와 J3에 함께 반영됩니다. 따라서 지지 발의 높이는 유지되고 스윙 발만 들립니다.
+각 발은 몸체 좌표계에서 앞쪽 `\` 자세로 착지하고, 지지 구간에는 뒤쪽 `/`로
+지면을 밀며, 발을 든 뒤 다시 앞쪽 `\`로 복귀합니다.
 
 - 시작할 때 speed와 acceleration을 한 번 설정
 - 보행 중에는 기본 30Hz로 12개 Goal Position만 Sync Write
@@ -402,7 +424,7 @@ spotctl pose stand45
 - FL이 한 차례 느리고 작게 보였으나 설정과 EEPROM은 다른 J2/J3와 같았고 이후
   같은 조건에서 재현되지 않았습니다.
 - RR J1(ID 10)에서 오류 값 `8`이 간헐적으로 검출됐습니다.
-- 단위 테스트 41개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
+- 단위 테스트 44개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
 
 세부 조건, 단계별 시간과 최종 조립 후 체크리스트는
 [`HARDWARE_TEST_LOG.md`](./HARDWARE_TEST_LOG.md)를 참고하세요.

@@ -38,6 +38,11 @@ spot_omg/
 - [ ] Lesson 08 - STS3215
 - [ ] Spot OMG Firmware
 
+## 🤖 Simulation Model
+
+Isaac Sim/Isaac Lab에서 사용할 12-DOF URDF 초안과 실측 파라미터는
+[`hardware/urdf`](./hardware/urdf/README.md)에서 관리합니다.
+
 ---
 
 ## License

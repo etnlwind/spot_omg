@@ -126,7 +126,7 @@ class SpotConfigTest(unittest.TestCase):
                 self.config.joint(leg, 1).direction
                 for leg in ("FL", "FR", "RL", "RR")
             ),
-            (1, 1, 1, 1),
+            (1, -1, -1, 1),
         )
 
     def test_all_legs_share_the_same_canonical_stand45_angles(self) -> None:
@@ -293,7 +293,6 @@ class SpotConfigTest(unittest.TestCase):
         self.assertAlmostEqual(fl[1], rr[1], delta=0.002)
         self.assertAlmostEqual(fr[0], rl[0], delta=0.002)
         self.assertAlmostEqual(fr[1], rl[1], delta=0.002)
-        self.assertAlmostEqual(fl[0], -fr[0], delta=0.002)
 
     def test_planar_leg_ik_round_trip(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
@@ -334,6 +333,154 @@ class SpotConfigTest(unittest.TestCase):
                 (gait.duty_factor - offset) % 1.0, base, gait
             )
             self.assertLess(stance_start[servo_id], stance_end[servo_id])
+
+    def test_each_foot_moves_rearward_on_ground_and_forward_in_air(self) -> None:
+        robot = SpotRobot(RecordingBus(), self.config)
+        gait = GaitParameters(
+            pattern="trot",
+            period=2.0,
+            hip_amplitude=8.0,
+            lift_amplitude=20.0,
+            crouch_amplitude=0.0,
+            duty_factor=0.82,
+            stance_j1_angle=4.0,
+            stance_j2_angle=25.0,
+            stance_j3_angle=50.0,
+        )
+        base = self.config.angles_to_targets(
+            {
+                (leg, joint_number): angle
+                for leg in ("FL", "FR", "RL", "RR")
+                for joint_number, angle in ((1, 4.0), (2, 25.0), (3, 50.0))
+            }
+        )
+
+        def body_foot(leg: str, local_phase: float) -> tuple[float, float]:
+            global_phase = (
+                local_phase - SpotRobot.PHASE_OFFSETS["trot"][leg]
+            ) % 1.0
+            targets = robot.gait_targets(global_phase, base, gait)
+            j2 = self.config.joint(leg, 2).servo_id
+            j3 = self.config.joint(leg, 3).servo_id
+            upper = self.config.position_to_angle(leg, 2, targets[j2])
+            knee = self.config.position_to_angle(leg, 3, targets[j3])
+            forward, down = robot.leg_forward_kinematics(upper, knee)
+            return forward * self.config.gait_forward_signs[leg], down
+
+        for leg in ("FL", "FR", "RL", "RR"):
+            touchdown = body_foot(leg, 0.0)
+            toe_off = body_foot(leg, gait.duty_factor)
+            mid_swing = body_foot(
+                leg, gait.duty_factor + (1.0 - gait.duty_factor) / 2.0
+            )
+            next_touchdown = body_foot(leg, 1.0 - 1e-6)
+            self.assertGreater(touchdown[0], toe_off[0])
+            self.assertGreater(next_touchdown[0], mid_swing[0])
+            self.assertLess(mid_swing[1], touchdown[1])
+
+    def test_swing_foot_lifts_before_moving_forward(self) -> None:
+        robot = SpotRobot(RecordingBus(), self.config)
+        gait = GaitParameters(
+            pattern="trot",
+            period=2.0,
+            hip_amplitude=8.0,
+            lift_amplitude=20.0,
+            crouch_amplitude=0.0,
+            duty_factor=0.58,
+            stance_j1_angle=8.0,
+            stance_j2_angle=25.0,
+            stance_j3_angle=50.0,
+        )
+        base = self.config.angles_to_targets(
+            {
+                (leg, joint): angle
+                for leg in ("FL", "FR", "RL", "RR")
+                for joint, angle in ((1, 8.0), (2, 25.0), (3, 50.0))
+            }
+        )
+
+        def foot_at_swing_progress(progress: float) -> tuple[float, float]:
+            phase = gait.duty_factor + (1.0 - gait.duty_factor) * progress
+            targets = robot.gait_targets(phase, base, gait)
+            upper = self.config.position_to_angle("FL", 2, targets[2])
+            knee = self.config.position_to_angle("FL", 3, targets[3])
+            forward, down = robot.leg_forward_kinematics(upper, knee)
+            return forward * self.config.gait_forward_signs["FL"], down
+
+        toe_off = foot_at_swing_progress(0.0)
+        lifted = foot_at_swing_progress(0.20)
+        transferred = foot_at_swing_progress(0.80)
+        touchdown = foot_at_swing_progress(1.0 - 1e-6)
+        self.assertAlmostEqual(lifted[0], toe_off[0], delta=0.002)
+        self.assertLess(lifted[1], toe_off[1])
+        self.assertGreater(transferred[0], lifted[0])
+        self.assertAlmostEqual(transferred[1], lifted[1], delta=0.002)
+        self.assertAlmostEqual(touchdown[0], transferred[0], delta=0.002)
+        self.assertGreater(touchdown[1], transferred[1])
+
+    def test_power_gait_transfers_load_before_diagonal_liftoff(self) -> None:
+        robot = SpotRobot(RecordingBus(), self.config)
+        gait = resolve_gait(parse_args(["walk", "--preset", "power"]))
+        base = self.config.angles_to_targets(
+            {
+                (leg, joint_number): angle
+                for leg in ("FL", "FR", "RL", "RR")
+                for joint_number, angle in (
+                    (1, gait.stance_j1_angle),
+                    (2, gait.stance_j2_angle),
+                    (3, gait.stance_j3_angle),
+                )
+            }
+        )
+
+        # During the four-foot overlap, transfer toward FL+RR before FR+RL
+        # lifts at phase 0.08.
+        transfer = robot.gait_targets(0.06, base, gait)
+
+        def angles_and_down(leg: str) -> tuple[float, float]:
+            ids = {
+                joint: self.config.joint(leg, joint).servo_id
+                for joint in (1, 2, 3)
+            }
+            angles = {
+                joint: self.config.position_to_angle(
+                    leg, joint, transfer[servo_id]
+                )
+                for joint, servo_id in ids.items()
+            }
+            down = robot.leg_forward_kinematics(angles[2], angles[3])[1]
+            return angles[1], down
+
+        fl_j1, fl_down = angles_and_down("FL")
+        fr_j1, fr_down = angles_and_down("FR")
+        self.assertGreater(fl_j1, gait.stance_j1_angle)
+        self.assertLess(fr_j1, gait.stance_j1_angle)
+        self.assertGreater(fl_down, fr_down)
+
+        # The transfer reaches full amplitude at liftoff and stays there
+        # instead of peaking halfway through swing.
+        self.assertAlmostEqual(
+            robot._trot_support_transfer(0.08, gait.duty_factor), 1.0
+        )
+        self.assertAlmostEqual(
+            robot._trot_support_transfer(0.25, gait.duty_factor), 1.0
+        )
+        self.assertAlmostEqual(
+            robot._trot_support_transfer(0.58, gait.duty_factor), -1.0
+        )
+
+        # Once FR+RL enter swing, their feet must be above FL+RR.
+        swing = robot.gait_targets(0.25, base, gait)
+
+        def down_at(leg: str) -> float:
+            j2 = self.config.joint(leg, 2).servo_id
+            j3 = self.config.joint(leg, 3).servo_id
+            upper = self.config.position_to_angle(leg, 2, swing[j2])
+            knee = self.config.position_to_angle(leg, 3, swing[j3])
+            return robot.leg_forward_kinematics(upper, knee)[1]
+
+        self.assertLess(down_at("FR"), down_at("FL"))
+        self.assertLess(down_at("RL"), down_at("RR"))
 
     def test_trot_has_four_foot_support_before_each_diagonal_swing(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
@@ -435,7 +582,7 @@ class SpotConfigTest(unittest.TestCase):
         self.assertEqual(
             (gait.stance_j2_angle, gait.stance_j3_angle), (30.0, 60.0)
         )
-        self.assertEqual(gait.duty_factor, 0.80)
+        self.assertEqual(gait.duty_factor, 0.58)
         self.assertLess(gait.hip_amplitude, 19.3)
 
         base = self.config.angles_to_targets(
@@ -447,6 +594,33 @@ class SpotConfigTest(unittest.TestCase):
         )
         for phase in (0.0, 0.25, 0.5, 0.75):
             self.assertEqual(len(robot.gait_targets(phase, base, gait)), 12)
+
+    def test_positive_stance_j1_abducts_all_four_legs(self) -> None:
+        outward_angle = 4.0
+        targets = self.config.angles_to_targets(
+            {
+                (leg, 1): outward_angle
+                for leg in ("FL", "FR", "RL", "RR")
+            }
+        )
+        actual = {
+            leg: self.config.position_to_angle(
+                leg, 1, targets[self.config.joint(leg, 1).servo_id]
+            )
+            for leg in ("FL", "FR", "RL", "RR")
+        }
+        for leg in ("FL", "FR", "RL", "RR"):
+            self.assertAlmostEqual(actual[leg], 4.0, delta=0.05)
+
+        raw_deltas = {
+            leg: targets[self.config.joint(leg, 1).servo_id]
+            - self.config.joint(leg, 1).center
+            for leg in ("FL", "FR", "RL", "RR")
+        }
+        self.assertGreater(raw_deltas["FL"], 0)
+        self.assertLess(raw_deltas["FR"], 0)
+        self.assertLess(raw_deltas["RL"], 0)
+        self.assertGreater(raw_deltas["RR"], 0)
 
     def test_calibration_and_pose_round_trip(self) -> None:
         self.config.set_joint_center(2, 2053)
@@ -649,6 +823,8 @@ class CommandLineTest(unittest.TestCase):
                 "walk",
                 "--preset",
                 "power",
+                "--stance-j1",
+                "4",
                 "--stance-j2",
                 "32",
                 "--stance-j3",
@@ -658,6 +834,7 @@ class CommandLineTest(unittest.TestCase):
             ]
         )
         gait = resolve_gait(args)
+        self.assertEqual(gait.stance_j1_angle, 4.0)
         self.assertEqual(gait.stance_j2_angle, 32.0)
         self.assertEqual(gait.stance_j3_angle, 64.0)
         self.assertEqual(gait.duty_factor, 0.78)
