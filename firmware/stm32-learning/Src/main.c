@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,13 +42,15 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+static uint16_t bno055_address = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,8 +59,17 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void uart_print(const char *text);
+static uint16_t BNO055_Detect(void);
+static void I2C_Scan(void);
+static HAL_StatusTypeDef BNO055_Write8(uint8_t reg, uint8_t value);
+static HAL_StatusTypeDef BNO055_Init(void);
+static HAL_StatusTypeDef BNO055_ReadEuler(int16_t *heading,
+                                         int16_t *roll,
+                                         int16_t *pitch);
+static void BNO055_PrintEuler(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -100,8 +113,22 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   HAL_UART_Receive_IT(&huart1, &rxData, 1);
+
+  uart_print("\r\nPROGRAM START\r\n");
+  HAL_Delay(700);
+  I2C_Scan();
+
+  bno055_address = BNO055_Detect();
+  if (bno055_address == 0) {
+      uart_print("BNO055 not found\r\n");
+  } else if (BNO055_Init() == HAL_OK) {
+      uart_print("BNO055 NDOF initialization OK\r\n");
+  } else {
+      uart_print("BNO055 initialization failed\r\n");
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -109,12 +136,11 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-//	    char msg[] = "RUN\r\n";
-//
-//	    HAL_UART_Transmit(&huart2, (uint8_t*)msg, sizeof(msg)-1, HAL_MAX_DELAY);
+    if (bno055_address != 0) {
+        BNO055_PrintEuler();
+    }
 
-	    HAL_Delay(1000);
-
+    HAL_Delay(20);  // 약 50Hz 출력
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -159,6 +185,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -287,6 +347,7 @@ static void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
@@ -294,13 +355,13 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -386,6 +447,216 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
     }
 
+}
+
+static void uart_print(const char *text)
+{
+    HAL_UART_Transmit(
+        &huart2,
+        (uint8_t *)text,
+        strlen(text),
+        HAL_MAX_DELAY
+    );
+}
+
+static uint16_t BNO055_Detect(void)
+{
+    const uint8_t addresses[] = {0x28, 0x29};
+    uint8_t chip_id;
+    char message[64];
+
+    for (uint32_t i = 0; i < 2; i++) {
+        uint16_t address = addresses[i] << 1;
+
+        if (HAL_I2C_IsDeviceReady(
+                &hi2c1,
+                address,
+                3,
+                100) == HAL_OK) {
+
+            if (HAL_I2C_Mem_Read(
+                    &hi2c1,
+                    address,
+                    0x00,
+                    I2C_MEMADD_SIZE_8BIT,
+                    &chip_id,
+                    1,
+                    100) == HAL_OK) {
+
+                snprintf(
+                    message,
+                    sizeof(message),
+                    "Address: 0x%02X, CHIP_ID: 0x%02X\r\n",
+                    addresses[i],
+                    chip_id
+                );
+
+                uart_print(message);
+
+                if (chip_id == 0xA0) {
+                    return address;
+                }
+            }
+        }
+    }
+
+    uart_print("BNO055 not found\r\n");
+    return 0;
+}
+
+static void I2C_Scan(void)
+{
+    char msg[64];
+    uint8_t found = 0;
+
+    uart_print("\r\nI2C scan start\r\n");
+
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        if (HAL_I2C_IsDeviceReady(
+                &hi2c1,
+                addr << 1,
+                2,
+                20) == HAL_OK) {
+
+            snprintf(msg, sizeof(msg),
+                     "Found: 0x%02X\r\n", addr);
+            uart_print(msg);
+            found++;
+        }
+    }
+
+    if (found == 0) {
+        uart_print("No I2C devices found\r\n");
+    }
+
+    uart_print("I2C scan finished\r\n");
+}
+
+#define BNO055_CHIP_ID_ADDR       0x00
+#define BNO055_PAGE_ID_ADDR       0x07
+#define BNO055_EULER_H_LSB_ADDR   0x1A
+#define BNO055_OPR_MODE_ADDR      0x3D
+#define BNO055_PWR_MODE_ADDR      0x3E
+#define BNO055_SYS_TRIGGER_ADDR   0x3F
+
+#define BNO055_MODE_CONFIG        0x00
+#define BNO055_MODE_NDOF          0x0C
+#define BNO055_POWER_NORMAL       0x00
+
+static HAL_StatusTypeDef BNO055_Write8(uint8_t reg, uint8_t value)
+{
+    return HAL_I2C_Mem_Write(&hi2c1,
+                             bno055_address,
+                             reg,
+                             I2C_MEMADD_SIZE_8BIT,
+                             &value,
+                             1,
+                             100);
+}
+
+static HAL_StatusTypeDef BNO055_Init(void)
+{
+    uint8_t chip_id = 0;
+
+    if (bno055_address == 0) {
+        return HAL_ERROR;
+    }
+
+    if (HAL_I2C_Mem_Read(&hi2c1,
+                         bno055_address,
+                         BNO055_CHIP_ID_ADDR,
+                         I2C_MEMADD_SIZE_8BIT,
+                         &chip_id,
+                         1,
+                         100) != HAL_OK || chip_id != 0xA0) {
+        return HAL_ERROR;
+    }
+
+    if (BNO055_Write8(BNO055_OPR_MODE_ADDR,
+                      BNO055_MODE_CONFIG) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    HAL_Delay(25);
+
+    if (BNO055_Write8(BNO055_PAGE_ID_ADDR, 0x00) != HAL_OK ||
+        BNO055_Write8(BNO055_PWR_MODE_ADDR,
+                      BNO055_POWER_NORMAL) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    HAL_Delay(10);
+
+    if (BNO055_Write8(BNO055_SYS_TRIGGER_ADDR, 0x00) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    HAL_Delay(10);
+
+    if (BNO055_Write8(BNO055_OPR_MODE_ADDR,
+                      BNO055_MODE_NDOF) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    HAL_Delay(30);
+
+    return HAL_OK;
+}
+
+static HAL_StatusTypeDef BNO055_ReadEuler(int16_t *heading,
+                                         int16_t *roll,
+                                         int16_t *pitch)
+{
+    uint8_t data[6];
+
+    if (HAL_I2C_Mem_Read(&hi2c1,
+                         bno055_address,
+                         BNO055_EULER_H_LSB_ADDR,
+                         I2C_MEMADD_SIZE_8BIT,
+                         data,
+                         sizeof(data),
+                         100) != HAL_OK) {
+        return HAL_ERROR;
+    }
+
+    *heading = (int16_t)(((uint16_t)data[1] << 8) | data[0]);
+    *roll = (int16_t)(((uint16_t)data[3] << 8) | data[2]);
+    *pitch = (int16_t)(((uint16_t)data[5] << 8) | data[4]);
+
+    return HAL_OK;
+}
+
+static void BNO055_PrintEuler(void)
+{
+    int16_t heading_raw;
+    int16_t roll_raw;
+    int16_t pitch_raw;
+    int32_t heading10;
+    int32_t roll10;
+    int32_t pitch10;
+    char message[100];
+
+    if (BNO055_ReadEuler(&heading_raw,
+                        &roll_raw,
+                        &pitch_raw) != HAL_OK) {
+        uart_print("Euler read error\r\n");
+        return;
+    }
+
+    /* BNO055 Euler scale: 16 LSB per degree. */
+    heading10 = ((int32_t)heading_raw * 10) / 16;
+    roll10 = ((int32_t)roll_raw * 10) / 16;
+    pitch10 = ((int32_t)pitch_raw * 10) / 16;
+
+    snprintf(message,
+             sizeof(message),
+             "Yaw=%ld.%01ld, Roll=%s%ld.%01ld, Pitch=%s%ld.%01ld deg\r\n",
+             (long)(heading10 / 10),
+             (long)labs(heading10 % 10),
+             roll10 < 0 ? "-" : "",
+             labs(roll10) / 10,
+             labs(roll10) % 10,
+             pitch10 < 0 ? "-" : "",
+             labs(pitch10) / 10,
+             labs(pitch10) % 10);
+
+    uart_print(message);
 }
 
 /* USER CODE END 4 */
