@@ -21,6 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "app_console.h"
+#include "robot.h"
+#include "servo_bus.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -51,6 +55,10 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 static uint16_t bno055_address = 0;
+static bool imu_log_enabled = false;
+static ServoBus servo_bus;
+static RobotController robot;
+static AppConsole console;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,11 +82,6 @@ static void BNO055_PrintEuler(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint8_t rxData;
-
-char rxBuffer[128];
-
-uint8_t rxIndex = 0;
 /* USER CODE END 0 */
 
 /**
@@ -115,7 +118,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_IT(&huart1, &rxData, 1);
+  servo_bus_init(&servo_bus, &huart1, 25U);
+  robot_init(&robot, &servo_bus);
+  app_console_init(&console, &huart2, &robot, &imu_log_enabled);
 
   uart_print("\r\nPROGRAM START\r\n");
   HAL_Delay(700);
@@ -129,6 +134,7 @@ int main(void)
   } else {
       uart_print("BNO055 initialization failed\r\n");
   }
+  app_console_print_help(&console);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -136,12 +142,18 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-    if (bno055_address != 0) {
+
+    /* USER CODE BEGIN 3 */
+    static uint32_t last_imu_print = 0U;
+
+    app_console_poll(&console);
+    if (imu_log_enabled && bno055_address != 0 &&
+        (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U) {
         BNO055_PrintEuler();
+        last_imu_print = HAL_GetTick();
     }
 
-    HAL_Delay(20);  // 약 50Hz 출력
-    /* USER CODE BEGIN 3 */
+    HAL_Delay(1);
   }
   /* USER CODE END 3 */
 }
@@ -282,7 +294,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 1000000;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -294,6 +306,20 @@ static void MX_USART1_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART1_Init 2 */
+
+  /*
+   * STS3215 uses a 1 Mbps bus. Keep this runtime guard in a USER CODE
+   * section so a CubeMX regeneration cannot silently leave USART1 at its
+   * 115200 default.
+   */
+  if (huart1.Init.BaudRate != 1000000U)
+  {
+    huart1.Init.BaudRate = 1000000U;
+    if (HAL_UART_Init(&huart1) != HAL_OK)
+    {
+      Error_Handler();
+    }
+  }
 
   /* USER CODE END USART1_Init 2 */
 
@@ -392,61 +418,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 {
-    if (huart->Instance == USART1)
-    {
-
-        if (rxData == '\r')
-
-        {
-
-            // 무시
-
-        }
-        else if (rxData == '\n')
-        {
-
-            rxBuffer[rxIndex] = '\0';
-
-            HAL_UART_Transmit(&huart2,
-
-                              (uint8_t *)rxBuffer,
-
-                              rxIndex,
-
-                              HAL_MAX_DELAY);
-
-            char crlf[] = "\r\n";
-
-            HAL_UART_Transmit(&huart2,
-
-                              (uint8_t *)crlf,
-
-                              2,
-
-                              HAL_MAX_DELAY);
-
-            rxIndex = 0;
-
-        }
-
-        else
-
-        {
-
-            if (rxIndex < sizeof(rxBuffer) - 1)
-
-            {
-
-                rxBuffer[rxIndex++] = rxData;
-
-            }
-
-        }
-
-        HAL_UART_Receive_IT(&huart1, &rxData, 1);
-
-    }
-
+    app_console_on_rx_complete(&console, huart);
 }
 
 static void uart_print(const char *text)

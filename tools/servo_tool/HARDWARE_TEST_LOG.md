@@ -1,6 +1,6 @@
 # Spot OMG URT-2 하드웨어 시험 기록
 
-이 문서는 2026-08-01부터 2026-08-05까지 Feetech URT-2와 STS3215 서보
+이 문서는 2026-08-01부터 2026-08-06까지 Feetech URT-2와 STS3215 서보
 12개로 확인한 설정, 보행·시뮬레이션·부하 시험과 판단을 정리한 기록입니다.
 
 ## 시험 범위와 현재 한계
@@ -540,6 +540,144 @@ spotctl --port /dev/cu.usbmodem5B790788341 walk \
 
 이 데이터에서 stance 구간 True-positive rate, swing 구간 False-positive rate,
 접촉 판정 지연을 확인한 뒤에만 실제 자세 제어 입력으로 연결합니다.
+
+## 2026-08-05 저녁 STM32F446RE 서보 제어 계층 구현
+
+기존 Mac/Python → URT-2 직접 제어를 Jetson/STM32 구조로 옮기기 위한 첫 단계로
+STM32F446RE용 제어 계층을 구현했습니다. 목표 연결은 다음과 같습니다.
+
+```text
+Mac 또는 Jetson
+  ↓ USB / ST-LINK VCP, 텍스트 명령 115200 bps
+STM32F446RE USART2
+  ↓ 명령 해석
+STM32F446RE USART1, Feetech binary protocol 1 Mbps
+  ↓ UART TX/RX
+URT-2
+  ↓ half-duplex TTL bus
+STS3215 ×12
+```
+
+URT-2가 STS3215 half-duplex TTL 버스 전환을 담당하므로 STM32 USART1은
+Single-wire mode가 아니라 일반 Asynchronous TX/RX로 사용합니다.
+
+### 구현 범위
+
+- `feetech_protocol.*`: instruction/status packet, checksum, little-endian 및
+  sign-magnitude 변환
+- `servo_bus.*`: blocking UART request/response, timeout, checksum 검증, URT-2
+  송신 echo 대응
+- `sts3215.*`: Ping, Torque Enable, Position/State Read, Position Write,
+  Sync Write
+- `robot_config.*`: `config/joints.json`의 ID·center·direction 12축 설정 이식
+- `robot.*`: 전체 서보 확인, 현재 위치 hold, torque rollback, 단일 서보 안전
+  이동, 2초 stand ramp, 최종 위치 검증
+- `app_console.*`: USART2 interrupt 기반 텍스트 명령 콘솔
+
+부팅만으로 모터가 움직이지 않으며 `move`, `hold`, `stand`처럼 명시적인 명령을
+입력해야 토크가 활성화됩니다. `move`는 현재 위치에서 최대 256 tick까지만
+허용합니다. `stand`는 ID 1~12가 모두 응답해야 시작하며, 현재 위치를 먼저 Goal
+Position으로 전송한 뒤 토크를 켜 오래된 목표값으로 튀는 동작을 방지합니다.
+
+현재 Python canonical coordinate와 동일한 stand 목표는 `(J1, J2, J3) =
+(0°, +45°, +90°)`이고 raw target은 다음과 같습니다.
+
+```text
+ID 1..12 = 2091, 1723, 1036, 2087, 2511, 3001,
+            2103, 1630, 3020, 1958, 2552, 1023
+```
+
+ARM Cortex-M4 대상 경고 오류 컴파일, C packet 단위 시험, STM32/Python 보정값
+일치 검사를 통과했고 기존 Servo tool 단위 시험 55개도 통과했습니다. 이 시점에는
+실제 STM32 → URT-2 Ping은 아직 검증하지 않았습니다.
+
+## 2026-08-06 STM32 시리얼 및 CubeMX 통합 점검
+
+### Mac 연결 경로와 `spotctl` 사용 범위
+
+Mac에 나타난 `/dev/cu.usbmodem...` 장치는 `STM32 STLink` VCP였습니다. 이 포트는
+USART2 텍스트 콘솔이며 URT-2의 Feetech raw serial port가 아닙니다. 따라서 현재
+구성에서 다음 명령은 사용할 수 없습니다.
+
+```text
+spotctl --port /dev/cu.usbmodem... scan
+```
+
+`spotctl`은 Mac → URT-2 USB 직접 연결에서만 사용합니다. Mac → STM32 구조에서는
+115200 bps 터미널로 연결한 뒤 펌웨어의 `ping 1`, `scan`, `read 1` 명령을
+사용합니다. STM32 펌웨어는 현재 transparent serial bridge가 아닙니다.
+
+### 콘솔 RX 문제 분석
+
+USART2 TX는 부팅 로그를 출력했지만 터미널에서 입력한 `help`에 응답하지 않는
+현상이 있었습니다. 터미널의 Local Echo는 입력 문자를 화면에 표시할 뿐 STM32가
+수신했다는 증거가 아닙니다. CubeMX 재생성 후 다음 설정이 제거된 것이 원인이었습니다.
+
+- `USART2 global interrupt`
+- `USART2_IRQHandler()`와 `HAL_UART_IRQHandler(&huart2)` 호출
+
+USART2 NVIC를 다시 활성화하고 우선순위를 1로 설정했습니다. 콘솔 개행 처리도
+터미널 종류와 무관하게 `CR`, `LF`, `CRLF`를 모두 허용하도록 수정했습니다.
+
+### IMU 로그 제어
+
+BNO055는 I2C 주소 `0x28`, CHIP_ID `0xA0`으로 검출됐고 NDOF 초기화 성공 로그를
+확인했습니다. 부팅 후 자세 로그가 콘솔 명령을 방해하지 않도록 연속 출력 기본값을
+OFF로 변경하고 다음 명령을 추가했습니다.
+
+```text
+imu on
+imu off
+imu status
+```
+
+`imu on`일 때만 10Hz로 Yaw/Roll/Pitch를 출력합니다.
+
+### USART1 baud 회귀와 최종 `.ioc` 설정
+
+첫 STM32 `scan`에서는 ID 1~12가 모두 timeout이었습니다. 이후 생성된 코드를
+검토한 결과 CubeMX 재생성 과정에서 USART1 baud가 `1,000,000`에서 `115200`으로
+되돌아간 사실을 확인했습니다. STS3215 버스와 속도가 맞지 않았으므로 이 timeout을
+URT-2 배선이나 서보 고장으로 확정할 수 없습니다.
+
+최종 `.ioc` 기준 UART 설정은 다음과 같습니다.
+
+| 항목 | USART1: URT-2 | USART2: ST-LINK 콘솔 |
+|---|---|---|
+| Pins | PA9 TX, PA10 RX | PA2 TX, PA3 RX |
+| Mode | Asynchronous TX/RX | Asynchronous TX/RX |
+| Baud | 1,000,000 | 115200 |
+| Frame | 8-N-1 | 8-N-1 |
+| Flow control | None | None |
+| Oversampling | 16 | 16 |
+| Global interrupt | OFF, blocking I/O | ON, priority 1 |
+
+CubeMX가 다시 기본 baud를 생성하더라도 실행 시 USART1을 1Mbps로 보정하는 guard를
+USER CODE 영역에 추가했습니다. CubeMX 생성 IRQ 코드와 임시 USER CODE IRQ가
+중복됐던 부분도 제거해 handler와 NVIC 설정이 한 번만 생성되도록 정리했습니다.
+STM32CubeIDE에 포함된 GNU Arm GCC 14.3으로 관련 소스의 ARM 컴파일을 통과했습니다.
+
+현재 시스템 클록은 HSI 16MHz이고 USART1 1Mbps에는 사용할 수 있습니다. TIM2는
+초기화만 되고 시작되지 않으며 현재 prescaler/period도 1kHz 설정이 아닙니다.
+향후 실시간 1kHz 제어 단계에서는 PLL 84MHz, TIM 주기, watchdog, 명령 timeout을
+별도로 설계합니다.
+
+### 다음 STM32 실기 확인
+
+수정된 `.ioc`로 Clean → Build → Flash한 뒤 아래 순서로 재검증합니다.
+
+```text
+help
+imu status
+ping 1
+scan
+read 1
+```
+
+`ping 1`이 계속 timeout이면 PA9에서 `FF FF 01 02 01 FB`가 실제 1Mbps로
+출력되는지 확인한 뒤 URT-2 로직 전원, TX/RX 교차 연결, 공통 GND, TTL 버스와
+서보 12V 전원을 순서대로 점검합니다. 12개 Ping과 Position Read가 확인되기
+전에는 `hold`와 `stand`를 실행하지 않습니다.
 
 ## 최종 조립 후 다시 확인할 항목
 
