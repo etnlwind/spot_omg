@@ -86,6 +86,11 @@ static void print_robot_result(AppConsole *console, RobotResult result)
         write_text(console, "OK\r\n");
         return;
     }
+    if (result == ROBOT_IMU_ERROR) {
+        write_text(console,
+                   "ERROR: IMU balance error; stand target requested\r\n");
+        return;
+    }
 
     (void)snprintf(
         message,
@@ -372,6 +377,49 @@ static void command_imu(AppConsole *console, char *mode)
     }
 }
 
+static void command_balance(AppConsole *console, char *mode)
+{
+    RobotController *robot = console->robot;
+
+    if (mode == NULL || strcmp(mode, "status") == 0) {
+        char message[128];
+        (void)snprintf(message,
+                       sizeof(message),
+                       "Balance: %s, IMU: %s\r\n",
+                       robot->balance_enabled ? "on" : "off",
+                       robot->attitude_reader != NULL ? "available"
+                                                      : "unavailable");
+        write_text(console, message);
+        if (robot->balance_reference_valid) {
+            const int32_t roll = robot->balance_reference_roll_tenths;
+            const int32_t pitch = robot->balance_reference_pitch_tenths;
+            (void)snprintf(
+                message,
+                sizeof(message),
+                "Last reference: Roll=%s%ld.%01ld Pitch=%s%ld.%01ld deg\r\n",
+                roll < 0 ? "-" : "",
+                labs(roll) / 10,
+                labs(roll) % 10,
+                pitch < 0 ? "-" : "",
+                labs(pitch) / 10,
+                labs(pitch) % 10);
+            write_text(console, message);
+        }
+    } else if (strcmp(mode, "on") == 0) {
+        if (!robot_set_balance_enabled(robot, true)) {
+            write_text(console,
+                       "ERROR: IMU unavailable; balance remains off\r\n");
+            return;
+        }
+        write_text(console, "Balance: on (Roll/Pitch, default off)\r\n");
+    } else if (strcmp(mode, "off") == 0) {
+        (void)robot_set_balance_enabled(robot, false);
+        write_text(console, "Balance: off\r\n");
+    } else {
+        write_text(console, "usage: balance on|off|status\r\n");
+    }
+}
+
 static void command_profile(AppConsole *console,
                             char *speed_text,
                             char *acceleration_text)
@@ -405,6 +453,36 @@ static void command_profile(AppConsole *console,
                    (unsigned long)speed,
                    (unsigned long)acceleration);
     write_text(console, message);
+}
+
+static void command_trot(AppConsole *console,
+                         char *cycles_text,
+                         char *period_text)
+{
+    uint32_t cycles = 1U;
+    uint32_t period_ms = 1200U;
+
+    if ((cycles_text != NULL &&
+         !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text, 600U, 5000U, &period_ms))) {
+        write_text(console,
+                   "usage: trot [CYCLES [PERIOD_MS]]; cycles=1..10 period=600..5000\r\n");
+        return;
+    }
+
+    char message[96];
+    (void)snprintf(message,
+                   sizeof(message),
+                   "Starting diagonal trot: cycles=%lu period=%lums balance=%s\r\n",
+                   (unsigned long)cycles,
+                   (unsigned long)period_ms,
+                   console->robot->balance_enabled ? "on" : "off");
+    write_text(console, message);
+    print_robot_result(console,
+                       robot_trot(console->robot,
+                                  (uint8_t)cycles,
+                                  (uint16_t)period_ms));
 }
 
 static void command_echo(AppConsole *console, char *mode)
@@ -452,6 +530,10 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "stand") == 0) {
         write_text(console, "Starting direct synchronized stand move\r\n");
         print_robot_result(console, robot_stand(console->robot));
+    } else if (strcmp(command, "trot") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_trot(console, cycles, period);
     } else if (strcmp(command, "relax") == 0) {
         print_robot_result(console, robot_relax(console->robot));
     } else if (strcmp(command, "targets") == 0) {
@@ -464,6 +546,8 @@ static void execute_line(AppConsole *console)
         command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "imu") == 0) {
         command_imu(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "balance") == 0) {
+        command_balance(console, strtok(NULL, " \t"));
     } else {
         write_text(console, "unknown command; type help\r\n");
     }
@@ -578,8 +662,10 @@ void app_console_print_help(AppConsole *console)
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"
                "  stand            direct synchronized stand move\r\n"
+               "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  relax            torque off all configured servos\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
+               "  balance on|off|status Roll/Pitch trot feedback (default off)\r\n"
                "  help             show this help\r\n\r\n");
     write_text(console,
                console->echo_enabled ? "Console echo: on\r\n"

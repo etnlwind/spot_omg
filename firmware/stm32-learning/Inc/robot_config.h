@@ -30,6 +30,9 @@ bool robot_config_valid(void);
 bool robot_angle_to_position(size_t joint_array_index,
                              int16_t angle_degrees,
                              uint16_t *position);
+bool robot_angle_tenths_to_position(size_t joint_array_index,
+                                    int16_t angle_tenths,
+                                    uint16_t *position);
 
 bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT]);
 

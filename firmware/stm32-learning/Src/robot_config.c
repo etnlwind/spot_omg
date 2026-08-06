@@ -55,15 +55,26 @@ bool robot_angle_to_position(size_t joint_array_index,
                              int16_t angle_degrees,
                              uint16_t *position)
 {
+    if (angle_degrees < -3276 || angle_degrees > 3276) {
+        return false;
+    }
+    return robot_angle_tenths_to_position(
+        joint_array_index, (int16_t)(angle_degrees * 10), position);
+}
+
+bool robot_angle_tenths_to_position(size_t joint_array_index,
+                                    int16_t angle_tenths,
+                                    uint16_t *position)
+{
     if (joint_array_index >= ROBOT_JOINT_COUNT || position == NULL) {
         return false;
     }
 
     const RobotJointConfig *joint = &g_robot_joints[joint_array_index];
-    int32_t scaled = (int32_t)angle_degrees *
+    int32_t scaled = (int32_t)angle_tenths *
                      (int32_t)STS3215_STEPS_PER_REVOLUTION;
-    scaled += scaled >= 0 ? 180 : -180;
-    const int32_t ticks = scaled / 360;
+    scaled += scaled >= 0 ? 1800 : -1800;
+    const int32_t ticks = scaled / 3600;
     const int32_t raw = (int32_t)joint->center +
                         (int32_t)joint->direction * ticks;
 

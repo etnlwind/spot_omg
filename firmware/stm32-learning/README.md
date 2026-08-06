@@ -103,10 +103,14 @@ profile [S A]    이동 속도(1..3400)와 가속도(0..254) 조회/설정
 echo on|off      STM32 입력 echo 켜기/끄기 (부팅 기본 off)
 hold             현재 위치를 목표로 설정한 뒤 전체 토크 활성화
 stand            12축 목표를 한 번에 SYNC_WRITE하는 stand 이동
+trot [C [MS]]    대각선 trot; 1..10회, 주기 600..5000ms (기본 1회/1200ms)
 relax            전체 토크 해제
 imu on            10 Hz IMU 자세 로그 출력 시작
 imu off           IMU 자세 로그 출력 중지 (부팅 기본값)
 imu status        현재 IMU 로그 설정 확인
+balance on        트롯 Roll/Pitch 자세 보정 활성화 (부팅 기본 off)
+balance off       트롯 자세 보정 비활성화
+balance status    IMU 사용 가능 여부와 마지막 기준 자세 확인
 help             도움말
 ```
 
@@ -142,6 +146,40 @@ relax
 부팅 기본 profile은 `speed=3400`, `acceleration=254`이며 direct stand 실기
 속도가 적절함을 확인했습니다.
 
+첫 STM32 trot는 FL+RR과 FR+RL 대각선 쌍을 반 주기 차로 움직입니다. 20ms마다
+목표를 갱신하고, stand 기준 J2 보폭 `±10°`, J3 리프트 `+16°`, stance duty 60%를
+사용합니다. 스윙은 `들기 → 든 채 앞으로 보내기 → 내리기`의 3구간이며, J3를
+접을 때 J2를 리프트의 절반만큼 함께 보정해 발끝이 뒤로 끌리지 않고 위로
+올라가게 합니다. 시작과 종료 200ms에는 진폭을 ramp하고 종료 후 stand 자세로
+복귀합니다. 실제 서보 추종 속도는 현재 `profile`을 따릅니다.
+
+```text
+trot                 # 1회, 1200ms 주기
+trot 3               # 3회, 1200ms 주기
+trot 3 1600          # 3회, 1600ms 주기
+```
+
+`balance on`을 실행하면 다음 `trot`부터 BNO055 Roll/Pitch를 50Hz로 읽어 자세를
+보정합니다. 보행 시작 직전 stand 자세의 Roll/Pitch를 기준값으로 캡처하므로 IMU
+장착 오차를 목표 기울기로 오인하지 않습니다. Yaw와 J1은 이 첫 하드웨어 단계에서
+사용하지 않습니다. Roll/Pitch 오차에 따라 네 다리의 J3 길이를 서로 다르게
+보정하고 J2에는 그 절반을 함께 적용해 발끝의 전후 위치 변화를 줄입니다.
+
+보정에는 0.5° deadband, 4-sample 저역 통과 필터, 다리별 J3 최대 `±5°` 제한을
+적용합니다. IMU 읽기가 3회 연속 실패하면 stand 목표를 요청하고 명령을 오류로
+종료합니다. 부팅 기본값은 안전을 위해 `balance off`입니다.
+
+```text
+balance status
+balance on
+trot 1 1600
+balance status
+balance off
+```
+
+명령 실행 중 콘솔은 blocking되므로 소프트웨어 명령으로 중간 정지할 수 없습니다.
+첫 시험은 로봇을 지지대에 고정하고 1회만 실행하며 비상 전원 차단을 준비합니다.
+
 서보 버스가 모두 timeout이고 측정 장비가 없다면 모든 전원을 끄고 URT-2를
 STM32에서 분리한 뒤 PA9와 PA10을 점퍼선으로 직접 연결합니다. 다시 전원을 켜고
 `uarttest`를 실행해 USART1 송수신을 loopback 방식으로 확인합니다. 시험 후에는
@@ -161,7 +199,8 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 
 - Feetech packet, URT-2 bus, STS3215 register API와 12축 Sync Write 구현
 - `joints.json`의 ID·center·direction을 STM32 설정으로 이식
-- 부팅 시 torque OFF, 안전 단일 이동, current-position hold, 2초 stand ramp 구현
+- 부팅 시 torque OFF, 안전 단일 이동, current-position hold, direct stand 구현
+- 20ms 목표 갱신 기반의 대각선 trot와 시작·종료 진폭 ramp 구현
 - BNO055 `0x28`, CHIP_ID `0xA0`, NDOF 초기화 확인
 - IMU 연속 로그 기본 OFF 및 `imu on|off|status` 추가
 - 콘솔 명령 종료를 `CR`, `LF`, `CRLF` 모두 지원
@@ -184,7 +223,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - `servo_bus.*`: UART request/status 및 URT-2 송수신 전환
 - `sts3215.*`: STS3215 레지스터 API와 SYNC_WRITE
 - `robot_config.*`: 12관절 ID, center, direction, stand 목표
-- `robot.*`: require-all, hold, relax, safe move, stand
+- `robot.*`: require-all, hold, relax, safe move, stand, diagonal trot
 - `app_console.*`: USART2 인터럽트 기반 진단 콘솔
 
 관절 보정값은 `tools/servo_tool/config/joints.json`에서 옮겼습니다. 기구 조립이나

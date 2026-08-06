@@ -77,6 +77,9 @@ static HAL_StatusTypeDef BNO055_Init(void);
 static HAL_StatusTypeDef BNO055_ReadEuler(int16_t *heading,
                                          int16_t *roll,
                                          int16_t *pitch);
+static bool BNO055_ReadAttitude(void *context,
+                                int16_t *roll_tenths,
+                                int16_t *pitch_tenths);
 static void BNO055_PrintEuler(void);
 /* USER CODE END PFP */
 
@@ -131,6 +134,7 @@ int main(void)
       uart_print("BNO055 not found\r\n");
   } else if (BNO055_Init() == HAL_OK) {
       uart_print("BNO055 NDOF initialization OK\r\n");
+      robot_set_attitude_reader(&robot, BNO055_ReadAttitude, NULL);
   } else {
       uart_print("BNO055 initialization failed\r\n");
   }
@@ -593,6 +597,26 @@ static HAL_StatusTypeDef BNO055_ReadEuler(int16_t *heading,
     *pitch = (int16_t)(((uint16_t)data[5] << 8) | data[4]);
 
     return HAL_OK;
+}
+
+static bool BNO055_ReadAttitude(void *context,
+                                int16_t *roll_tenths,
+                                int16_t *pitch_tenths)
+{
+    int16_t heading_raw = 0;
+    int16_t roll_raw = 0;
+    int16_t pitch_raw = 0;
+    (void)context;
+
+    if (roll_tenths == NULL || pitch_tenths == NULL ||
+        BNO055_ReadEuler(&heading_raw, &roll_raw, &pitch_raw) != HAL_OK) {
+        return false;
+    }
+
+    /* BNO055 Euler scale: 16 LSB per degree. Yaw is intentionally unused. */
+    *roll_tenths = (int16_t)(((int32_t)roll_raw * 10) / 16);
+    *pitch_tenths = (int16_t)(((int32_t)pitch_raw * 10) / 16);
+    return true;
 }
 
 static void BNO055_PrintEuler(void)
