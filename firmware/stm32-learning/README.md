@@ -29,6 +29,39 @@ STM32나 USB에서 공급하지 않습니다. URT-2를 Type-C로 공급할 때 U
 URT-2 Type-C USB와 STM32 UART 헤더가 같은 서보 버스를 동시에 구동하지 않도록
 합니다.
 
+## BNO055 배선과 장착 좌표계
+
+NUCLEO-F446RE Arduino 헤더 기준 BNO055 I2C 배선은 다음과 같습니다.
+
+```text
+BNO055 VCC/VIN       → NUCLEO 3V3
+BNO055 GND           → NUCLEO GND
+BNO055 SCL           → D15 / PB8 / I2C1_SCL
+BNO055 SDA           → D14 / PB9 / I2C1_SDA
+BNO055 COM3/I2C-SEL  → GND (주소 0x28)
+```
+
+GND는 URT-2와 IMU가 NUCLEO의 서로 다른 GND 핀을 사용하거나 공통 GND rail에서
+분기해도 됩니다. 오른쪽 Arduino 디지털 헤더의 AREF와 D13 사이 GND도 사용할 수
+있습니다. COM3는 LOW일 때 `0x28`, HIGH일 때 `0x29`이며 펌웨어는 두 주소를 모두
+탐색하지만 검증 구성은 GND에 연결한 `0x28`입니다.
+
+IMU는 로봇 앞에 서서 위에서 내려볼 때 보드 글자가 정상 방향으로 읽히도록 수평
+장착했습니다. 실제 `imu on` 시험에서 확인한 부호는 다음과 같습니다.
+
+```text
+Pitch +  : 로봇 앞쪽으로 기울어짐
+Pitch -  : 로봇 뒤쪽으로 기울어짐
+Roll +   : 로봇 오른쪽으로 기울어짐
+Roll -   : 로봇 왼쪽으로 기울어짐
+Yaw 증가 : 로봇 시점에서 오른쪽으로 회전
+Yaw 감소 : 로봇 시점에서 왼쪽으로 회전
+```
+
+Yaw는 `0..359.9°` 범위이므로 왼쪽 회전으로 0°를 지나면 359°대로 wrap합니다.
+자세 제어에서 Yaw 오차는 `-180..+180°`로 정규화해야 합니다. 현재 장착 방향은
+원하는 로봇 좌표계와 일치해 BNO055 axis remap을 적용하지 않습니다.
+
 ## CubeMX 필수 설정
 
 | Setting | USART1: URT-2 | USART2: console |
@@ -69,7 +102,7 @@ targets          stand 목표 raw 위치 확인; 움직이지 않음
 profile [S A]    이동 속도(1..3400)와 가속도(0..254) 조회/설정
 echo on|off      STM32 입력 echo 켜기/끄기 (부팅 기본 off)
 hold             현재 위치를 목표로 설정한 뒤 전체 토크 활성화
-stand            2초 동안 12축 SYNC_WRITE stand 이동
+stand            12축 목표를 한 번에 SYNC_WRITE하는 stand 이동
 relax            전체 토크 해제
 imu on            10 Hz IMU 자세 로그 출력 시작
 imu off           IMU 자세 로그 출력 중지 (부팅 기본값)
@@ -103,7 +136,11 @@ relax
 ```
 
 `stand`는 12개 ID가 모두 응답해야 시작합니다. 먼저 현재 위치를 목표 위치로
-설정한 뒤 토크를 켜므로 오래된 Goal Position으로 튀는 동작을 방지합니다.
+설정한 뒤 토크를 켜므로 오래된 Goal Position으로 튀는 동작을 방지합니다. 이후
+12개 stand 목표를 한 번의 SYNC_WRITE로 전송하며 중간 보간 ramp는 사용하지
+않습니다. 실제 이동 속도는 `profile`의 speed/acceleration 제한을 따릅니다.
+부팅 기본 profile은 `speed=3400`, `acceleration=254`이며 direct stand 실기
+속도가 적절함을 확인했습니다.
 
 서보 버스가 모두 timeout이고 측정 장비가 없다면 모든 전원을 끄고 URT-2를
 STM32에서 분리한 뒤 PA9와 PA10을 점퍼선으로 직접 연결합니다. 다시 전원을 켜고

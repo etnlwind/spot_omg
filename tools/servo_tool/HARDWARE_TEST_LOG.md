@@ -830,6 +830,58 @@ OK
 
 12개 scan이 반복해서 안정되기 전에는 `hold`와 `stand`를 실행하지 않습니다.
 
+## 2026-08-06 direct stand와 BNO055 장착 방향 확인
+
+### stand 목표 일괄 전송
+
+기존 stand는 100개 frame을 20ms 간격으로 보내는 2초 보간 ramp였습니다. 최대
+profile로도 전체 동작 시간이 2초로 제한됐기 때문에 사용자 실기 요청에 따라
+중간 보간을 제거했습니다. 현재 `stand`는 다음 순서로 동작합니다.
+
+1. ID 1~12 응답 확인
+2. 현재 위치를 Goal Position으로 설정
+3. 토크 활성화
+4. 12개 stand 목표를 한 번의 broadcast SYNC_WRITE로 전송
+5. 최대 2초 동안 최종 위치 허용 오차 확인
+
+부팅 기본 profile인 `speed=3400`, `acceleration=254`에서 direct stand 속도가
+실기에 적절함을 확인했습니다. 최종 위치 검증과 통신 오류 처리는 그대로
+유지합니다.
+
+### BNO055 배선
+
+```text
+BNO055 VCC/VIN       → NUCLEO 3V3
+BNO055 GND           → NUCLEO GND
+BNO055 SCL           → D15 / PB8
+BNO055 SDA           → D14 / PB9
+BNO055 COM3/I2C-SEL  → GND
+```
+
+COM3 LOW는 주소 `0x28`, HIGH는 `0x29`입니다. 현재 펌웨어의 detect 함수는 두
+주소를 모두 확인하지만 실기 배선은 COM3를 GND로 연결한 `0x28`입니다. NUCLEO의
+모든 GND는 공통이므로 URT-2, IMU GND, COM3를 서로 다른 GND 핀이나 공통 rail로
+분기할 수 있습니다. 사진에서 확인한 오른쪽 Arduino 헤더의 AREF-D13 사이 GND도
+사용할 수 있습니다.
+
+### 장착 방향과 실제 축 부호
+
+IMU는 로봇 앞에 서서 위에서 내려봤을 때 보드 글자가 정상 방향으로 보이도록
+수평 장착했습니다. `imu on`으로 직접 기울이고 회전해 다음 부호를 확인했습니다.
+
+```text
+앞으로 기울임  → Pitch 증가
+뒤로 기울임    → Pitch 감소
+오른쪽 기울임  → Roll 증가
+왼쪽 기울임    → Roll 감소
+오른쪽 회전    → Yaw 증가
+왼쪽 회전      → Yaw 감소, 0° 아래에서 359°대로 wrap
+```
+
+현재 장착 좌표계가 로봇 제어에 사용할 부호와 일치하므로 axis remap 코드는
+추가하지 않았습니다. 향후 Yaw 폐루프 제어에서는 0/360 경계를 넘는 오차를
+`-180..+180°`로 정규화해야 합니다.
+
 ## 최종 조립 후 다시 확인할 항목
 
 1. period 2.0초, cycles 1에서 발 방향과 기구 간섭 확인

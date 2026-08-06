@@ -7,8 +7,6 @@
 
 #define ROBOT_PROFILE_SPEED_DEFAULT          3400U
 #define ROBOT_PROFILE_ACCELERATION_DEFAULT   254U
-#define ROBOT_STAND_FRAMES           100U
-#define ROBOT_STAND_FRAME_MS         20U
 #define ROBOT_VERIFY_TOLERANCE       120U
 #define ROBOT_VERIFY_TIMEOUT_MS      2000U
 #define ROBOT_VERIFY_POLL_MS         100U
@@ -169,9 +167,8 @@ RobotResult robot_hold(RobotController *robot)
 
 RobotResult robot_stand(RobotController *robot)
 {
-    uint16_t start[ROBOT_JOINT_COUNT];
     uint16_t target[ROBOT_JOINT_COUNT];
-    uint16_t frame_positions[ROBOT_JOINT_COUNT];
+    uint16_t measured_positions[ROBOT_JOINT_COUNT];
 
     if (robot == NULL || robot->bus == NULL) {
         return ROBOT_INVALID_ARGUMENT;
@@ -184,41 +181,25 @@ RobotResult robot_stand(RobotController *robot)
     if (result != ROBOT_OK) {
         return result;
     }
-    result = robot_read_positions(robot, start);
-    if (result != ROBOT_OK) {
-        return result;
-    }
 
-    for (uint32_t frame = 1U; frame <= ROBOT_STAND_FRAMES; ++frame) {
-        for (size_t joint = 0U; joint < ROBOT_JOINT_COUNT; ++joint) {
-            const int32_t delta = (int32_t)target[joint] -
-                                  (int32_t)start[joint];
-            const int32_t interpolated = (int32_t)start[joint] +
-                (delta * (int32_t)frame) / (int32_t)ROBOT_STAND_FRAMES;
-            frame_positions[joint] = (uint16_t)interpolated;
-        }
-
-        ServoBusResult bus_result = sts3215_sync_positions(
-            robot->bus,
-            g_robot_servo_ids,
-            frame_positions,
-            ROBOT_JOINT_COUNT);
-        if (bus_result != SERVO_BUS_OK) {
-            return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
-        }
-        HAL_Delay(ROBOT_STAND_FRAME_MS);
+    ServoBusResult bus_result = sts3215_sync_positions(robot->bus,
+                                                       g_robot_servo_ids,
+                                                       target,
+                                                       ROBOT_JOINT_COUNT);
+    if (bus_result != SERVO_BUS_OK) {
+        return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
     }
 
     const uint32_t verify_started_at = HAL_GetTick();
     for (;;) {
-        result = robot_read_positions(robot, frame_positions);
+        result = robot_read_positions(robot, measured_positions);
         if (result != ROBOT_OK) {
             return result;
         }
 
         bool all_within_tolerance = true;
         for (size_t joint = 0U; joint < ROBOT_JOINT_COUNT; ++joint) {
-            int32_t error = (int32_t)frame_positions[joint] -
+            int32_t error = (int32_t)measured_positions[joint] -
                             (int32_t)target[joint];
             if (error < 0) {
                 error = -error;

@@ -450,7 +450,7 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "hold") == 0) {
         print_robot_result(console, robot_hold(console->robot));
     } else if (strcmp(command, "stand") == 0) {
-        write_text(console, "Starting calibrated 2-second stand ramp\r\n");
+        write_text(console, "Starting direct synchronized stand move\r\n");
         print_robot_result(console, robot_stand(console->robot));
     } else if (strcmp(command, "relax") == 0) {
         print_robot_result(console, robot_relax(console->robot));
@@ -577,7 +577,7 @@ void app_console_print_help(AppConsole *console)
                "  profile [S A]   show/set speed 1..3400, acceleration 0..254\r\n"
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"
-               "  stand            2-second synchronized stand ramp\r\n"
+               "  stand            direct synchronized stand move\r\n"
                "  relax            torque off all configured servos\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  help             show this help\r\n\r\n");
