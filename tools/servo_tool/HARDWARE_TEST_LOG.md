@@ -675,9 +675,160 @@ read 1
 ```
 
 `ping 1`이 계속 timeout이면 PA9에서 `FF FF 01 02 01 FB`가 실제 1Mbps로
-출력되는지 확인한 뒤 URT-2 로직 전원, TX/RX 교차 연결, 공통 GND, TTL 버스와
-서보 12V 전원을 순서대로 점검합니다. 12개 Ping과 Position Read가 확인되기
+출력되는지 확인한 뒤 URT-2 로직 전원, Feetech 표기 기준 TX-TX/RX-RX 연결,
+공통 GND, TTL 버스와 서보 12V 전원을 순서대로 점검합니다. 12개 Ping과 Position
+Read가 확인되기
 전에는 `hold`와 `stand`를 실행하지 않습니다.
+
+## 2026-08-06 STM32 ↔ URT-2 실기 연결 문제 해결 기록
+
+### 최초 증상과 하드웨어 분리
+
+STM32 콘솔의 `ping 1`, `scan`, `stand`에서 처음에는 ID 1~12가 모두 다음처럼
+timeout이었습니다.
+
+```text
+ID 1: timeout, servo_error=0x00
+```
+
+`servo_error=0x00`은 서보가 오류 상태를 응답한 것이 아니라 status packet 자체를
+STM32가 받지 못했다는 뜻입니다. 같은 URT-2를 Mac에 USB로 직접 연결한 뒤 Python
+도구를 실행하면 12개가 모두 검출됐습니다.
+
+```text
+spotctl scan
+Found: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
+```
+
+따라서 서보 ID, 서보 전원, URT-2의 TTL 버스 구간은 정상이고 문제 범위를
+STM32 USART1 ↔ URT-2 UART 헤더로 좁혔습니다.
+
+### 최종 배선과 전원 원칙
+
+NUCLEO-F446RE의 Arduino 헤더 기준 연결은 다음과 같습니다. Feetech UART 헤더는
+신호 이름 기준으로 표기되어 MCU와 `TX-TX`, `RX-RX`로 연결합니다.
+
+```text
+NUCLEO D8 / PA9  / USART1_TX  → URT-2 TX
+NUCLEO D2 / PA10 / USART1_RX  → URT-2 RX
+NUCLEO GND                     → URT-2 GND
+URT-2 signal-level switch      → 3.3V
+URT-2 RTS                      → 연결하지 않음
+```
+
+전원 공급은 한 경로만 사용합니다. 재현성이 좋은 시험 구성은 URT-2 Type-C를 USB
+충전기/보조배터리로 공급하고 UART 헤더의 VCC는 연결하지 않는 방식입니다. UART
+헤더 VCC와 Type-C 전원을 동시에 공급하지 않습니다. STS3215의 약 12V 구동 전원은
+URT-2 로직 전원과 별도이며 모든 계통의 GND는 공통이어야 합니다.
+
+URT-2 보드 중앙의 `TX1`, `RX1` SMD LED가 `scan` 때 함께 점멸해 STM32 요청과
+서보 응답이 URT-2까지 왕복하는 것도 확인했습니다. `TX2/RX2`는 RS485용입니다.
+
+### 측정 장비 없이 사용한 진단 명령
+
+로직 애널라이저나 오실로스코프가 없었기 때문에 다음 두 명령을 추가했습니다.
+
+1. URT-2를 분리하고 PA9-PA10을 직결한 `uarttest`
+2. Ping 후 PA10의 원시 수신 바이트를 출력하는 `busprobe ID`
+
+PA9-PA10 loopback은 다음처럼 통과해 STM32 USART1과 두 핀 자체가 정상임을
+확인했습니다.
+
+```text
+uarttest
+UARTTEST PASS: USART1 PA9/PA10 loopback OK
+```
+
+초기 `busprobe 1`은 정상 6바이트 중 일부만 받았습니다.
+
+```text
+BUSPROBE RX (2): FF 00
+```
+
+수신 코드 수정 후에는 ID 1의 완전한 status packet을 받았습니다.
+
+```text
+BUSPROBE RX (6): FF FF 01 02 00 FC
+ping 1
+ID 1: ok, servo_error=0x00
+```
+
+### 실제 소프트웨어 원인
+
+USART1은 1Mbps이므로 8-N-1 한 바이트가 약 10us마다 도착합니다. Debug 빌드는
+`-O0`인데 기존 코드는 바이트마다 `HAL_UART_Receive()` 또는 별도 함수 호출과
+`HAL_GetTick()` 검사를 수행했습니다. 이 오버헤드 때문에 다음 바이트를 제때 읽지
+못해 UART overrun, protocol error, timeout이 무작위 ID에서 발생했습니다. 실패
+ID가 scan마다 바뀐 것이 개별 서보 고장이 아니라 공통 수신 경로 문제라는 중요한
+단서였습니다.
+
+최종 수정은 다음과 같습니다.
+
+- USART1 `SR.RXNE`를 직접 폴링하고 `DR`을 즉시 읽음
+- timeout 검사보다 RXNE 처리를 먼저 수행
+- 1바이트 수신 함수를 `always_inline`으로 강제 인라인
+- unicast request/response 사이에 URT-2 안정화 간격 10ms 적용
+- broadcast Sync Write에는 이 간격을 적용하지 않아 2초 stand ramp 주기 유지
+
+콘솔 `scan`에만 10ms를 넣었을 때는 scan은 성공해도 `stand` 내부의 연속
+Ping/Read/Torque 요청에서 다시 protocol error가 발생했습니다. 따라서 간격을
+`servo_bus_request()` 공통 경로로 옮겼습니다.
+
+### 최종 실기 검증
+
+수정 펌웨어를 Clean → Build → Flash한 뒤 `busprobe 1`과 연속 scan 3회를
+검증했습니다.
+
+```text
+BUSPROBE RX (6): FF FF 01 02 00 FC
+
+Scanning configured IDs 1..12
+  ID 1 OK
+  ...
+  ID 12 OK
+```
+
+세 번 모두 ID 1~12가 OK였고 이어서 다음 동작도 성공했습니다.
+
+```text
+hold
+OK
+stand
+Starting calibrated 2-second stand ramp
+OK
+relax
+OK
+```
+
+`relax` 후 다시 stand했을 때 ID 2 final verification이 한 번 실패했지만 직후
+`read 2`는 현재 `1726`, 목표 `1723`, 오차 3 tick으로 정상이었습니다. 고정
+300ms 검증이 실제 수렴보다 빨랐던 별도 문제였으므로, 최종 위치 검증을 최대 2초
+동안 반복 polling하는 방식으로 변경했습니다.
+
+### 함께 확인한 ST-LINK와 콘솔 사항
+
+- MacBook USB-C 직결에서는 ST-LINK VCP가 열거되지 않았지만 외장 USB 허브를
+  통하면 `/dev/cu.usbmodem...`이 정상 생성됐습니다. STM32/펌웨어 문제가 아니라
+  직결 USB 2.0 호환 또는 케이블 경로 문제로 분리했습니다.
+- ST-LINK Flash 로그에서 NUCLEO-F446RE, target voltage 3.23V, download/verify
+  성공을 확인했습니다.
+- USART2 콘솔은 115200 8-N-1, CR/LF/CRLF를 허용합니다.
+- 사용한 터미널은 BS/ANSI 제어문자를 렌더링하지 않으므로 펌웨어 echo 기본값을
+  OFF로 하고 터미널 Local Echo를 사용합니다.
+
+### 재발 시 최소 점검 순서
+
+```text
+1. spotctl scan                 # URT-2 USB 직접 연결로 서보 12개 확인
+2. uarttest                     # URT-2 분리, PA9-PA10 직결
+3. busprobe 1                   # FF FF 01 02 00 FC 확인
+4. ping 1
+5. scan을 3회 반복
+6. read 1
+7. 지지대 위에서 hold → stand → relax
+```
+
+12개 scan이 반복해서 안정되기 전에는 `hold`와 `stand`를 실행하지 않습니다.
 
 ## 최종 조립 후 다시 확인할 항목
 

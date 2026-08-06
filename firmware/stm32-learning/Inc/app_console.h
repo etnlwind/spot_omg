@@ -24,6 +24,7 @@ typedef struct
     volatile size_t line_length;
     volatile bool line_ready;
     volatile bool overflow;
+    volatile bool echo_enabled;
 } AppConsole;
 
 void app_console_init(AppConsole *console,
@@ -36,6 +37,7 @@ void app_console_on_rx_complete(AppConsole *console,
 
 void app_console_poll(AppConsole *console);
 void app_console_print_help(AppConsole *console);
+void app_console_print_prompt(AppConsole *console);
 
 #ifdef __cplusplus
 }

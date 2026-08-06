@@ -1,5 +1,6 @@
 #include "app_console.h"
 
+#include "feetech_protocol.h"
 #include "robot_config.h"
 #include "sts3215.h"
 
@@ -8,6 +9,8 @@
 #include <string.h>
 
 #define CONSOLE_SAFE_MOVE_DELTA 256U
+#define UARTTEST_TIMEOUT_MS     10U
+#define BUSPROBE_WINDOW_MS      50U
 
 static void write_text(AppConsole *console, const char *text)
 {
@@ -19,6 +22,24 @@ static void write_text(AppConsole *console, const char *text)
                             (uint8_t *)text,
                             (uint16_t)strlen(text),
                             HAL_MAX_DELAY);
+}
+
+static void echo_byte(AppConsole *console, uint8_t byte)
+{
+    if (console == NULL || console->uart == NULL || !console->echo_enabled) {
+        return;
+    }
+
+    while (__HAL_UART_GET_FLAG(console->uart, UART_FLAG_TXE) == RESET) {
+    }
+    console->uart->Instance->DR = byte;
+}
+
+static void echo_text(AppConsole *console, const char *text)
+{
+    while (text != NULL && *text != '\0') {
+        echo_byte(console, (uint8_t)*text++);
+    }
 }
 
 static bool parse_u32(const char *text,
@@ -105,6 +126,155 @@ static void command_scan(AppConsole *console)
             print_bus_result(console, id, result);
         }
     }
+}
+
+static void command_uarttest(AppConsole *console)
+{
+    static const uint8_t test_bytes[] = {
+        0x00U, 0xFFU, 0x55U, 0xAAU, 0x01U, 0x7EU, 0x81U, 0x42U
+    };
+    ServoBus *bus = console->robot->bus;
+    UART_HandleTypeDef *uart = bus->uart;
+
+    write_text(console,
+               "USART1 loopback test: disconnect URT-2 and connect "
+               "PA9 directly to PA10\r\n");
+
+    __HAL_UART_CLEAR_OREFLAG(uart);
+    while (__HAL_UART_GET_FLAG(uart, UART_FLAG_RXNE) != RESET) {
+        volatile uint32_t discarded = uart->Instance->DR;
+        (void)discarded;
+    }
+
+    for (size_t index = 0U; index < sizeof(test_bytes); ++index) {
+        const uint8_t transmitted = test_bytes[index];
+        uint8_t received = 0U;
+        HAL_StatusTypeDef status = HAL_UART_Transmit(
+            uart, (uint8_t *)&test_bytes[index], 1U, UARTTEST_TIMEOUT_MS);
+        if (status != HAL_OK) {
+            char message[80];
+            (void)snprintf(message,
+                           sizeof(message),
+                           "UARTTEST FAIL: TX status=%u at byte %u\r\n",
+                           (unsigned int)status,
+                           (unsigned int)index);
+            write_text(console, message);
+            return;
+        }
+
+        status = HAL_UART_Receive(uart,
+                                  &received,
+                                  1U,
+                                  UARTTEST_TIMEOUT_MS);
+        if (status != HAL_OK) {
+            char message[80];
+            (void)snprintf(message,
+                           sizeof(message),
+                           "UARTTEST FAIL: RX status=%u at byte %u\r\n",
+                           (unsigned int)status,
+                           (unsigned int)index);
+            write_text(console, message);
+            return;
+        }
+        if (received != transmitted) {
+            char message[96];
+            (void)snprintf(message,
+                           sizeof(message),
+                           "UARTTEST FAIL: byte %u sent=0x%02X received=0x%02X\r\n",
+                           (unsigned int)index,
+                           (unsigned int)transmitted,
+                           (unsigned int)received);
+            write_text(console, message);
+            return;
+        }
+    }
+
+    write_text(console, "UARTTEST PASS: USART1 PA9/PA10 loopback OK\r\n");
+}
+
+static void command_busprobe(AppConsole *console, char *id_text)
+{
+    uint32_t id = 0U;
+    uint8_t packet[FEETECH_PACKET_CAPACITY];
+    uint8_t received[FEETECH_PACKET_CAPACITY];
+    size_t received_count = 0U;
+
+    if (!parse_u32(id_text, 1U, 253U, &id)) {
+        write_text(console, "usage: busprobe ID\r\n");
+        return;
+    }
+
+    const size_t packet_length = feetech_encode_instruction(
+        (uint8_t)id,
+        FEETECH_INST_PING,
+        NULL,
+        0U,
+        packet,
+        sizeof(packet));
+    ServoBus *bus = console->robot->bus;
+    UART_HandleTypeDef *uart = bus->uart;
+
+    __HAL_UART_CLEAR_OREFLAG(uart);
+    while (__HAL_UART_GET_FLAG(uart, UART_FLAG_RXNE) != RESET) {
+        volatile uint32_t discarded = uart->Instance->DR;
+        (void)discarded;
+    }
+
+    CLEAR_BIT(uart->Instance->CR1, USART_CR1_RE);
+    HAL_StatusTypeDef status = HAL_UART_Transmit(uart,
+                                                packet,
+                                                (uint16_t)packet_length,
+                                                BUSPROBE_WINDOW_MS);
+    SET_BIT(uart->Instance->CR1, USART_CR1_RE);
+    if (status != HAL_OK) {
+        char message[64];
+        (void)snprintf(message,
+                       sizeof(message),
+                       "BUSPROBE FAIL: TX status=%u\r\n",
+                       (unsigned int)status);
+        write_text(console, message);
+        return;
+    }
+
+    const uint32_t started_at = HAL_GetTick();
+    while ((uint32_t)(HAL_GetTick() - started_at) < BUSPROBE_WINDOW_MS &&
+           received_count < sizeof(received)) {
+        const uint32_t uart_status = uart->Instance->SR;
+        if ((uart_status & USART_SR_RXNE) != 0U) {
+            received[received_count++] = (uint8_t)uart->Instance->DR;
+        } else if ((uart_status & (USART_SR_ORE | USART_SR_NE |
+                                  USART_SR_FE | USART_SR_PE)) != 0U) {
+            volatile uint32_t discarded_status = uart->Instance->SR;
+            volatile uint32_t discarded_data = uart->Instance->DR;
+            (void)discarded_status;
+            (void)discarded_data;
+            write_text(console, "BUSPROBE FAIL: USART1 receive error\r\n");
+            return;
+        }
+    }
+
+    if (received_count == 0U) {
+        write_text(console, "BUSPROBE RX: no bytes\r\n");
+        return;
+    }
+
+    char message[3U * FEETECH_PACKET_CAPACITY + 32U];
+    int used = snprintf(message,
+                        sizeof(message),
+                        "BUSPROBE RX (%u):",
+                        (unsigned int)received_count);
+    for (size_t index = 0U;
+         index < received_count && used > 0 && (size_t)used < sizeof(message);
+         ++index) {
+        used += snprintf(&message[used],
+                         sizeof(message) - (size_t)used,
+                         " %02X",
+                         (unsigned int)received[index]);
+    }
+    if (used > 0 && (size_t)used < sizeof(message)) {
+        (void)snprintf(&message[used], sizeof(message) - (size_t)used, "\r\n");
+    }
+    write_text(console, message);
 }
 
 static void command_read(AppConsole *console, char *id_text)
@@ -202,6 +372,58 @@ static void command_imu(AppConsole *console, char *mode)
     }
 }
 
+static void command_profile(AppConsole *console,
+                            char *speed_text,
+                            char *acceleration_text)
+{
+    if (speed_text == NULL && acceleration_text == NULL) {
+        char message[64];
+        (void)snprintf(message,
+                       sizeof(message),
+                       "Profile: speed=%u acceleration=%u\r\n",
+                       (unsigned int)console->robot->profile_speed,
+                       (unsigned int)console->robot->profile_acceleration);
+        write_text(console, message);
+        return;
+    }
+
+    uint32_t speed = 0U;
+    uint32_t acceleration = 0U;
+    if (!parse_u32(speed_text, 1U, 3400U, &speed) ||
+        !parse_u32(acceleration_text, 0U, 254U, &acceleration) ||
+        !robot_set_profile(console->robot,
+                           (uint16_t)speed,
+                           (uint8_t)acceleration)) {
+        write_text(console, "usage: profile SPEED ACCEL; SPEED=1..3400 ACCEL=0..254\r\n");
+        return;
+    }
+
+    char message[64];
+    (void)snprintf(message,
+                   sizeof(message),
+                   "Profile set: speed=%lu acceleration=%lu\r\n",
+                   (unsigned long)speed,
+                   (unsigned long)acceleration);
+    write_text(console, message);
+}
+
+static void command_echo(AppConsole *console, char *mode)
+{
+    if (mode == NULL || strcmp(mode, "status") == 0) {
+        write_text(console,
+                   console->echo_enabled ? "Console echo: on\r\n"
+                                         : "Console echo: off\r\n");
+    } else if (strcmp(mode, "on") == 0) {
+        console->echo_enabled = true;
+        write_text(console, "Console echo: on\r\n");
+    } else if (strcmp(mode, "off") == 0) {
+        console->echo_enabled = false;
+        write_text(console, "Console echo: off\r\n");
+    } else {
+        write_text(console, "usage: echo on|off|status\r\n");
+    }
+}
+
 static void execute_line(AppConsole *console)
 {
     char *command = strtok(console->line, " \t");
@@ -215,6 +437,10 @@ static void execute_line(AppConsole *console)
         command_ping(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "scan") == 0) {
         command_scan(console);
+    } else if (strcmp(command, "uarttest") == 0) {
+        command_uarttest(console);
+    } else if (strcmp(command, "busprobe") == 0) {
+        command_busprobe(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "read") == 0) {
         command_read(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "move") == 0) {
@@ -230,6 +456,12 @@ static void execute_line(AppConsole *console)
         print_robot_result(console, robot_relax(console->robot));
     } else if (strcmp(command, "targets") == 0) {
         command_targets(console);
+    } else if (strcmp(command, "profile") == 0) {
+        char *speed = strtok(NULL, " \t");
+        char *acceleration = strtok(NULL, " \t");
+        command_profile(console, speed, acceleration);
+    } else if (strcmp(command, "echo") == 0) {
+        command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "imu") == 0) {
         command_imu(console, strtok(NULL, " \t"));
     } else {
@@ -254,6 +486,7 @@ void app_console_init(AppConsole *console,
     console->line_length = 0U;
     console->line_ready = false;
     console->overflow = false;
+    console->echo_enabled = false;
 
     if (uart != NULL) {
         (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
@@ -278,10 +511,20 @@ void app_console_on_rx_complete(AppConsole *console,
             if (console->line_length != 0U || console->overflow) {
                 console->line[console->line_length] = '\0';
                 console->line_ready = true;
+                echo_text(console, "\r\n");
+            }
+        } else if (byte == '\b' || byte == 0x7FU) {
+            if (console->overflow) {
+                console->overflow = false;
+                echo_text(console, "\b \b");
+            } else if (console->line_length != 0U) {
+                --console->line_length;
+                echo_text(console, "\b \b");
             }
         } else {
             if (console->line_length < APP_CONSOLE_LINE_CAPACITY - 1U) {
                 console->line[console->line_length++] = (char)byte;
+                echo_byte(console, byte);
             } else {
                 console->overflow = true;
             }
@@ -311,6 +554,13 @@ void app_console_poll(AppConsole *console)
     if (primask == 0U) {
         __enable_irq();
     }
+
+    app_console_print_prompt(console);
+}
+
+void app_console_print_prompt(AppConsole *console)
+{
+    write_text(console, "# ");
 }
 
 void app_console_print_help(AppConsole *console)
@@ -319,12 +569,19 @@ void app_console_print_help(AppConsole *console)
                "\r\nSpot OMG STM32 servo console\r\n"
                "  ping ID          ping one servo\r\n"
                "  scan             ping configured IDs 1..12\r\n"
+               "  uarttest         USART1 loopback test (PA9 connected to PA10)\r\n"
+               "  busprobe ID      send ping and print raw USART1 response bytes\r\n"
                "  read ID          read position/load/current/state\r\n"
                "  move ID RAW      safe single move, max delta 256 ticks\r\n"
                "  targets          print calibrated stand raw targets\r\n"
+               "  profile [S A]   show/set speed 1..3400, acceleration 0..254\r\n"
+               "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"
                "  stand            2-second synchronized stand ramp\r\n"
                "  relax            torque off all configured servos\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  help             show this help\r\n\r\n");
+    write_text(console,
+               console->echo_enabled ? "Console echo: on\r\n"
+                                     : "Console echo: off\r\n");
 }

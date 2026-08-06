@@ -27,9 +27,15 @@ typedef struct
     ServoBus *bus;
     ServoBusResult last_bus_result;
     uint8_t last_failed_servo_id;
+    uint16_t profile_speed;
+    uint8_t profile_acceleration;
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
+
+bool robot_set_profile(RobotController *robot,
+                       uint16_t speed,
+                       uint8_t acceleration);
 
 RobotResult robot_require_all(RobotController *robot);
 

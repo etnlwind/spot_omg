@@ -5,11 +5,13 @@
 
 #include <stdbool.h>
 
-#define ROBOT_PROFILE_SPEED          60U
-#define ROBOT_PROFILE_ACCELERATION   30U
+#define ROBOT_PROFILE_SPEED_DEFAULT          3400U
+#define ROBOT_PROFILE_ACCELERATION_DEFAULT   254U
 #define ROBOT_STAND_FRAMES           100U
 #define ROBOT_STAND_FRAME_MS         20U
 #define ROBOT_VERIFY_TOLERANCE       120U
+#define ROBOT_VERIFY_TIMEOUT_MS      2000U
+#define ROBOT_VERIFY_POLL_MS         100U
 
 static RobotResult bus_failure(RobotController *robot,
                                uint8_t servo_id,
@@ -39,6 +41,22 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->bus = bus;
     robot->last_bus_result = SERVO_BUS_OK;
     robot->last_failed_servo_id = 0U;
+    robot->profile_speed = ROBOT_PROFILE_SPEED_DEFAULT;
+    robot->profile_acceleration = ROBOT_PROFILE_ACCELERATION_DEFAULT;
+}
+
+bool robot_set_profile(RobotController *robot,
+                       uint16_t speed,
+                       uint8_t acceleration)
+{
+    if (robot == NULL || speed == 0U || speed > 3400U ||
+        acceleration > 254U) {
+        return false;
+    }
+
+    robot->profile_speed = speed;
+    robot->profile_acceleration = acceleration;
+    return true;
 }
 
 RobotResult robot_require_all(RobotController *robot)
@@ -126,8 +144,8 @@ RobotResult robot_hold(RobotController *robot)
         g_robot_servo_ids,
         current,
         ROBOT_JOINT_COUNT,
-        ROBOT_PROFILE_SPEED,
-        ROBOT_PROFILE_ACCELERATION);
+        robot->profile_speed,
+        robot->profile_acceleration);
     if (bus_result != SERVO_BUS_OK) {
         return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
     }
@@ -191,24 +209,37 @@ RobotResult robot_stand(RobotController *robot)
         HAL_Delay(ROBOT_STAND_FRAME_MS);
     }
 
-    HAL_Delay(300U);
-    result = robot_read_positions(robot, frame_positions);
-    if (result != ROBOT_OK) {
-        return result;
-    }
-    for (size_t joint = 0U; joint < ROBOT_JOINT_COUNT; ++joint) {
-        int32_t error = (int32_t)frame_positions[joint] -
-                        (int32_t)target[joint];
-        if (error < 0) {
-            error = -error;
+    const uint32_t verify_started_at = HAL_GetTick();
+    for (;;) {
+        result = robot_read_positions(robot, frame_positions);
+        if (result != ROBOT_OK) {
+            return result;
         }
-        if ((uint32_t)error > ROBOT_VERIFY_TOLERANCE) {
-            robot->last_failed_servo_id = g_robot_servo_ids[joint];
+
+        bool all_within_tolerance = true;
+        for (size_t joint = 0U; joint < ROBOT_JOINT_COUNT; ++joint) {
+            int32_t error = (int32_t)frame_positions[joint] -
+                            (int32_t)target[joint];
+            if (error < 0) {
+                error = -error;
+            }
+            if ((uint32_t)error > ROBOT_VERIFY_TOLERANCE) {
+                if (all_within_tolerance) {
+                    robot->last_failed_servo_id = g_robot_servo_ids[joint];
+                }
+                all_within_tolerance = false;
+            }
+        }
+
+        if (all_within_tolerance) {
+            return ROBOT_OK;
+        }
+        if ((uint32_t)(HAL_GetTick() - verify_started_at) >=
+            ROBOT_VERIFY_TIMEOUT_MS) {
             return ROBOT_VERIFY_ERROR;
         }
+        HAL_Delay(ROBOT_VERIFY_POLL_MS);
     }
-
-    return ROBOT_OK;
 }
 
 RobotResult robot_move_single_safe(RobotController *robot,
@@ -248,8 +279,8 @@ RobotResult robot_move_single_safe(RobotController *robot,
     bus_result = sts3215_write_position(robot->bus,
                                         servo_id,
                                         current,
-                                        ROBOT_PROFILE_SPEED,
-                                        ROBOT_PROFILE_ACCELERATION);
+                                        robot->profile_speed,
+                                        robot->profile_acceleration);
     if (bus_result != SERVO_BUS_OK) {
         return bus_failure(robot, servo_id, bus_result);
     }
@@ -262,8 +293,8 @@ RobotResult robot_move_single_safe(RobotController *robot,
     bus_result = sts3215_write_position(robot->bus,
                                         servo_id,
                                         target_position,
-                                        ROBOT_PROFILE_SPEED,
-                                        ROBOT_PROFILE_ACCELERATION);
+                                        robot->profile_speed,
+                                        robot->profile_acceleration);
     if (bus_result != SERVO_BUS_OK) {
         (void)sts3215_set_torque(robot->bus, servo_id, false);
         return bus_failure(robot, servo_id, bus_result);

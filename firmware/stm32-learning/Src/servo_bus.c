@@ -5,26 +5,39 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define SERVO_BUS_REQUEST_SETTLE_MS 10U
+
 static bool timeout_elapsed(uint32_t started_at, uint32_t timeout_ms)
 {
     return (uint32_t)(HAL_GetTick() - started_at) >= timeout_ms;
 }
 
-static ServoBusResult read_byte_until(ServoBus *bus,
-                                      uint32_t started_at,
-                                      uint8_t *value)
+static inline __attribute__((always_inline))
+ServoBusResult read_byte_until(ServoBus *bus,
+                               uint32_t started_at,
+                               uint8_t *value)
 {
-    while (!timeout_elapsed(started_at, bus->timeout_ms)) {
-        HAL_StatusTypeDef status = HAL_UART_Receive(bus->uart, value, 1U, 1U);
-        if (status == HAL_OK) {
+    for (;;) {
+        const uint32_t status = bus->uart->Instance->SR;
+
+        if ((status & USART_SR_RXNE) != 0U) {
+            *value = (uint8_t)bus->uart->Instance->DR;
             return SERVO_BUS_OK;
         }
-        if (status != HAL_TIMEOUT) {
+
+        if ((status & (USART_SR_ORE | USART_SR_NE |
+                       USART_SR_FE | USART_SR_PE)) != 0U) {
+            volatile uint32_t discarded_status = bus->uart->Instance->SR;
+            volatile uint32_t discarded_data = bus->uart->Instance->DR;
+            (void)discarded_status;
+            (void)discarded_data;
             return SERVO_BUS_HAL_ERROR;
         }
-    }
 
-    return SERVO_BUS_TIMEOUT;
+        if (timeout_elapsed(started_at, bus->timeout_ms)) {
+            return SERVO_BUS_TIMEOUT;
+        }
+    }
 }
 
 static ServoBusResult receive_packet(ServoBus *bus,
@@ -137,6 +150,16 @@ ServoBusResult servo_bus_request(ServoBus *bus,
         *response_count = 0U;
     }
     bus->last_servo_error = 0U;
+
+    /*
+     * Leave enough quiet time for the URT-2 automatic half-duplex direction
+     * circuit and the previous servo status packet to return to idle. This
+     * applies only to unicast request/response transactions; synchronized
+     * broadcast writes used by the stand ramp remain unaffected.
+     */
+    if (expect_response && servo_id != FEETECH_BROADCAST_ID) {
+        HAL_Delay(SERVO_BUS_REQUEST_SETTLE_MS);
+    }
     flush_uart_rx(bus->uart);
 
     /*

@@ -135,6 +135,7 @@ int main(void)
       uart_print("BNO055 initialization failed\r\n");
   }
   app_console_print_help(&console);
+  app_console_print_prompt(&console);
   /* USER CODE END 2 */
 
   /* Infinite loop */
