@@ -51,9 +51,10 @@ J1 축 간격은 임시 body box 외형에도 동일하게
 저장소 루트에서 실행합니다.
 
 ```bash
-python3 hardware/urdf/generate_urdf.py
-python3 hardware/urdf/generate_urdf.py --check
-python3 hardware/urdf/validate_urdf.py
+conda activate spot_omg
+python hardware/urdf/generate_urdf.py
+python hardware/urdf/generate_urdf.py --check
+python hardware/urdf/validate_urdf.py
 ```
 
 ## Servo ID와 URDF Joint
@@ -88,6 +89,10 @@ URDF를 직접 열면 Initial Joint Position (초기 관절 위치)이 모두 0�
 자세로 비교하려면 저장소 루트에서 다음을 실행합니다.
 
 ```bash
-source .venv/bin/activate
+conda activate spot_omg
 python simulation/mujoco/preview_pose.py stand45
 ```
+
+프로젝트는 별도 `.venv`를 사용하지 않습니다. 환경이 없다면 저장소 루트에서
+`conda env create -f environment.yml`로 생성합니다. macOS에서 실시간 MuJoCo
+Viewer가 필요한 명령은 같은 환경의 `mjpython`으로 실행합니다.

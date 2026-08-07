@@ -6,10 +6,14 @@ Spot OMG 시뮬레이션을 구성하면서 사용한 작은 실험 예제입니
 macOS에서는 실시간 Viewer를 위해 저장소 루트에서 `mjpython`으로 실행합니다.
 
 ```bash
+conda activate spot_omg
 mjpython simulation/mujoco/examples/falling_ball.py
 mjpython simulation/mujoco/examples/joint_sweep.py
 mjpython simulation/mujoco/examples/pose_cycle.py
 ```
+
+환경이 아직 없다면 먼저 저장소 루트에서 `conda env create -f environment.yml`을
+실행합니다. 별도 예제용 venv는 만들지 않습니다.
 
 - `falling_ball.py`: 중력과 평면 충돌 확인
 - `joint_sweep.py`: URDF의 12개 관절을 하나씩 움직여 축 방향 확인

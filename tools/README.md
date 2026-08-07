@@ -21,16 +21,17 @@ Spot OMG 로봇을 설정하고 점검하기 위한 개발 도구 모음입니�
 
 ## 빠른 시작
 
-저장소 루트에서 다음 명령을 실행합니다.
+프로젝트 전체는 저장소 루트의 Conda `spot_omg` 환경을 사용합니다. 최초 한 번 환경을
+만들고 활성화합니다.
 
 ```bash
-cd tools/servo_tool
-./setup.sh
-source .venv/bin/activate
+conda env create -f environment.yml
+conda activate spot_omg
 ```
 
-환경이 활성화되면 프롬프트에 `(somg)`가 표시되고 `spotctl` 명령을 사용할 수
-있습니다.
+`environment.yml`이 `tools/servo_tool`을 editable package로 설치하므로 환경이
+활성화되면 어느 디렉터리에서든 `spotctl`을 사용할 수 있습니다. 로컬 `.venv`는
+만들지 않습니다.
 
 시리얼 포트와 연결된 서보를 확인합니다.
 
@@ -53,6 +54,10 @@ spotctl --port /dev/ttyUSB0 save-pose custom
 - Linux: `/dev/ttyUSB0`
 - macOS: `/dev/cu.usbserial-*`
 - Windows: `COM3`
+
+위 포트 예시는 URT-2를 컴퓨터에 USB로 직접 연결한 경우입니다. ST-LINK VCP로
+STM32에 연결된 `/dev/cu.usbmodem...` 또는 `COM...` 포트는 115200 bps 텍스트
+콘솔이므로 `spotctl` 대신 일반 시리얼 터미널을 사용합니다.
 
 자세한 사용법과 하드웨어 연결 주의사항은
 [`servo_tool/README.md`](./servo_tool/README.md)를 참고하세요.
