@@ -26,6 +26,14 @@ const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT] = {
     1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U
 };
 
+/*
+ * Physical forward direction observed on the STM32 robot.
+ * Leg order: FL, FR, RL, RR. The front and rear planar mechanisms are mirror
+ * images, so opposite canonical J2 offsets produce the same body-forward foot
+ * motion. Each diagonal pair still shares the exact same gait phase.
+ */
+const int8_t g_robot_gait_forward_signs[4] = {1, 1, -1, -1};
+
 bool robot_config_valid(void)
 {
     bool seen[254] = {false};
@@ -46,6 +54,13 @@ bool robot_config_valid(void)
         }
         seen[joint->servo_id] = true;
         joint_seen[joint->leg_index][joint->joint_index - 1U] = true;
+    }
+
+    for (size_t leg = 0U; leg < 4U; ++leg) {
+        if (g_robot_gait_forward_signs[leg] != -1 &&
+            g_robot_gait_forward_signs[leg] != 1) {
+            return false;
+        }
     }
 
     return true;

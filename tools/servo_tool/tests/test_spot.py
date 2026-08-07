@@ -11,6 +11,7 @@ from servo import (
     ImuSample,
     LoadContactEstimator,
     ServoState,
+    SharedGaitPolicy,
     SpotConfig,
     SpotRobot,
     STS3215,
@@ -407,6 +408,120 @@ class SpotConfigTest(unittest.TestCase):
         self.assertAlmostEqual(fl[1], rr[1], delta=0.002)
         self.assertAlmostEqual(fr[0], rl[0], delta=0.002)
         self.assertAlmostEqual(fr[1], rl[1], delta=0.002)
+
+    def test_shared_c_sim_trot_matches_python_reference(self) -> None:
+        policy = SharedGaitPolicy()
+        robot = SpotRobot(RecordingBus(), self.config)
+        gait = GaitParameters(
+            pattern="trot",
+            period=0.8,
+            hip_amplitude=8.8,
+            lift_amplitude=30.0,
+            crouch_amplitude=0.0,
+            speed=60,
+            acceleration=30,
+            duty_factor=0.5,
+            control_rate=50.0,
+            stance_j1_angle=4.0,
+            stance_j2_angle=45.0,
+            stance_j3_angle=90.0,
+        )
+        signs = {leg: -1 for leg in ("FL", "FR", "RL", "RR")}
+        self.config.gait_forward_signs = signs
+        base = self.config.angles_to_targets(
+            {
+                (leg, joint): angle
+                for leg in signs
+                for joint, angle in ((1, 4.0), (2, 45.0), (3, 90.0))
+            }
+        )
+
+        for amplitude in (0.0, 0.35, 1.0):
+            for phase in (0.0, 0.1, 0.25, 0.49, 0.5, 0.75, 0.9, 0.999):
+                shared, support = policy.sim_trot_targets(
+                    phase, amplitude, signs
+                )
+                python = robot.gait_targets(
+                    phase, base, gait, amplitude_scale=amplitude
+                )
+                expected_support = (
+                    {"FL", "RR"} if phase < 0.5 else {"FR", "RL"}
+                )
+                self.assertEqual(support, expected_support)
+                for leg in signs:
+                    for joint in (1, 2, 3):
+                        servo_id = self.config.joint(leg, joint).servo_id
+                        expected = self.config.position_to_angle(
+                            leg, joint, python[servo_id]
+                        )
+                        self.assertAlmostEqual(
+                            shared[(leg, joint)], expected, delta=0.05
+                        )
+
+    def test_shared_c_smootherstep_is_bounded_and_matches_python(self) -> None:
+        policy = SharedGaitPolicy()
+        previous = 0.0
+        for step in range(-20, 1021):
+            progress = step / 1000.0
+            actual = policy.smootherstep(progress)
+            expected_progress = max(0.0, min(1.0, progress))
+            expected = SpotRobot._smoothstep(expected_progress)
+            self.assertGreaterEqual(actual, 0.0)
+            self.assertLessEqual(actual, 1.0)
+            self.assertGreaterEqual(actual + 1e-7, previous)
+            self.assertAlmostEqual(actual, expected, delta=2e-6)
+            previous = actual
+
+        # Regression for the 1200/1600 ms STM32 ramp frame that previously
+        # rounded to 1.004 and was rejected as a configuration error.
+        self.assertLessEqual(policy.smootherstep(0.96), 1.0)
+
+    def test_shared_c_balance_uses_support_and_body_axes(self) -> None:
+        policy = SharedGaitPolicy()
+        signs = {leg: -1 for leg in ("FL", "FR", "RL", "RR")}
+        targets, support = policy.sim_trot_targets(0.25, 1.0, signs)
+        balanced = policy.balance_targets(
+            targets,
+            sample=ImuSample(
+                roll=0.10,
+                pitch=0.0,
+                roll_rate=0.0,
+                pitch_rate=0.0,
+            ),
+            support_legs=support,
+            forward_signs=signs,
+            kp=1.0,
+            kd=0.04,
+            leg_length_limit=0.15,
+            mode="contact-aware",
+            j1_gain=5.0,
+            j1_limit=5.0,
+            foot_placement_gain=0.0,
+            foot_placement_limit=0.08,
+        )
+
+        self.assertGreater(balanced[("FL", 1)], targets[("FL", 1)])
+        self.assertLess(balanced[("RR", 1)], targets[("RR", 1)])
+        self.assertGreater(balanced[("FR", 1)], targets[("FR", 1)])
+        self.assertLess(balanced[("RL", 1)], targets[("RL", 1)])
+
+        robot = SpotRobot(RecordingBus(), self.config)
+        for leg in ("FL", "RL"):
+            before = robot.leg_forward_kinematics(
+                targets[(leg, 2)], targets[(leg, 3)]
+            )[1]
+            after = robot.leg_forward_kinematics(
+                balanced[(leg, 2)], balanced[(leg, 3)]
+            )[1]
+            self.assertAlmostEqual(after, before - 0.10, delta=0.001)
+        for leg in ("FR", "RR"):
+            before = robot.leg_forward_kinematics(
+                targets[(leg, 2)], targets[(leg, 3)]
+            )[1]
+            after = robot.leg_forward_kinematics(
+                balanced[(leg, 2)], balanced[(leg, 3)]
+            )[1]
+            self.assertAlmostEqual(after, before + 0.10, delta=0.001)
 
     def test_planar_leg_ik_round_trip(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)

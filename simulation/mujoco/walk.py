@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay the real spotctl gait trajectory in the MuJoCo URDF model."""
+"""Run the STM32-shared or legacy Python gait in the MuJoCo robot model."""
 
 from __future__ import annotations
 
@@ -13,7 +13,13 @@ from pathlib import Path
 
 import mujoco
 
-from servo import AttitudeController, ImuSample, SpotConfig, SpotRobot
+from servo import (
+    AttitudeController,
+    ImuSample,
+    SharedGaitPolicy,
+    SpotConfig,
+    SpotRobot,
+)
 from servo.cli import PRESETS
 
 
@@ -43,6 +49,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gait", choices=("trot", "crawl"), default="trot")
     parser.add_argument("--preset", choices=tuple(SIM_PRESETS), default="test")
+    parser.add_argument(
+        "--controller",
+        choices=("auto", "shared-c", "python"),
+        default="auto",
+        help="gait generator; sim-trot defaults to the STM32-shared C policy",
+    )
     parser.add_argument("--cycles", type=int, default=10)
     parser.add_argument("--period", type=float)
     parser.add_argument("--hip", type=float)
@@ -194,6 +206,42 @@ def stance_targets(config: SpotConfig, gait) -> dict[int, int]:
     )
 
 
+def canonical_targets_to_positions(
+    config: SpotConfig,
+    targets: dict[tuple[str, int], float],
+) -> dict[int, int]:
+    return config.angles_to_targets(targets)
+
+
+def positions_to_canonical_targets(
+    config: SpotConfig,
+    targets: dict[int, int],
+) -> dict[tuple[str, int], float]:
+    return {
+        (leg, joint_number): config.position_to_angle(
+            leg,
+            joint_number,
+            targets[config.joint(leg, joint_number).servo_id],
+        )
+        for leg in LEGS
+        for joint_number in (1, 2, 3)
+    }
+
+
+def shared_policy_targets(
+    config: SpotConfig,
+    policy: SharedGaitPolicy,
+    phase: float,
+    amplitude_scale: float,
+) -> tuple[dict[int, int], set[str]]:
+    canonical, support = policy.sim_trot_targets(
+        phase,
+        amplitude_scale,
+        config.gait_forward_signs,
+    )
+    return canonical_targets_to_positions(config, canonical), support
+
+
 def apply_targets(
     model: mujoco.MjModel,
     data: mujoco.MjData,
@@ -283,7 +331,7 @@ def body_up_z(model: mujoco.MjModel, data: mujoco.MjData) -> float:
 
 
 def read_imu(model: mujoco.MjModel, data: mujoco.MjData) -> ImuSample:
-    """Read the one body-mounted virtual IMU in BNO086-compatible form."""
+    """Read the body-mounted virtual IMU in the STM32 balance coordinates."""
     orientation_id = mujoco.mj_name2id(
         model, mujoco.mjtObj.mjOBJ_SENSOR, "body_imu_orientation"
     )
@@ -429,6 +477,7 @@ def run_dynamic(
     config: SpotConfig,
     robot: SpotRobot,
     base: dict[int, int],
+    shared_policy: SharedGaitPolicy | None,
 ) -> int:
     model = mujoco.MjModel.from_xml_path(str(SCENE))
     data = mujoco.MjData(model)
@@ -439,7 +488,7 @@ def run_dynamic(
         if platform.system() == "Darwin" and "MJPYTHON_BIN" not in os.environ:
             raise RuntimeError(
                 "macOS live viewer requires mjpython; run: "
-                ".venv/bin/mjpython simulation/mujoco/walk.py --dynamic"
+                ".venv-mujoco/bin/mjpython simulation/mujoco/walk.py --dynamic"
             )
         import mujoco.viewer as mj_viewer
 
@@ -489,19 +538,39 @@ def run_dynamic(
                         support_legs = measured_support
                 sample = read_imu(model, data)
                 if args.balance:
-                    targets = balance_targets(
-                        config,
-                        robot,
-                        targets,
-                        sample=sample,
-                        controller=attitude_controller,
-                        support_legs=support_legs,
-                        mode=args.balance_mode,
-                        j1_gain=args.j1_balance_gain,
-                        j1_limit=args.j1_balance_limit,
-                        foot_placement_gain=args.foot_placement_gain,
-                        foot_placement_limit=args.foot_placement_limit,
-                    )
+                    if shared_policy is None:
+                        targets = balance_targets(
+                            config,
+                            robot,
+                            targets,
+                            sample=sample,
+                            controller=attitude_controller,
+                            support_legs=support_legs,
+                            mode=args.balance_mode,
+                            j1_gain=args.j1_balance_gain,
+                            j1_limit=args.j1_balance_limit,
+                            foot_placement_gain=args.foot_placement_gain,
+                            foot_placement_limit=args.foot_placement_limit,
+                        )
+                    else:
+                        canonical = positions_to_canonical_targets(config, targets)
+                        canonical = shared_policy.balance_targets(
+                            canonical,
+                            sample=sample,
+                            support_legs=support_legs,
+                            forward_signs=config.gait_forward_signs,
+                            kp=args.balance_kp,
+                            kd=args.balance_kd,
+                            leg_length_limit=args.balance_limit,
+                            mode=args.balance_mode,
+                            j1_gain=args.j1_balance_gain,
+                            j1_limit=args.j1_balance_limit,
+                            foot_placement_gain=args.foot_placement_gain,
+                            foot_placement_limit=args.foot_placement_limit,
+                        )
+                        targets = canonical_targets_to_positions(
+                            config, canonical
+                        )
                 set_controls(model, data, config, targets)
                 next_control_time += 1.0 / gait.control_rate
             mujoco.mj_step(model, data)
@@ -542,11 +611,13 @@ def run_dynamic(
     def gait_controls(sim_time: float) -> tuple[dict[int, int], set[str]]:
         elapsed = min(total_duration, sim_time - gait_started)
         phase = (elapsed / gait.period) % 1.0
+        amplitude = amplitude_at(elapsed, total_duration)
+        if shared_policy is not None:
+            return shared_policy_targets(
+                config, shared_policy, phase, amplitude
+            )
         targets = robot.gait_targets(
-            phase,
-            base,
-            gait,
-            amplitude_scale=amplitude_at(elapsed, total_duration),
+            phase, base, gait, amplitude_scale=amplitude
         )
         return targets, scheduled_support_legs(phase, gait)
 
@@ -614,6 +685,33 @@ def main() -> int:
         config.gait_forward_signs = {leg: -1 for leg in LEGS}
     robot = SpotRobot(None, config)
     base = stance_targets(config, gait)
+    use_shared_policy = (
+        args.controller == "shared-c" or
+        (args.controller == "auto" and args.preset == "sim-trot")
+    )
+    if use_shared_policy and (args.preset != "sim-trot" or args.gait != "trot"):
+        raise ValueError("shared-c controller currently requires trot/sim-trot")
+    fixed_overrides = {
+        name: getattr(args, name)
+        for name in (
+            "hip",
+            "lift",
+            "crouch",
+            "stance_j1",
+            "stance_j2",
+            "stance_j3",
+            "duty",
+            "weight_shift",
+            "preload",
+        )
+        if getattr(args, name) is not None
+    }
+    if use_shared_policy and fixed_overrides:
+        names = ", ".join(sorted(fixed_overrides))
+        raise ValueError(
+            f"shared-c sim-trot has firmware-fixed trajectory values: {names}"
+        )
+    shared_policy = SharedGaitPolicy() if use_shared_policy else None
 
     print(
         f"MuJoCo {'dynamic' if args.dynamic else 'kinematic'} gait: "
@@ -621,11 +719,12 @@ def main() -> int:
         f"period={gait.period:g}s, rate={gait.control_rate:g}Hz, "
         f"stance=J1 {gait.stance_j1_angle:g}deg/"
         f"J2 {gait.stance_j2_angle:g}deg/J3 {gait.stance_j3_angle:g}deg, "
-        f"balance={args.balance_mode if args.balance else 'off'}"
+        f"balance={args.balance_mode if args.balance else 'off'}, "
+        f"controller={'shared-c' if shared_policy is not None else 'python'}"
     )
 
     if args.dynamic:
-        return run_dynamic(args, gait, config, robot, base)
+        return run_dynamic(args, gait, config, robot, base, shared_policy)
 
     model = mujoco.MjModel.from_xml_path(str(URDF))
     data = mujoco.MjData(model)
@@ -638,17 +737,23 @@ def main() -> int:
     if args.check:
         for frame in range(round(gait.control_rate * gait.period)):
             elapsed = frame / gait.control_rate
-            targets = robot.gait_targets(
-                elapsed / gait.period, base, gait, amplitude_scale=1.0
-            )
+            phase = elapsed / gait.period
+            if shared_policy is not None:
+                targets, _ = shared_policy_targets(
+                    config, shared_policy, phase, 1.0
+                )
+            else:
+                targets = robot.gait_targets(
+                    phase, base, gait, amplitude_scale=1.0
+                )
             apply_targets(model, data, config, targets)
-        print("valid: one complete spotctl gait cycle applied to 12 MuJoCo joints")
+        print("valid: one complete gait cycle applied to 12 MuJoCo joints")
         return 0
 
     if platform.system() == "Darwin" and "MJPYTHON_BIN" not in os.environ:
         raise RuntimeError(
             "macOS live viewer requires mjpython; run: "
-            ".venv/bin/mjpython simulation/mujoco/walk.py"
+            ".venv-mujoco/bin/mjpython simulation/mujoco/walk.py"
         )
 
     import mujoco.viewer as mj_viewer
@@ -660,12 +765,16 @@ def main() -> int:
         frame = 0
         while viewer.is_running() and frame * interval < total_duration:
             elapsed = frame * interval
-            targets = robot.gait_targets(
-                (elapsed / gait.period) % 1.0,
-                base,
-                gait,
-                amplitude_scale=amplitude_at(elapsed, total_duration),
-            )
+            phase = (elapsed / gait.period) % 1.0
+            amplitude = amplitude_at(elapsed, total_duration)
+            if shared_policy is not None:
+                targets, _ = shared_policy_targets(
+                    config, shared_policy, phase, amplitude
+                )
+            else:
+                targets = robot.gait_targets(
+                    phase, base, gait, amplitude_scale=amplitude
+                )
             apply_targets(model, data, config, targets)
             viewer.sync()
             frame += 1

@@ -1,6 +1,7 @@
 #include "app_console.h"
 
 #include "feetech_protocol.h"
+#include "gait_policy.h"
 #include "robot_config.h"
 #include "sts3215.h"
 
@@ -385,10 +386,14 @@ static void command_balance(AppConsole *console, char *mode)
         char message[128];
         (void)snprintf(message,
                        sizeof(message),
-                       "Balance: %s, IMU: %s\r\n",
+                       "Balance: %s, mode: %s, target: %s, IMU: %s, policy: %s\r\n",
                        robot->balance_enabled ? "on" : "off",
+                       robot_balance_mode_string(robot->balance_mode),
+                       robot->balance_mode == ROBOT_BALANCE_FULL ?
+                           "level" : "startup",
                        robot->attitude_reader != NULL ? "available"
-                                                      : "unavailable");
+                                                      : "unavailable",
+                       robot->balance_required ? "required" : "open-loop allowed");
         write_text(console, message);
         if (robot->balance_reference_valid) {
             const int32_t roll = robot->balance_reference_roll_tenths;
@@ -404,19 +409,75 @@ static void command_balance(AppConsole *console, char *mode)
                 labs(pitch) / 10,
                 labs(pitch) % 10);
             write_text(console, message);
+            const int32_t last_roll = robot->balance_last_roll_error_tenths;
+            const int32_t last_pitch = robot->balance_last_pitch_error_tenths;
+            (void)snprintf(
+                message,
+                sizeof(message),
+                "Last error: Roll=%s%ld.%01ld Pitch=%s%ld.%01ld deg\r\n",
+                last_roll < 0 ? "-" : "",
+                labs(last_roll) / 10,
+                labs(last_roll) % 10,
+                last_pitch < 0 ? "-" : "",
+                labs(last_pitch) / 10,
+                labs(last_pitch) % 10);
+            write_text(console, message);
+            (void)snprintf(
+                message,
+                sizeof(message),
+                "Peak: Roll=%u.%u Pitch=%u.%u J1=%u.%u Knee=%u.%u late=%u\r\n",
+                (unsigned int)(robot->balance_peak_roll_error_tenths / 10),
+                (unsigned int)(robot->balance_peak_roll_error_tenths % 10),
+                (unsigned int)(robot->balance_peak_pitch_error_tenths / 10),
+                (unsigned int)(robot->balance_peak_pitch_error_tenths % 10),
+                (unsigned int)(robot->balance_peak_j1_correction_tenths / 10),
+                (unsigned int)(robot->balance_peak_j1_correction_tenths % 10),
+                (unsigned int)(robot->balance_peak_knee_correction_tenths / 10),
+                (unsigned int)(robot->balance_peak_knee_correction_tenths % 10),
+                (unsigned int)robot->balance_late_frames);
+            write_text(console, message);
         }
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "Step sync: barriers=%u wait=%ums peak_error=%uticks\r\n",
+            (unsigned int)robot->trot_step_sync_count,
+            (unsigned int)robot->trot_step_sync_wait_ms,
+            (unsigned int)robot->trot_step_sync_peak_error_ticks);
+        write_text(console, message);
     } else if (strcmp(mode, "on") == 0) {
         if (!robot_set_balance_enabled(robot, true)) {
             write_text(console,
                        "ERROR: IMU unavailable; balance remains off\r\n");
             return;
         }
-        write_text(console, "Balance: on (Roll/Pitch, default off)\r\n");
+        write_text(console,
+                   robot->balance_mode == ROBOT_BALANCE_FULL ?
+                       "Balance: on, full (absolute level target)\r\n" :
+                       "Balance: on, normal (startup attitude target)\r\n");
+    } else if (strcmp(mode, "full") == 0) {
+        if (!robot_set_balance_mode(robot, ROBOT_BALANCE_FULL)) {
+            write_text(console,
+                       "ERROR: IMU unavailable; balance mode unchanged\r\n");
+            return;
+        }
+        write_text(console,
+                   "Balance: on, full (absolute level, maximum bounded correction)\r\n");
+    } else if (strcmp(mode, "normal") == 0) {
+        if (!robot_set_balance_mode(robot, ROBOT_BALANCE_NORMAL)) {
+            write_text(console,
+                       "ERROR: IMU unavailable; balance mode unchanged\r\n");
+            return;
+        }
+        write_text(console,
+                   "Balance: on, normal (startup attitude target)\r\n");
     } else if (strcmp(mode, "off") == 0) {
         (void)robot_set_balance_enabled(robot, false);
-        write_text(console, "Balance: off\r\n");
+        write_text(console,
+                   "Balance: off (open-loop trot explicitly allowed)\r\n");
     } else {
-        write_text(console, "usage: balance on|off|status\r\n");
+        write_text(console,
+                   "usage: balance full|normal|on|off|status\r\n");
     }
 }
 
@@ -460,7 +521,7 @@ static void command_trot(AppConsole *console,
                          char *period_text)
 {
     uint32_t cycles = 1U;
-    uint32_t period_ms = 1200U;
+    uint32_t period_ms = GAIT_POLICY_SIM_TROT_PERIOD_MS;
 
     if ((cycles_text != NULL &&
          !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
@@ -474,10 +535,11 @@ static void command_trot(AppConsole *console,
     char message[96];
     (void)snprintf(message,
                    sizeof(message),
-                   "Starting diagonal trot: cycles=%lu period=%lums balance=%s\r\n",
+                   "Starting shared-C sim-trot: cycles=%lu period=%lums balance=%s/%s\r\n",
                    (unsigned long)cycles,
                    (unsigned long)period_ms,
-                   console->robot->balance_enabled ? "on" : "off");
+                   console->robot->balance_enabled ? "on" : "off",
+                   robot_balance_mode_string(console->robot->balance_mode));
     write_text(console, message);
     print_robot_result(console,
                        robot_trot(console->robot,
@@ -665,7 +727,7 @@ void app_console_print_help(AppConsole *console)
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  relax            torque off all configured servos\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
-               "  balance on|off|status Roll/Pitch trot feedback (default off)\r\n"
+               "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
                "  help             show this help\r\n\r\n");
     write_text(console,
                console->echo_enabled ? "Console echo: on\r\n"

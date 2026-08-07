@@ -11,6 +11,10 @@ extern "C" {
 
 #define ROBOT_JOINT_COUNT 12U
 
+/* BNO055 values that represent a physically level robot body (0.1 degree). */
+#define ROBOT_IMU_LEVEL_ROLL_TENTHS   0
+#define ROBOT_IMU_LEVEL_PITCH_TENTHS  0
+
 typedef struct
 {
     uint8_t servo_id;
@@ -24,6 +28,7 @@ typedef struct
 
 extern const RobotJointConfig g_robot_joints[ROBOT_JOINT_COUNT];
 extern const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT];
+extern const int8_t g_robot_gait_forward_signs[4];
 
 bool robot_config_valid(void);
 

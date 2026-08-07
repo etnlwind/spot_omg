@@ -1,11 +1,18 @@
 # Spot OMG MuJoCo Preview
 
-저장소 루트의 `somg` 환경에서 URDF를 Canonical Pose (논리 자세)로 확인합니다.
+저장소 루트의 MuJoCo 가상환경에서 URDF를 Canonical Pose (논리 자세)로 확인합니다.
 
 ```bash
-source .venv/bin/activate
+python3 -m venv .venv-mujoco
+source .venv-mujoco/bin/activate
+python -m pip install mujoco
+python -m pip install -e tools/servo_tool
+
 python simulation/mujoco/preview_pose.py stand45
 ```
+
+마지막 명령은 STM32 코드를 Python으로 바꾸는 설치가 아니라, MuJoCo 호스트가
+저장소의 공용 C 헤더와 Python 바인딩을 찾게 하는 editable 설치입니다.
 
 지원 자세는 실제 `spotctl`의 논리 각도와 같습니다.
 
@@ -24,18 +31,22 @@ URDF는 Initial Joint Position (초기 관절 위치)을 저장하지 않으므�
 
 ## 보행 궤적 재생
 
-실제 `spotctl walk`가 사용하는 궤적 생성기를 MuJoCo의 12개 관절에 그대로
-연결합니다. macOS의 실시간 Viewer는 `mjpython`으로 실행해야 합니다.
+`sim-trot`은 STM32와 MuJoCo가 함께 사용하는 `gait_policy.h`의 HAL 독립 C
+정책을 MuJoCo 12개 관절에 연결합니다. 호스트에서는 작은 공유 라이브러리를
+임시 디렉터리에 자동 컴파일해 같은 C 함수를 직접 호출합니다. macOS의 실시간
+Viewer는 `mjpython`으로 실행해야 합니다.
 
 ```bash
-.venv/bin/mjpython simulation/mujoco/walk.py \
-  --gait trot --preset test --cycles 10
+.venv-mujoco/bin/mjpython simulation/mujoco/walk.py \
+  --gait trot --preset sim-trot --cycles 10
 ```
 
-실제 하드웨어 시험값과 같은 옵션도 사용할 수 있습니다.
+기존 `test`, `power`, `natural` 프리셋은 비교와 과거 시험 재현을 위해 Python
+정책을 유지합니다. `--controller python`으로 `sim-trot`의 이전 Python 구현도
+명시적으로 선택할 수 있습니다.
 
 ```bash
-.venv/bin/mjpython simulation/mujoco/walk.py \
+.venv-mujoco/bin/mjpython simulation/mujoco/walk.py \
   --gait trot --preset power --cycles 10 \
   --stance-j1 4 --stance-j2 25 --stance-j3 50 \
   --duty 0.82 --hip 8 --lift 20 --period 2.0 --rate 50
@@ -90,17 +101,18 @@ python simulation/mujoco/walk.py \
 
 ## 실제 접촉 기준 트롯
 
-`sim-trot`은 MuJoCo 전용 Dynamic Trot (동적 트롯) 프리셋입니다. `period=0.8 s`,
-`duty=0.50`, `lift=30°`, `rate=50 Hz`, `J1 stance=4°`를 사용합니다. 통일된
-후방 굽힘 URDF에 맞는 전진 부호는 시뮬레이터 안에서만 적용하므로 실제 로봇의
-`joints.json`은 변경하지 않습니다.
+`sim-trot`은 STM32와 MuJoCo의 공용 Dynamic Trot (동적 트롯) 정책입니다.
+`period=0.8 s`, `duty=0.50`, `lift=30°`, `rate=50 Hz`, `J1 stance=4°`를
+사용합니다. 공용 C 함수는 같은 canonical 발끝 궤적과 IK를 계산하고, 전진 부호만
+URDF에서는 네 다리 `-1`, 실제 STM32 기체에서는 `FL/FR +1`, `RL/RR -1`을
+입력해 서로 다른 기구 배치를 보정합니다.
 
 ```bash
 mjpython simulation/mujoco/walk.py \
   --dynamic --balance --gait trot --preset sim-trot --cycles 10
 ```
 
-10주기 Headless Test (화면 없는 시험) 결과는 대각선 접촉 `74.7%`, 전진
+공용 C 정책의 10주기 Headless Test (화면 없는 시험) 결과는 대각선 접촉 `74.7%`, 전진
 `+1.034 m`, 최대 Roll `7.61°`, 최대 Pitch `5.44°`, `state=UPRIGHT`,
 `gait=TROT`입니다. 출력의 `diagonal_contact`는 실제 지면 접촉이 정확히
 `FL+RR` 또는 `FR+RL`인 물리 프레임 비율이며, 50% 이상일 때 접촉 기준 트롯으로
@@ -149,14 +161,11 @@ Sagittal Foot Placement (전후 착지 위치 보정)는 구현되어 있지만 
 없습니다. 목표는 화면상 완전 고정이 아니라 기울기 진폭과 누적 Drift (표류)를
 줄이면서 대각선 접촉을 유지하는 것입니다.
 
-제어 계산은 `servo.attitude.AttitudeController`에 분리했습니다. 시뮬레이터는
-MuJoCo 센서값을 `ImuSample`로 변환합니다. 실제 로봇에서는 같은 입력 자리에
-BNO086의 Rotation Vector (회전 벡터)에서 얻은 Roll/Pitch와 Calibrated Gyro
-(보정 자이로) 각속도를 넣어 STM32 제어 주기에 연결하면 됩니다. 현재 단계는 센서
-1개를 사용한 자세 제어 구조 검증입니다. MuJoCo에서는 발 접촉을 직접 읽지만 실제
-로봇에서는 우선 보행 위상을 사용하고, 이후 발 접촉 센서나 STS3215 Load Estimate
-(부하 추정)를 추가할 수 있습니다. 실제 하드웨어용 BNO086 드라이버와 비상
-정지·과도 기울기 제한은 아직 포함하지 않습니다.
+공용 C 정책은 Cartesian 발끝 궤적, 2-link IK, Roll/Pitch PD 다리 길이 보정과
+J1 보정을 모두 계산합니다. 시뮬레이터는 MuJoCo Virtual IMU와 실제 접촉 다리
+마스크를 전달합니다. STM32는 장착된 BNO055 Roll/Pitch와 수치 미분 각속도,
+보행 stance 마스크를 같은 함수에 전달합니다. 실제 발 접촉 센서가 추가되면
+STM32도 위상 마스크 대신 측정 접촉 마스크를 넣을 수 있습니다.
 
 2026-08-05의 이득 탐색, 실패한 지지 다리 전용 보정, 실제 STS3215 정지·동적
 부하 측정과 위상 기준 모델 결과는
