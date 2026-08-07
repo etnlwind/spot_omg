@@ -32,6 +32,25 @@ SPOT_GAIT_EXPORT float spot_gait_smootherstep(float progress)
     return gait_policy_smootherstep(progress);
 }
 
+SPOT_GAIT_EXPORT int spot_gait_trot_targets(
+    float phase,
+    float amplitude_scale,
+    float travel_scale,
+    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_trot_targets(
+            phase, amplitude_scale, travel_scale, forward_signs, targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
 SPOT_GAIT_EXPORT int spot_gait_sim_trot_targets(
     float phase,
     float amplitude_scale,
@@ -43,6 +62,49 @@ SPOT_GAIT_EXPORT int spot_gait_sim_trot_targets(
     if (values == NULL || support_mask == NULL ||
         !gait_policy_sim_trot_targets(
             phase, amplitude_scale, forward_signs, targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_gait_trot2_targets(
+    float phase,
+    float amplitude_scale,
+    float fold_j2_deg,
+    float fold_j3_deg,
+    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_trot2_targets(
+            phase,
+            amplitude_scale,
+            fold_j2_deg,
+            fold_j3_deg,
+            forward_signs,
+            targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_gait_jump_targets(
+    float phase,
+    float forward_travel,
+    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_jump_targets(
+            phase, forward_travel, forward_signs, targets)) {
         return 0;
     }
     pack_targets(targets, values);

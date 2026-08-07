@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 import tempfile
 import unittest
@@ -458,6 +459,45 @@ class SpotConfigTest(unittest.TestCase):
                             shared[(leg, joint)], expected, delta=0.05
                         )
 
+    def test_shared_c_trot_travel_scale_preserves_forward_policy(self) -> None:
+        policy = SharedGaitPolicy()
+        signs = self.config.gait_forward_signs
+        for phase in (0.0, 0.1, 0.35, 0.5, 0.85, 0.999):
+            expected, expected_support = policy.sim_trot_targets(
+                phase, 1.0, signs
+            )
+            actual, actual_support = policy.trot_targets(
+                phase, 1.0, 1.0, signs
+            )
+            self.assertEqual(actual_support, expected_support)
+            for key, expected_angle in expected.items():
+                self.assertAlmostEqual(actual[key], expected_angle, delta=1e-5)
+
+    def test_shared_c_in_place_trot_has_no_sagittal_travel(self) -> None:
+        policy = SharedGaitPolicy()
+        robot = SpotRobot(RecordingBus(), self.config)
+        signs = self.config.gait_forward_signs
+
+        saw_lift = False
+        for phase in (0.0, 0.1, 0.25, 0.35, 0.5, 0.6, 0.85, 0.999):
+            targets, support = policy.trot_targets(
+                phase, 1.0, 0.0, signs
+            )
+            expected_support = (
+                {"FL", "RR"} if phase < 0.5 else {"FR", "RL"}
+            )
+            self.assertEqual(support, expected_support)
+            for leg in signs:
+                forward, down = robot.leg_forward_kinematics(
+                    targets[(leg, 2)], targets[(leg, 3)]
+                )
+                self.assertAlmostEqual(forward, 0.0, delta=1e-5)
+                saw_lift |= down < math.sqrt(2.0) - 0.05
+        self.assertTrue(saw_lift)
+
+        with self.assertRaises(ValueError):
+            policy.trot_targets(0.5, 1.0, 1.01, signs)
+
     def test_shared_c_smootherstep_is_bounded_and_matches_python(self) -> None:
         policy = SharedGaitPolicy()
         previous = 0.0
@@ -475,6 +515,60 @@ class SpotConfigTest(unittest.TestCase):
         # Regression for the 1200/1600 ms STM32 ramp frame that previously
         # rounded to 1.004 and was rejected as a configuration error.
         self.assertLessEqual(policy.smootherstep(0.96), 1.0)
+
+    def test_shared_c_jump_starts_and_ends_at_stand(self) -> None:
+        policy = SharedGaitPolicy()
+        signs = self.config.gait_forward_signs
+        start, start_support = policy.jump_targets(0.0, 0.0, signs)
+        end, end_support = policy.jump_targets(1.0, 0.0, signs)
+
+        self.assertEqual(start_support, {"FL", "FR", "RL", "RR"})
+        self.assertEqual(end_support, start_support)
+        for leg in signs:
+            self.assertAlmostEqual(start[(leg, 1)], 0.0, delta=0.01)
+            self.assertAlmostEqual(start[(leg, 2)], 45.0, delta=0.01)
+            self.assertAlmostEqual(start[(leg, 3)], 90.0, delta=0.01)
+            for joint in (1, 2, 3):
+                self.assertAlmostEqual(
+                    end[(leg, joint)], start[(leg, joint)], delta=0.01
+                )
+
+    def test_shared_c_in_place_jump_moves_all_legs_together(self) -> None:
+        policy = SharedGaitPolicy()
+        signs = self.config.gait_forward_signs
+        for phase in (0.30, 0.42, 0.55, 0.68, 0.82):
+            targets, _ = policy.jump_targets(phase, 0.0, signs)
+            reference = tuple(targets[("FL", joint)] for joint in (1, 2, 3))
+            for leg in ("FR", "RL", "RR"):
+                actual = tuple(targets[(leg, joint)] for joint in (1, 2, 3))
+                for value, expected in zip(actual, reference):
+                    self.assertAlmostEqual(value, expected, delta=0.01)
+
+        airborne, support = policy.jump_targets(0.50, 0.0, signs)
+        self.assertEqual(support, set())
+        self.assertGreater(airborne[("FL", 3)], 44.0)
+        _, landed_support = policy.jump_targets(0.70, 0.0, signs)
+        self.assertEqual(landed_support, {"FL", "FR", "RL", "RR"})
+
+    def test_shared_c_jump_forward_parameter_respects_leg_mirroring(self) -> None:
+        policy = SharedGaitPolicy()
+        robot = SpotRobot(RecordingBus(), self.config)
+        signs = self.config.gait_forward_signs
+        in_place, _ = policy.jump_targets(0.60, 0.0, signs)
+        forward, _ = policy.jump_targets(0.60, 0.08, signs)
+
+        for leg in signs:
+            base_x, _ = robot.leg_forward_kinematics(
+                in_place[(leg, 2)], in_place[(leg, 3)]
+            )
+            moved_x, _ = robot.leg_forward_kinematics(
+                forward[(leg, 2)], forward[(leg, 3)]
+            )
+            normalized_change = (moved_x - base_x) * signs[leg]
+            self.assertGreater(normalized_change, 0.0)
+
+        with self.assertRaises(ValueError):
+            policy.jump_targets(0.5, 0.31, signs)
 
     def test_shared_c_balance_uses_support_and_body_axes(self) -> None:
         policy = SharedGaitPolicy()

@@ -90,7 +90,8 @@ hip=280 tick, lift=400 tick, speed=1000, accel=100, rate=100Hz
 - 최초 설정은 FL J1 중심 2068, 나머지 관절 중심 2048이었습니다.
 - `landing`과 직접 저장한 `stand45` 포즈를 보존했습니다.
 - ID 변경은 EEPROM unlock → ID 쓰기 → lock → 재연결 검증 순서로 보완했습니다.
-- `spotctl` 명령과 `(somg)` 가상환경 설치 흐름을 추가했습니다.
+- `spotctl` 명령과 당시의 `(somg)` venv 설치 흐름을 추가했습니다. 현재 개발
+  환경은 아래 2026-08-08 기록의 Conda `spot_omg`로 대체했습니다.
 
 ## 2026-08-02 12관절 캘리브레이션 및 좌표 계층 (구 좌표계 기록)
 
@@ -956,6 +957,130 @@ Servo tool 단위 시험은 `58/58 PASS`가 되었습니다.
 위 수치는 모델 안의 결과이며 실제 기체 성공을 보장하지 않습니다. 실제 첫 시험은
 거치대에서 `trot 1 1200`으로 방향과 간섭을 확인한 다음 기본 `trot 1` 800ms로
 진행합니다.
+
+## 2026-08-07 STM32 제자리 반복 점프 정책
+
+전진 점프로 확장 가능한 공용 Cartesian 점프 궤적과 STM32 `jump` 명령을
+추가했습니다. 한 주기는 `stand`, 압축, 도약 신전, 공중 tuck, 착지 준비, 충격
+흡수, stand 복귀의 7개 waypoint를 50Hz smootherstep으로 연결합니다. 제자리
+명령은 `forward_travel=0`을 사용하며 네 다리의 canonical 목표가 완전히 같습니다.
+
+```text
+jump 1 2000       # 첫 거치대 시험
+jump 3 1500       # 유한 반복
+jump              # 기본 1200ms 무한 반복
+Ctrl+C            # 현재 frame 뒤 stand 요청 및 중단
+```
+
+무한 반복 중에도 USART2 RX ISR이 `0x03`을 직접 감지해 motion abort flag를
+설정합니다. 같은 중단 경로를 기존 `trot`에도 연결했습니다. IMU balance가 켜진
+경우 Roll/Pitch 기준 오차 `30°` 초과 또는 연속 3회 읽기 실패 시 stand 목표를
+요청하고 종료합니다. 점프 중 IMU는 아직 관절 능동 보정이 아니라 tilt guard로만
+사용합니다.
+
+공용 호스트 바인딩과 다음 회귀 시험을 추가했습니다.
+
+- phase `0/1`에서 J1/J2/J3가 `0°/45°/90°` stand와 일치
+- 제자리 모드에서 네 다리 각도 일치
+- 도약/공중 구간 support mask 해제와 착지 구간 복귀
+- `forward_travel` 적용 시 다리별 mirror sign 일치
+- forward 한계 `±0.30` 거부 검사
+
+Servo tool 시험은 `61/61 PASS`, GNU Arm GCC 14.3 경고 오류 검사와 전체 링크를
+통과했습니다. 실제 기체 점프 성공 여부는 아직 확인하지 않았으므로 첫 시험은 반드시
+지지대에서 `jump 1 2000`으로 수행합니다.
+
+## 2026-08-07 STM32 제자리 트롯
+
+공용 트롯 정책의 전후 이동량을 `travel_scale`로 분리하고 STM32 콘솔에
+`trotplace [cycles [period_ms]]`를 추가했습니다. 리프트 높이, 대각선 위상,
+J1/IMU 보정과 step barrier는 기존 `trot`과 동일합니다.
+
+단순 `travel_scale=0` 동역학 시험은 발끝 명령상 전후 이동이 없어도 접촉과 관성으로
+10주기 `X=-0.893m`가 발생했습니다. `0.30..0.60` 범위를 탐색한 뒤 세부 시험한
+결과 `0.39`에서 `X=-0.014m`, `Y=+0.018m`, 대각선 접촉 `76.1%`,
+`state=UPRIGHT`였습니다. 이를 `ROBOT_TROT_IN_PLACE_TRAVEL_SCALE` 기본값으로
+설정했습니다.
+
+```text
+trotplace 1 1600     # 첫 거치대 시험
+trotplace 5 1000     # 반복 시험
+Ctrl+C               # stand 요청 후 중단
+```
+
+실제 기체의 질량 분포와 바닥 마찰은 MuJoCo 모델과 다르므로 전진하면 scale을 낮추고
+후진하면 올립니다. 큰 방향 조정은 `0.05`, 정지점 주변 미세 조정은 `0.01` 단위로
+진행합니다. 공용 C wrapper 회귀 시험을 2개 추가해 Servo tool 시험은 `63/63
+PASS`가 되었습니다.
+
+## 2026-08-07 Python 환경 통합
+
+Servo Tool과 MuJoCo에 나뉘어 있던 `.venv`, `.venv-mujoco` 안내를 제거하고 저장소
+루트의 `environment.yml`로 통합했습니다. 당시 Conda 환경 이름은 `somg`였고
+(2026-08-08에 `spot_omg`로 변경) Python 3.10, MuJoCo 3.11.0, pyserial, pytest와
+editable `tools/servo_tool`을 설치합니다.
+
+```bash
+conda env create -f environment.yml
+conda activate somg   # 현재 이름은 spot_omg
+pytest tools/servo_tool/tests -q
+```
+
+검증 환경은 Python `3.10.20`, MuJoCo `3.11.0`, pyserial `3.5`이며 단위 시험
+`63/63 PASS`와 MuJoCo `sim-trot` 10주기 `UPRIGHT/TROT`를 확인했습니다. macOS
+실시간 Viewer는 같은 환경에 설치된 `mjpython`을 사용합니다. STM32 ST-LINK VCP는
+여전히 텍스트 콘솔이며 `spotctl` 대상 포트가 아닙니다.
+
+## 2026-08-07 MuJoCo 원형 발끝 `trot2`
+
+기존 STM32 공용 `sim-trot`을 보존한 채 `trot2` 정책을 먼저 MuJoCo에
+추가했습니다. 접지 구간은 직선으로 지면을 뒤로 밀고, 스윙 구간의 L3 발끝은
+끝점 속도가 0인 상반원을 따라 움직입니다. 원 꼭대기 좌표를 원하는 J2/J3 접힘
+자세의 순기구학으로 구한 뒤 모든 frame을 2-link IK로 다시 풀기 때문에 L2가
+연속적으로 접히고 펴집니다.
+
+초기 `J2=80°/J3=120°`, period `1.2s`, duty `0.55`는 직립을 유지했지만 대각선
+접촉이 `35.0%`였습니다. 8개 조합을 비교한 뒤 기본값을 `J2=78°`, `J3=108°`,
+period `0.8s`, duty `0.50`으로 정했습니다. 이때 L2는 몸체 수평에서 약 12° 아래까지
+접힙니다.
+
+- 원 반지름 오차: raw tick 양자화 포함 최대 `0.002` 이하
+- STM32 `balance full`과 같은 이득의 10주기 이동: `X=+2.225m`, `Y=+0.271m`
+- 최대 Roll/Pitch: `3.90°/2.47°`
+- 대각선 접촉: `56.3%`
+- 종료: `UPRIGHT/TROT`
+- 기존 `sim-trot`: 기존 결과 `UPRIGHT/TROT`, 대각선 접촉 `74.7%` 유지
+- Servo Tool 63개와 `trot2` 회귀 시험 5개: 합계 `68 PASS`
+
+이후 원형 궤적을 `gait_policy_trot2_targets()` 공용 C 함수로 옮기고 STM32
+`robot_trot2()`와 콘솔 `trot2 [cycles [period_ms]]`를 추가했습니다. 기존 트롯의
+50Hz IMU/J1 balance, step barrier, `Ctrl+C`와 stand 복귀 경로를 재사용합니다.
+MuJoCo `auto` controller도 같은 C 함수를 호출하며 Python 기준 구현과 phase·진폭별
+최대 `0.06°` 이내로 일치합니다. GNU Arm GCC 14.3 전체 링크 결과는 text
+`62,708B`, data `104B`, bss `2,400B`입니다. `spotctl`에는 이 보행을 추가하지
+않았습니다.
+
+운동학 화면은 `mjpython simulation/mujoco/walk.py --preset trot2 --cycles 5`,
+동역학 화면은 여기에 `--dynamic --balance`를 추가해 확인합니다. 실제 첫 시험은
+거치대에서 `profile 800 80`, `trot2 1 1600` 순서로 진행합니다.
+
+## 2026-08-08 Conda 환경 이름 `spot_omg`로 변경
+
+저장소 이름과 맞추기 위해 Conda 환경 이름을 `somg`에서 `spot_omg`로 변경했습니다.
+`environment.yml`과 모든 문서, `walk.py`의 macOS viewer 안내 문구를 새 이름으로
+갱신했습니다. 패키지 구성은 그대로입니다.
+
+```bash
+conda env create -f environment.yml
+conda activate spot_omg
+pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+```
+
+`simulation/mujoco/test_trot2.py`는 `simulation.mujoco.walk`를 import 했는데
+pytest rootdir가 `tools/servo_tool/pyproject.toml` 기준으로 잡혀 저장소 루트가
+`sys.path`에 없어 수집 단계에서 실패했습니다. `jump.py`와 같이 자기 디렉터리를
+`sys.path`에 넣고 `walk`를 직접 import 하도록 바꿔 두 시험 경로를 한 번에
+실행할 수 있습니다. Servo Tool 63개와 `trot2` 5개, 합계 `68 PASS`를 확인했습니다.
 
 ## 최종 조립 후 다시 확인할 항목
 

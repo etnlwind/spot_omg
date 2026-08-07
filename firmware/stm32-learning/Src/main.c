@@ -132,14 +132,14 @@ int main(void)
   bno055_address = BNO055_Detect();
   if (bno055_address == 0) {
       uart_print("BNO055 not found\r\n");
-      uart_print("Trot locked: use balance off only for explicit open-loop test\r\n");
+      uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
   } else if (BNO055_Init() == HAL_OK) {
       uart_print("BNO055 NDOF initialization OK\r\n");
       robot_set_attitude_reader(&robot, BNO055_ReadAttitude, NULL);
       uart_print("IMU balance default ON: full, absolute level target\r\n");
   } else {
       uart_print("BNO055 initialization failed\r\n");
-      uart_print("Trot locked: use balance off only for explicit open-loop test\r\n");
+      uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
   }
   app_console_print_help(&console);
   app_console_print_prompt(&console);

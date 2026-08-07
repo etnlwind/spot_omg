@@ -19,6 +19,10 @@
 #define ROBOT_TROT_STEP_SYNC_TOLERANCE 48U
 #define ROBOT_TROT_STEP_SYNC_TIMEOUT_MS 1000U
 #define ROBOT_TROT_STEP_SYNC_POLL_MS   10U
+#define ROBOT_JUMP_FRAME_MS             (1000U / GAIT_POLICY_JUMP_CONTROL_HZ)
+#define ROBOT_JUMP_TILT_LIMIT           300
+#define ROBOT_JUMP_IMU_FAILURES           3U
+#define ROBOT_JUMP_MAX_CYCLES            20U
 
 static RobotResult bus_failure(RobotController *robot,
                                uint8_t servo_id,
@@ -72,6 +76,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->trot_step_sync_count = 0U;
     robot->trot_step_sync_wait_ms = 0U;
     robot->trot_step_sync_peak_error_ticks = 0U;
+    robot->motion_abort_requested = false;
 }
 
 bool robot_set_profile(RobotController *robot,
@@ -137,6 +142,13 @@ bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode)
 const char *robot_balance_mode_string(RobotBalanceMode mode)
 {
     return mode == ROBOT_BALANCE_FULL ? "full" : "normal";
+}
+
+void robot_request_motion_abort(RobotController *robot)
+{
+    if (robot != NULL) {
+        robot->motion_abort_requested = true;
+    }
 }
 
 RobotResult robot_require_all(RobotController *robot)
@@ -424,6 +436,9 @@ static RobotResult wait_for_step_sync(
     }
 
     for (;;) {
+        if (robot->motion_abort_requested) {
+            return ROBOT_MOTION_ABORTED;
+        }
         RobotResult result = robot_read_positions(robot, positions);
         if (result != ROBOT_OK) {
             return result;
@@ -488,9 +503,35 @@ static bool gait_policy_to_servo_targets(
     return true;
 }
 
-RobotResult robot_trot(RobotController *robot,
-                       uint8_t cycles,
-                       uint16_t period_ms)
+static bool robot_trot_policy_targets(
+    bool circular,
+    float phase,
+    float amplitude_scale,
+    float travel_scale,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    if (circular) {
+        return gait_policy_trot2_targets(
+            phase,
+            amplitude_scale,
+            GAIT_POLICY_TROT2_FOLD_J2_DEG,
+            GAIT_POLICY_TROT2_FOLD_J3_DEG,
+            g_robot_gait_forward_signs,
+            targets);
+    }
+    return gait_policy_trot_targets(
+        phase,
+        amplitude_scale,
+        travel_scale,
+        g_robot_gait_forward_signs,
+        targets);
+}
+
+static RobotResult robot_trot_scaled(RobotController *robot,
+                                     uint8_t cycles,
+                                     uint16_t period_ms,
+                                     float travel_scale,
+                                     bool circular)
 {
     uint16_t targets[ROBOT_JOINT_COUNT];
     int16_t filtered_roll_error = 0;
@@ -503,7 +544,9 @@ RobotResult robot_trot(RobotController *robot,
     GaitPolicyLegTarget leg_targets[GAIT_POLICY_LEG_COUNT];
 
     if (robot == NULL || robot->bus == NULL || cycles == 0U || cycles > 10U ||
-        period_ms < 600U || period_ms > 5000U) {
+        period_ms < 600U || period_ms > 5000U ||
+        !isfinite(travel_scale) ||
+        travel_scale < -1.0f || travel_scale > 1.0f) {
         return ROBOT_INVALID_ARGUMENT;
     }
     if (robot->balance_required &&
@@ -511,13 +554,23 @@ RobotResult robot_trot(RobotController *robot,
         return ROBOT_IMU_ERROR;
     }
 
+    robot->motion_abort_requested = false;
+
     RobotResult result = robot_stand(robot);
     if (result != ROBOT_OK) {
         return result;
     }
+    if (robot->motion_abort_requested) {
+        return_to_stand_best_effort(robot);
+        return ROBOT_MOTION_ABORTED;
+    }
 
-    if (!gait_policy_sim_trot_targets(
-            0.0f, 0.0f, g_robot_gait_forward_signs, leg_targets) ||
+    if (!robot_trot_policy_targets(
+            circular,
+            0.0f,
+            0.0f,
+            travel_scale,
+            leg_targets) ||
         !gait_policy_to_servo_targets(leg_targets, targets)) {
         return ROBOT_CONFIG_ERROR;
     }
@@ -569,6 +622,10 @@ RobotResult robot_trot(RobotController *robot,
         shared_balance_config(robot->balance_mode);
 
     for (uint32_t frame = 0U; frame <= total_frames; ++frame) {
+        if (robot->motion_abort_requested) {
+            return_to_stand_best_effort(robot);
+            return ROBOT_MOTION_ABORTED;
+        }
         const uint16_t global_phase = (uint16_t)(
             ((frame % frames_per_cycle) * 1000U) / frames_per_cycle);
         const uint16_t amplitude_scale =
@@ -631,10 +688,11 @@ RobotResult robot_trot(RobotController *robot,
             filtered_pitch_rate = 0;
         }
 
-        if (!gait_policy_sim_trot_targets(
+        if (!robot_trot_policy_targets(
+                circular,
                 (float)global_phase / 1000.0f,
                 (float)amplitude_scale / 1000.0f,
-                g_robot_gait_forward_signs,
+                travel_scale,
                 leg_targets)) {
             return_to_stand_best_effort(robot);
             return ROBOT_CONFIG_ERROR;
@@ -689,6 +747,7 @@ RobotResult robot_trot(RobotController *robot,
                                             targets,
                                             ROBOT_JOINT_COUNT);
         if (bus_result != SERVO_BUS_OK) {
+            return_to_stand_best_effort(robot);
             return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
         }
 
@@ -732,6 +791,176 @@ RobotResult robot_trot(RobotController *robot,
     if (bus_result != SERVO_BUS_OK) {
         return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
     }
+    return ROBOT_OK;
+}
+
+RobotResult robot_trot(RobotController *robot,
+                       uint8_t cycles,
+                       uint16_t period_ms)
+{
+    return robot_trot_scaled(robot, cycles, period_ms, 1.0f, false);
+}
+
+RobotResult robot_trot_in_place(RobotController *robot,
+                                uint8_t cycles,
+                                uint16_t period_ms)
+{
+    return robot_trot_scaled(
+        robot,
+        cycles,
+        period_ms,
+        ROBOT_TROT_IN_PLACE_TRAVEL_SCALE,
+        false);
+}
+
+RobotResult robot_trot2(RobotController *robot,
+                        uint8_t cycles,
+                        uint16_t period_ms)
+{
+    return robot_trot_scaled(robot, cycles, period_ms, 1.0f, true);
+}
+
+RobotResult robot_jump(RobotController *robot,
+                       uint8_t cycles,
+                       uint16_t period_ms)
+{
+    uint16_t targets[ROBOT_JOINT_COUNT];
+    GaitPolicyLegTarget leg_targets[GAIT_POLICY_LEG_COUNT];
+    uint8_t consecutive_imu_failures = 0U;
+
+    if (robot == NULL || robot->bus == NULL ||
+        cycles > ROBOT_JUMP_MAX_CYCLES ||
+        period_ms < 800U || period_ms > 5000U) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+    if (robot->balance_required &&
+        (!robot->balance_enabled || robot->attitude_reader == NULL)) {
+        return ROBOT_IMU_ERROR;
+    }
+
+    robot->motion_abort_requested = false;
+    RobotResult result = robot_stand(robot);
+    if (result != ROBOT_OK) {
+        return result;
+    }
+    if (robot->motion_abort_requested) {
+        return_to_stand_best_effort(robot);
+        return ROBOT_MOTION_ABORTED;
+    }
+
+    robot->balance_reference_valid = false;
+    robot->balance_last_roll_error_tenths = 0;
+    robot->balance_last_pitch_error_tenths = 0;
+    robot->balance_peak_roll_error_tenths = 0;
+    robot->balance_peak_pitch_error_tenths = 0;
+    robot->balance_peak_j1_correction_tenths = 0;
+    robot->balance_peak_knee_correction_tenths = 0;
+    robot->balance_late_frames = 0U;
+    robot->trot_step_sync_count = 0U;
+    robot->trot_step_sync_wait_ms = 0U;
+    robot->trot_step_sync_peak_error_ticks = 0U;
+    if (robot->balance_enabled) {
+        int16_t initial_roll_tenths = 0;
+        int16_t initial_pitch_tenths = 0;
+        if (robot->attitude_reader == NULL ||
+            !robot->attitude_reader(robot->attitude_context,
+                                    &initial_roll_tenths,
+                                    &initial_pitch_tenths)) {
+            return ROBOT_IMU_ERROR;
+        }
+        if (robot->balance_mode == ROBOT_BALANCE_FULL) {
+            robot->balance_reference_roll_tenths =
+                ROBOT_IMU_LEVEL_ROLL_TENTHS;
+            robot->balance_reference_pitch_tenths =
+                ROBOT_IMU_LEVEL_PITCH_TENTHS;
+        } else {
+            robot->balance_reference_roll_tenths = initial_roll_tenths;
+            robot->balance_reference_pitch_tenths = initial_pitch_tenths;
+        }
+        robot->balance_reference_valid = true;
+    }
+
+    const uint32_t frames_per_cycle = period_ms / ROBOT_JUMP_FRAME_MS;
+    const bool continuous = cycles == 0U;
+    const uint32_t total_frames = frames_per_cycle * cycles;
+    uint32_t next_deadline = HAL_GetTick();
+
+    for (uint32_t frame = 0U;
+         continuous || frame <= total_frames;
+         ++frame) {
+        if (robot->motion_abort_requested) {
+            return_to_stand_best_effort(robot);
+            return ROBOT_MOTION_ABORTED;
+        }
+
+        if (robot->balance_enabled && frame > 0U) {
+            int16_t roll_tenths = 0;
+            int16_t pitch_tenths = 0;
+            if (robot->attitude_reader(robot->attitude_context,
+                                       &roll_tenths,
+                                       &pitch_tenths)) {
+                const int32_t roll_error = (int32_t)roll_tenths -
+                    robot->balance_reference_roll_tenths;
+                const int32_t pitch_error = (int32_t)pitch_tenths -
+                    robot->balance_reference_pitch_tenths;
+                consecutive_imu_failures = 0U;
+                if (roll_error < -ROBOT_JUMP_TILT_LIMIT ||
+                    roll_error > ROBOT_JUMP_TILT_LIMIT ||
+                    pitch_error < -ROBOT_JUMP_TILT_LIMIT ||
+                    pitch_error > ROBOT_JUMP_TILT_LIMIT) {
+                    return_to_stand_best_effort(robot);
+                    return ROBOT_TILT_LIMIT;
+                }
+                robot->balance_last_roll_error_tenths =
+                    (int16_t)roll_error;
+                robot->balance_last_pitch_error_tenths =
+                    (int16_t)pitch_error;
+                update_peak((int16_t)roll_error,
+                            &robot->balance_peak_roll_error_tenths);
+                update_peak((int16_t)pitch_error,
+                            &robot->balance_peak_pitch_error_tenths);
+            } else {
+                ++consecutive_imu_failures;
+                if (consecutive_imu_failures >= ROBOT_JUMP_IMU_FAILURES) {
+                    return_to_stand_best_effort(robot);
+                    return ROBOT_IMU_ERROR;
+                }
+            }
+        }
+
+        const uint32_t cycle_frame = frame % frames_per_cycle;
+        const float phase = (float)cycle_frame / (float)frames_per_cycle;
+        if (!gait_policy_jump_targets(
+                phase,
+                ROBOT_JUMP_FORWARD_TRAVEL,
+                g_robot_gait_forward_signs,
+                leg_targets) ||
+            !gait_policy_to_servo_targets(leg_targets, targets)) {
+            return_to_stand_best_effort(robot);
+            return ROBOT_CONFIG_ERROR;
+        }
+
+        ServoBusResult bus_result = sts3215_sync_positions(
+            robot->bus, g_robot_servo_ids, targets, ROBOT_JOINT_COUNT);
+        if (bus_result != SERVO_BUS_OK) {
+            return_to_stand_best_effort(robot);
+            return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
+        }
+
+        if (!continuous && frame == total_frames) {
+            break;
+        }
+        const uint32_t next_cycle_frame = cycle_frame + 1U;
+        next_deadline +=
+            (next_cycle_frame * period_ms) / frames_per_cycle -
+            (cycle_frame * period_ms) / frames_per_cycle;
+        const uint32_t now = HAL_GetTick();
+        if ((int32_t)(next_deadline - now) > 0) {
+            HAL_Delay(next_deadline - now);
+        }
+    }
+
+    return_to_stand_best_effort(robot);
     return ROBOT_OK;
 }
 
@@ -819,6 +1048,10 @@ const char *robot_result_string(RobotResult result)
         return "step synchronization timeout";
     case ROBOT_IMU_ERROR:
         return "IMU balance error";
+    case ROBOT_MOTION_ABORTED:
+        return "motion aborted";
+    case ROBOT_TILT_LIMIT:
+        return "tilt safety limit reached";
     default:
         return "unknown";
     }

@@ -42,7 +42,23 @@ SIM_PRESETS = {
         control_rate=50.0,
         stance_j1_angle=4.0,
     ),
+    # Simulator-only alternative: the toe follows an upper semicircle during
+    # swing.  Its apex is derived from a folded J2/J3 pose, so L2 approaches
+    # body-horizontal before the leg extends naturally toward touchdown.
+    "trot2": replace(
+        PRESETS["test"],
+        period=0.8,
+        lift_amplitude=30.0,
+        duty_factor=0.50,
+        control_rate=50.0,
+        stance_j1_angle=4.0,
+        stance_j2_angle=45.0,
+        stance_j3_angle=90.0,
+    ),
 }
+
+TROT2_DEFAULT_FOLD_J2 = 78.0
+TROT2_DEFAULT_FOLD_J3 = 108.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +83,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-shift", type=float)
     parser.add_argument("--preload", type=float)
     parser.add_argument("--rate", type=float)
+    parser.add_argument(
+        "--travel-scale",
+        type=float,
+        default=1.0,
+        help="shared-C sagittal travel scale; 0 runs an in-place trot",
+    )
+    parser.add_argument(
+        "--trot2-fold-j2",
+        type=float,
+        help="trot2 J2 angle at the top of the circular swing (default: 78)",
+    )
+    parser.add_argument(
+        "--trot2-fold-j3",
+        type=float,
+        help="trot2 J3 angle at the top of the circular swing (default: 108)",
+    )
     parser.add_argument(
         "--dynamic",
         action="store_true",
@@ -160,7 +192,7 @@ def resolve_gait(args: argparse.Namespace):
     gait.validate()
     balance_defaults = (
         (1.0, 0.04, 0.15)
-        if args.preset == "sim-trot"
+        if args.preset in {"sim-trot", "trot2"}
         else (0.6, 0.04, 0.10)
     )
     if args.balance_kp is None:
@@ -173,6 +205,21 @@ def resolve_gait(args: argparse.Namespace):
         raise ValueError("cycles must be between 1 and 1000")
     if not 0.0 <= args.settle <= 10.0:
         raise ValueError("settle must be between 0 and 10 seconds")
+    if not -1.0 <= args.travel_scale <= 1.0:
+        raise ValueError("travel-scale must be between -1 and 1")
+    if args.preset == "trot2":
+        if args.gait != "trot":
+            raise ValueError("trot2 requires --gait trot")
+        if args.trot2_fold_j2 is None:
+            args.trot2_fold_j2 = TROT2_DEFAULT_FOLD_J2
+        if args.trot2_fold_j3 is None:
+            args.trot2_fold_j3 = TROT2_DEFAULT_FOLD_J3
+        if not 60.0 <= args.trot2_fold_j2 <= 95.0:
+            raise ValueError("trot2-fold-j2 must be between 60 and 95 degrees")
+        if not 80.0 <= args.trot2_fold_j3 <= 145.0:
+            raise ValueError("trot2-fold-j3 must be between 80 and 145 degrees")
+    elif args.trot2_fold_j2 is not None or args.trot2_fold_j3 is not None:
+        raise ValueError("trot2 fold angles require --preset trot2")
     if args.balance and not args.dynamic:
         raise ValueError("--balance requires --dynamic")
     if not 0.0 <= args.balance_kp <= 5.0:
@@ -233,13 +280,110 @@ def shared_policy_targets(
     policy: SharedGaitPolicy,
     phase: float,
     amplitude_scale: float,
+    travel_scale: float = 1.0,
 ) -> tuple[dict[int, int], set[str]]:
-    canonical, support = policy.sim_trot_targets(
+    canonical, support = policy.trot_targets(
         phase,
         amplitude_scale,
+        travel_scale,
         config.gait_forward_signs,
     )
     return canonical_targets_to_positions(config, canonical), support
+
+
+def shared_trot2_targets(
+    config: SpotConfig,
+    policy: SharedGaitPolicy,
+    phase: float,
+    amplitude_scale: float,
+    fold_j2: float,
+    fold_j3: float,
+) -> tuple[dict[int, int], set[str]]:
+    canonical, support = policy.trot2_targets(
+        phase,
+        amplitude_scale,
+        fold_j2,
+        fold_j3,
+        config.gait_forward_signs,
+    )
+    return canonical_targets_to_positions(config, canonical), support
+
+
+def python_trot2_targets(
+    config: SpotConfig,
+    robot: SpotRobot,
+    base: dict[int, int],
+    gait,
+    phase: float,
+    amplitude_scale: float,
+    fold_j2: float,
+    fold_j3: float,
+) -> tuple[dict[int, int], set[str]]:
+    """Generate a diagonal trot with a circular swing-toe trajectory.
+
+    The stance portion is a straight front-to-rear ground stroke.  The swing
+    portion is the upper half of a circle with zero endpoint velocity.  The
+    circle apex is chosen from ``fold_j2/fold_j3``, making L2 nearly horizontal
+    at maximum clearance without commanding J2 and J3 independently.
+    """
+    if not 0.0 <= amplitude_scale <= 1.0:
+        raise ValueError("amplitude scale must be between 0 and 1")
+
+    targets = dict(base)
+    support: set[str] = set()
+    phase_offsets = SpotRobot.PHASE_OFFSETS["trot"]
+    for leg in LEGS:
+        leg_phase = (phase + phase_offsets[leg]) % 1.0
+        in_stance = leg_phase < gait.duty_factor
+        if in_stance:
+            support.add(leg)
+            progress = leg_phase / gait.duty_factor
+        else:
+            progress = (leg_phase - gait.duty_factor) / (
+                1.0 - gait.duty_factor
+            )
+
+        j1 = config.joint(leg, 1)
+        j2 = config.joint(leg, 2)
+        j3 = config.joint(leg, 3)
+        base_j2 = config.position_to_angle(leg, 2, base[j2.servo_id])
+        base_j3 = config.position_to_angle(leg, 3, base[j3.servo_id])
+        base_forward, ground_down = robot.leg_forward_kinematics(
+            base_j2, base_j3
+        )
+        folded_forward, folded_down = robot.leg_forward_kinematics(
+            fold_j2, fold_j3
+        )
+        radius = ground_down - folded_down
+        if radius <= 0.0:
+            raise ValueError("trot2 folded pose must lift the foot above stance")
+
+        direction = config.gait_forward_signs[leg]
+        circle_center = (folded_forward - base_forward) / direction
+        angle = math.pi * robot._cosine_ease(progress)
+        if in_stance:
+            # Touch down at the front of the circle and push toward its rear.
+            travel = circle_center + radius * math.cos(angle)
+            curve_down = ground_down
+        else:
+            # Rear toe-off -> circular apex -> front touchdown.
+            travel = circle_center - radius * math.cos(angle)
+            curve_down = ground_down - radius * math.sin(angle)
+
+        curve_forward = base_forward + direction * travel
+        foot_forward = base_forward + amplitude_scale * (
+            curve_forward - base_forward
+        )
+        foot_down = ground_down + amplitude_scale * (
+            curve_down - ground_down
+        )
+        upper, knee = robot.leg_inverse_kinematics(foot_forward, foot_down)
+        targets[j1.servo_id] = base[j1.servo_id]
+        targets[j2.servo_id] = config.angle_to_position(leg, 2, upper)
+        targets[j3.servo_id] = config.angle_to_position(leg, 3, knee)
+
+    config.validate_targets(targets)
+    return targets, support
 
 
 def apply_targets(
@@ -488,7 +632,8 @@ def run_dynamic(
         if platform.system() == "Darwin" and "MJPYTHON_BIN" not in os.environ:
             raise RuntimeError(
                 "macOS live viewer requires mjpython; run: "
-                ".venv-mujoco/bin/mjpython simulation/mujoco/walk.py --dynamic"
+                "conda activate spot_omg, then run: mjpython "
+                "simulation/mujoco/walk.py --dynamic"
             )
         import mujoco.viewer as mj_viewer
 
@@ -612,9 +757,23 @@ def run_dynamic(
         elapsed = min(total_duration, sim_time - gait_started)
         phase = (elapsed / gait.period) % 1.0
         amplitude = amplitude_at(elapsed, total_duration)
+        if args.preset == "trot2":
+            if shared_policy is not None:
+                return shared_trot2_targets(
+                    config,
+                    shared_policy,
+                    phase,
+                    amplitude,
+                    args.trot2_fold_j2,
+                    args.trot2_fold_j3,
+                )
+            return python_trot2_targets(
+                config, robot, base, gait, phase, amplitude,
+                args.trot2_fold_j2, args.trot2_fold_j3
+            )
         if shared_policy is not None:
             return shared_policy_targets(
-                config, shared_policy, phase, amplitude
+                config, shared_policy, phase, amplitude, args.travel_scale
             )
         targets = robot.gait_targets(
             phase, base, gait, amplitude_scale=amplitude
@@ -678,7 +837,7 @@ def main() -> int:
     args = parse_args()
     gait = resolve_gait(args)
     config = SpotConfig.load(CONFIG)
-    if args.preset == "sim-trot":
+    if args.preset in {"sim-trot", "trot2"}:
         # The physical gait signs predate the unified rearward-knee URDF. Keep
         # hardware calibration untouched and use the URDF-consistent mapping
         # only inside this simulator-specific preset.
@@ -687,10 +846,12 @@ def main() -> int:
     base = stance_targets(config, gait)
     use_shared_policy = (
         args.controller == "shared-c" or
-        (args.controller == "auto" and args.preset == "sim-trot")
+        (args.controller == "auto" and args.preset in {"sim-trot", "trot2"})
     )
-    if use_shared_policy and (args.preset != "sim-trot" or args.gait != "trot"):
-        raise ValueError("shared-c controller currently requires trot/sim-trot")
+    if use_shared_policy and (
+        args.preset not in {"sim-trot", "trot2"} or args.gait != "trot"
+    ):
+        raise ValueError("shared-c controller requires trot/sim-trot or trot/trot2")
     fixed_overrides = {
         name: getattr(args, name)
         for name in (
@@ -706,11 +867,37 @@ def main() -> int:
         )
         if getattr(args, name) is not None
     }
-    if use_shared_policy and fixed_overrides:
+    if use_shared_policy and args.preset == "sim-trot" and fixed_overrides:
         names = ", ".join(sorted(fixed_overrides))
         raise ValueError(
             f"shared-c sim-trot has firmware-fixed trajectory values: {names}"
         )
+    if args.preset != "sim-trot" and args.travel_scale != 1.0:
+        raise ValueError("--travel-scale requires --preset sim-trot")
+    if not use_shared_policy and args.travel_scale != 1.0:
+        raise ValueError("--travel-scale requires the shared-c sim-trot controller")
+    if args.preset == "trot2":
+        unused_overrides = {
+            name: getattr(args, name)
+            for name in (
+                "hip",
+                "lift",
+                "crouch",
+                "stance_j1",
+                "stance_j2",
+                "stance_j3",
+                "duty",
+                "weight_shift",
+                "preload",
+            )
+            if getattr(args, name) is not None
+        }
+        if unused_overrides:
+            names = ", ".join(sorted(unused_overrides))
+            raise ValueError(
+                f"trot2 derives its circular path from fold angles; "
+                f"unsupported overrides: {names}"
+            )
     shared_policy = SharedGaitPolicy() if use_shared_policy else None
 
     print(
@@ -720,7 +907,14 @@ def main() -> int:
         f"stance=J1 {gait.stance_j1_angle:g}deg/"
         f"J2 {gait.stance_j2_angle:g}deg/J3 {gait.stance_j3_angle:g}deg, "
         f"balance={args.balance_mode if args.balance else 'off'}, "
+        f"travel_scale={args.travel_scale:g}, "
         f"controller={'shared-c' if shared_policy is not None else 'python'}"
+        + (
+            f", fold=J2 {args.trot2_fold_j2:g}deg/"
+            f"J3 {args.trot2_fold_j3:g}deg"
+            if args.preset == "trot2"
+            else ""
+        )
     )
 
     if args.dynamic:
@@ -738,9 +932,24 @@ def main() -> int:
         for frame in range(round(gait.control_rate * gait.period)):
             elapsed = frame / gait.control_rate
             phase = elapsed / gait.period
-            if shared_policy is not None:
+            if args.preset == "trot2":
+                if shared_policy is not None:
+                    targets, _ = shared_trot2_targets(
+                        config,
+                        shared_policy,
+                        phase,
+                        1.0,
+                        args.trot2_fold_j2,
+                        args.trot2_fold_j3,
+                    )
+                else:
+                    targets, _ = python_trot2_targets(
+                        config, robot, base, gait, phase, 1.0,
+                        args.trot2_fold_j2, args.trot2_fold_j3
+                    )
+            elif shared_policy is not None:
                 targets, _ = shared_policy_targets(
-                    config, shared_policy, phase, 1.0
+                    config, shared_policy, phase, 1.0, args.travel_scale
                 )
             else:
                 targets = robot.gait_targets(
@@ -753,7 +962,8 @@ def main() -> int:
     if platform.system() == "Darwin" and "MJPYTHON_BIN" not in os.environ:
         raise RuntimeError(
             "macOS live viewer requires mjpython; run: "
-            ".venv-mujoco/bin/mjpython simulation/mujoco/walk.py"
+            "conda activate spot_omg, then run: mjpython "
+            "simulation/mujoco/walk.py"
         )
 
     import mujoco.viewer as mj_viewer
@@ -767,9 +977,24 @@ def main() -> int:
             elapsed = frame * interval
             phase = (elapsed / gait.period) % 1.0
             amplitude = amplitude_at(elapsed, total_duration)
-            if shared_policy is not None:
+            if args.preset == "trot2":
+                if shared_policy is not None:
+                    targets, _ = shared_trot2_targets(
+                        config,
+                        shared_policy,
+                        phase,
+                        amplitude,
+                        args.trot2_fold_j2,
+                        args.trot2_fold_j3,
+                    )
+                else:
+                    targets, _ = python_trot2_targets(
+                        config, robot, base, gait, phase, amplitude,
+                        args.trot2_fold_j2, args.trot2_fold_j3
+                    )
+            elif shared_policy is not None:
                 targets, _ = shared_policy_targets(
-                    config, shared_policy, phase, amplitude
+                    config, shared_policy, phase, amplitude, args.travel_scale
                 )
             else:
                 targets = robot.gait_targets(

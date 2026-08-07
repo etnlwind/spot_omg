@@ -12,6 +12,16 @@ ST-LINK VCP는 텍스트 명령 콘솔이며 Feetech raw serial bridge가 아닙
 따라서 STM32의 `/dev/cu.usbmodem...` 포트에 `spotctl`을 실행하지 않고 일반
 115200 bps 터미널로 접속해 아래 콘솔 명령을 사용합니다.
 
+호스트 측 Servo Tool, 공용 보행 정책 회귀 시험과 MuJoCo 비교는 저장소 루트의
+Conda `spot_omg` 환경에서 실행합니다.
+
+```bash
+conda activate spot_omg
+pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+python simulation/mujoco/walk.py --dynamic --balance \
+  --gait trot --preset sim-trot --cycles 10 --check
+```
+
 ## 인터페이스
 
 | Peripheral | Pins | Purpose | Configuration |
@@ -106,6 +116,9 @@ echo on|off      STM32 입력 echo 켜기/끄기 (부팅 기본 off)
 hold             현재 위치를 목표로 설정한 뒤 전체 토크 활성화
 stand            12축 목표를 한 번에 SYNC_WRITE하는 stand 이동
 trot [C [MS]]    공용 C sim-trot; 1..10회, 주기 600..5000ms (기본 1회/800ms)
+trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
+trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
+jump [C [MS]]    제자리 반복 점프; 0=계속, 1..20회, 주기 800..5000ms
 relax            전체 토크 해제
 imu on            10 Hz IMU 자세 로그 출력 시작
 imu off           IMU 자세 로그 출력 중지 (부팅 기본값)
@@ -113,10 +126,14 @@ imu status        현재 IMU 로그 설정 확인
 balance full      절대 수평 목표와 최대 제한 보정 활성화 (부팅 기본값)
 balance normal    보행 시작 자세를 목표로 일반 보정 활성화
 balance on        마지막으로 선택한 보정 모드 활성화
-balance off       트롯 자세 보정 비활성화
+balance off       트롯 자세 보정 및 점프 IMU 보호 비활성화
 balance status    IMU, 기준 자세, 최대 오차·관절 보정·지연 frame 확인
 help             도움말
 ```
+
+`trot`, `trotplace`, `trot2` 또는 `jump` 실행 중 `Ctrl+C`를 누르면 USART2 RX 인터럽트가 즉시 중단
+플래그를 설정합니다. 현재 frame을 마친 뒤 stand 목표를 전송하고 프롬프트로
+돌아옵니다.
 
 부팅 기본 profile은 최대값 `speed=3400`, `acceleration=254`입니다. 예를 들어
 더 부드러운 시험값으로 낮추거나 현재 값을 확인할 수 있습니다.
@@ -188,6 +205,59 @@ trot 3               # 3회, 800ms 주기
 trot 3 1200          # 같은 궤적을 더 느린 1200ms 주기로 실행
 ```
 
+### 제자리 트롯
+
+`trotplace`는 `trot`과 동일한 FL+RR / FR+RL 대각선 위상, 리프트, J1 및 IMU
+균형 보정, 실제 위치 step barrier를 사용합니다. 단순히 보폭을 0으로 만들면 발을
+드는 동안 몸체가 수동적으로 뒤로 밀리기 때문에, MuJoCo 10주기 순이동이 가장 작았던
+전진 보상 비율 `0.39`를 기본값으로 사용합니다.
+
+```text
+trotplace 1 1600     # 거치대에서 첫 1회 시험
+trotplace            # 기본 1회/800ms
+trotplace 5 1000     # 5회 반복; Ctrl+C 중단 가능
+```
+
+보상 비율은 `robot.h`의 `ROBOT_TROT_IN_PLACE_TRAVEL_SCALE`에서 조절합니다. 실제
+기체가 앞으로 흐르면 값을 낮추고 뒤로 흐르면 값을 올립니다. 처음에는 `0.05`씩,
+정지점 부근에서는 `0.01`씩 변경합니다. `0`은 관절 궤적상 전후 이동이 전혀 없는
+값이지만 동역학적으로 제자리를 보장하지 않습니다.
+
+### 원형 발끝 트롯
+
+`trot2`는 기존 `trot`을 대체하지 않는 별도 공용 C 궤적입니다. 접지 구간에는
+발끝이 지면을 따라 앞에서 뒤로 움직이고, 스윙 구간에는 상반원을 따라 들렸다가
+내려옵니다. 각도 파형을 직접 만들지 않고 원 위의 발끝 좌표를 매 frame IK로 풀어
+J2/J3를 함께 움직입니다. 원 꼭대기의 기본 접힘은 `J2=78°`, `J3=108°`이며 L2는
+몸체 수평에서 약 12° 아래까지 접힙니다.
+
+MuJoCo와 STM32는 모두 `gait_policy_trot2_targets()`를 호출합니다. STM32에서는
+기존 기체의 전진 부호 `FL/FR +1`, `RL/RR -1`, 50Hz IMU/J1 보정, 실제 위치 step
+barrier와 `Ctrl+C` stand 복귀를 그대로 사용합니다.
+
+첫 실기 시험은 반드시 거치대에서 느리게 실행합니다.
+
+```text
+scan
+balance full
+balance status
+profile 800 80
+stand
+trot2 1 1600
+```
+
+방향, 원형 스윙과 기구 간섭이 정상이면 한 단계씩 올립니다.
+
+```text
+profile 3400 254
+trot2 1 1200
+trot2 3 800
+```
+
+STM32 `balance full`과 같은 이득의 MuJoCo 기본값은 10주기에 약 `2.225m` 전진하는
+큰 보폭이므로 로봇을 바닥에 놓고
+처음부터 `trot2 3 800`을 실행하지 않습니다.
+
 BNO055가 정상 초기화되면 `balance full`이 부팅 기본값이며 다음 `trot`부터
 Roll/Pitch를 50Hz로 읽습니다. full 모드는 IMU가 나타내는 절대 Roll/Pitch `0°`를
 목표로 몸체 수평을 유지합니다. 보드와 몸체 사이의 기계적 장착 오차가 있으면
@@ -196,7 +266,7 @@ Roll/Pitch를 50Hz로 읽습니다. full 모드는 IMU가 나타내는 절대 Ro
 좌표계는 앞쪽이 내려가면 Pitch `+`, 오른쪽이 내려가면 Roll `+`입니다. Yaw는
 수평 유지에 사용하지 않습니다.
 
-기본 정책은 IMU 필수입니다. BNO055 탐색 또는 초기화가 실패하면 `trot`은
+기본 정책은 IMU 필수입니다. BNO055 탐색 또는 초기화가 실패하면 `trot`, `trot2`와 `jump`는
 `IMU balance error`로 실행을 거부합니다. 센서 없는 개루프 시험이 꼭 필요할 때만
 `balance off`를 명시하면 허용되며, `balance full`, `balance normal`, `balance on`
 중 하나를 실행하면 다시 IMU 필수 정책으로 돌아갑니다. 빌드 기본값은 `robot.h`의
@@ -224,8 +294,41 @@ balance normal
 balance full
 ```
 
-명령 실행 중 콘솔은 blocking되므로 소프트웨어 명령으로 중간 정지할 수 없습니다.
-첫 시험은 로봇을 지지대에 고정하고 1회만 실행하며 비상 전원 차단을 준비합니다.
+## 제자리 반복 점프
+
+`jump`는 네 다리를 같은 위상으로 움직이는 50Hz 공용 C 궤적입니다. 기본 호출은
+`cycles=0`이므로 `Ctrl+C`를 누를 때까지 1200ms 주기로 반복합니다. 횟수를 지정하면
+해당 횟수만 실행하고 stand로 돌아옵니다.
+
+```text
+jump 1 2000       # 거치대에서 가장 먼저 확인할 느린 1회 시험
+jump 3 1500       # 3회 반복
+jump              # 1200ms로 계속 반복; Ctrl+C로 중지
+```
+
+한 주기는 `stand → 압축 → 도약 신전 → 공중 tuck → 착지 준비 → 충격 흡수 →
+stand` 순서입니다. J1은 시작과 종료에서 `0°`이고 압축 구간 동안 `4°`까지
+smootherstep으로 넓어집니다. 제자리 모드에서는 네 다리의 canonical J2/J3 각도가
+항상 같습니다.
+
+BNO055 balance가 켜져 있으면 시작 기준으로 Roll 또는 Pitch가 `30°`를 넘거나 IMU
+읽기가 3회 연속 실패할 때 stand 목표를 요청하고 종료합니다. `balance off`에서는
+이 보호가 비활성화되므로 거치대 시험 외에는 권장하지 않습니다. 이 점프 정책의 IMU는
+현재 능동 자세 보정이 아니라 넘어짐 감시에 사용됩니다.
+
+전진 확장을 위해 공용 함수는 정규화된 `forward_travel` 인자를 이미 받습니다.
+현재 `robot.h`의 `ROBOT_JUMP_FORWARD_TRAVEL` 기본값은 `0.0f`입니다. 처음에는
+`0.02f`처럼 작은 값부터 시험하고, 부호는
+`g_robot_gait_forward_signs`가 앞·뒤 거울 대칭 기구에 맞게 적용합니다. 허용 범위는
+`±0.30`이지만 이는 소프트웨어 IK 한계일 뿐 실기 안전 범위가 아닙니다.
+
+실제 도약은 배터리 전압, 바닥 마찰, STS3215 토크와 링크 질량에 크게 좌우됩니다.
+첫 시험은 로봇을 지지대에 고정하고 `jump 1 2000`으로 관절 방향과 간섭부터
+확인하며 비상 전원 차단을 준비합니다.
+
+대부분의 콘솔 명령은 실행이 끝날 때까지 blocking됩니다. `trot`, `trot2`와 `jump`는 RX
+인터럽트에서 `Ctrl+C`를 별도로 감지하므로 중간 정지가 가능하지만, 첫 실기 시험은
+여전히 로봇을 지지대에 고정하고 1회만 실행하며 비상 전원 차단을 준비합니다.
 
 서보 버스가 모두 timeout이고 측정 장비가 없다면 모든 전원을 끄고 URT-2를
 STM32에서 분리한 뒤 PA9와 PA10을 점퍼선으로 직접 연결합니다. 다시 전원을 켜고
@@ -248,6 +351,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - `joints.json`의 ID·center·direction을 STM32 설정으로 이식
 - 부팅 시 torque OFF, 안전 단일 이동, current-position hold, direct stand 구현
 - MuJoCo와 STM32가 함께 호출하는 Cartesian IK 기반 공용 C trot 정책 구현
+- 원형 스윙 발끝과 L2 접힘을 갖는 공용 C `trot2` 및 STM32 콘솔 명령 구현
 - 20ms 목표 갱신, 500ms 이하 진폭 ramp, 실제 위치 step barrier 구현
 - BNO055 `0x28`, CHIP_ID `0xA0`, NDOF 초기화 확인
 - IMU 연속 로그 기본 OFF 및 `imu on|off|status` 추가
@@ -255,7 +359,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - CubeMX 재생성으로 사라진 USART2 IRQ 복구
 - CubeMX 재생성으로 115200이 된 USART1을 1Mbps로 복구하고 runtime guard 추가
 - 생성 코드와 USER CODE에 중복된 USART2 IRQ/NVIC 정의 제거
-- GNU Arm GCC 14.3 대상 컴파일과 Servo tool 시험 58개 통과
+- GNU Arm GCC 14.3 전체 링크, Servo Tool 63개와 `trot2` 5개 시험 통과
 
 수정 전 STM32 `scan`에서는 ID 1~12가 모두 timeout이었고 USART1 baud 회귀와
 1Mbps Debug 수신 overrun을 차례로 수정했습니다. 최종 펌웨어에서는 완전한 Ping
@@ -270,10 +374,14 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - `feetech_protocol.*`: 패킷, checksum, little-endian 변환
 - `servo_bus.*`: UART request/status 및 URT-2 송수신 전환
 - `sts3215.*`: STS3215 레지스터 API와 SYNC_WRITE
-- `gait_policy.h`: MuJoCo/STM32 공용 trot 궤적, IK, IMU 균형 정책
+- `gait_policy.h`: MuJoCo/STM32 공용 trot/trot2/jump 궤적, IK, IMU 균형 정책
 - `robot_config.*`: 12관절 ID, center, direction, stand 목표
-- `robot.*`: 공용 정책의 서보 변환, step barrier, hold/stand/relax
+- `robot.*`: 공용 정책의 서보 변환, step barrier, jump, hold/stand/relax
 - `app_console.*`: USART2 인터럽트 기반 진단 콘솔
 
 관절 보정값은 `tools/servo_tool/config/joints.json`에서 옮겼습니다. 기구 조립이나
 서보 ID가 달라지면 `robot_config.c`를 먼저 갱신해야 합니다.
+
+`config/*.md`는 `joints.json`에서 자동 생성되는 사람이 읽기 위한 표이며 펌웨어가
+런타임에 Markdown을 읽지는 않습니다. 값 변경 시 JSON과 `robot_config.c`를 함께
+갱신하고 위 호스트 회귀 시험과 ARM 빌드를 모두 다시 수행합니다.

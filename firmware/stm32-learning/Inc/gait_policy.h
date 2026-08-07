@@ -28,6 +28,16 @@ extern "C" {
 #define GAIT_POLICY_SIM_TROT_HIP_AMPLITUDE_DEG 8.8f
 #define GAIT_POLICY_SIM_TROT_LIFT_AMPLITUDE_DEG 30.0f
 
+#define GAIT_POLICY_TROT2_PERIOD_MS 800U
+#define GAIT_POLICY_TROT2_DUTY 0.50f
+#define GAIT_POLICY_TROT2_FOLD_J2_DEG 78.0f
+#define GAIT_POLICY_TROT2_FOLD_J3_DEG 108.0f
+
+#define GAIT_POLICY_JUMP_PERIOD_MS 1200U
+#define GAIT_POLICY_JUMP_CONTROL_HZ 50U
+#define GAIT_POLICY_JUMP_J1_DEG 4.0f
+#define GAIT_POLICY_JUMP_FORWARD_LIMIT 0.30f
+
 #define GAIT_POLICY_PI 3.14159265358979323846f
 
 typedef struct
@@ -133,9 +143,10 @@ static inline bool gait_policy_leg_inverse_kinematics(float forward,
     return isfinite(*upper_deg) && isfinite(*knee_deg);
 }
 
-static inline bool gait_policy_sim_trot_targets(
+static inline bool gait_policy_trot_targets(
     float global_phase,
     float amplitude_scale,
+    float travel_scale,
     const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
@@ -148,7 +159,9 @@ static inline bool gait_policy_sim_trot_targets(
 
     if (forward_signs == NULL || targets == NULL ||
         !isfinite(global_phase) || !isfinite(amplitude_scale) ||
-        amplitude_scale < 0.0f || amplitude_scale > 1.0f) {
+        !isfinite(travel_scale) ||
+        amplitude_scale < 0.0f || amplitude_scale > 1.0f ||
+        travel_scale < -1.0f || travel_scale > 1.0f) {
         return false;
     }
 
@@ -202,7 +215,8 @@ static inline bool gait_policy_sim_trot_targets(
         }
 
         const float foot_forward = base_forward +
-            (float)forward_signs[leg] * stride * forward_wave * amplitude_scale;
+            (float)forward_signs[leg] * stride * forward_wave *
+            amplitude_scale * travel_scale;
         const float foot_down = base_down - lift_height * lift_wave;
         float upper = 0.0f;
         float knee = 0.0f;
@@ -215,6 +229,211 @@ static inline bool gait_policy_sim_trot_targets(
         targets[leg].j2_deg = upper;
         targets[leg].j3_deg = knee;
         targets[leg].stance = stance;
+    }
+    return true;
+}
+
+static inline bool gait_policy_sim_trot_targets(
+    float global_phase,
+    float amplitude_scale,
+    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    return gait_policy_trot_targets(
+        global_phase, amplitude_scale, 1.0f, forward_signs, targets);
+}
+
+/*
+ * Circular-foot diagonal trot.
+ *
+ * During stance the toe moves front-to-rear along the ground. During swing
+ * it follows the upper semicircle from rear toe-off to front touchdown. The
+ * circle apex is derived from the requested folded J2/J3 pose, so the upper
+ * link approaches body-horizontal and both joints remain coupled by IK.
+ */
+static inline bool gait_policy_trot2_targets(
+    float global_phase,
+    float amplitude_scale,
+    float fold_j2_deg,
+    float fold_j3_deg,
+    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    static const float phase_offsets[GAIT_POLICY_LEG_COUNT] = {
+        0.0f, 0.5f, 0.5f, 0.0f
+    };
+    float base_forward = 0.0f;
+    float ground_down = 0.0f;
+    float folded_forward = 0.0f;
+    float folded_down = 0.0f;
+
+    if (forward_signs == NULL || targets == NULL ||
+        !isfinite(global_phase) || !isfinite(amplitude_scale) ||
+        !isfinite(fold_j2_deg) || !isfinite(fold_j3_deg) ||
+        amplitude_scale < 0.0f || amplitude_scale > 1.0f ||
+        fold_j2_deg < 60.0f || fold_j2_deg > 95.0f ||
+        fold_j3_deg < 80.0f || fold_j3_deg > 145.0f) {
+        return false;
+    }
+
+    gait_policy_leg_forward_kinematics(
+        GAIT_POLICY_SIM_TROT_STANCE_J2_DEG,
+        GAIT_POLICY_SIM_TROT_STANCE_J3_DEG,
+        &base_forward,
+        &ground_down);
+    gait_policy_leg_forward_kinematics(
+        fold_j2_deg,
+        fold_j3_deg,
+        &folded_forward,
+        &folded_down);
+    const float radius = ground_down - folded_down;
+    if (!isfinite(radius) || radius <= 0.0f) {
+        return false;
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        if (forward_signs[leg] != -1 && forward_signs[leg] != 1) {
+            return false;
+        }
+
+        const float local_phase = gait_policy_wrap_phase(
+            global_phase + phase_offsets[leg]);
+        const bool stance = local_phase < GAIT_POLICY_TROT2_DUTY;
+        const float progress = stance ?
+            local_phase / GAIT_POLICY_TROT2_DUTY :
+            (local_phase - GAIT_POLICY_TROT2_DUTY) /
+                (1.0f - GAIT_POLICY_TROT2_DUTY);
+        const float angle = GAIT_POLICY_PI *
+                            gait_policy_cosine_ease(progress);
+        const float direction = (float)forward_signs[leg];
+        const float circle_center =
+            (folded_forward - base_forward) / direction;
+        float travel = circle_center;
+        float curve_down = ground_down;
+        if (stance) {
+            travel += radius * cosf(angle);
+        } else {
+            travel -= radius * cosf(angle);
+            curve_down -= radius * sinf(angle);
+        }
+
+        const float curve_forward = base_forward + direction * travel;
+        const float foot_forward = base_forward + amplitude_scale *
+            (curve_forward - base_forward);
+        const float foot_down = ground_down + amplitude_scale *
+            (curve_down - ground_down);
+        if (!gait_policy_leg_inverse_kinematics(
+                foot_forward,
+                foot_down,
+                &targets[leg].j2_deg,
+                &targets[leg].j3_deg)) {
+            return false;
+        }
+        targets[leg].j1_deg = GAIT_POLICY_SIM_TROT_STANCE_J1_DEG;
+        targets[leg].stance = stance;
+    }
+    return true;
+}
+
+static inline float gait_policy_lerp(float start, float end, float progress)
+{
+    return start + (end - start) * gait_policy_smootherstep(progress);
+}
+
+/*
+ * Repeating jump trajectory in normalized two-link leg coordinates.
+ *
+ * The in-place STM32 command passes forward_travel=0.  A later forward-jump
+ * command can reuse the same vertical timing by supplying a small positive
+ * travel value; forward_signs maps that body-forward trajectory onto each
+ * mirrored physical leg.
+ *
+ * Phase waypoints:
+ *   0.00 stand
+ *   0.30 crouch/compress
+ *   0.42 full extension/takeoff
+ *   0.55 airborne tuck
+ *   0.68 landing extension
+ *   0.82 impact absorption
+ *   1.00 stand
+ */
+static inline bool gait_policy_jump_targets(
+    float global_phase,
+    float forward_travel,
+    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    static const float waypoint_phase[7] = {
+        0.00f, 0.30f, 0.42f, 0.55f, 0.68f, 0.82f, 1.00f
+    };
+    static const float waypoint_j2_deg[7] = {
+        45.0f, 40.0f, 22.0f, 40.0f, 35.0f, 40.0f, 45.0f
+    };
+    static const float waypoint_j3_deg[7] = {
+        90.0f, 130.0f, 44.0f, 130.0f, 100.0f, 125.0f, 90.0f
+    };
+    static const float waypoint_forward_scale[7] = {
+        0.0f, 0.2f, -1.0f, 1.0f, 1.0f, 0.5f, 0.0f
+    };
+
+    if (forward_signs == NULL || targets == NULL ||
+        !isfinite(global_phase) || !isfinite(forward_travel) ||
+        fabsf(forward_travel) > GAIT_POLICY_JUMP_FORWARD_LIMIT) {
+        return false;
+    }
+
+    const float phase = gait_policy_wrap_phase(global_phase);
+    uint8_t segment = 0U;
+    while (segment < 5U && phase >= waypoint_phase[segment + 1U]) {
+        ++segment;
+    }
+    const float segment_start = waypoint_phase[segment];
+    const float segment_end = waypoint_phase[segment + 1U];
+    const float progress = (phase - segment_start) /
+                           (segment_end - segment_start);
+
+    float start_forward = 0.0f;
+    float start_down = 0.0f;
+    float end_forward = 0.0f;
+    float end_down = 0.0f;
+    gait_policy_leg_forward_kinematics(
+        waypoint_j2_deg[segment], waypoint_j3_deg[segment],
+        &start_forward, &start_down);
+    gait_policy_leg_forward_kinematics(
+        waypoint_j2_deg[segment + 1U], waypoint_j3_deg[segment + 1U],
+        &end_forward, &end_down);
+
+    const float base_forward = gait_policy_lerp(
+        start_forward, end_forward, progress);
+    const float forward_offset = gait_policy_lerp(
+        waypoint_forward_scale[segment] * forward_travel,
+        waypoint_forward_scale[segment + 1U] * forward_travel,
+        progress);
+    const float down = gait_policy_lerp(start_down, end_down, progress);
+
+    float j1_scale = 1.0f;
+    if (phase < waypoint_phase[1]) {
+        j1_scale = gait_policy_smootherstep(phase / waypoint_phase[1]);
+    } else if (phase >= waypoint_phase[5]) {
+        j1_scale = 1.0f - gait_policy_smootherstep(
+            (phase - waypoint_phase[5]) /
+            (waypoint_phase[6] - waypoint_phase[5]));
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        if (forward_signs[leg] != -1 && forward_signs[leg] != 1) {
+            return false;
+        }
+        if (!gait_policy_leg_inverse_kinematics(
+                base_forward + (float)forward_signs[leg] * forward_offset,
+                down,
+                &targets[leg].j2_deg,
+                &targets[leg].j3_deg)) {
+            return false;
+        }
+        targets[leg].j1_deg = GAIT_POLICY_JUMP_J1_DEG * j1_scale;
+        targets[leg].stance = phase < waypoint_phase[2] ||
+                              phase >= waypoint_phase[4];
     }
     return true;
 }

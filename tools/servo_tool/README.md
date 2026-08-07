@@ -3,40 +3,29 @@
 STS3215 서보를 검색하고 설정하며 움직이기 위한 작은 Python 도구입니다.
 기본 통신 속도는 `1,000,000 bps`, 위치 범위는 `0..4095`입니다.
 
-2026-08-01~05의 실제 URT-2 연결, 보정, 무부하 트롯, IMU 시뮬레이션과
-모터 부하 기반 접촉 추정 결과는
+2026-08-01~07의 실제 URT-2 연결, 보정, 무부하 트롯, STM32/MuJoCo 공용
+보행·점프 정책과 IMU 시험 결과는
 [`HARDWARE_TEST_LOG.md`](./HARDWARE_TEST_LOG.md)에 정리되어 있습니다.
 
 ## 설치
 
-macOS 또는 Linux에서는 준비 스크립트를 한 번 실행합니다.
+Servo Tool, 단위 시험과 MuJoCo는 저장소 루트의 Conda `spot_omg` 환경을 공유합니다.
+최초 설치는 저장소 루트에서 실행합니다.
 
 ```bash
-cd tools/servo_tool
-./setup.sh
+conda env create -f environment.yml
+conda activate spot_omg
+spotctl --help
 ```
 
-스크립트는 `.venv` 폴더에 가상환경을 만들지만 터미널 프롬프트에는 `(somg)`로
-표시되도록 설정합니다. 이후 새 터미널을 열 때마다 환경을 활성화합니다.
+환경 정의가 변경됐거나 로컬 패키지를 다시 동기화할 때는 다음을 실행합니다.
 
 ```bash
-cd tools/servo_tool
-source .venv/bin/activate
+conda env update -f environment.yml --prune
 ```
 
-활성화되면 다음처럼 표시되고 `spotctl` 명령을 바로 사용할 수 있습니다.
-
-```text
-(somg) $
-```
-
-수동으로 설치해야 한다면 다음 명령을 사용합니다.
-
-```bash
-python3 -m venv --prompt somg .venv
-source .venv/bin/activate
-pip install -e .
-```
+별도의 `.venv` 설치 흐름은 사용하지 않습니다. `environment.yml`이 이 디렉터리를
+editable package로 설치하므로 소스 수정은 즉시 `spotctl`에 반영됩니다.
 
 ## 빠른 명령
 
@@ -80,6 +69,11 @@ spotctl status
 USB-to-TTL 어댑터는 STS3215의 half-duplex TTL 통신을 지원해야 합니다.
 서보와 어댑터의 GND를 공통으로 연결하고, 서보 전원은 정격에 맞는 별도
 전원을 사용하세요.
+
+`spotctl`은 컴퓨터와 URT-2를 USB로 직접 연결했을 때 사용하는 Feetech raw bus
+도구입니다. 컴퓨터가 ST-LINK USB를 통해 STM32에 연결된 구성에서는 STM32
+USART2 콘솔의 `scan`, `read`, `stand`, `trot`, `trotplace`, `jump` 명령을
+사용하며, 해당 포트에 `spotctl`을 실행하지 않습니다.
 
 ## 사용
 
@@ -534,7 +528,7 @@ spotctl pose stand45
 - FL이 한 차례 느리고 작게 보였으나 설정과 EEPROM은 다른 J2/J3와 같았고 이후
   같은 조건에서 재현되지 않았습니다.
 - RR J1(ID 10)에서 오류 값 `8`이 간헐적으로 검출됐습니다.
-- 단위 테스트 44개, Python 문법 검사와 diff 공백 검사가 통과했습니다.
+- 현재 Conda `spot_omg` 환경에서 단위 테스트 63개와 diff 공백 검사가 통과했습니다.
 
 세부 조건, 단계별 시간과 최종 조립 후 체크리스트는
 [`HARDWARE_TEST_LOG.md`](./HARDWARE_TEST_LOG.md)를 참고하세요.

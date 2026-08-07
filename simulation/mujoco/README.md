@@ -1,18 +1,19 @@
 # Spot OMG MuJoCo Preview
 
-저장소 루트의 MuJoCo 가상환경에서 URDF를 Canonical Pose (논리 자세)로 확인합니다.
+저장소 루트의 Conda `spot_omg` 환경에서 URDF를 Canonical Pose (논리 자세)로
+확인합니다. Servo Tool과 시뮬레이션은 동일한 `environment.yml`을 사용합니다.
 
 ```bash
-python3 -m venv .venv-mujoco
-source .venv-mujoco/bin/activate
-python -m pip install mujoco
-python -m pip install -e tools/servo_tool
+conda env create -f environment.yml
+conda activate spot_omg
 
 python simulation/mujoco/preview_pose.py stand45
 ```
 
-마지막 명령은 STM32 코드를 Python으로 바꾸는 설치가 아니라, MuJoCo 호스트가
-저장소의 공용 C 헤더와 Python 바인딩을 찾게 하는 editable 설치입니다.
+`environment.yml`은 MuJoCo와 `tools/servo_tool` editable package를 함께
+설치합니다. 이는 STM32 코드를 Python으로 바꾸는 것이 아니라 MuJoCo 호스트가
+저장소의 공용 C 헤더와 Python 바인딩을 찾도록 하는 구성입니다. 로컬
+`.venv-mujoco`는 사용하지 않습니다.
 
 지원 자세는 실제 `spotctl`의 논리 각도와 같습니다.
 
@@ -37,7 +38,7 @@ URDF는 Initial Joint Position (초기 관절 위치)을 저장하지 않으므�
 Viewer는 `mjpython`으로 실행해야 합니다.
 
 ```bash
-.venv-mujoco/bin/mjpython simulation/mujoco/walk.py \
+mjpython simulation/mujoco/walk.py \
   --gait trot --preset sim-trot --cycles 10
 ```
 
@@ -46,7 +47,7 @@ Viewer는 `mjpython`으로 실행해야 합니다.
 명시적으로 선택할 수 있습니다.
 
 ```bash
-.venv-mujoco/bin/mjpython simulation/mujoco/walk.py \
+mjpython simulation/mujoco/walk.py \
   --gait trot --preset power --cycles 10 \
   --stance-j1 4 --stance-j2 25 --stance-j3 50 \
   --duty 0.82 --hip 8 --lift 20 --period 2.0 --rate 50
@@ -118,6 +119,77 @@ mjpython simulation/mujoco/walk.py \
 `FL+RR` 또는 `FR+RL`인 물리 프레임 비율이며, 50% 이상일 때 접촉 기준 트롯으로
 판정합니다.
 
+## 원형 발끝 궤적 `trot2`
+
+`trot2`는 기존 `sim-trot`을 변경하지 않고 새 `gait_policy_trot2_targets()`를
+MuJoCo와 STM32가 함께 호출하는 공용 C 프리셋입니다. 접지 중에는 발이 지면을 따라 앞에서 뒤로 이동하고, 스윙 중에는 L3
+발끝이 상반원 궤적을 따라 `toe-off → 원 꼭대기 → touchdown`으로 이동합니다.
+J2/J3를 따로 파형으로 움직이지 않고 매 frame 발끝 좌표를 IK로 풀기 때문에 L2도
+연속적으로 접혔다가 다시 펴집니다.
+
+기본 원 꼭대기 자세는 `J2=78°`, `J3=108°`입니다. J2 90°가 정확한 수평이므로
+기본 L2는 몸체 수평보다 약 12° 아래까지 접힙니다. 먼저 몸체를 고정한 운동학
+화면에서 궤적을 확인합니다.
+
+```bash
+conda activate spot_omg
+mjpython simulation/mujoco/walk.py --preset trot2 --cycles 5
+```
+
+지면 접촉과 IMU 균형 보정을 포함한 동역학 시험은 다음과 같습니다.
+
+```bash
+mjpython simulation/mujoco/walk.py \
+  --dynamic --balance --preset trot2 --cycles 10
+```
+
+원 꼭대기에서 L2를 더 수평에 가깝게 하거나 L3 접힘을 바꾸려면 다음 옵션을
+사용합니다. 값이 커질수록 원과 보폭도 커질 수 있으므로 먼저 `--check`로
+검증합니다.
+
+```bash
+python simulation/mujoco/walk.py \
+  --dynamic --balance --preset trot2 --cycles 10 \
+  --trot2-fold-j2 80 --trot2-fold-j3 110 --check
+```
+
+STM32 `balance full`과 같은 이득을 사용한 기본값의 10주기 결과는
+`state=UPRIGHT`, `gait=TROT`, 대각선 접촉 `56.3%`, 전진 `+2.225m`,
+최대 Roll `3.90°`, 최대 Pitch `2.47°`입니다. `--controller python`은 공용 C와
+비교하기 위한 기준 구현이며 기본 `auto`는 `shared-c`를 선택합니다.
+
+STM32에는 같은 정책을 사용하는 `trot2 [cycles [period_ms]]` 명령이 있습니다.
+실기는 거치대에서 `profile 800 80`, `trot2 1 1600` 순서로 먼저 확인합니다.
+`spotctl` 보행에는 포함하지 않았습니다.
+
+`test_trot2.py`는 원 궤적, 대각선 동기화와 공용 C/Python 구현 일치를 확인하는
+회귀 시험입니다.
+
+```bash
+pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+```
+
+## 제자리 및 전진 점프
+
+`jump.py`는 STM32 `jump`와 같은 `gait_policy.h` 공용 C 궤적을 50Hz로 실행합니다.
+기본은 1200ms 제자리 점프 3회입니다.
+
+```bash
+python simulation/mujoco/jump.py --check
+```
+
+현재 제자리 기본값의 headless 결과는 몸체 시작 높이 약 `0.222m`, 최대 높이
+`0.306m`, 실제 무접촉 frame 약 `28.7%`, `state=UPRIGHT`입니다. 전진 확장은
+STM32에 적용하기 전에 다음처럼 작은 값부터 시뮬레이션합니다.
+
+```bash
+python simulation/mujoco/jump.py \
+  --forward-travel 0.02 --cycles 3 --check
+```
+
+`forward-travel`은 정규화된 2-link 다리 좌표이며 허용 범위 `±0.30`은 수학적 IK
+범위일 뿐 안전 권장값이 아닙니다.
+
 ## 몸체 수평 유지
 
 기본 `--dynamic`은 Open-Loop Control (개루프 제어)이라 몸체 기울기를 관절
@@ -146,6 +218,22 @@ mjpython simulation/mujoco/walk.py \
 | 없음 | 30.15° | 8.30° | 13.08° | 0.056m | 41.3% | +0.884m | +0.102m |
 | J2/J3 전체 다리 보정 | 9.96° | 6.34° | 3.51° | 0.032m | 73.6% | +1.004m | -0.125m |
 | 접촉 인식 J1 포함 | 7.61° | 5.44° | 3.03° | 0.031m | 74.7% | +1.034m | -0.042m |
+
+### 제자리 트롯 보상
+
+공용 C 트롯의 `travel-scale`은 리프트 높이와 대각선 위상을 유지하면서 전후 발끝
+이동량만 조절합니다. `0`은 관절 궤적상 제자리지만 접촉 동역학에서는 10주기 동안
+`X=-0.893m` 뒤로 밀렸습니다. 탐색 결과 `0.39`에서 `X=-0.014m`, `Y=+0.018m`,
+대각선 접촉 `76.1%`, `state=UPRIGHT`로 순이동이 가장 작았습니다.
+
+```bash
+python simulation/mujoco/walk.py \
+  --dynamic --balance --gait trot --preset sim-trot \
+  --cycles 10 --travel-scale 0.39 --check
+```
+
+STM32 `trotplace` 기본값도 `0.39`이며 실제 바닥 마찰과 무게 중심에 맞춰
+`ROBOT_TROT_IN_PLACE_TRAVEL_SCALE`을 다시 조정해야 합니다.
 
 일반 프리셋의 기본 이득은 `Kp=0.6`, `Kd=0.04`, 다리 길이 보정 제한 `0.10`이며,
 `sim-trot`은 각각 `1.0`, `0.04`, `0.15`를 사용합니다. J1 Roll Compensation

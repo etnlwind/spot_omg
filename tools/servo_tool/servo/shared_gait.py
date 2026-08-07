@@ -33,6 +33,33 @@ class SharedGaitPolicy:
             ctypes.POINTER(ctypes.c_uint8),
         )
         self._library.spot_gait_sim_trot_targets.restype = ctypes.c_int
+        self._library.spot_gait_trot_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_float,
+            signs_pointer,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_trot_targets.restype = ctypes.c_int
+        self._library.spot_gait_trot2_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_float,
+            signs_pointer,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_trot2_targets.restype = ctypes.c_int
+        self._library.spot_gait_jump_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            signs_pointer,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_jump_targets.restype = ctypes.c_int
         self._library.spot_gait_balance_targets.argtypes = (
             float_pointer,
             float_pointer,
@@ -141,9 +168,84 @@ class SharedGaitPolicy:
         }
         return self._unpack(values), support
 
+    def trot_targets(
+        self,
+        phase: float,
+        amplitude_scale: float,
+        travel_scale: float,
+        forward_signs: dict[str, int],
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return a shared trot frame with independently scaled travel."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_trot_targets(
+            phase,
+            amplitude_scale,
+            travel_scale,
+            self._sign_array(forward_signs),
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C trot policy rejected the requested phase")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
+    def trot2_targets(
+        self,
+        phase: float,
+        amplitude_scale: float,
+        fold_j2: float,
+        fold_j3: float,
+        forward_signs: dict[str, int],
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return one circular-foot diagonal-trot frame."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_trot2_targets(
+            phase,
+            amplitude_scale,
+            fold_j2,
+            fold_j3,
+            self._sign_array(forward_signs),
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C trot2 policy rejected the requested frame")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
     def smootherstep(self, progress: float) -> float:
         """Return the same bounded start/stop ramp used by STM32."""
         return float(self._library.spot_gait_smootherstep(progress))
+
+    def jump_targets(
+        self,
+        phase: float,
+        forward_travel: float,
+        forward_signs: dict[str, int],
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return one frame of the shared repeating jump trajectory."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_jump_targets(
+            phase,
+            forward_travel,
+            self._sign_array(forward_signs),
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C jump policy rejected the requested phase")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
 
     def balance_targets(
         self,

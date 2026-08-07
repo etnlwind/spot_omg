@@ -21,7 +21,9 @@ typedef enum
     ROBOT_MOVE_TOO_LARGE,
     ROBOT_VERIFY_ERROR,
     ROBOT_STEP_SYNC_ERROR,
-    ROBOT_IMU_ERROR
+    ROBOT_IMU_ERROR,
+    ROBOT_MOTION_ABORTED,
+    ROBOT_TILT_LIMIT
 } RobotResult;
 
 typedef bool (*RobotAttitudeReader)(void *context,
@@ -44,6 +46,16 @@ typedef enum
 
 #ifndef ROBOT_IMU_BALANCE_DEFAULT_MODE
 #define ROBOT_IMU_BALANCE_DEFAULT_MODE ROBOT_BALANCE_FULL
+#endif
+
+/* Normalized jump travel: 0=in place; start forward experiments near 0.02. */
+#ifndef ROBOT_JUMP_FORWARD_TRAVEL
+#define ROBOT_JUMP_FORWARD_TRAVEL 0.0f
+#endif
+
+/* MuJoCo-tuned travel that cancels passive rearward drift during spot trot. */
+#ifndef ROBOT_TROT_IN_PLACE_TRAVEL_SCALE
+#define ROBOT_TROT_IN_PLACE_TRAVEL_SCALE 0.39f
 #endif
 
 typedef struct
@@ -71,6 +83,7 @@ typedef struct
     uint16_t trot_step_sync_count;
     uint16_t trot_step_sync_wait_ms;
     uint16_t trot_step_sync_peak_error_ticks;
+    volatile bool motion_abort_requested;
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
@@ -85,6 +98,7 @@ void robot_set_attitude_reader(RobotController *robot,
 bool robot_set_balance_enabled(RobotController *robot, bool enabled);
 bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode);
 const char *robot_balance_mode_string(RobotBalanceMode mode);
+void robot_request_motion_abort(RobotController *robot);
 
 RobotResult robot_require_all(RobotController *robot);
 
@@ -96,6 +110,15 @@ RobotResult robot_hold(RobotController *robot);
 RobotResult robot_relax(RobotController *robot);
 RobotResult robot_stand(RobotController *robot);
 RobotResult robot_trot(RobotController *robot,
+                       uint8_t cycles,
+                       uint16_t period_ms);
+RobotResult robot_trot_in_place(RobotController *robot,
+                                uint8_t cycles,
+                                uint16_t period_ms);
+RobotResult robot_trot2(RobotController *robot,
+                        uint8_t cycles,
+                        uint16_t period_ms);
+RobotResult robot_jump(RobotController *robot,
                        uint8_t cycles,
                        uint16_t period_ms);
 

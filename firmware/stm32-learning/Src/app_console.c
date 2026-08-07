@@ -92,6 +92,15 @@ static void print_robot_result(AppConsole *console, RobotResult result)
                    "ERROR: IMU balance error; stand target requested\r\n");
         return;
     }
+    if (result == ROBOT_MOTION_ABORTED) {
+        write_text(console, "STOPPED: stand target requested\r\n");
+        return;
+    }
+    if (result == ROBOT_TILT_LIMIT) {
+        write_text(console,
+                   "ERROR: tilt exceeded 30 degrees; stand target requested\r\n");
+        return;
+    }
 
     (void)snprintf(
         message,
@@ -474,7 +483,7 @@ static void command_balance(AppConsole *console, char *mode)
     } else if (strcmp(mode, "off") == 0) {
         (void)robot_set_balance_enabled(robot, false);
         write_text(console,
-                   "Balance: off (open-loop trot explicitly allowed)\r\n");
+                   "Balance: off (open-loop motion explicitly allowed)\r\n");
     } else {
         write_text(console,
                    "usage: balance full|normal|on|off|status\r\n");
@@ -547,6 +556,112 @@ static void command_trot(AppConsole *console,
                                   (uint16_t)period_ms));
 }
 
+static void command_trot_in_place(AppConsole *console,
+                                  char *cycles_text,
+                                  char *period_text)
+{
+    uint32_t cycles = 1U;
+    uint32_t period_ms = GAIT_POLICY_SIM_TROT_PERIOD_MS;
+
+    if ((cycles_text != NULL &&
+         !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text, 600U, 5000U, &period_ms))) {
+        write_text(console,
+                   "usage: trotplace [CYCLES [PERIOD_MS]]; "
+                   "cycles=1..10 period=600..5000\r\n");
+        return;
+    }
+
+    char message[104];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Starting in-place trot: cycles=%lu period=%lums balance=%s/%s\r\n",
+        (unsigned long)cycles,
+        (unsigned long)period_ms,
+        console->robot->balance_enabled ? "on" : "off",
+        robot_balance_mode_string(console->robot->balance_mode));
+    write_text(console, message);
+    print_robot_result(console,
+                       robot_trot_in_place(console->robot,
+                                           (uint8_t)cycles,
+                                           (uint16_t)period_ms));
+}
+
+static void command_trot2(AppConsole *console,
+                          char *cycles_text,
+                          char *period_text)
+{
+    uint32_t cycles = 1U;
+    uint32_t period_ms = GAIT_POLICY_TROT2_PERIOD_MS;
+
+    if ((cycles_text != NULL &&
+         !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text, 600U, 5000U, &period_ms))) {
+        write_text(console,
+                   "usage: trot2 [CYCLES [PERIOD_MS]]; "
+                   "cycles=1..10 period=600..5000\r\n");
+        return;
+    }
+
+    char message[112];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Starting circular-foot trot2: cycles=%lu period=%lums "
+        "fold=J2 78/J3 108 balance=%s/%s\r\n",
+        (unsigned long)cycles,
+        (unsigned long)period_ms,
+        console->robot->balance_enabled ? "on" : "off",
+        robot_balance_mode_string(console->robot->balance_mode));
+    write_text(console, message);
+    print_robot_result(console,
+                       robot_trot2(console->robot,
+                                   (uint8_t)cycles,
+                                   (uint16_t)period_ms));
+}
+
+static void command_jump(AppConsole *console,
+                         char *cycles_text,
+                         char *period_text)
+{
+    uint32_t cycles = 0U;
+    uint32_t period_ms = GAIT_POLICY_JUMP_PERIOD_MS;
+
+    if ((cycles_text != NULL &&
+         !parse_u32(cycles_text, 0U, 20U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text, 800U, 5000U, &period_ms))) {
+        write_text(console,
+                   "usage: jump [CYCLES [PERIOD_MS]]; cycles=0..20 "
+                   "(0=continuous) period=800..5000\r\n");
+        return;
+    }
+
+    char message[112];
+    if (cycles == 0U) {
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "Starting in-place jump: continuous period=%lums; Ctrl+C to stop\r\n",
+            (unsigned long)period_ms);
+    } else {
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "Starting in-place jump: cycles=%lu period=%lums; Ctrl+C to stop\r\n",
+            (unsigned long)cycles,
+            (unsigned long)period_ms);
+    }
+    write_text(console, message);
+    print_robot_result(console,
+                       robot_jump(console->robot,
+                                  (uint8_t)cycles,
+                                  (uint16_t)period_ms));
+}
+
 static void command_echo(AppConsole *console, char *mode)
 {
     if (mode == NULL || strcmp(mode, "status") == 0) {
@@ -596,6 +711,18 @@ static void execute_line(AppConsole *console)
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
         command_trot(console, cycles, period);
+    } else if (strcmp(command, "trotplace") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_trot_in_place(console, cycles, period);
+    } else if (strcmp(command, "trot2") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_trot2(console, cycles, period);
+    } else if (strcmp(command, "jump") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_jump(console, cycles, period);
     } else if (strcmp(command, "relax") == 0) {
         print_robot_result(console, robot_relax(console->robot));
     } else if (strcmp(command, "targets") == 0) {
@@ -647,7 +774,9 @@ void app_console_on_rx_complete(AppConsole *console,
     }
 
     const uint8_t byte = console->rx_byte;
-    if (!console->line_ready) {
+    if (byte == 0x03U) {
+        robot_request_motion_abort(console->robot);
+    } else if (!console->line_ready) {
         if (byte == '\r' || byte == '\n') {
             /*
              * Serial terminals may send CR, LF, or CRLF for Enter.  Ignore
@@ -725,6 +854,9 @@ void app_console_print_help(AppConsole *console)
                "  hold             torque on at all current positions\r\n"
                "  stand            direct synchronized stand move\r\n"
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
+               "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
+               "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
+               "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax            torque off all configured servos\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
