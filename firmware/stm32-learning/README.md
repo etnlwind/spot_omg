@@ -30,8 +30,10 @@ python simulation/mujoco/walk.py --dynamic --balance \
 | USART2 | PA2 TX, PA3 RX | ST-LINK VCP debug console | 115200, 8-N-1 |
 | I2C1 | PB8 SCL, PB9 SDA | BNO055 | 100 kHz |
 
-NUCLEO-F446RE Arduino 헤더 기준 `D8/PA9 → URT-2 TX`, `D2/PA10 → URT-2 RX`로
-연결합니다. Feetech UART 헤더는 신호 이름 기준이므로 `TX-TX`, `RX-RX`입니다.
+NUCLEO-F446RE Arduino 헤더 기준 `D8/PA9 → URT-2 RX`, `D2/PA10 → URT-2 TX`로
+**교차** 연결합니다. URT-2 UART 헤더의 표기는 URT-2 자신의 신호 기준이라
+`TX`가 출력, `RX`가 입력이므로 일반적인 UART 교차 결선입니다. 2026-08-08에
+`TX-TX`, `RX-RX`로 잘못 적혀 있던 것을 실기에서 바로잡았습니다.
 STM32, URT-2, 외부 서보 전원은 GND를 반드시 공통으로 연결하고, 서보 전원은
 STM32나 USB에서 공급하지 않습니다. URT-2를 Type-C로 공급할 때 UART 헤더 VCC는
 연결하지 않으며 signal-level switch는 3.3V로 둡니다.
