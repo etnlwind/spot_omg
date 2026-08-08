@@ -1150,6 +1150,42 @@ spotctl console send stand
 spotctl console --log tools/servo_tool/logs/bench.log send trot2 1 1600
 ```
 
+## 2026-08-08 연결된 장치에 따른 자동 분기
+
+USB descriptor로 STM32와 URT-2를 구분할 수 있게 되었으므로 `console`을 따로
+칠 이유가 없어졌습니다. `spotctl`이 붙어 있는 장치를 보고 링크를 정합니다.
+ST-LINK면 115200 bps 콘솔, URT-2면 기존 1 Mbps Feetech 경로입니다.
+
+- 양쪽 모두 지원: `scan`, `stand`, `relax`, `hold`
+- STM32 전용 하위 명령 추가: `trot`, `trotplace`, `trot2`, `jump`, `targets`,
+  `profile`, `imu`, `balance`
+- URT-2 직결 전용: `walk`, `calibrate`, `capture-stand`, `pose` 등 나머지
+
+둘 다 꽂혀 있으면 추측하지 않고 `--via stm32`/`--via urt2`를 요구합니다. 한쪽만
+꽂힌 흔한 경우에 아무 것도 지정할 필요가 없다는 것이 핵심입니다. 전역 옵션
+`--port`, `--via`, `--stm32-port`, `--log`, `--console-timeout`은 하위 명령보다
+앞에 옵니다. `console`은 하위 명령이 없는 펌웨어 명령(`ping`, `read`, `move`,
+`echo`, `uarttest`, `busprobe`)과 대화형 프롬프트, 절차 파일용으로 남았습니다.
+
+ST-LINK만 연결한 상태에서 확인한 결과입니다.
+
+```text
+$ spotctl targets          -> ID 1..12 target=... , exit 0
+$ spotctl profile          -> Profile: speed=3400 acceleration=254
+$ spotctl balance status   -> Balance: on, mode: full, IMU: available
+$ spotctl imu status       -> IMU log: off
+$ spotctl scan             -> ID 1..12 timeout, exit 1
+$ spotctl walk --cycles 1  -> error: 'walk' needs a URT-2 ... , exit 1
+$ spotctl calibrate        -> error: 'calibrate' needs a URT-2 ... , exit 1
+$ spotctl scan --max-id 12 -> error: the STM32 console always scans 1..12
+$ spotctl --via urt2 status-> error: no likely URT-2 port found
+```
+
+`--leg`, `--min-id/--max-id`처럼 이 링크에서 의미가 없는 옵션은 조용히
+무시하지 않고 거절합니다. 펌웨어가 궤적을 소유하므로 속도·가속도는 `profile`로
+설정합니다. 단위 시험은 합계 `94 PASS`입니다. 서보를 실제로 움직이는 명령은
+서보 전원 연결 후 `spotctl scan`으로 12축 OK를 먼저 확인하고 진행합니다.
+
 ## 최종 조립 후 다시 확인할 항목
 
 1. period 2.0초, cycles 1에서 발 방향과 기구 간섭 확인

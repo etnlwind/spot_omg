@@ -30,14 +30,19 @@ Mac에서 ST-LINK USB로 접속한 포트는 STM32의 115200 bps 텍스트 콘�
 URT-2를 Mac/Jetson에 USB로 직접 연결한 포트는 1 Mbps Feetech 서보 버스입니다.
 두 경로는 프로토콜이 달라 서로 호환되지 않습니다.
 
+`spotctl`은 붙어 있는 USB 장치를 보고 어느 링크를 쓸지 스스로 정하므로 같은
+명령을 그대로 쓰면 됩니다.
+
 ```bash
-spotctl --port PORT status        # URT-2 직결: Feetech 패킷
-spotctl console send trot2 1 1600 # ST-LINK: STM32 콘솔 명령
+spotctl stand         # ST-LINK면 STM32 콘솔, URT-2면 Feetech 버스
+spotctl trot2 1 1600  # STM32 전용
+spotctl walk          # URT-2 직결 전용
 ```
 
 macOS에서는 두 장치 모두 `/dev/cu.usbmodem...`으로 잡히므로 포트를 USB vendor
 ID로 구분합니다. ST-LINK는 `0483:374b`이고, 나머지 USB 시리얼 장치를 URT-2로
-봅니다. `spotctl ports`가 어느 쪽인지 표시합니다.
+봅니다. `spotctl ports`가 어느 쪽인지 표시하며, 둘 다 꽂혀 있으면 추측하지 않고
+`--via stm32` 또는 `--via urt2`를 요구합니다.
 
 ## 📁 프로젝트 구조
 
@@ -61,7 +66,7 @@ spot_omg/
 - [x] `stand`, `trot`, `trotplace`, 원형 발끝 `trot2`, 반복 `jump`
 - [x] STM32/MuJoCo 공용 C 보행·점프 정책
 - [x] 서보 보정·진단용 `spotctl`
-- [x] 호스트에서 STM32 콘솔을 구동하는 `spotctl console`
+- [x] 연결된 장치에 따라 STM32/URT-2로 자동 분기하는 `spotctl`
 - [ ] Jetson 명령/telemetry 프로토콜
 - [ ] ROS2 hardware interface
 - [ ] Isaac Lab RL 정책 배포

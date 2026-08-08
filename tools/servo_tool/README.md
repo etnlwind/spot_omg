@@ -56,11 +56,13 @@ editable package로 설치하므로 소스 수정은 즉시 `spotctl`에 반영�
 | 선택한 다리 토크 해제 | `spotctl --port PORT relax --leg RL` |
 | 현재 위치에서 토크 유지 | `spotctl --port PORT hold [--leg RL]` |
 | 선택한 다리만 중립 자세 | `spotctl --port PORT stand --leg RL` |
-| STM32 콘솔로 명령 전송 | `spotctl console send trot2 1 1600` |
+| STM32 보행·점프 | `spotctl trot2 1 1600`, `spotctl jump 3 1500` |
+| STM32 상태 확인 | `spotctl targets`, `spotctl profile`, `spotctl balance status` |
 
 포트는 `--port`로 지정하거나 `SPOT_SERVO_PORT` 환경 변수에 저장할 수 있습니다.
-`console` 하위 명령만은 다른 포트를 쓰므로 `--stm32-port` 또는
-`SPOT_STM32_PORT`를 사용합니다.
+STM32 콘솔 쪽은 `--stm32-port` 또는 `SPOT_STM32_PORT`를 사용합니다. 둘 다
+생략하면 붙어 있는 USB 장치를 보고 자동으로 정합니다
+([STM32 콘솔 제어](#stm32-콘솔-제어) 참고).
 
 현재 macOS 시험 장치에서는 다음처럼 한 번 지정하면 편리합니다.
 
@@ -81,24 +83,47 @@ ST-LINK USB로 STM32에 연결된 구성에서는 대신 `spotctl console`을 �
 
 ## STM32 콘솔 제어
 
-STM32에 연결된 구성에서는 서보 버스의 주인이 STM32입니다. `spotctl console`은
-115200 bps ST-LINK 가상 COM 포트에 붙어 펌웨어 콘솔 명령을 그대로 보내고
-응답을 파싱합니다. 터미널에서 직접 타이핑하던 것을 대체하며, IMU 균형 루프,
-step barrier, `Ctrl+C` 복귀 같은 펌웨어 보호 장치는 그대로 유지됩니다.
+STM32에 연결된 구성에서는 서보 버스의 주인이 STM32입니다. `spotctl`은 붙어
+있는 USB 장치를 보고 어느 링크를 쓸지 스스로 정하므로, 명령을 다르게 칠 필요가
+없습니다. ST-LINK가 붙어 있으면 115200 bps 콘솔로 펌웨어 명령을 보내고, URT-2가
+붙어 있으면 기존 1 Mbps Feetech 경로를 씁니다. 펌웨어 경로에서는 IMU 균형 루프,
+step barrier, `Ctrl+C` 복귀가 그대로 유지됩니다.
+
+```bash
+spotctl stand          # ST-LINK가 붙어 있으면 STM32 콘솔의 stand
+                       # URT-2가 붙어 있으면 기존 Feetech stand
+spotctl trot2 1 1600
+spotctl jump 3 1500
+spotctl profile 800 80
+spotctl balance status
+spotctl targets
+spotctl scan
+```
+
+STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `jump`, `targets`,
+`profile`, `imu`, `balance`입니다. `scan`, `stand`, `relax`, `hold`는 양쪽 모두
+지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `walk`, `calibrate`,
+`capture-stand`, `pose` 등 나머지는 URT-2 직결 전용입니다.
+
+둘 다 꽂혀 있으면 추측하지 않고 `--via`를 요구합니다.
+
+```bash
+spotctl --via stm32 stand
+spotctl --via urt2 status
+```
+
+`--via`는 `SPOT_TRANSPORT` 환경 변수로도 고정할 수 있습니다.
+
+펌웨어 콘솔 명령 중 `spotctl` 하위 명령이 없는 것(`ping`, `read`, `move`,
+`echo`, `uarttest`, `busprobe`, `help`)이나 대화형 프롬프트, 절차 파일 실행에는
+`console`을 사용합니다.
 
 | 목적 | 명령 |
 |---|---|
-| 명령 하나 실행 | `spotctl console send trot2 1 1600` |
+| 임의 명령 한 줄 | `spotctl console send read 1` |
 | 대화형 프롬프트 | `spotctl console shell` |
 | 절차 파일 실행 | `spotctl console script bench.txt` |
-| 세션 기록 남기기 | `spotctl console --log logs/bench.log shell` |
-
-```bash
-export SPOT_STM32_PORT=/dev/cu.usbmodem1103
-spotctl console send profile 800 80
-spotctl console send stand
-spotctl console send trot2 1 1600
-```
+| 세션 기록 남기기 | `spotctl --log logs/bench.log console shell` |
 
 포트는 자동으로 찾습니다. macOS에서는 URT-2도 `/dev/cu.usbmodem...`으로 잡혀
 이름으로는 구분되지 않으므로, USB vendor ID로 판별합니다. ST-LINK는
@@ -113,6 +138,8 @@ $ spotctl ports
 
 필요하면 `--stm32-port` 또는 `SPOT_STM32_PORT`로 직접 지정합니다. 자동 탐지가
 확실하지 않으면 잘못된 포트를 고르는 대신 후보 목록과 함께 오류를 냅니다.
+`--port`, `--via`, `--stm32-port`, `--log`, `--console-timeout`은 모두 전역
+옵션이므로 하위 명령보다 **앞에** 옵니다.
 
 `script`는 빈 줄과 `#` 주석을 건너뛰므로 절차 문서를 그대로 실행할 수
 있습니다. 한 명령이라도 실패하면 즉시 중단합니다.
@@ -128,8 +155,8 @@ relax
 
 종료 코드는 `0` 성공, `1` 펌웨어 오류, `130` `Ctrl+C` 중단(`STOPPED:`)입니다.
 오류에는 `ERROR:`, `usage:`, unknown command와 함께 응답하지 않은 서보
-(`ID 3: timeout, servo_error=0x00`)도 포함됩니다. 따라서 `spotctl console send
-scan`은 12축이 모두 응답할 때만 `0`을 반환합니다. 모션 실행 중 `Ctrl+C`를 누르면 클라이언트가
+(`ID 3: timeout, servo_error=0x00`)도 포함됩니다. 따라서 `spotctl scan`은 12축이
+모두 응답할 때만 `0`을 반환합니다. 모션 실행 중 `Ctrl+C`를 누르면 클라이언트가
 종료되지 않고 `0x03`을 STM32로 보내므로, 로봇은 stand 자세로 복귀한 뒤 멈춥니다.
 
 대기 시간은 명령의 cycles와 period에서 자동으로 계산합니다. `jump 0`처럼 계속

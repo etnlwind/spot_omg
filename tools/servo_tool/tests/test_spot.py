@@ -28,10 +28,12 @@ from servo.cli import (
     configure_directions,
     configure_mapping,
     console_exit_code,
+    console_line_for,
     parse_args,
     resolve_console_port,
     resolve_gait,
     resolve_port,
+    resolve_transport,
     run_walk,
     swap_servo_ids_on_bus,
 )
@@ -1646,6 +1648,79 @@ class ConsolePortTest(unittest.TestCase):
         # The console uses its own port, never the 1 Mbps URT-2 one.
         self.assertIsNone(args.stm32_port)
         self.assertEqual(args.console_baudrate, 115200)
+
+    def test_transport_follows_the_attached_device(self) -> None:
+        with patch("servo.cli.serial_ports", return_value=[BLUETOOTH, ST_LINK]):
+            self.assertEqual(
+                resolve_transport(parse_args(["stand"])),
+                ("stm32", ST_LINK.device),
+            )
+        with patch("servo.cli.serial_ports", return_value=[BLUETOOTH, URT2]):
+            self.assertEqual(
+                resolve_transport(parse_args(["stand"])),
+                ("urt2", URT2.device),
+            )
+
+    def test_transport_asks_when_both_links_are_attached(self) -> None:
+        # Guessing here would either move the robot the wrong way or send
+        # console text into the servo bus.
+        with patch("servo.cli.serial_ports", return_value=[URT2, ST_LINK]):
+            with self.assertRaises(RuntimeError):
+                resolve_transport(parse_args(["stand"]))
+            self.assertEqual(
+                resolve_transport(parse_args(["--via", "stm32", "stand"])),
+                ("stm32", ST_LINK.device),
+            )
+            self.assertEqual(
+                resolve_transport(parse_args(["--via", "urt2", "stand"])),
+                ("urt2", URT2.device),
+            )
+
+    def test_transport_honours_an_explicit_port(self) -> None:
+        args = parse_args(["--stm32-port", "/dev/ttyACM7", "stand"])
+        self.assertEqual(resolve_transport(args), ("stm32", "/dev/ttyACM7"))
+        args = parse_args(["--port", "/dev/ttyUSB3", "stand"])
+        self.assertEqual(resolve_transport(args), ("urt2", "/dev/ttyUSB3"))
+
+    def test_routed_commands_build_the_firmware_command_line(self) -> None:
+        self.assertEqual(
+            console_line_for(parse_args(["trot2", "1", "1600"])),
+            "trot2 1 1600",
+        )
+        self.assertEqual(console_line_for(parse_args(["trot2"])), "trot2")
+        self.assertEqual(console_line_for(parse_args(["jump", "3"])), "jump 3")
+        self.assertEqual(
+            console_line_for(parse_args(["profile", "800", "80"])),
+            "profile 800 80",
+        )
+        self.assertEqual(console_line_for(parse_args(["profile"])), "profile")
+        self.assertEqual(
+            console_line_for(parse_args(["balance", "status"])),
+            "balance status",
+        )
+        self.assertEqual(console_line_for(parse_args(["imu"])), "imu")
+        self.assertEqual(console_line_for(parse_args(["stand"])), "stand")
+        self.assertEqual(console_line_for(parse_args(["scan"])), "scan")
+
+    def test_routed_commands_reject_urt2_only_options(self) -> None:
+        # The firmware owns the trajectory over this link, so these would be
+        # silently ignored rather than honoured.
+        with self.assertRaises(ValueError):
+            console_line_for(parse_args(["scan", "--max-id", "12"]))
+        with self.assertRaises(ValueError):
+            console_line_for(parse_args(["stand", "--leg", "RL"]))
+        with self.assertRaises(ValueError):
+            console_line_for(parse_args(["relax", "--leg", "FR"]))
+        with self.assertRaises(ValueError):
+            console_line_for(parse_args(["profile", "800"]))
+        with self.assertRaises(ValueError):
+            console_line_for(parse_args(["walk"]))
+
+    def test_motion_timeouts_come_from_the_generated_line(self) -> None:
+        line = console_line_for(parse_args(["trot2", "1", "1600"]))
+        self.assertAlmostEqual(estimate_timeout(line), 21.6)
+        # A continuous jump has no completion time.
+        self.assertIsNone(estimate_timeout(console_line_for(parse_args(["jump"]))))
 
     def test_console_exit_code_distinguishes_abort_from_failure(self) -> None:
         self.assertEqual(console_exit_code("ok"), 0)

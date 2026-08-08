@@ -141,17 +141,28 @@ help             도움말
 수 있습니다. 서보 버스의 주인은 그대로 STM32이므로 IMU 균형, step barrier,
 `Ctrl+C` 복귀가 모두 유지됩니다.
 
+ST-LINK가 붙어 있으면 `spotctl`이 알아서 이 콘솔로 명령을 보냅니다. 포트나
+`console` 같은 키워드를 따로 칠 필요가 없습니다.
+
 ```bash
 conda activate spot_omg
-export SPOT_STM32_PORT=/dev/cu.usbmodem1103   # spotctl ports로 확인
-spotctl console send profile 800 80
-spotctl console send trot2 1 1600
+spotctl profile 800 80
+spotctl stand
+spotctl trot2 1 1600
+spotctl balance status
+```
+
+하위 명령이 없는 펌웨어 명령(`ping`, `read`, `move`, `echo`, `uarttest`,
+`busprobe`)이나 대화형 프롬프트는 `console`을 사용합니다.
+
+```bash
+spotctl console send read 1
 spotctl console shell
 ```
 
-`spotctl console`은 접속 직후 `echo off`를 보내 부팅 배너를 버리고 프롬프트를
-맞춥니다. 빈 줄은 펌웨어가 무시하고 프롬프트를 출력하지 않으므로 동기화에
-사용하지 않습니다. 자세한 사용법은
+`spotctl`은 접속 직후 `echo off`를 보내 부팅 배너를 버리고 프롬프트를 맞춥니다.
+빈 줄은 펌웨어가 무시하고 프롬프트를 출력하지 않으므로 동기화에 쓰지 않습니다.
+자세한 사용법은
 [`tools/servo_tool/README.md`](../../tools/servo_tool/README.md)를 참고하세요.
 
 부팅 기본 profile은 최대값 `speed=3400`, `acceleration=254`입니다. 예를 들어

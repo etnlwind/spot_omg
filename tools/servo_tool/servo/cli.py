@@ -62,6 +62,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--baudrate", type=int, default=1_000_000)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument(
+        "--via",
+        choices=("auto", "urt2", "stm32"),
+        default=os.environ.get("SPOT_TRANSPORT", "auto"),
+        help=(
+            "which link to use; auto picks it from the attached USB device "
+            "(default: auto, or SPOT_TRANSPORT)"
+        ),
+    )
+    parser.add_argument(
+        "--stm32-port",
+        default=os.environ.get("SPOT_STM32_PORT"),
+        help=(
+            "ST-LINK virtual COM port; defaults to SPOT_STM32_PORT or "
+            "auto-detection by USB vendor ID"
+        ),
+    )
+    parser.add_argument(
+        "--console-baudrate", type=int, default=CONSOLE_BAUDRATE
+    )
+    parser.add_argument(
+        "--console-timeout",
+        type=float,
+        help=(
+            "seconds to wait for the STM32 prompt; defaults to a per-command "
+            "estimate from cycles and period"
+        ),
+    )
+    parser.add_argument(
+        "--log",
+        type=Path,
+        help="append the STM32 console transcript to this file",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
 
     commands.add_parser("ports", help="list serial ports")
@@ -250,38 +283,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="compare live loads with a phase baseline; observation only",
     )
 
+    for name, help_text in (
+        ("trot", "shared-C sim-trot on the STM32"),
+        ("trotplace", "in-place diagonal trot on the STM32"),
+        ("trot2", "circular-foot diagonal trot on the STM32"),
+        ("jump", "repeating in-place jump on the STM32; 0 cycles repeats"),
+    ):
+        motion = commands.add_parser(name, help=help_text)
+        motion.add_argument("cycles", type=int, nargs="?")
+        motion.add_argument("period_ms", type=int, nargs="?")
+
+    commands.add_parser(
+        "targets", help="print the STM32 calibrated stand raw targets"
+    )
+    profile = commands.add_parser(
+        "profile", help="show or set the STM32 servo speed and acceleration"
+    )
+    profile.add_argument("speed", type=int, nargs="?")
+    profile.add_argument("accel", type=int, nargs="?")
+    imu = commands.add_parser("imu", help="control STM32 10 Hz IMU logging")
+    imu.add_argument("mode", nargs="?", choices=("on", "off", "status"))
+    balance = commands.add_parser(
+        "balance", help="control the STM32 IMU balance policy"
+    )
+    balance.add_argument(
+        "mode", nargs="?", choices=("full", "normal", "on", "off", "status")
+    )
+
     console = commands.add_parser(
         "console",
-        help="drive the STM32 text console over the ST-LINK virtual COM port",
+        help="send raw command lines to the STM32 text console",
         description=(
-            "Send commands to the STM32 firmware console instead of typing "
-            "them in a terminal.  The STM32 keeps ownership of the servo bus, "
-            "so the IMU balance loop, the step barrier and Ctrl+C recovery "
-            "stay in effect.  This is a different port and protocol from the "
-            "URT-2 commands; it does not use --port."
+            "Escape hatch for firmware console commands that have no spotctl "
+            "subcommand, for an interactive prompt, or for running a "
+            "procedure file.  Ordinary commands such as 'spotctl stand' and "
+            "'spotctl trot2 1 1600' already route to the STM32 on their own "
+            "when the ST-LINK is the attached device."
         ),
-    )
-    console.add_argument(
-        "--stm32-port",
-        default=os.environ.get("SPOT_STM32_PORT"),
-        help=(
-            "ST-LINK virtual COM port; defaults to SPOT_STM32_PORT or "
-            "auto-detection of a usbmodem/ttyACM device"
-        ),
-    )
-    console.add_argument("--console-baudrate", type=int, default=CONSOLE_BAUDRATE)
-    console.add_argument(
-        "--timeout",
-        type=float,
-        help=(
-            "seconds to wait for the prompt; defaults to a per-command "
-            "estimate from cycles and period"
-        ),
-    )
-    console.add_argument(
-        "--log",
-        type=Path,
-        help="append the session transcript to this file",
     )
     console_actions = console.add_subparsers(
         dest="console_command", required=True
@@ -553,6 +591,125 @@ def run_console_script(
     return 0
 
 
+#: Firmware console commands promoted to top-level spotctl subcommands.
+CONSOLE_ONLY_COMMANDS = frozenset(
+    {"trot", "trotplace", "trot2", "jump", "targets", "profile", "imu", "balance"}
+)
+
+#: Commands both transports implement, routed by the attached device.
+DUAL_COMMANDS = frozenset({"scan", "stand", "relax", "hold"})
+
+
+def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
+    """Decide which link to use and return ``(kind, port)``.
+
+    ``kind`` is ``"stm32"`` for the ST-LINK text console or ``"urt2"`` for the
+    direct Feetech bus.  An explicit ``--via`` or an explicit port wins;
+    otherwise the attached USB device decides.  With one of each plugged in
+    there is no right answer, so ask instead of guessing.
+    """
+    if args.via == "stm32":
+        return "stm32", resolve_console_port(args.stm32_port)
+    if args.via == "urt2":
+        return "urt2", resolve_port(args.port)
+    if args.stm32_port and args.port:
+        raise RuntimeError(
+            "both --port and --stm32-port are set; choose one with --via"
+        )
+    if args.stm32_port:
+        return "stm32", args.stm32_port
+    if args.port:
+        return "urt2", args.port
+
+    ports = serial_ports()
+    st_link = [port for port in ports if port.is_st_link]
+    urt2 = [
+        port
+        for port in ports
+        if port.looks_like_usb_serial and not port.is_st_link
+    ]
+    if st_link and urt2:
+        raise RuntimeError(
+            "both an STM32 console and a URT-2 are attached; select one with "
+            "--via stm32 or --via urt2 ("
+            + ", ".join(
+                f"{port.device} ({port.usb_id})" for port in st_link + urt2
+            )
+            + ")"
+        )
+    if st_link:
+        return "stm32", resolve_console_port(None)
+    if urt2:
+        return "urt2", resolve_port(None)
+    raise RuntimeError(
+        "no STM32 console or URT-2 found; run 'spotctl ports'"
+    )
+
+
+def console_line_for(args: argparse.Namespace) -> str:
+    """Translate a routed spotctl command into one firmware console line.
+
+    Options that only make sense on the direct Feetech bus are rejected
+    rather than silently dropped, because over this link the firmware owns
+    the trajectory.
+    """
+    command = args.command
+    if command == "scan":
+        if args.min_id != 1 or args.max_id != 253:
+            raise ValueError(
+                "the STM32 console always scans IDs 1..12; drop --min-id and "
+                "--max-id, or use --via urt2"
+            )
+        return "scan"
+    if command in {"stand", "relax", "hold"}:
+        if getattr(args, "leg", None):
+            raise ValueError(
+                f"'{command} --leg' needs a URT-2 direct connection; the "
+                "STM32 console always moves all twelve joints"
+            )
+        return command
+    if command == "targets":
+        return "targets"
+    if command == "profile":
+        if args.speed is None and args.accel is None:
+            return "profile"
+        if args.speed is None or args.accel is None:
+            raise ValueError("profile takes both SPEED and ACCEL, or neither")
+        return f"profile {args.speed} {args.accel}"
+    if command in {"imu", "balance"}:
+        return command if args.mode is None else f"{command} {args.mode}"
+    if command in {"trot", "trotplace", "trot2", "jump"}:
+        if args.cycles is None and args.period_ms is not None:
+            raise ValueError("PERIOD_MS requires CYCLES")
+        parts = [command]
+        if args.cycles is not None:
+            parts.append(str(args.cycles))
+        if args.period_ms is not None:
+            parts.append(str(args.period_ms))
+        return " ".join(parts)
+    raise ValueError(f"'{command}' has no STM32 console equivalent")
+
+
+def run_routed_console_command(args: argparse.Namespace, port: str) -> int:
+    """Run one routed command over the STM32 console."""
+    line = console_line_for(args)
+    log_file = None
+    try:
+        if args.log is not None:
+            args.log.parent.mkdir(parents=True, exist_ok=True)
+            log_file = args.log.open("a", encoding="utf-8")
+            started = datetime.now().isoformat(timespec="seconds")
+            log_file.write(f"\n=== {started} {port} ===\n")
+        with Stm32Console(port, args.console_baudrate) as console:
+            console.sync()
+            return run_console_command(
+                console, line, timeout=args.console_timeout, log=log_file
+            )
+    finally:
+        if log_file is not None:
+            log_file.close()
+
+
 def run_console(args: argparse.Namespace) -> int:
     """Open the STM32 console and dispatch the requested console action."""
     port = resolve_console_port(args.stm32_port)
@@ -570,15 +727,16 @@ def run_console(args: argparse.Namespace) -> int:
                 return run_console_command(
                     console,
                     " ".join(args.words),
-                    timeout=args.timeout,
+                    timeout=args.console_timeout,
                     log=log_file,
                 )
             if args.console_command == "script":
                 return run_console_script(
-                    console, args.path, timeout=args.timeout, log=log_file
+                    console, args.path, timeout=args.console_timeout,
+                    log=log_file,
                 )
             return run_console_shell(
-                console, timeout=args.timeout, log=log_file
+                console, timeout=args.console_timeout, log=log_file
             )
     finally:
         if log_file is not None:
@@ -1364,7 +1522,20 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "console":
             return run_console(args)
 
-        port = resolve_port(args.port)
+        transport, port = resolve_transport(args)
+        if transport == "stm32":
+            if args.command in CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS:
+                return run_routed_console_command(args, port)
+            raise RuntimeError(
+                f"'{args.command}' needs a URT-2 connected directly to this "
+                "computer; the STM32 console does not implement it"
+            )
+        if args.command in CONSOLE_ONLY_COMMANDS:
+            raise RuntimeError(
+                f"'{args.command}' runs on the STM32; connect the ST-LINK "
+                "port, or use 'spotctl walk' over the URT-2"
+            )
+
         if args.command == "scan":
             if not 0 <= args.min_id <= args.max_id <= 253:
                 raise ValueError("ID range must satisfy 0 <= min-id <= max-id <= 253")
