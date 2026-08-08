@@ -1186,6 +1186,35 @@ $ spotctl --via urt2 status-> error: no likely URT-2 port found
 설정합니다. 단위 시험은 합계 `94 PASS`입니다. 서보를 실제로 움직이는 명령은
 서보 전원 연결 후 `spotctl scan`으로 12축 OK를 먼저 확인하고 진행합니다.
 
+## 2026-08-08 서보 버스 무응답 재발 (조사 중)
+
+`spotctl`이 STM32로 정상 분기되고 콘솔 명령은 모두 응답하지만 서보 버스가
+죽어 있습니다.
+
+```text
+$ spotctl scan     -> ID 1..12 전부 timeout, servo_error=0x00
+$ spotctl stand    -> ERROR: missing servo; servo=1, bus=timeout
+$ spotctl console send busprobe 1
+BUSPROBE RX: no bytes
+```
+
+2026-08-06 기록과는 증상이 다릅니다. 그때는 `BUSPROBE RX (2): FF 00`처럼 일부
+바이트가 들어와 수신 타이밍(overrun) 문제였지만, 이번에는 **한 바이트도 들어오지
+않습니다**. STM32는 요청을 내보내고 있으므로 PA10으로 돌아오는 신호가 아예 없는
+물리 계층 문제로 봅니다. `targets`, `profile`, `balance status`가 정상인 것은
+이들이 서보 버스를 쓰지 않기 때문입니다.
+
+이 과정에서 분류기의 빈틈을 또 하나 찾았습니다. `BUSPROBE RX: no bytes`에는
+`ERROR:` 접두사도 `FAIL`도 없어 성공으로 분류되어 종료 코드 `0`이 나왔습니다.
+이 문장을 실패로 판정하도록 고쳤고, 정상 응답인 `BUSPROBE RX (6): FF FF 01 02
+00 FC`는 영향받지 않습니다. 단위 시험 `94 PASS`.
+
+다음 점검은 2026-08-06의 "재발 시 최소 점검 순서"를 따릅니다. 먼저 URT-2를
+Mac에 USB로 직접 연결해 `spotctl --via urt2 scan`으로 서보 12개와 12V 전원을
+확인하고, 그 다음 STM32 연결로 되돌려 URT-2 분리 후 `uarttest`, 이어서
+`busprobe 1`을 확인합니다. 특히 URT-2 Type-C 전원, 신호 레벨 스위치 3.3V,
+`TX-TX`/`RX-RX` 방향, 공통 GND를 다시 봅니다.
+
 ## 최종 조립 후 다시 확인할 항목
 
 1. period 2.0초, cycles 1에서 발 방향과 기구 간섭 확인

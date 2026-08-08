@@ -1442,6 +1442,11 @@ class ConsoleProtocolTest(unittest.TestCase):
             classify(["ID 3: servo error, servo_error=0x04"]), "error"
         )
         self.assertEqual(classify(["ID 3: ok, servo_error=0x00"]), "info")
+        # A completely silent bus is a diagnostic result, not a command fault.
+        self.assertEqual(classify(["BUSPROBE RX: no bytes"]), "error")
+        self.assertEqual(
+            classify(["BUSPROBE RX (6): FF FF 01 02 00 FC"]), "info"
+        )
         # Value reports share the "ID N" prefix but are not bus results.
         self.assertEqual(classify(["ID 3 target=2048"]), "info")
         self.assertEqual(classify(["  ID 3 OK"]), "info")

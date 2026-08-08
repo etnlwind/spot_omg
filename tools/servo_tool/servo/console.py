@@ -46,6 +46,10 @@ TELEMETRY_PATTERN = re.compile(r"^Yaw=")
 #: "  ID 3 OK" have no colon and are not failures.
 BUS_FAILURE_PATTERN = re.compile(r"^\s*ID \d+: (?!ok,)")
 
+#: busprobe reports an entirely silent bus this way.  It is a diagnostic
+#: result, not a command fault, so it carries no ERROR: prefix either.
+SILENT_BUS_LINE = "BUSPROBE RX: no bytes"
+
 #: Commands whose runtime depends on cycle count and period.
 _TIMED_COMMANDS = {
     # command: (default cycles, default period ms)
@@ -96,6 +100,7 @@ def classify(lines: Iterable[str]) -> str:
             or line.startswith("usage:")
             or line.startswith("unknown command")
             or "FAIL" in line
+            or line == SILENT_BUS_LINE
             or BUS_FAILURE_PATTERN.match(line)
         ):
             return "error"
