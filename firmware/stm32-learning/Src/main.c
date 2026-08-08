@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_console.h"
+#include "bno086.h"
 #include "robot.h"
 #include "servo_bus.h"
 
@@ -54,7 +55,7 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-static uint16_t bno055_address = 0;
+static Bno086 imu;
 static bool imu_log_enabled = false;
 static ServoBus servo_bus;
 static RobotController robot;
@@ -70,17 +71,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 static void uart_print(const char *text);
-static uint16_t BNO055_Detect(void);
-static void I2C_Scan(void);
-static HAL_StatusTypeDef BNO055_Write8(uint8_t reg, uint8_t value);
-static HAL_StatusTypeDef BNO055_Init(void);
-static HAL_StatusTypeDef BNO055_ReadEuler(int16_t *heading,
-                                         int16_t *roll,
-                                         int16_t *pitch);
-static bool BNO055_ReadAttitude(void *context,
-                                int16_t *roll_tenths,
-                                int16_t *pitch_tenths);
-static void BNO055_PrintEuler(void);
+static void IMU_PrintEuler(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -127,18 +118,23 @@ int main(void)
 
   uart_print("\r\nPROGRAM START\r\n");
   HAL_Delay(700);
-  I2C_Scan();
 
-  bno055_address = BNO055_Detect();
-  if (bno055_address == 0) {
-      uart_print("BNO055 not found\r\n");
-      uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
-  } else if (BNO055_Init() == HAL_OK) {
-      uart_print("BNO055 NDOF initialization OK\r\n");
-      robot_set_attitude_reader(&robot, BNO055_ReadAttitude, NULL);
+  /*
+   * 5 ms subscription: the sensor fuses faster than the balance loop consumes,
+   * so a step never acts on a sample older than one control period.
+   */
+  const Bno086Result imu_result = bno086_init(&imu, 5000U);
+  if (imu_result == BNO086_OK) {
+      uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
+      robot_set_attitude_reader(&robot, bno086_read_attitude, &imu);
       uart_print("IMU balance default ON: full, absolute level target\r\n");
   } else {
-      uart_print("BNO055 initialization failed\r\n");
+      char message[80];
+      (void)snprintf(message,
+                     sizeof(message),
+                     "BNO086 unavailable: %s\r\n",
+                     bno086_result_string(imu_result));
+      uart_print(message);
       uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
   }
   app_console_print_help(&console);
@@ -155,9 +151,10 @@ int main(void)
     static uint32_t last_imu_print = 0U;
 
     app_console_poll(&console);
-    if (imu_log_enabled && bno055_address != 0 &&
+    bno086_service(&imu);
+    if (imu_log_enabled && imu.present &&
         (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U) {
-        BNO055_PrintEuler();
+        IMU_PrintEuler();
         last_imu_print = HAL_GetTick();
     }
 
@@ -383,21 +380,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  /*
+   * PA5 is no longer driven here.  It carried the LD2 user LED, but the
+   * BNO086 needs it as SPI1_SCK, so bno086_init() claims it as alternate
+   * function.  Driving it from here would fight the SPI peripheral.
+   */
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
@@ -409,19 +402,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-
-{
-
-    if (GPIO_Pin == GPIO_PIN_13)
-
-    {
-
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-
-    }
-
-}
+/*
+ * The B1 user button on PC13 used to blink LD2.  LD2 sits on PA5, which is now
+ * SPI1_SCK for the BNO086, so the callback is gone rather than left blinking
+ * an LED that would corrupt every SPI frame.
+ */
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
@@ -439,216 +424,30 @@ static void uart_print(const char *text)
     );
 }
 
-static uint16_t BNO055_Detect(void)
+static void IMU_PrintEuler(void)
 {
-    const uint8_t addresses[] = {0x28, 0x29};
-    uint8_t chip_id;
-    char message[64];
-
-    for (uint32_t i = 0; i < 2; i++) {
-        uint16_t address = addresses[i] << 1;
-
-        if (HAL_I2C_IsDeviceReady(
-                &hi2c1,
-                address,
-                3,
-                100) == HAL_OK) {
-
-            if (HAL_I2C_Mem_Read(
-                    &hi2c1,
-                    address,
-                    0x00,
-                    I2C_MEMADD_SIZE_8BIT,
-                    &chip_id,
-                    1,
-                    100) == HAL_OK) {
-
-                snprintf(
-                    message,
-                    sizeof(message),
-                    "Address: 0x%02X, CHIP_ID: 0x%02X\r\n",
-                    addresses[i],
-                    chip_id
-                );
-
-                uart_print(message);
-
-                if (chip_id == 0xA0) {
-                    return address;
-                }
-            }
-        }
-    }
-
-    uart_print("BNO055 not found\r\n");
-    return 0;
-}
-
-static void I2C_Scan(void)
-{
-    char msg[64];
-    uint8_t found = 0;
-
-    uart_print("\r\nI2C scan start\r\n");
-
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        if (HAL_I2C_IsDeviceReady(
-                &hi2c1,
-                addr << 1,
-                2,
-                20) == HAL_OK) {
-
-            snprintf(msg, sizeof(msg),
-                     "Found: 0x%02X\r\n", addr);
-            uart_print(msg);
-            found++;
-        }
-    }
-
-    if (found == 0) {
-        uart_print("No I2C devices found\r\n");
-    }
-
-    uart_print("I2C scan finished\r\n");
-}
-
-#define BNO055_CHIP_ID_ADDR       0x00
-#define BNO055_PAGE_ID_ADDR       0x07
-#define BNO055_EULER_H_LSB_ADDR   0x1A
-#define BNO055_OPR_MODE_ADDR      0x3D
-#define BNO055_PWR_MODE_ADDR      0x3E
-#define BNO055_SYS_TRIGGER_ADDR   0x3F
-
-#define BNO055_MODE_CONFIG        0x00
-#define BNO055_MODE_NDOF          0x0C
-#define BNO055_POWER_NORMAL       0x00
-
-static HAL_StatusTypeDef BNO055_Write8(uint8_t reg, uint8_t value)
-{
-    return HAL_I2C_Mem_Write(&hi2c1,
-                             bno055_address,
-                             reg,
-                             I2C_MEMADD_SIZE_8BIT,
-                             &value,
-                             1,
-                             100);
-}
-
-static HAL_StatusTypeDef BNO055_Init(void)
-{
-    uint8_t chip_id = 0;
-
-    if (bno055_address == 0) {
-        return HAL_ERROR;
-    }
-
-    if (HAL_I2C_Mem_Read(&hi2c1,
-                         bno055_address,
-                         BNO055_CHIP_ID_ADDR,
-                         I2C_MEMADD_SIZE_8BIT,
-                         &chip_id,
-                         1,
-                         100) != HAL_OK || chip_id != 0xA0) {
-        return HAL_ERROR;
-    }
-
-    if (BNO055_Write8(BNO055_OPR_MODE_ADDR,
-                      BNO055_MODE_CONFIG) != HAL_OK) {
-        return HAL_ERROR;
-    }
-    HAL_Delay(25);
-
-    if (BNO055_Write8(BNO055_PAGE_ID_ADDR, 0x00) != HAL_OK ||
-        BNO055_Write8(BNO055_PWR_MODE_ADDR,
-                      BNO055_POWER_NORMAL) != HAL_OK) {
-        return HAL_ERROR;
-    }
-    HAL_Delay(10);
-
-    if (BNO055_Write8(BNO055_SYS_TRIGGER_ADDR, 0x00) != HAL_OK) {
-        return HAL_ERROR;
-    }
-    HAL_Delay(10);
-
-    if (BNO055_Write8(BNO055_OPR_MODE_ADDR,
-                      BNO055_MODE_NDOF) != HAL_OK) {
-        return HAL_ERROR;
-    }
-    HAL_Delay(30);
-
-    return HAL_OK;
-}
-
-static HAL_StatusTypeDef BNO055_ReadEuler(int16_t *heading,
-                                         int16_t *roll,
-                                         int16_t *pitch)
-{
-    uint8_t data[6];
-
-    if (HAL_I2C_Mem_Read(&hi2c1,
-                         bno055_address,
-                         BNO055_EULER_H_LSB_ADDR,
-                         I2C_MEMADD_SIZE_8BIT,
-                         data,
-                         sizeof(data),
-                         100) != HAL_OK) {
-        return HAL_ERROR;
-    }
-
-    *heading = (int16_t)(((uint16_t)data[1] << 8) | data[0]);
-    *roll = (int16_t)(((uint16_t)data[3] << 8) | data[2]);
-    *pitch = (int16_t)(((uint16_t)data[5] << 8) | data[4]);
-
-    return HAL_OK;
-}
-
-static bool BNO055_ReadAttitude(void *context,
-                                int16_t *roll_tenths,
-                                int16_t *pitch_tenths)
-{
-    int16_t heading_raw = 0;
-    int16_t roll_raw = 0;
-    int16_t pitch_raw = 0;
-    (void)context;
-
-    if (roll_tenths == NULL || pitch_tenths == NULL ||
-        BNO055_ReadEuler(&heading_raw, &roll_raw, &pitch_raw) != HAL_OK) {
-        return false;
-    }
-
-    /* BNO055 Euler scale: 16 LSB per degree. Yaw is intentionally unused. */
-    *roll_tenths = (int16_t)(((int32_t)roll_raw * 10) / 16);
-    *pitch_tenths = (int16_t)(((int32_t)pitch_raw * 10) / 16);
-    return true;
-}
-
-static void BNO055_PrintEuler(void)
-{
-    int16_t heading_raw;
-    int16_t roll_raw;
-    int16_t pitch_raw;
-    int32_t heading10;
-    int32_t roll10;
-    int32_t pitch10;
     char message[100];
 
-    if (BNO055_ReadEuler(&heading_raw,
-                        &roll_raw,
-                        &pitch_raw) != HAL_OK) {
-        uart_print("Euler read error\r\n");
+    if (!imu.present || !imu.has_attitude) {
+        uart_print("IMU unavailable\r\n");
         return;
     }
 
-    /* BNO055 Euler scale: 16 LSB per degree. */
-    heading10 = ((int32_t)heading_raw * 10) / 16;
-    roll10 = ((int32_t)roll_raw * 10) / 16;
-    pitch10 = ((int32_t)pitch_raw * 10) / 16;
+    const int32_t yaw10 = imu.yaw_tenths;
+    const int32_t roll10 = imu.roll_tenths;
+    const int32_t pitch10 = imu.pitch_tenths;
 
+    /*
+     * Same line shape the BNO055 printed, so the host-side log parsers and the
+     * bench notes in HARDWARE_TEST_LOG.md keep working.  Yaw is relative to
+     * power-on here: the game rotation vector has no magnetometer reference.
+     */
     snprintf(message,
              sizeof(message),
-             "Yaw=%ld.%01ld, Roll=%s%ld.%01ld, Pitch=%s%ld.%01ld deg\r\n",
-             (long)(heading10 / 10),
-             (long)labs(heading10 % 10),
+             "Yaw=%s%ld.%01ld, Roll=%s%ld.%01ld, Pitch=%s%ld.%01ld deg\r\n",
+             yaw10 < 0 ? "-" : "",
+             labs(yaw10) / 10,
+             labs(yaw10) % 10,
              roll10 < 0 ? "-" : "",
              labs(roll10) / 10,
              labs(roll10) % 10,
