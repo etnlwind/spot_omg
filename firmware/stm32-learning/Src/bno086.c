@@ -36,6 +36,14 @@
 #define SH2_TIMESTAMP_SIZE       5U
 #define SH2_GRV_REPORT_SIZE      12U
 
+/*
+ * Set when the breakout selects SPI with a soldered PS0 jumper rather than
+ * leaving the pin for the host.  PS0 doubles as WAKE, so a strapped board has
+ * no wake line: the firmware must not drive IMU_WAKE, and the D4 wire should
+ * be removed so nothing sits across the strap.
+ */
+#define BNO086_PS0_STRAPPED      1
+
 #define BNO086_INT_TIMEOUT_MS    200U
 #define BNO086_RESET_DRAIN_MS    600U
 
@@ -191,11 +199,20 @@ static Bno086Result shtp_send(Bno086 *imu,
     /*
      * WAKE (PS0 in SPI mode) asks the sensor for a transfer window; it answers
      * by asserting H_INTN.  Writing before that window is dropped.
+     *
+     * On a breakout whose PS0 solder jumper is closed the pin is strapped to a
+     * rail to select SPI, so it is no longer ours to drive: pulling it low
+     * would put the MCU output across that rail.  Wait for the sensor to offer
+     * a window on its own instead, which it does at the report rate.
      */
-    gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, false);
+    if (!BNO086_PS0_STRAPPED) {
+        gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, false);
+    }
     const bool ready = wait_for_interrupt(BNO086_INT_TIMEOUT_MS);
     if (!ready) {
-        gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
+        if (!BNO086_PS0_STRAPPED) {
+            gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
+        }
         return BNO086_TIMEOUT;
     }
 
@@ -203,7 +220,9 @@ static Bno086Result shtp_send(Bno086 *imu,
     const HAL_StatusTypeDef status =
         HAL_SPI_Transmit(imu->spi, packet, (uint16_t)total, 100U);
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
-    gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
+    if (!BNO086_PS0_STRAPPED) {
+        gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
+    }
 
     return status == HAL_OK ? BNO086_OK : BNO086_SPI_ERROR;
 }
