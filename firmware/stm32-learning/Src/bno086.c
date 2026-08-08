@@ -129,14 +129,21 @@ static Bno086Result shtp_receive(Bno086 *imu,
                                  uint8_t *payload,
                                  size_t payload_capacity,
                                  size_t *payload_length,
-                                 uint8_t *channel)
+                                 uint8_t *channel,
+                                 bool require_interrupt)
 {
     uint8_t header[SHTP_HEADER_SIZE];
 
     *payload_length = 0U;
     *channel = 0U;
 
-    if (!interrupt_asserted()) {
+    /*
+     * H_INTN says a packet is waiting, and honouring it keeps the normal path
+     * cheap.  It is not the only way to find out, though: clocking the header
+     * out anyway returns a zero length when there is nothing.  Bring-up reads
+     * that way so a broken interrupt wire cannot hide working reports.
+     */
+    if (require_interrupt && !interrupt_asserted()) {
         return BNO086_OK;
     }
 
@@ -308,24 +315,20 @@ static void parse_sensor_reports(Bno086 *imu,
     }
 }
 
-void bno086_service(Bno086 *imu)
+static void service_packets(Bno086 *imu, bool require_interrupt)
 {
     uint8_t payload[64];
-
-    if (imu == NULL || !imu->present) {
-        return;
-    }
 
     /* Drain rather than read once, so a burst cannot leave H_INTN asserted. */
     for (unsigned int guard = 0U; guard < 8U; ++guard) {
         size_t length = 0U;
         uint8_t channel = 0U;
 
-        if (!interrupt_asserted()) {
+        if (require_interrupt && !interrupt_asserted()) {
             return;
         }
-        if (shtp_receive(imu, payload, sizeof(payload), &length, &channel) !=
-            BNO086_OK) {
+        if (shtp_receive(imu, payload, sizeof(payload), &length, &channel,
+                         require_interrupt) != BNO086_OK) {
             imu->protocol_errors++;
             return;
         }
@@ -336,6 +339,14 @@ void bno086_service(Bno086 *imu)
             parse_sensor_reports(imu, payload, length);
         }
     }
+}
+
+void bno086_service(Bno086 *imu)
+{
+    if (imu == NULL || !imu->present) {
+        return;
+    }
+    service_packets(imu, true);
 }
 
 Bno086Result bno086_init(Bno086 *imu,
@@ -368,17 +379,15 @@ Bno086Result bno086_init(Bno086 *imu,
         size_t length = 0U;
         uint8_t channel = 0U;
 
-        if (!interrupt_asserted()) {
-            continue;
-        }
-        if (shtp_receive(imu, payload, sizeof(payload), &length, &channel) !=
-            BNO086_OK) {
+        if (shtp_receive(imu, payload, sizeof(payload), &length, &channel,
+                         false) != BNO086_OK) {
             imu->protocol_errors++;
             continue;
         }
         if (length != 0U) {
             saw_packet = true;
         }
+        HAL_Delay(5);
     }
 
     /*
@@ -402,7 +411,9 @@ Bno086Result bno086_init(Bno086 *imu,
     const uint32_t subscribed_at = HAL_GetTick();
     while (!imu->has_attitude &&
            (uint32_t)(HAL_GetTick() - subscribed_at) < 1000U) {
-        bno086_service(imu);
+        /* Read without waiting on H_INTN; see shtp_receive. */
+        service_packets(imu, false);
+        HAL_Delay(5);
     }
 
     if (!imu->has_attitude) {
