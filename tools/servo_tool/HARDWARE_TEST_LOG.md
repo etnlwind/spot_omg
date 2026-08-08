@@ -1251,11 +1251,38 @@ PA10 idle high: URT-2 is driving the line; suspect servo power or the TTL bus
 `Src`와 HAL 드라이버 전체에서 새 코드의 경고는 없고, 남은 경고 3개는 ST의
 `stm32f4xx_hal_flash_ex.c`에 원래 있던 `unused parameter 'Banks'`입니다.
 
-다음 점검은 2026-08-06의 "재발 시 최소 점검 순서"를 따릅니다. 먼저 URT-2를
-Mac에 USB로 직접 연결해 `spotctl --via urt2 scan`으로 서보 12개와 12V 전원을
-확인하고, 그 다음 STM32 연결로 되돌려 URT-2 분리 후 `uarttest`, 이어서
-`busprobe 1`을 확인합니다. 특히 URT-2 Type-C 전원, 신호 레벨 스위치 3.3V,
-`TX-TX`/`RX-RX` 방향, 공통 GND를 다시 봅니다.
+### 분리 시험 결과: 범위가 STM32 ↔ URT-2 헤더로 확정
+
+URT-2를 Mac에 USB로 직접 연결하면 `scan`이 정상입니다. 같은 URT-2를 STM32에
+연결하면 시리얼 터미널이든 `spotctl`이든 12축 전부 timeout입니다.
+
+이는 2026-08-06과 동일한 분리 결과이며, 다음이 모두 정상임을 뜻합니다.
+
+- 서보 12개와 각 ID
+- 서보 12V 구동 전원
+- URT-2 자체와 half-duplex TTL 버스 구간
+
+따라서 남은 범위는 **STM32 USART1 ↔ URT-2 UART 헤더 구간**뿐입니다. 다만
+2026-08-06의 원인이었던 수신 타이밍 문제와는 증상이 다릅니다. 그때는
+`BUSPROBE RX (2): FF 00`처럼 일부 바이트가 도착했지만 지금은 0바이트이고,
+`servo_bus.c`는 그때 수정 이후 변경되지 않았습니다. 그래서 소프트웨어 재발이
+아니라 이 구간의 배선 또는 전원으로 봅니다.
+
+중요한 비대칭이 하나 있습니다. URT-2를 Mac에 꽂으면 USB에서 로직 전원을 받지만,
+STM32에 연결할 때는 UART 헤더로 신호만 오가므로 **URT-2가 자체 전원을 따로 받아야
+합니다**. Type-C 전원이 빠져 있으면 Mac에서는 정상이고 STM32에서만 무응답인
+지금 증상과 정확히 일치합니다. 2026-08-06 기록의 전원 원칙도 Type-C 공급이고
+UART 헤더 VCC는 연결하지 않는 구성이었습니다.
+
+점검 순서는 다음과 같습니다.
+
+1. `linestate` — PA10이 `0%`면 URT-2 무전원 또는 RX 배선, `100%`면 구동은 되는
+   중이므로 방향·레벨 확인
+2. URT-2 Type-C 전원 연결 여부
+3. 신호 레벨 스위치 `3.3V`
+4. `TX-TX`, `RX-RX` 방향 (Feetech 헤더는 신호 이름 기준 표기)
+5. STM32와 URT-2의 공통 GND
+6. UART 헤더 VCC와 Type-C 동시 공급 금지
 
 ## 최종 조립 후 다시 확인할 항목
 
