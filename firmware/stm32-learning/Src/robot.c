@@ -80,6 +80,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->trot_step_sync_peak_error_ticks = 0U;
     robot->motion_abort_requested = false;
     robot->safety_scan_index = 0U;
+    robot->gait_front_phase_swapped = false;
     safety_init(&robot->safety, NULL);
 }
 
@@ -146,6 +147,13 @@ bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode)
 const char *robot_balance_mode_string(RobotBalanceMode mode)
 {
     return mode == ROBOT_BALANCE_FULL ? "full" : "normal";
+}
+
+void robot_set_front_phase_swapped(RobotController *robot, bool swapped)
+{
+    if (robot != NULL) {
+        robot->gait_front_phase_swapped = swapped;
+    }
 }
 
 void robot_request_motion_abort(RobotController *robot)
@@ -676,7 +684,7 @@ static bool gait_policy_to_servo_targets(
     return true;
 }
 
-static bool robot_trot_policy_targets(
+static bool robot_trot_policy_targets_at(
     bool circular,
     float phase,
     float amplitude_scale,
@@ -698,6 +706,50 @@ static bool robot_trot_policy_targets(
         travel_scale,
         g_robot_gait_forward_signs,
         targets);
+}
+
+/*
+ * Diagnostic: run the front legs half a cycle out of their usual phase.
+ *
+ * The policy pairs legs diagonally, FL with RR and FR with RL, and holds that
+ * table privately.  Shifting the whole call by half a cycle swings every leg
+ * to its partner's phase, so taking only the front pair from a second call at
+ * phase + 0.5 leaves FL beside RL and FR beside RR -- a lateral pairing.
+ *
+ * Done this way on purpose: gait_policy.h is shared with the simulator and its
+ * regression tests, and an experiment on the robot has no business changing
+ * what they verify.  Walking like this is not the goal; it puts a front leg
+ * and a rear leg on the same phase so their angles can be compared directly
+ * while chasing the front-leg trajectory complaint.
+ */
+static bool robot_trot_policy_targets(
+    RobotController *robot,
+    bool circular,
+    float phase,
+    float amplitude_scale,
+    float travel_scale,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    if (!robot_trot_policy_targets_at(circular, phase, amplitude_scale,
+                                      travel_scale, targets)) {
+        return false;
+    }
+    if (!robot->gait_front_phase_swapped) {
+        return true;
+    }
+
+    GaitPolicyLegTarget shifted[GAIT_POLICY_LEG_COUNT];
+    float other = phase + 0.5f;
+    if (other >= 1.0f) {
+        other -= 1.0f;
+    }
+    if (!robot_trot_policy_targets_at(circular, other, amplitude_scale,
+                                      travel_scale, shifted)) {
+        return false;
+    }
+    targets[0] = shifted[0];   /* FL */
+    targets[1] = shifted[1];   /* FR */
+    return true;
 }
 
 static RobotResult robot_trot_scaled(RobotController *robot,
@@ -742,7 +794,9 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         return ROBOT_MOTION_ABORTED;
     }
 
-    if (!robot_trot_policy_targets(
+    /* Reference stance, so the unswapped table: this is what the legs start
+     * from regardless of the diagnostic pairing. */
+    if (!robot_trot_policy_targets_at(
             circular,
             0.0f,
             0.0f,
@@ -866,6 +920,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         }
 
         if (!robot_trot_policy_targets(
+                robot,
                 circular,
                 (float)global_phase / 1000.0f,
                 (float)amplitude_scale / 1000.0f,
