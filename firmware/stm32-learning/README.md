@@ -43,6 +43,25 @@ STM32나 USB에서 공급하지 않습니다. URT-2를 Type-C로 공급할 때 U
 URT-2 Type-C USB와 STM32 UART 헤더가 같은 서보 버스를 동시에 구동하지 않도록
 합니다.
 
+## IMU 선택
+
+펌웨어는 부팅 시 붙어 있는 센서를 자동으로 고릅니다. 리컴파일이 필요 없습니다.
+
+```text
+BNO055 탐색 (I2C1, 빠름)  →  있으면 사용
+      ↓ 없으면
+BNO086 탐색 (SPI1, 느림)  →  있으면 사용
+      ↓ 없으면
+IMU 없음 — trot/trot2/jump 잠금, balance off로만 개방 루프 시험
+```
+
+BNO055를 먼저 보는 것은 탐색 비용 때문입니다. 없는 BNO086은 SH-2 타임아웃으로
+수 초가 걸립니다. 두 센서는 서로 다른 페리페럴에 있어 동시에 연결해도 됩니다.
+
+BNO055 배선은 `VIN→3V3`, `GND→GND`, `SCL→D15/PB8`, `SDA→D14/PB9`이며
+`COM3`를 GND에 묶으면 주소가 `0x28`로 고정됩니다. 펌웨어는 `0x28`과 `0x29`를
+모두 탐색하고 칩 ID `0xA0`으로 확인하므로 `COM3` 연결은 필수가 아닙니다.
+
 ## BNO086 배선과 장착 좌표계
 
 2026-08-08에 IMU를 BNO055(I2C)에서 BNO086(SPI)으로 교체했습니다. NUCLEO-F446RE
@@ -168,6 +187,7 @@ scan             설정된 ID 1..12 확인
 uarttest         USART1 loopback 확인 (URT-2 분리, PA9-PA10 직결)
 busprobe ID      Ping 후 USART1 원시 수신 바이트 출력
 linestate        PA9/PA10을 풀다운으로 눌러 구동/개방 판별; 계측기 불필요
+i2cscan          I2C1에서 BNO055 탐색
 spitest          SPI1 loopback 확인 (BNO086 분리, D11-D12 직결)
 imuprobe         BNO086 리셋 후 H_INTN과 SHTP 헤더 확인
 read ID          위치, 속도, 부하, 전압, 온도, 전류 읽기
