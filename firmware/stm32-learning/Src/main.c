@@ -136,8 +136,10 @@ int main(void)
       char message[80];
       (void)snprintf(message,
                      sizeof(message),
-                     "BNO086 unavailable: %s\r\n",
-                     bno086_result_string(imu_result));
+                     "BNO086 unavailable: %s (prodIds=%d, resets=%lu)\r\n",
+                     bno086_result_string(imu_result),
+                     imu.product_id_status,
+                     (unsigned long)imu.resets_seen);
       uart_print(message);
       uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
   }

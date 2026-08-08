@@ -1,16 +1,21 @@
 #include "bno086.h"
 
+#include "sh2.h"
+#include "sh2_SensorValue.h"
+#include "sh2_err.h"
+#include "sh2_hal.h"
+
 #include <math.h>
 #include <string.h>
 
 /*
- * Minimal SHTP/SH-2 client for the BNO086 over SPI.
+ * BNO086 driver: CEVA's sh2 stack over an SPI transport supplied here.
  *
- * Only what the balance loop needs is implemented: reset the part, subscribe
- * to one rotation report, and decode its quaternion.  CEVA's full sh2 driver
- * covers dozens of reports this robot does not use, so it is not vendored in.
+ * This module owns the wires -- chip select, reset and the SPI transfers --
+ * and nothing above them.  SHTP framing, the SH-2 command set and report
+ * decoding all belong to Drivers/sh2.
  *
- * Game Rotation Vector (0x08) is used rather than Rotation Vector (0x05)
+ * Game Rotation Vector is used rather than Rotation Vector
  * because the latter folds in the magnetometer.  Twelve STS3215 servos put
  * permanent magnets a few centimetres from the sensor, so a magnetic heading
  * would be worse than none.  The balance loop only consumes roll and pitch,
@@ -18,23 +23,6 @@
  * report produces is relative to power-on rather than to north.
  */
 
-/* SHTP channels. */
-#define SHTP_CHANNEL_COMMAND     0U
-#define SHTP_CHANNEL_EXECUTABLE  1U
-#define SHTP_CHANNEL_CONTROL     2U
-#define SHTP_CHANNEL_REPORTS     3U
-
-#define SHTP_HEADER_SIZE         4U
-#define SHTP_MAX_PACKET          384U
-
-/* SH-2 report identifiers. */
-#define SH2_SET_FEATURE_COMMAND  0xFDU
-#define SH2_BASE_TIMESTAMP       0xFBU
-#define SH2_GAME_ROTATION_VECTOR 0x08U
-
-/* Length of the timestamp prologue that opens every channel 3 packet. */
-#define SH2_TIMESTAMP_SIZE       5U
-#define SH2_GRV_REPORT_SIZE      12U
 
 /*
  * Set when the breakout selects SPI with a soldered PS0 jumper rather than
@@ -122,141 +110,119 @@ static Bno086Result spi_read(Bno086 *imu, uint8_t *destination, size_t length)
 }
 
 /*
- * Read one SHTP packet.  Returns BNO086_OK with *payload_length set to zero
- * when the sensor has nothing queued.
+ * sh2 is a singleton, and its HAL callbacks only carry an sh2_Hal_t.  Keep the
+ * instance here so the transport can reach the SPI handle.
  */
-static Bno086Result shtp_receive(Bno086 *imu,
-                                 uint8_t *payload,
-                                 size_t payload_capacity,
-                                 size_t *payload_length,
-                                 uint8_t *channel,
-                                 bool require_interrupt)
+static Bno086 *active_imu;
+static sh2_Hal_t sh2_hal;
+
+/*
+ * H_INTN says a packet is waiting, and honouring it keeps the steady-state
+ * path cheap.  During bring-up it is also the one signal that has never been
+ * seen to move, so read regardless there: an empty header is unambiguous, and
+ * gating on a pin that may not work would hide a link that does.
+ */
+static bool hal_ignore_interrupt;
+
+static int hal_open(sh2_Hal_t *self)
 {
-    uint8_t header[SHTP_HEADER_SIZE];
+    (void)self;
 
-    *payload_length = 0U;
-    *channel = 0U;
+    /* sh2_open() expects the part to come up from a known state. */
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
+    HAL_Delay(20);
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
+    HAL_Delay(300);
+    return SH2_OK;
+}
 
-    /*
-     * H_INTN says a packet is waiting, and honouring it keeps the normal path
-     * cheap.  It is not the only way to find out, though: clocking the header
-     * out anyway returns a zero length when there is nothing.  Bring-up reads
-     * that way so a broken interrupt wire cannot hide working reports.
-     */
-    if (require_interrupt && !interrupt_asserted()) {
-        return BNO086_OK;
+static void hal_close(sh2_Hal_t *self)
+{
+    (void)self;
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
+}
+
+static uint32_t hal_get_time_us(sh2_Hal_t *self)
+{
+    (void)self;
+    /* Millisecond resolution is coarse but monotonic, which is what sh2 uses
+     * it for: report timestamps and command timeouts, not control timing. */
+    return HAL_GetTick() * 1000U;
+}
+
+static int hal_read(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len,
+                    uint32_t *t_us)
+{
+    uint8_t header[4];
+
+    (void)self;
+    if (active_imu == NULL) {
+        return 0;
+    }
+    if (!hal_ignore_interrupt && !interrupt_asserted()) {
+        return 0;
     }
 
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
-
-    Bno086Result result = spi_read(imu, header, sizeof(header));
-    if (result != BNO086_OK) {
+    if (spi_read(active_imu, header, sizeof(header)) != BNO086_OK) {
         gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
-        return result;
+        return 0;
     }
 
     /* Bit 15 flags a continuation of an oversized transfer, not length. */
     const uint16_t total =
         (uint16_t)(((uint16_t)header[1] << 8) | header[0]) & 0x7FFFU;
-    *channel = header[2];
-
-    if (total <= SHTP_HEADER_SIZE || total > SHTP_MAX_PACKET) {
+    if (total < sizeof(header) || total > len) {
         gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
-        /* A zero-length header is the idle answer, not a fault. */
-        return total == 0U ? BNO086_OK : BNO086_PROTOCOL_ERROR;
+        return 0;
     }
 
-    const size_t body = (size_t)total - SHTP_HEADER_SIZE;
-    const size_t wanted = body < payload_capacity ? body : payload_capacity;
-
-    result = spi_read(imu, payload, wanted);
-    if (result == BNO086_OK && body > wanted) {
-        /* Advertisement packets are far longer than anything we decode. */
-        result = spi_read(imu, NULL, body - wanted);
+    memcpy(pBuffer, header, sizeof(header));
+    Bno086Result result = BNO086_OK;
+    if (total > sizeof(header)) {
+        result = spi_read(active_imu, &pBuffer[sizeof(header)],
+                          (size_t)total - sizeof(header));
     }
-
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
-    if (result != BNO086_OK) {
-        return result;
-    }
 
-    *payload_length = wanted;
-    return BNO086_OK;
+    if (result != BNO086_OK) {
+        return 0;
+    }
+    if (t_us != NULL) {
+        *t_us = hal_get_time_us(self);
+    }
+    return (int)total;
 }
 
-static Bno086Result shtp_send(Bno086 *imu,
-                              uint8_t channel,
-                              const uint8_t *payload,
-                              size_t payload_length)
+static int hal_write(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len)
 {
-    uint8_t packet[SHTP_HEADER_SIZE + 24U];
-    const size_t total = SHTP_HEADER_SIZE + payload_length;
-
-    if (channel >= (uint8_t)(sizeof(imu->sequence) / sizeof(imu->sequence[0])) ||
-        total > sizeof(packet)) {
-        return BNO086_PROTOCOL_ERROR;
+    (void)self;
+    if (active_imu == NULL || len == 0U) {
+        return 0;
     }
 
-    packet[0] = (uint8_t)(total & 0xFFU);
-    packet[1] = (uint8_t)(total >> 8);
-    packet[2] = channel;
-    packet[3] = imu->sequence[channel]++;
-    memcpy(&packet[SHTP_HEADER_SIZE], payload, payload_length);
-
     /*
-     * WAKE (PS0 in SPI mode) asks the sensor for a transfer window; it answers
-     * by asserting H_INTN.  Writing before that window is dropped.
-     *
-     * On a breakout whose PS0 solder jumper is closed the pin is strapped to a
-     * rail to select SPI, so it is no longer ours to drive: pulling it low
-     * would put the MCU output across that rail.  Wait for the sensor to offer
-     * a window on its own instead, which it does at the report rate.
-     */
-    if (!BNO086_PS0_STRAPPED) {
-        gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, false);
-    }
-    /*
-     * Prefer the window the sensor offers, but do not require it.  A part that
-     * has nothing queued never asserts H_INTN, and refusing to transmit then
-     * means the subscription that would give it something to say can never be
-     * sent.  Writing while CS is asserted is accepted regardless.
+     * Prefer the window the sensor offers by asserting H_INTN, but do not
+     * require it: a part with nothing queued never asserts, and refusing to
+     * write then means the configuration that would give it something to say
+     * can never be sent.
      */
     (void)wait_for_interrupt(BNO086_INT_TIMEOUT_MS);
 
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
     const HAL_StatusTypeDef status =
-        HAL_SPI_Transmit(imu->spi, packet, (uint16_t)total, 100U);
+        HAL_SPI_Transmit(active_imu->spi, pBuffer, (uint16_t)len, 100U);
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
-    if (!BNO086_PS0_STRAPPED) {
-        gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
-    }
 
-    return status == HAL_OK ? BNO086_OK : BNO086_SPI_ERROR;
-}
-
-static Bno086Result enable_game_rotation_vector(Bno086 *imu,
-                                                uint32_t interval_us)
-{
-    uint8_t command[17] = {0};
-
-    command[0] = SH2_SET_FEATURE_COMMAND;
-    command[1] = SH2_GAME_ROTATION_VECTOR;
-    /* [2] feature flags, [3..4] change sensitivity: defaults of zero. */
-    command[5] = (uint8_t)(interval_us & 0xFFU);
-    command[6] = (uint8_t)((interval_us >> 8) & 0xFFU);
-    command[7] = (uint8_t)((interval_us >> 16) & 0xFFU);
-    command[8] = (uint8_t)((interval_us >> 24) & 0xFFU);
-    /* [9..12] batch interval, [13..16] sensor-specific config: zero. */
-
-    return shtp_send(imu, SHTP_CHANNEL_CONTROL, command, sizeof(command));
+    return status == HAL_OK ? (int)len : 0;
 }
 
 static void update_angles(Bno086 *imu)
 {
-    const float i = (float)imu->quat_i * BNO086_QUAT_SCALE;
-    const float j = (float)imu->quat_j * BNO086_QUAT_SCALE;
-    const float k = (float)imu->quat_k * BNO086_QUAT_SCALE;
-    const float w = (float)imu->quat_real * BNO086_QUAT_SCALE;
+    const float i = imu->quat_i;
+    const float j = imu->quat_j;
+    const float k = imu->quat_k;
+    const float w = imu->quat_real;
 
     const float roll = atan2f(2.0f * (w * i + j * k),
                               1.0f - 2.0f * (i * i + j * j));
@@ -281,64 +247,53 @@ static void update_angles(Bno086 *imu)
     imu->has_attitude = true;
 }
 
-static void parse_sensor_reports(Bno086 *imu,
-                                 const uint8_t *payload,
-                                 size_t length)
+static void sensor_handler(void *cookie, sh2_SensorEvent_t *event)
 {
-    if (length < SH2_TIMESTAMP_SIZE || payload[0] != SH2_BASE_TIMESTAMP) {
+    Bno086 *imu = (Bno086 *)cookie;
+    sh2_SensorValue_t value;
+
+    if (imu == NULL || sh2_decodeSensorEvent(&value, event) != SH2_OK) {
+        if (imu != NULL) {
+            imu->protocol_errors++;
+        }
+        return;
+    }
+    if (value.sensorId != SH2_GAME_ROTATION_VECTOR) {
         return;
     }
 
-    size_t offset = SH2_TIMESTAMP_SIZE;
-    while (offset < length) {
-        if (payload[offset] != SH2_GAME_ROTATION_VECTOR) {
-            /* Only one report is subscribed, so anything else ends the scan. */
-            return;
-        }
-        if (length - offset < SH2_GRV_REPORT_SIZE) {
-            return;
-        }
-
-        imu->quat_i = (int16_t)((uint16_t)payload[offset + 4] |
-                                ((uint16_t)payload[offset + 5] << 8));
-        imu->quat_j = (int16_t)((uint16_t)payload[offset + 6] |
-                                ((uint16_t)payload[offset + 7] << 8));
-        imu->quat_k = (int16_t)((uint16_t)payload[offset + 8] |
-                                ((uint16_t)payload[offset + 9] << 8));
-        imu->quat_real = (int16_t)((uint16_t)payload[offset + 10] |
-                                   ((uint16_t)payload[offset + 11] << 8));
-
-        update_angles(imu);
-        imu->report_count++;
-        imu->last_report_tick = HAL_GetTick();
-        offset += SH2_GRV_REPORT_SIZE;
-    }
+    imu->quat_i = value.un.gameRotationVector.i;
+    imu->quat_j = value.un.gameRotationVector.j;
+    imu->quat_k = value.un.gameRotationVector.k;
+    imu->quat_real = value.un.gameRotationVector.real;
+    update_angles(imu);
+    imu->report_count++;
+    imu->last_report_tick = HAL_GetTick();
 }
 
-static void service_packets(Bno086 *imu, bool require_interrupt)
+static void event_handler(void *cookie, sh2_AsyncEvent_t *event)
 {
-    uint8_t payload[64];
+    Bno086 *imu = (Bno086 *)cookie;
 
-    /* Drain rather than read once, so a burst cannot leave H_INTN asserted. */
-    for (unsigned int guard = 0U; guard < 8U; ++guard) {
-        size_t length = 0U;
-        uint8_t channel = 0U;
-
-        if (require_interrupt && !interrupt_asserted()) {
-            return;
-        }
-        if (shtp_receive(imu, payload, sizeof(payload), &length, &channel,
-                         require_interrupt) != BNO086_OK) {
-            imu->protocol_errors++;
-            return;
-        }
-        if (length == 0U) {
-            return;
-        }
-        if (channel == SHTP_CHANNEL_REPORTS) {
-            parse_sensor_reports(imu, payload, length);
-        }
+    if (imu == NULL || event->eventId != SH2_RESET) {
+        return;
     }
+    /*
+     * A reset clears every sensor configuration, so the subscription has to be
+     * reissued.  Do it from bno086_service() rather than here: this runs
+     * inside sh2_service() and reconfiguring re-enters the driver.
+     */
+    imu->resets_seen++;
+    imu->resubscribe = true;
+}
+
+static int subscribe(Bno086 *imu)
+{
+    sh2_SensorConfig_t config;
+
+    memset(&config, 0, sizeof(config));
+    config.reportInterval_us = imu->report_interval_us;
+    return sh2_setSensorConfig(SH2_GAME_ROTATION_VECTOR, &config);
 }
 
 void bno086_service(Bno086 *imu)
@@ -346,80 +301,77 @@ void bno086_service(Bno086 *imu)
     if (imu == NULL || !imu->present) {
         return;
     }
-    service_packets(imu, true);
+
+    sh2_service();
+    if (imu->resubscribe) {
+        imu->resubscribe = false;
+        (void)subscribe(imu);
+    }
 }
 
 Bno086Result bno086_init(Bno086 *imu,
                          SPI_HandleTypeDef *spi,
                          uint32_t report_interval_us)
 {
-    uint8_t payload[64];
-
     if (imu == NULL || spi == NULL || report_interval_us == 0U) {
         return BNO086_PROTOCOL_ERROR;
     }
 
     memset(imu, 0, sizeof(*imu));
     imu->spi = spi;
+    imu->report_interval_us = report_interval_us;
+    active_imu = imu;
+    hal_ignore_interrupt = true;
 
-    /* Hold reset low well past the datasheet minimum, then let it boot. */
-    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
-    HAL_Delay(20);
-    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
+    sh2_hal.open = hal_open;
+    sh2_hal.close = hal_close;
+    sh2_hal.read = hal_read;
+    sh2_hal.write = hal_write;
+    sh2_hal.getTimeUs = hal_get_time_us;
 
-    /*
-     * A healthy part announces itself unprompted: an advertisement on channel
-     * 0 and a reset-complete on channel 1.  Seeing any packet is what tells us
-     * the part is wired and in SPI mode, so drain until one arrives.
-     */
-    Bno086Result result = BNO086_OK;
-    bool saw_packet = false;
-    const uint32_t started_at = HAL_GetTick();
-    while ((uint32_t)(HAL_GetTick() - started_at) < BNO086_RESET_DRAIN_MS) {
-        size_t length = 0U;
-        uint8_t channel = 0U;
-
-        if (shtp_receive(imu, payload, sizeof(payload), &length, &channel,
-                         false) != BNO086_OK) {
-            imu->protocol_errors++;
-            continue;
-        }
-        if (length != 0U) {
-            saw_packet = true;
-        }
-        HAL_Delay(5);
+    if (sh2_open(&sh2_hal, event_handler, imu) != SH2_OK) {
+        active_imu = NULL;
+        return BNO086_NOT_PRESENT;
+    }
+    if (sh2_setSensorCallback(sensor_handler, imu) != SH2_OK) {
+        sh2_close();
+        active_imu = NULL;
+        return BNO086_PROTOCOL_ERROR;
     }
 
     /*
-     * The advertisement is informational: it enumerates the SHTP channels,
-     * which this driver hardcodes.  Subscribe whether or not it arrived, and
-     * let the reports themselves decide whether the part is really there.
+     * Ask for the product IDs before anything else.  Unlike setSensorConfig,
+     * which only writes a command, this one waits for a reply, so its result
+     * is the first hard evidence that the part is talking at all.
      */
-    (void)saw_packet;
+    imu->product_id_status = sh2_getProdIds(&imu->product_ids);
+
     imu->present = true;
-    result = enable_game_rotation_vector(imu, report_interval_us);
-    if (result != BNO086_OK) {
+    if (subscribe(imu) != SH2_OK) {
         imu->present = false;
-        return result;
+        sh2_close();
+        active_imu = NULL;
+        return BNO086_PROTOCOL_ERROR;
     }
 
     /*
      * Give the first reports a chance to land so callers can trust the cache.
-     * A second is generous next to the 5 ms subscription, but a part that has
+     * A second is generous next to a 5 ms subscription, but a part that has
      * just been reset needs the slack.
      */
     const uint32_t subscribed_at = HAL_GetTick();
     while (!imu->has_attitude &&
            (uint32_t)(HAL_GetTick() - subscribed_at) < 1000U) {
-        /* Read without waiting on H_INTN; see shtp_receive. */
-        service_packets(imu, false);
-        HAL_Delay(5);
+        bno086_service(imu);
     }
 
     if (!imu->has_attitude) {
         imu->present = false;
-        return saw_packet ? BNO086_TIMEOUT : BNO086_NOT_PRESENT;
+        return BNO086_TIMEOUT;
     }
+
+    /* Reports are flowing, so trust the interrupt from here on. */
+    hal_ignore_interrupt = false;
     return BNO086_OK;
 }
 

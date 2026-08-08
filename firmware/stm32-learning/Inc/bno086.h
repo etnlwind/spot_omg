@@ -7,11 +7,18 @@ extern "C" {
 
 #include "main.h"
 
+#include "sh2.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
 /*
  * BNO086 attitude source over SPI, replacing the BNO055 on I2C1.
+ *
+ * SHTP and SH-2 are handled by CEVA's own driver under Drivers/sh2, which this
+ * module supplies with an sh2_Hal_t transport.  A hand-written SHTP client
+ * came first and never got the part to answer; swapping in the vendor
+ * implementation removes that as a variable.
  *
  * The sensor computes the fusion itself and pulls H_INTN low when a report is
  * ready.  Reports are drained in the main loop and cached, so the balance loop
@@ -47,11 +54,11 @@ typedef struct
     /* Owned by CubeMX as hspi1; this module only borrows it. */
     SPI_HandleTypeDef *spi;
 
-    /* Latest Game Rotation Vector, Q14 fixed point as the sensor reports it. */
-    int16_t quat_i;
-    int16_t quat_j;
-    int16_t quat_k;
-    int16_t quat_real;
+    /* Latest Game Rotation Vector, as the sh2 driver decodes it. */
+    float quat_i;
+    float quat_j;
+    float quat_k;
+    float quat_real;
 
     int16_t roll_tenths;
     int16_t pitch_tenths;
@@ -61,7 +68,16 @@ typedef struct
     uint32_t last_report_tick;
     uint32_t protocol_errors;
 
-    uint8_t sequence[6];  /* outgoing SHTP sequence number per channel */
+    /*
+     * Result of sh2_getProdIds() at bring-up.  That call waits for a reply,
+     * so unlike a bare configuration write it says whether the part answers.
+     */
+    int product_id_status;
+    sh2_ProductIds_t product_ids;
+
+    uint32_t report_interval_us;
+    uint32_t resets_seen;   /* sensor-initiated resets; each drops the config */
+    bool resubscribe;
     bool present;
     bool has_attitude;
 } Bno086;
