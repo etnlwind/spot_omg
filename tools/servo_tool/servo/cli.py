@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from .bus import ServoBus
+from .console import CONSOLE_BAUDRATE, ConsoleError, Stm32Console
 from .contact import LEGS, LoadContactEstimator
 from .load_profile import DynamicLoadBaseline
 from .spot import GaitParameters, SpotConfig, SpotRobot
@@ -247,6 +248,59 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="compare live loads with a phase baseline; observation only",
     )
+
+    console = commands.add_parser(
+        "console",
+        help="drive the STM32 text console over the ST-LINK virtual COM port",
+        description=(
+            "Send commands to the STM32 firmware console instead of typing "
+            "them in a terminal.  The STM32 keeps ownership of the servo bus, "
+            "so the IMU balance loop, the step barrier and Ctrl+C recovery "
+            "stay in effect.  This is a different port and protocol from the "
+            "URT-2 commands; it does not use --port."
+        ),
+    )
+    console.add_argument(
+        "--stm32-port",
+        default=os.environ.get("SPOT_STM32_PORT"),
+        help=(
+            "ST-LINK virtual COM port; defaults to SPOT_STM32_PORT or "
+            "auto-detection of a usbmodem/ttyACM device"
+        ),
+    )
+    console.add_argument("--console-baudrate", type=int, default=CONSOLE_BAUDRATE)
+    console.add_argument(
+        "--timeout",
+        type=float,
+        help=(
+            "seconds to wait for the prompt; defaults to a per-command "
+            "estimate from cycles and period"
+        ),
+    )
+    console.add_argument(
+        "--log",
+        type=Path,
+        help="append the session transcript to this file",
+    )
+    console_actions = console.add_subparsers(
+        dest="console_command", required=True
+    )
+    console_send = console_actions.add_parser(
+        "send", help="run one console command and print its response"
+    )
+    console_send.add_argument(
+        "words",
+        nargs="+",
+        help="console command and arguments, for example: trot2 1 1600",
+    )
+    console_actions.add_parser(
+        "shell",
+        help="interactive prompt; Ctrl+C aborts a motion, Ctrl+D exits",
+    )
+    console_script = console_actions.add_parser(
+        "script", help="run console commands from a file, stopping on error"
+    )
+    console_script.add_argument("path", type=Path)
     return parser.parse_args(argv)
 
 
@@ -287,6 +341,171 @@ def resolve_port(explicit_port: str | None) -> str:
         "multiple serial ports found; select one with --port: "
         + ", ".join(likely)
     )
+
+
+#: Substrings that identify an ST-LINK CDC device in its USB description.
+ST_LINK_HINTS = ("stlink", "st-link", "st link", "stm32")
+
+
+def resolve_console_port(explicit_port: str | None) -> str:
+    """Find the ST-LINK virtual COM port rather than the URT-2.
+
+    Device names cannot separate the two: on macOS the URT-2 also enumerates
+    as ``/dev/cu.usbmodem...``.  Match the USB description instead, and rather
+    than guess when that is inconclusive, ask for an explicit port.  Sending
+    console text to the URT-2, or Feetech packets to the console, silently
+    does nothing useful, so a wrong guess is worse than an error.
+    """
+    if explicit_port:
+        return explicit_port
+    described = [
+        device
+        for device, description in serial_ports()
+        if any(hint in description.lower() for hint in ST_LINK_HINTS)
+    ]
+    if len(described) == 1:
+        return described[0]
+    if len(described) > 1:
+        raise RuntimeError(
+            "multiple ST-LINK candidates found; select one with "
+            "--stm32-port: " + ", ".join(described)
+        )
+    raise RuntimeError(
+        "could not identify the ST-LINK virtual COM port; run 'spotctl ports' "
+        "and pass --stm32-port or set SPOT_STM32_PORT (on macOS the URT-2 "
+        "also appears as usbmodem, so the name alone is ambiguous)"
+    )
+
+
+def console_exit_code(status: str) -> int:
+    if status == "error":
+        return 1
+    if status == "stopped":
+        return 130
+    return 0
+
+
+def run_console_command(
+    console: Stm32Console,
+    command: str,
+    *,
+    timeout: float | None,
+    log=None,
+) -> int:
+    """Send one command, streaming the firmware output as it arrives."""
+
+    def emit(line: str) -> None:
+        print(line)
+        if log is not None:
+            log.write(line + "\n")
+
+    if log is not None:
+        log.write(f"# {command}\n")
+    response = console.send(
+        command,
+        timeout=timeout if timeout is not None else -1.0,
+        on_line=emit,
+    )
+    return console_exit_code(response.status)
+
+
+def run_console_shell(
+    console: Stm32Console,
+    *,
+    timeout: float | None,
+    log=None,
+) -> int:
+    print(
+        "STM32 console. Ctrl+C aborts a running motion, "
+        "Ctrl+D or 'exit' quits."
+    )
+    last_code = 0
+    while True:
+        try:
+            line = input("stm32# ").strip()
+        except EOFError:
+            print()
+            return last_code
+        except KeyboardInterrupt:
+            # Nothing is running between commands; just start a fresh line.
+            print()
+            continue
+        if not line:
+            continue
+        if line in {"exit", "quit"}:
+            return last_code
+        try:
+            last_code = run_console_command(
+                console, line, timeout=timeout, log=log
+            )
+        except ConsoleError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            last_code = 1
+
+
+def run_console_script(
+    console: Stm32Console,
+    path: Path,
+    *,
+    timeout: float | None,
+    log=None,
+) -> int:
+    """Run one command per line, stopping at the first failure.
+
+    Blank lines and ``#`` comments are skipped so a script can double as a
+    readable test procedure.
+    """
+    commands = [
+        stripped
+        for stripped in (line.strip() for line in path.read_text().splitlines())
+        if stripped and not stripped.startswith("#")
+    ]
+    if not commands:
+        raise ValueError(f"{path} contains no console commands")
+    for command in commands:
+        print(f"# {command}")
+        code = run_console_command(
+            console, command, timeout=timeout, log=log
+        )
+        if code != 0:
+            print(
+                f"stopping: '{command}' did not succeed",
+                file=sys.stderr,
+            )
+            return code
+    return 0
+
+
+def run_console(args: argparse.Namespace) -> int:
+    """Open the STM32 console and dispatch the requested console action."""
+    port = resolve_console_port(args.stm32_port)
+    log_file = None
+    try:
+        if args.log is not None:
+            args.log.parent.mkdir(parents=True, exist_ok=True)
+            log_file = args.log.open("a", encoding="utf-8")
+            started = datetime.now().isoformat(timespec="seconds")
+            log_file.write(f"\n=== {started} {port} ===\n")
+
+        with Stm32Console(port, args.console_baudrate) as console:
+            console.sync()
+            if args.console_command == "send":
+                return run_console_command(
+                    console,
+                    " ".join(args.words),
+                    timeout=args.timeout,
+                    log=log_file,
+                )
+            if args.console_command == "script":
+                return run_console_script(
+                    console, args.path, timeout=args.timeout, log=log_file
+                )
+            return run_console_shell(
+                console, timeout=args.timeout, log=log_file
+            )
+    finally:
+        if log_file is not None:
+            log_file.close()
 
 
 def resolve_gait(args: argparse.Namespace) -> GaitParameters:
@@ -1064,6 +1283,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 configure_directions(config)
             return 0
+
+        if args.command == "console":
+            return run_console(args)
 
         port = resolve_port(args.port)
         if args.command == "scan":

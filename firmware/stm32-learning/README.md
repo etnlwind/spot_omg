@@ -135,6 +135,25 @@ help             도움말
 플래그를 설정합니다. 현재 frame을 마친 뒤 stand 목표를 전송하고 프롬프트로
 돌아옵니다.
 
+## 호스트에서 콘솔 명령 보내기
+
+터미널에서 직접 타이핑하는 대신 호스트의 `spotctl console`로 같은 명령을 보낼
+수 있습니다. 서보 버스의 주인은 그대로 STM32이므로 IMU 균형, step barrier,
+`Ctrl+C` 복귀가 모두 유지됩니다.
+
+```bash
+conda activate spot_omg
+export SPOT_STM32_PORT=/dev/cu.usbmodem1103   # spotctl ports로 확인
+spotctl console send profile 800 80
+spotctl console send trot2 1 1600
+spotctl console shell
+```
+
+`spotctl console`은 접속 직후 `echo off`를 보내 부팅 배너를 버리고 프롬프트를
+맞춥니다. 빈 줄은 펌웨어가 무시하고 프롬프트를 출력하지 않으므로 동기화에
+사용하지 않습니다. 자세한 사용법은
+[`tools/servo_tool/README.md`](../../tools/servo_tool/README.md)를 참고하세요.
+
 부팅 기본 profile은 최대값 `speed=3400`, `acceleration=254`입니다. 예를 들어
 더 부드러운 시험값으로 낮추거나 현재 값을 확인할 수 있습니다.
 

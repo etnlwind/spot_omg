@@ -1082,6 +1082,46 @@ pytest rootdir가 `tools/servo_tool/pyproject.toml` 기준으로 잡혀 저장�
 `sys.path`에 넣고 `walk`를 직접 import 하도록 바꿔 두 시험 경로를 한 번에
 실행할 수 있습니다. Servo Tool 63개와 `trot2` 5개, 합계 `68 PASS`를 확인했습니다.
 
+## 2026-08-08 `spotctl console`로 STM32 콘솔 구동
+
+지금까지 STM32 명령은 시리얼 터미널에서 직접 타이핑했습니다. 같은 명령을
+호스트에서 보내고 응답을 기록할 수 있도록 `servo/console.py`와 `spotctl
+console` 하위 명령을 추가했습니다. 서보 버스의 주인은 그대로 STM32이므로
+50Hz IMU 균형, step barrier, `Ctrl+C` stand 복귀가 모두 유지됩니다. URT-2
+직결 경로(`ServoBus`, Feetech 1 Mbps)는 건드리지 않았습니다.
+
+프로토콜에서 확인한 점:
+
+- 응답의 끝을 알리는 유일한 표시는 개행 없이 출력되는 `"# "` 프롬프트입니다.
+- 빈 줄은 펌웨어가 버리고 프롬프트를 내지 않으므로 동기화에 쓸 수 없습니다.
+  접속 직후 `echo off`를 보내 배너를 버리고 프롬프트를 맞춥니다.
+- `imu on` 상태의 10Hz `Yaw=...` 로그는 명령 응답과 섞여 들어오므로 본문과
+  분리해 보관합니다.
+- 대기 시간은 cycles와 period로 계산합니다(`trot2 1 1600` → `21.6s`).
+  `jump 0`은 완료 시점이 없어 `Ctrl+C` 또는 `--timeout`이 필요합니다.
+
+포트 선택은 예상보다 까다로웠습니다. 이 Mac에서는 URT-2도
+`/dev/cu.usbmodem5B790788341`로 잡혀 ST-LINK와 이름이 같은 계열입니다. 따라서
+이름 대신 USB description의 `stlink`/`stm32`로 찾고, 확실하지 않으면 잘못된
+포트를 고르는 대신 오류를 내고 `--stm32-port`/`SPOT_STM32_PORT`를 요구합니다.
+
+검증은 pty를 raw 모드로 열어 펌웨어 응답을 흉내내는 방식으로 진행했습니다.
+`targets` 12줄 파싱, `trot2 1 1600`의 0.4초 지연 후 `OK`, unknown command의
+종료 코드 `1`, `script`와 `--log` 기록, 그리고 연속 `jump 0` 중 SIGINT →
+`0x03` 전송 → `STOPPED: stand target requested` → 종료 코드 `130`을 확인했습니다.
+단위 시험은 Servo Tool `78`개와 `trot2` `5`개로 합계 `83 PASS`입니다.
+
+실기 확인은 아직입니다. 거치대에서 다음 순서로 먼저 시험합니다.
+
+```bash
+spotctl ports
+export SPOT_STM32_PORT=/dev/cu.usbmodem...
+spotctl console send profile 800 80
+spotctl console send balance status
+spotctl console send stand
+spotctl console --log tools/servo_tool/logs/bench.log send trot2 1 1600
+```
+
 ## 최종 조립 후 다시 확인할 항목
 
 1. period 2.0초, cycles 1에서 발 방향과 기구 간섭 확인

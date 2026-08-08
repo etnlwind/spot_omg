@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from servo import (
     AttitudeController,
+    ConsoleError,
     DynamicLoadBaseline,
     GaitParameters,
     ImuSample,
@@ -15,14 +16,18 @@ from servo import (
     SharedGaitPolicy,
     SpotConfig,
     SpotRobot,
+    Stm32Console,
     STS3215,
 )
+from servo.console import classify, estimate_timeout
 from servo.cli import (
     apply_pose,
     capture_stand,
     configure_directions,
     configure_mapping,
+    console_exit_code,
     parse_args,
+    resolve_console_port,
     resolve_gait,
     resolve_port,
     run_walk,
@@ -1315,6 +1320,271 @@ class ServoStateTest(unittest.TestCase):
         self.assertEqual(values.goal_position, 2100)
         self.assertEqual(values.goal_speed, 1000)
         self.assertEqual(values.torque_limit, 900)
+
+
+class FakeConsoleSerial:
+    """Emulate the STM32 USART2 console closely enough to parse it.
+
+    ``responses`` maps a command to the exact text the firmware writes before
+    its prompt.  A ``None`` response models a long motion that prints nothing
+    until Ctrl+C arrives.
+    """
+
+    def __init__(
+        self,
+        responses: dict[str, str | None],
+        banner: str = "",
+        interrupt_after: int | None = 2,
+    ) -> None:
+        self.responses = responses
+        self.written: list[str] = []
+        self.aborts = 0
+        self.is_open = True
+        self.flushed = 0
+        # Idle reads before the simulated operator presses Ctrl+C; None never
+        # interrupts, which is how a genuine timeout is exercised.
+        self.interrupt_after = interrupt_after
+        self._out = bytearray(banner.encode())
+        self._partial = ""
+        self._blocked = False
+        self._empty_reads = 0
+
+    @property
+    def in_waiting(self) -> int:
+        return len(self._out)
+
+    def _queue(self, text: str) -> None:
+        self._out.extend((text + "# ").encode())
+
+    def write(self, data: bytes) -> int:
+        for byte in data:
+            if byte == 0x03:
+                self.aborts += 1
+                if self._blocked:
+                    self._blocked = False
+                    self._queue("STOPPED: stand target requested\r\n")
+                continue
+            character = chr(byte)
+            if character in "\r\n":
+                command, self._partial = self._partial, ""
+                if not command:
+                    # The firmware discards an empty line without a prompt.
+                    continue
+                self.written.append(command)
+                response = self.responses.get(
+                    command, "unknown command; type help\r\n"
+                )
+                if response is None:
+                    self._blocked = True
+                else:
+                    self._queue(response)
+            else:
+                self._partial += character
+        return len(data)
+
+    def read(self, size: int = 1) -> bytes:
+        if not self._out:
+            self._empty_reads += 1
+            if (
+                self._blocked
+                and self.interrupt_after is not None
+                and self._empty_reads >= self.interrupt_after
+            ):
+                # Stand in for the operator pressing Ctrl+C at the terminal.
+                raise KeyboardInterrupt
+            return b""
+        chunk = bytes(self._out[:size])
+        del self._out[:size]
+        return chunk
+
+    def flush(self) -> None:
+        self.flushed += 1
+
+    def reset_input_buffer(self) -> None:
+        self._out.clear()
+
+    def close(self) -> None:
+        self.is_open = False
+
+
+class ConsoleProtocolTest(unittest.TestCase):
+    def console(
+        self,
+        responses,
+        banner: str = "",
+        interrupt_after: int | None = 2,
+    ):
+        port = FakeConsoleSerial(
+            responses, banner=banner, interrupt_after=interrupt_after
+        )
+        return Stm32Console("fake", serial_port=port), port
+
+    def test_classify_prefers_error_over_any_other_line(self) -> None:
+        self.assertEqual(classify(["OK"]), "ok")
+        self.assertEqual(classify(["ID 1 target=2048"]), "info")
+        self.assertEqual(
+            classify(["STOPPED: stand target requested"]), "stopped"
+        )
+        self.assertEqual(
+            classify(["usage: trot2 [CYCLES [PERIOD_MS]]; cycles=1..10"]),
+            "error",
+        )
+        self.assertEqual(classify(["unknown command; type help"]), "error")
+        self.assertEqual(
+            classify(["UARTTEST FAIL: TX status=1 at byte 0"]), "error"
+        )
+        # A motion that aborts and then reports a fault is still an error.
+        self.assertEqual(
+            classify(
+                [
+                    "STOPPED: stand target requested",
+                    "ERROR: IMU balance error",
+                ]
+            ),
+            "error",
+        )
+
+    def test_estimate_timeout_scales_with_cycles_and_period(self) -> None:
+        self.assertAlmostEqual(estimate_timeout("trot2 1 1600"), 21.6)
+        self.assertAlmostEqual(estimate_timeout("jump 3 1500"), 24.5)
+        # Documented defaults apply when the arguments are omitted.
+        self.assertAlmostEqual(estimate_timeout("trotplace"), 20.8)
+        # cycles=0 repeats until Ctrl+C, so there is no completion time.
+        self.assertIsNone(estimate_timeout("jump 0"))
+        self.assertAlmostEqual(estimate_timeout("stand"), 15.0)
+        self.assertAlmostEqual(estimate_timeout("scan"), 30.0)
+        # Bad arguments are the firmware's to reject, not ours.
+        self.assertAlmostEqual(estimate_timeout("trot2 many"), 15.0)
+
+    def test_send_collects_lines_and_strips_the_prompt(self) -> None:
+        console, port = self.console(
+            {
+                "read 1": (
+                    "ID 1 pos=2048 speed=0 load=0 voltage=7400mV temp=31C "
+                    "current=0 moving=0 hw=0x00\r\n"
+                )
+            }
+        )
+        response = console.send("read 1")
+        self.assertEqual(port.written, ["read 1"])
+        self.assertEqual(len(response.lines), 1)
+        self.assertTrue(response.lines[0].startswith("ID 1 pos=2048"))
+        self.assertNotIn("#", response.text)
+        self.assertEqual(response.status, "info")
+        self.assertTrue(response.ok)
+
+    def test_send_reports_a_firmware_error_without_raising(self) -> None:
+        console, _ = self.console(
+            {
+                "trot 1": (
+                    "Starting shared-C sim-trot: cycles=1 period=800ms "
+                    "balance=on/full\r\n"
+                    "ERROR: IMU balance error; stand target requested\r\n"
+                )
+            }
+        )
+        response = console.send("trot 1")
+        self.assertEqual(response.status, "error")
+        self.assertFalse(response.ok)
+        self.assertEqual(len(response.lines), 2)
+
+    def test_sync_drops_the_boot_banner_and_disables_echo(self) -> None:
+        console, port = self.console(
+            {"echo off": "Console echo: off\r\n"},
+            banner="\r\nPROGRAM START\r\nBNO055 NDOF initialization OK\r\n# ",
+        )
+        console.sync()
+        # The banner is discarded rather than returned as command output.
+        self.assertEqual(port.written, ["echo off"])
+        self.assertEqual(port.in_waiting, 0)
+
+    def test_send_drops_the_echoed_command_when_echo_is_on(self) -> None:
+        console, _ = self.console({"stand": "stand\r\nOK\r\n"})
+        response = console.send("stand")
+        self.assertEqual(response.lines, ("OK",))
+        self.assertEqual(response.status, "ok")
+
+    def test_send_separates_asynchronous_imu_telemetry(self) -> None:
+        console, _ = self.console(
+            {
+                "stand": (
+                    "Yaw=12.3, Roll=-0.4, Pitch=1.1 deg\r\n"
+                    "OK\r\n"
+                )
+            }
+        )
+        response = console.send("stand")
+        self.assertEqual(response.lines, ("OK",))
+        self.assertEqual(len(response.telemetry), 1)
+        self.assertEqual(response.status, "ok")
+
+    def test_keyboard_interrupt_sends_ctrl_c_and_waits_for_stand(self) -> None:
+        console, port = self.console({"jump 0": None})
+        response = console.send("jump 0", timeout=None)
+        self.assertEqual(port.aborts, 1)
+        self.assertEqual(response.status, "stopped")
+        self.assertEqual(response.lines, ("STOPPED: stand target requested",))
+
+    def test_send_times_out_instead_of_hanging(self) -> None:
+        # A motion that never finishes and nobody interrupts must not block
+        # the caller forever.
+        console, _ = self.console({"targets": None}, interrupt_after=None)
+        with self.assertRaises(ConsoleError):
+            console.send("targets", timeout=0.05)
+
+    def test_send_rejects_multi_line_commands(self) -> None:
+        console, _ = self.console({})
+        with self.assertRaises(ValueError):
+            console.send("stand\nrelax")
+        with self.assertRaises(ValueError):
+            console.send("   ")
+
+
+class ConsolePortTest(unittest.TestCase):
+    def test_resolve_console_port_matches_the_usb_description(self) -> None:
+        # Both devices are usbmodem on macOS, so only the description tells
+        # the ST-LINK console apart from the URT-2 servo bus.
+        ports = [
+            ("/dev/cu.usbmodem5B790788341", "USB Single Serial"),
+            ("/dev/cu.usbmodem1103", "STM32 STLink"),
+            ("/dev/cu.Bluetooth-Incoming-Port", "n/a"),
+        ]
+        with patch("servo.cli.serial_ports", return_value=ports):
+            self.assertEqual(
+                resolve_console_port(None), "/dev/cu.usbmodem1103"
+            )
+
+    def test_resolve_console_port_refuses_to_guess(self) -> None:
+        # A lone URT-2 must never be mistaken for the console.
+        only_urt2 = [("/dev/cu.usbmodem5B790788341", "USB Single Serial")]
+        with patch("servo.cli.serial_ports", return_value=only_urt2):
+            with self.assertRaises(RuntimeError):
+                resolve_console_port(None)
+        both = [
+            ("/dev/ttyACM0", "STM32 STLink"),
+            ("/dev/ttyACM1", "ST-Link VCP"),
+        ]
+        with patch("servo.cli.serial_ports", return_value=both):
+            with self.assertRaises(RuntimeError):
+                resolve_console_port(None)
+
+    def test_explicit_port_bypasses_detection(self) -> None:
+        self.assertEqual(resolve_console_port("/dev/ttyACM9"), "/dev/ttyACM9")
+
+    def test_console_send_joins_words_into_one_command_line(self) -> None:
+        args = parse_args(["console", "send", "trot2", "1", "1600"])
+        self.assertEqual(args.command, "console")
+        self.assertEqual(args.console_command, "send")
+        self.assertEqual(" ".join(args.words), "trot2 1 1600")
+        # The console uses its own port, never the 1 Mbps URT-2 one.
+        self.assertIsNone(args.stm32_port)
+        self.assertEqual(args.console_baudrate, 115200)
+
+    def test_console_exit_code_distinguishes_abort_from_failure(self) -> None:
+        self.assertEqual(console_exit_code("ok"), 0)
+        self.assertEqual(console_exit_code("info"), 0)
+        self.assertEqual(console_exit_code("error"), 1)
+        self.assertEqual(console_exit_code("stopped"), 130)
 
 
 if __name__ == "__main__":

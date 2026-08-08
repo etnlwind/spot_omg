@@ -56,8 +56,11 @@ editable package로 설치하므로 소스 수정은 즉시 `spotctl`에 반영�
 | 선택한 다리 토크 해제 | `spotctl --port PORT relax --leg RL` |
 | 현재 위치에서 토크 유지 | `spotctl --port PORT hold [--leg RL]` |
 | 선택한 다리만 중립 자세 | `spotctl --port PORT stand --leg RL` |
+| STM32 콘솔로 명령 전송 | `spotctl console send trot2 1 1600` |
 
 포트는 `--port`로 지정하거나 `SPOT_SERVO_PORT` 환경 변수에 저장할 수 있습니다.
+`console` 하위 명령만은 다른 포트를 쓰므로 `--stm32-port` 또는
+`SPOT_STM32_PORT`를 사용합니다.
 
 현재 macOS 시험 장치에서는 다음처럼 한 번 지정하면 편리합니다.
 
@@ -70,10 +73,58 @@ USB-to-TTL 어댑터는 STS3215의 half-duplex TTL 통신을 지원해야 합니
 서보와 어댑터의 GND를 공통으로 연결하고, 서보 전원은 정격에 맞는 별도
 전원을 사용하세요.
 
-`spotctl`은 컴퓨터와 URT-2를 USB로 직접 연결했을 때 사용하는 Feetech raw bus
-도구입니다. 컴퓨터가 ST-LINK USB를 통해 STM32에 연결된 구성에서는 STM32
-USART2 콘솔의 `scan`, `read`, `stand`, `trot`, `trotplace`, `jump` 명령을
-사용하며, 해당 포트에 `spotctl`을 실행하지 않습니다.
+`spotctl`의 위 명령들은 컴퓨터와 URT-2를 USB로 직접 연결했을 때 쓰는 Feetech
+raw bus 경로입니다. 해당 포트에는 절대 콘솔 텍스트를 보내지 않습니다.
+
+ST-LINK USB로 STM32에 연결된 구성에서는 대신 `spotctl console`을 사용합니다.
+아래 [STM32 콘솔 제어](#stm32-콘솔-제어)를 참고하세요.
+
+## STM32 콘솔 제어
+
+STM32에 연결된 구성에서는 서보 버스의 주인이 STM32입니다. `spotctl console`은
+115200 bps ST-LINK 가상 COM 포트에 붙어 펌웨어 콘솔 명령을 그대로 보내고
+응답을 파싱합니다. 터미널에서 직접 타이핑하던 것을 대체하며, IMU 균형 루프,
+step barrier, `Ctrl+C` 복귀 같은 펌웨어 보호 장치는 그대로 유지됩니다.
+
+| 목적 | 명령 |
+|---|---|
+| 명령 하나 실행 | `spotctl console send trot2 1 1600` |
+| 대화형 프롬프트 | `spotctl console shell` |
+| 절차 파일 실행 | `spotctl console script bench.txt` |
+| 세션 기록 남기기 | `spotctl console --log logs/bench.log shell` |
+
+```bash
+export SPOT_STM32_PORT=/dev/cu.usbmodem1103
+spotctl console send profile 800 80
+spotctl console send stand
+spotctl console send trot2 1 1600
+```
+
+포트는 `--stm32-port` 또는 `SPOT_STM32_PORT`로 지정합니다. macOS에서는 URT-2도
+`/dev/cu.usbmodem...`으로 잡히기 때문에 이름만으로는 두 장치를 구분할 수
+없습니다. 자동 탐지는 USB description에 ST-LINK/STM32가 들어간 포트만
+선택하며, 확실하지 않으면 잘못 고르는 대신 오류를 냅니다. `spotctl ports`로
+확인한 뒤 명시적으로 지정하세요.
+
+`script`는 빈 줄과 `#` 주석을 건너뛰므로 절차 문서를 그대로 실행할 수
+있습니다. 한 명령이라도 실패하면 즉시 중단합니다.
+
+```text
+# 거치대 첫 시험
+profile 800 80
+balance status
+stand
+trot2 1 1600
+relax
+```
+
+종료 코드는 `0` 성공, `1` 펌웨어 오류(`ERROR:`, `usage:`, unknown command),
+`130` `Ctrl+C` 중단(`STOPPED:`)입니다. 모션 실행 중 `Ctrl+C`를 누르면 클라이언트가
+종료되지 않고 `0x03`을 STM32로 보내므로, 로봇은 stand 자세로 복귀한 뒤 멈춥니다.
+
+대기 시간은 명령의 cycles와 period에서 자동으로 계산합니다. `jump 0`처럼 계속
+반복하는 명령은 완료 시점이 없으므로 `Ctrl+C`로 멈추거나 `--timeout`을
+지정합니다.
 
 ## 사용
 

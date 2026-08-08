@@ -26,9 +26,18 @@ URT-2 (UART ↔ half-duplex TTL bus)
 STS3215 ×12
 ```
 
-Mac에서 ST-LINK USB로 접속한 `/dev/cu.usbmodem...`은 STM32의 115200 bps
-텍스트 콘솔입니다. 이 포트에는 `spotctl`을 사용하지 않습니다. `spotctl`은 URT-2를
-Mac/Jetson에 USB로 직접 연결해 서보 버스를 점검할 때만 사용합니다.
+Mac에서 ST-LINK USB로 접속한 포트는 STM32의 115200 bps 텍스트 콘솔이고,
+URT-2를 Mac/Jetson에 USB로 직접 연결한 포트는 1 Mbps Feetech 서보 버스입니다.
+두 경로는 프로토콜이 달라 서로 호환되지 않습니다.
+
+```bash
+spotctl --port PORT status        # URT-2 직결: Feetech 패킷
+spotctl console send trot2 1 1600 # ST-LINK: STM32 콘솔 명령
+```
+
+macOS에서는 두 장치 모두 `/dev/cu.usbmodem...`으로 잡히므로 포트 이름만으로는
+구분되지 않습니다. `spotctl ports`로 확인한 뒤 `SPOT_SERVO_PORT`와
+`SPOT_STM32_PORT`를 각각 지정하세요.
 
 ## 📁 프로젝트 구조
 
@@ -52,6 +61,7 @@ spot_omg/
 - [x] `stand`, `trot`, `trotplace`, 원형 발끝 `trot2`, 반복 `jump`
 - [x] STM32/MuJoCo 공용 C 보행·점프 정책
 - [x] 서보 보정·진단용 `spotctl`
+- [x] 호스트에서 STM32 콘솔을 구동하는 `spotctl console`
 - [ ] Jetson 명령/telemetry 프로토콜
 - [ ] ROS2 hardware interface
 - [ ] Isaac Lab RL 정책 배포
