@@ -516,36 +516,88 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
     probe->header_read = result == BNO086_OK;
 }
 
-int bno086_loopback_test(Bno086 *imu, uint8_t *sent, uint8_t *received)
+static void loopback_set_gpio_mode(void)
+{
+    GPIO_InitTypeDef init = {0};
+
+    init.Pin = GPIO_PIN_7;
+    init.Mode = GPIO_MODE_OUTPUT_PP;
+    init.Pull = GPIO_NOPULL;
+    init.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOA, &init);
+
+    init.Pin = GPIO_PIN_6;
+    init.Mode = GPIO_MODE_INPUT;
+    init.Pull = GPIO_PULLDOWN;
+    HAL_GPIO_Init(GPIOA, &init);
+}
+
+static void loopback_restore_spi_mode(void)
+{
+    GPIO_InitTypeDef init = {0};
+
+    init.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
+    init.Mode = GPIO_MODE_AF_PP;
+    init.Pull = GPIO_NOPULL;
+    init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    init.Alternate = GPIO_AF5_SPI1;
+    HAL_GPIO_Init(GPIOA, &init);
+}
+
+void bno086_loopback_test(Bno086 *imu, Bno086Loopback *result)
 {
     static const uint8_t pattern[] = {
         0x00U, 0xFFU, 0x55U, 0xAAU, 0x01U, 0x7EU, 0x81U, 0x42U
     };
 
-    if (imu == NULL || sent == NULL || received == NULL) {
-        return 0;
+    if (imu == NULL || result == NULL) {
+        return;
     }
+    memset(result, 0, sizeof(*result));
+    result->failed_byte = -1;
 
     /* Keep the sensor deselected so a still-attached part cannot answer. */
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+
+    /*
+     * DC continuity first.  Drive PA7 as a plain output and read PA6 against
+     * an internal pull-down: a fitted jumper makes PA6 track PA7, an unseated
+     * one leaves it on the pull-down, and a pin held high with PA7 low means
+     * something else is still attached to D12.
+     */
+    loopback_set_gpio_mode();
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_Delay(2);
+    const bool high_follows =
+        HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == GPIO_PIN_SET;
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+    HAL_Delay(2);
+    const bool low_follows =
+        HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == GPIO_PIN_RESET;
+    result->continuity = high_follows && low_follows;
+    result->miso_driven = !low_follows;
+    loopback_restore_spi_mode();
+
+    if (!result->continuity) {
+        return;
+    }
 
     for (size_t index = 0U; index < sizeof(pattern); ++index) {
         uint8_t out = pattern[index];
         uint8_t in = 0U;
 
         if (HAL_SPI_TransmitReceive(imu->spi, &out, &in, 1U, 100U) != HAL_OK) {
-            *sent = out;
-            *received = 0U;
-            return (int)index;
+            result->failed_byte = (int)index;
+            result->sent = out;
+            return;
         }
         if (in != out) {
-            *sent = out;
-            *received = in;
-            return (int)index;
+            result->failed_byte = (int)index;
+            result->sent = out;
+            result->received = in;
+            return;
         }
     }
-
-    return -1;
 }
 
 bool bno086_read_attitude(void *context,

@@ -140,10 +140,21 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe);
  * peripheral, the three signal pins and the clock settings independently of
  * the BNO086, so a silent sensor can be blamed on one side or the other.
  *
- * Returns the index of the first mismatching byte, or -1 when all match.
- * *sent and *received hold that byte pair.
+ * The jumper is checked as plain DC first.  A pattern mismatch means nothing
+ * until the two pins are known to be connected -- an unseated jumper fails
+ * the SPI pattern exactly like a broken peripheral would, and reading that as
+ * a peripheral fault sends the search to the wrong side of the link.
  */
-int bno086_loopback_test(Bno086 *imu, uint8_t *sent, uint8_t *received);
+typedef struct
+{
+    bool continuity;   /* PA6 followed PA7 driven as plain GPIO */
+    bool miso_driven;  /* PA6 beat an internal pull-down: something drives it */
+    int failed_byte;   /* -1 when the SPI pattern matched end to end */
+    uint8_t sent;
+    uint8_t received;
+} Bno086Loopback;
+
+void bno086_loopback_test(Bno086 *imu, Bno086Loopback *result);
 
 /*
  * RobotAttitudeReader implementation.  Reads the cached angles, so it never

@@ -499,9 +499,8 @@ static void command_targets(AppConsole *console)
  */
 static void command_spitest(AppConsole *console)
 {
-    uint8_t sent = 0U;
-    uint8_t received = 0U;
-    char message[112];
+    Bno086Loopback result;
+    char message[128];
 
     if (console->imu == NULL) {
         write_text(console, "ERROR: SPI loopback unavailable\r\n");
@@ -512,8 +511,28 @@ static void command_spitest(AppConsole *console)
                "SPI1 loopback test: disconnect the BNO086 and connect "
                "D11/PA7 directly to D12/PA6\r\n");
 
-    const int failed_at = bno086_loopback_test(console->imu, &sent, &received);
-    if (failed_at < 0) {
+    bno086_loopback_test(console->imu, &result);
+
+    if (!result.continuity) {
+        /*
+         * Say nothing about SPI1 here.  An unseated jumper fails the byte
+         * pattern exactly like a broken peripheral, so a verdict at this
+         * point would point at the wrong side of the link.
+         */
+        write_text(console,
+                   "SPITEST FAIL: D11 and D12 are not connected. PA6 did not "
+                   "follow PA7 driven as plain GPIO, so the jumper is not "
+                   "conducting and SPI1 is untested\r\n");
+        if (result.miso_driven) {
+            write_text(console,
+                       "  PA6 also held high against a pull-down: something "
+                       "is still attached to D12. Remove the sensor's SO wire "
+                       "before fitting the jumper\r\n");
+        }
+        return;
+    }
+
+    if (result.failed_byte < 0) {
         write_text(console,
                    "SPITEST PASS: SPI1 PA5/PA6/PA7 loopback OK; the MCU side "
                    "is good, so suspect the sensor or its wiring\r\n");
@@ -523,13 +542,13 @@ static void command_spitest(AppConsole *console)
     (void)snprintf(message,
                    sizeof(message),
                    "SPITEST FAIL: byte %d sent=0x%02X received=0x%02X\r\n",
-                   failed_at,
-                   (unsigned int)sent,
-                   (unsigned int)received);
+                   result.failed_byte,
+                   (unsigned int)result.sent,
+                   (unsigned int)result.received);
     write_text(console, message);
     write_text(console,
-               "  With the jumper fitted this means SPI1 itself is at fault: "
-               "check that PA5 is not still driven as the LD2 output\r\n");
+               "  The jumper conducts, so this is SPI1 itself: check that PA5 "
+               "is not still driven as the LD2 output\r\n");
 }
 
 static void command_imuprobe(AppConsole *console)
