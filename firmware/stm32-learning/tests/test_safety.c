@@ -133,22 +133,69 @@ static void test_current_alone_satisfies_effort(void)
     assert(monitor.fault == SAFETY_FAULT_STALL);
 }
 
-/* The servo has already decided; no second signal or waiting period applies. */
-static void test_hardware_error_and_overheat_fault_at_once(void)
+/*
+ * The servo's own verdicts still need a repeat.  They skip the stall's
+ * sustained window, but a single frame must not be able to stop the robot.
+ */
+static void test_hardware_error_and_overheat_need_confirmation(void)
 {
     SafetyMonitor hardware = fresh_monitor();
     SafetySample sample = healthy_sample();
     sample.hardware_error = 0x20U;
-    assert(safety_update(&hardware, &sample, 0U, 0U));
+    assert(!safety_update(&hardware, &sample, 0U, 0U));
+    assert(safety_update(&hardware, &sample, 20U, 0U));
     assert(hardware.fault == SAFETY_FAULT_HARDWARE);
     assert(hardware.record.hardware_error == 0x20U);
 
     SafetyMonitor hot = fresh_monitor();
     sample = healthy_sample();
     sample.temperature_c = 75U;
-    assert(safety_update(&hot, &sample, 0U, 0U));
+    assert(!safety_update(&hot, &sample, 0U, 0U));
+    assert(safety_update(&hot, &sample, 20U, 0U));
     assert(hot.fault == SAFETY_FAULT_OVERHEAT);
     assert(hot.record.temperature_c == 75U);
+}
+
+/*
+ * Regression for the first bench run, which stopped the robot on one frame
+ * reporting temp=150C while the joint sat 17 ticks from target drawing no
+ * current.  A single bad sample of any kind must not latch anything.
+ */
+static void test_single_bad_sample_never_faults(void)
+{
+    SafetyMonitor monitor = fresh_monitor();
+    const SafetySample healthy = healthy_sample();
+    SafetySample glitch = healthy_sample();
+    glitch.temperature_c = 150U;
+
+    assert(!safety_update(&monitor, &healthy, 0U, 0U));
+    assert(!safety_update(&monitor, &glitch, 20U, 990U));
+    assert(!safety_update(&monitor, &healthy, 40U, 0U));
+    assert(!safety_is_faulted(&monitor));
+    assert(monitor.implausible_samples == 1U);
+
+    /* Nor should it if the corrupt frame keeps repeating. */
+    for (uint32_t now = 60U; now < 2000U; now += 20U) {
+        assert(!safety_update(&monitor, &glitch, now, 0U));
+    }
+    assert(!safety_is_faulted(&monitor));
+}
+
+/*
+ * A real overheat still trips, because it climbs through the plausible range
+ * on its way up rather than jumping straight to a corrupt value.
+ */
+static void test_plausible_overheat_still_faults(void)
+{
+    SafetyMonitor monitor = fresh_monitor();
+    SafetySample sample = healthy_sample();
+
+    sample.temperature_c = 68U;
+    assert(!safety_update(&monitor, &sample, 0U, 0U));
+    sample.temperature_c = 72U;
+    assert(!safety_update(&monitor, &sample, 20U, 0U));
+    assert(safety_update(&monitor, &sample, 40U, 0U));
+    assert(monitor.fault == SAFETY_FAULT_OVERHEAT);
 }
 
 /*
@@ -279,7 +326,9 @@ int main(void)
     test_sustained_stall_faults();
     test_each_signal_alone_is_ignored();
     test_current_alone_satisfies_effort();
-    test_hardware_error_and_overheat_fault_at_once();
+    test_hardware_error_and_overheat_need_confirmation();
+    test_single_bad_sample_never_faults();
+    test_plausible_overheat_still_faults();
     test_fault_latches_until_cleared();
     test_candidate_expires_when_not_seen();
     test_candidate_switch_restarts_the_window();

@@ -65,6 +65,21 @@ typedef struct
     uint16_t sustain_ms;
 
     uint8_t temperature_limit_c;
+
+    /*
+     * Readings at or above this are treated as a corrupt sample and ignored
+     * rather than believed.  An STS3215 protects itself long before its die
+     * reaches such a value, so a number up here says the byte is wrong, not
+     * that the servo is that hot.
+     */
+    uint8_t temperature_implausible_c;
+
+    /*
+     * A servo's own hardware-error bits and its temperature still have to be
+     * seen twice before they count.  They need no sustained window the way a
+     * stall does, but one corrupt frame must not be able to stop the robot.
+     */
+    uint16_t confirm_ms;
 } SafetyLimits;
 
 typedef struct
@@ -93,6 +108,7 @@ typedef struct
      * "how long has this been going on" question ambiguous.
      */
     uint8_t candidate_servo_id;
+    SafetyFaultKind candidate_kind;
     uint32_t candidate_since_ms;
     uint32_t candidate_last_seen_ms;
 
@@ -101,6 +117,7 @@ typedef struct
 
     uint16_t stall_candidates_seen;  /* candidates that never reached the fault */
     uint16_t peak_position_error;
+    uint16_t implausible_samples;    /* readings discarded as corrupt */
 } SafetyMonitor;
 
 /* One joint's state as sampled from the bus, plus what it was commanded. */

@@ -33,6 +33,22 @@
 #define SAFETY_DEFAULT_TEMPERATURE_LIMIT_C    70U
 
 /*
+ * A reading this high is a corrupt byte, not a temperature.  An STS3215 cuts
+ * its own torque long before the die could reach it, and the first bench run
+ * produced exactly this: temp=150C on a joint sitting 17 ticks from target
+ * with zero current, which stopped the robot for nothing.
+ */
+#define SAFETY_DEFAULT_TEMPERATURE_IMPLAUSIBLE_C 100U
+
+/*
+ * The servo's own verdicts -- hardware error bits and temperature -- do not
+ * need the stall's sustained window, but they do need to survive one repeat.
+ * Two samples of the same joint span 20 ms in the frame loop, so this only
+ * rejects the single bad frame.
+ */
+#define SAFETY_DEFAULT_CONFIRM_MS 10U
+
+/*
  * A candidate is dropped if it goes unseen for longer than this.  Round-robin
  * sampling means an unrelated joint can be looked at in between, and a stall
  * that has actually cleared should not keep its accumulated time.
@@ -54,6 +70,9 @@ void safety_limits_default(SafetyLimits *limits)
     limits->current_magnitude = SAFETY_DEFAULT_CURRENT_MAGNITUDE;
     limits->sustain_ms = SAFETY_DEFAULT_SUSTAIN_MS;
     limits->temperature_limit_c = SAFETY_DEFAULT_TEMPERATURE_LIMIT_C;
+    limits->temperature_implausible_c =
+        SAFETY_DEFAULT_TEMPERATURE_IMPLAUSIBLE_C;
+    limits->confirm_ms = SAFETY_DEFAULT_CONFIRM_MS;
 }
 
 void safety_init(SafetyMonitor *monitor, const SafetyLimits *limits)
@@ -76,6 +95,7 @@ void safety_clear(SafetyMonitor *monitor)
     }
     monitor->fault = SAFETY_OK;
     monitor->candidate_servo_id = 0U;
+    monitor->candidate_kind = SAFETY_OK;
     monitor->candidate_since_ms = 0U;
     monitor->candidate_last_seen_ms = 0U;
     memset(&monitor->record, 0, sizeof(monitor->record));
@@ -101,11 +121,53 @@ static void fill_record(SafetyMonitor *monitor,
     monitor->record.gait_phase = gait_phase;
 }
 
+/*
+ * Track one candidate per joint-and-reason, and report when it has held long
+ * enough.  Every fault kind goes through here: the sustained window differs,
+ * but nothing is allowed to latch off a single sample.
+ */
+static bool candidate_held(SafetyMonitor *monitor,
+                           uint8_t servo_id,
+                           SafetyFaultKind kind,
+                           uint32_t now_ms,
+                           uint16_t required_ms,
+                           uint32_t *held_ms)
+{
+    if (monitor->candidate_servo_id != servo_id ||
+        monitor->candidate_kind != kind) {
+        monitor->candidate_servo_id = servo_id;
+        monitor->candidate_kind = kind;
+        monitor->candidate_since_ms = now_ms;
+        monitor->candidate_last_seen_ms = now_ms;
+        *held_ms = 0U;
+        return false;
+    }
+
+    monitor->candidate_last_seen_ms = now_ms;
+    *held_ms = (uint32_t)(now_ms - monitor->candidate_since_ms);
+    return *held_ms >= required_ms;
+}
+
+static void drop_candidate(SafetyMonitor *monitor, uint8_t servo_id)
+{
+    if (monitor->candidate_servo_id != servo_id) {
+        return;
+    }
+    if (monitor->candidate_kind == SAFETY_FAULT_STALL &&
+        monitor->stall_candidates_seen < UINT16_MAX) {
+        ++monitor->stall_candidates_seen;
+    }
+    monitor->candidate_servo_id = 0U;
+    monitor->candidate_kind = SAFETY_OK;
+}
+
 bool safety_update(SafetyMonitor *monitor,
                    const SafetySample *sample,
                    uint32_t now_ms,
                    uint16_t gait_phase)
 {
+    uint32_t held_ms = 0U;
+
     if (monitor == NULL || sample == NULL) {
         return false;
     }
@@ -123,21 +185,48 @@ bool safety_update(SafetyMonitor *monitor,
         monitor->peak_position_error = position_error;
     }
 
-    /*
-     * The servo's own hardware error and its temperature are absolute: they do
-     * not need a second signal or a sustain window, because the servo has
-     * already decided something is wrong.
-     */
-    if (sample->hardware_error != 0U) {
-        monitor->fault = SAFETY_FAULT_HARDWARE;
-        fill_record(monitor, sample, position_error, 0U, gait_phase);
-        return true;
+    /* Forget a candidate that has gone unseen; see SAFETY_CANDIDATE_STALE_MS. */
+    if (monitor->candidate_servo_id != 0U &&
+        (uint32_t)(now_ms - monitor->candidate_last_seen_ms) >
+            SAFETY_CANDIDATE_STALE_MS) {
+        monitor->candidate_servo_id = 0U;
+        monitor->candidate_kind = SAFETY_OK;
     }
-    if (monitor->limits.temperature_limit_c != 0U &&
+
+    /*
+     * Discard an impossible temperature instead of acting on it.  Believing
+     * one costs a needless stop; ignoring one costs nothing, because a genuine
+     * overheat climbs through the plausible range on its way up and is caught
+     * by the limit below.
+     */
+    const bool temperature_usable =
+        monitor->limits.temperature_implausible_c == 0U ||
+        sample->temperature_c < monitor->limits.temperature_implausible_c;
+    if (!temperature_usable && monitor->implausible_samples < UINT16_MAX) {
+        ++monitor->implausible_samples;
+    }
+
+    if (sample->hardware_error != 0U) {
+        if (candidate_held(monitor, sample->servo_id, SAFETY_FAULT_HARDWARE,
+                           now_ms, monitor->limits.confirm_ms, &held_ms)) {
+            monitor->fault = SAFETY_FAULT_HARDWARE;
+            fill_record(monitor, sample, position_error,
+                        (uint16_t)held_ms, gait_phase);
+            return true;
+        }
+        return false;
+    }
+
+    if (temperature_usable && monitor->limits.temperature_limit_c != 0U &&
         sample->temperature_c >= monitor->limits.temperature_limit_c) {
-        monitor->fault = SAFETY_FAULT_OVERHEAT;
-        fill_record(monitor, sample, position_error, 0U, gait_phase);
-        return true;
+        if (candidate_held(monitor, sample->servo_id, SAFETY_FAULT_OVERHEAT,
+                           now_ms, monitor->limits.confirm_ms, &held_ms)) {
+            monitor->fault = SAFETY_FAULT_OVERHEAT;
+            fill_record(monitor, sample, position_error,
+                        (uint16_t)held_ms, gait_phase);
+            return true;
+        }
+        return false;
     }
 
     const bool lagging =
@@ -145,52 +234,21 @@ bool safety_update(SafetyMonitor *monitor,
     const bool straining =
         magnitude_u16(sample->load) >= monitor->limits.load_magnitude ||
         magnitude_u16(sample->current) >= monitor->limits.current_magnitude;
-    const bool stalling = lagging && straining;
 
-    /* Forget a candidate that has gone unseen; see SAFETY_CANDIDATE_STALE_MS. */
-    if (monitor->candidate_servo_id != 0U &&
-        (uint32_t)(now_ms - monitor->candidate_last_seen_ms) >
-            SAFETY_CANDIDATE_STALE_MS) {
-        monitor->candidate_servo_id = 0U;
-    }
-
-    if (!stalling) {
-        /* This joint is fine now, so it stops being the candidate. */
-        if (monitor->candidate_servo_id == sample->servo_id) {
-            monitor->candidate_servo_id = 0U;
-            if (monitor->stall_candidates_seen < UINT16_MAX) {
-                ++monitor->stall_candidates_seen;
-            }
-        }
+    if (!(lagging && straining)) {
+        drop_candidate(monitor, sample->servo_id);
         return false;
     }
 
-    if (monitor->candidate_servo_id != sample->servo_id) {
-        /*
-         * A different joint was the candidate.  Replace it rather than track
-         * both: the newest evidence is the one worth timing, and a real stall
-         * keeps reappearing.
-         */
-        monitor->candidate_servo_id = sample->servo_id;
-        monitor->candidate_since_ms = now_ms;
-        monitor->candidate_last_seen_ms = now_ms;
-        return false;
+    if (candidate_held(monitor, sample->servo_id, SAFETY_FAULT_STALL,
+                       now_ms, monitor->limits.sustain_ms, &held_ms)) {
+        monitor->fault = SAFETY_FAULT_STALL;
+        fill_record(monitor, sample, position_error,
+                    held_ms > UINT16_MAX ? UINT16_MAX : (uint16_t)held_ms,
+                    gait_phase);
+        return true;
     }
-
-    monitor->candidate_last_seen_ms = now_ms;
-    const uint32_t held_ms =
-        (uint32_t)(now_ms - monitor->candidate_since_ms);
-    if (held_ms < monitor->limits.sustain_ms) {
-        return false;
-    }
-
-    monitor->fault = SAFETY_FAULT_STALL;
-    fill_record(monitor,
-                sample,
-                position_error,
-                held_ms > UINT16_MAX ? UINT16_MAX : (uint16_t)held_ms,
-                gait_phase);
-    return true;
+    return false;
 }
 
 bool safety_watching(const SafetyMonitor *monitor, uint8_t *servo_id)

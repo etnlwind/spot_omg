@@ -661,10 +661,11 @@ static void command_safety(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "Safety: %s, peak_error=%uticks, candidates=%u\r\n",
+        "Safety: %s, peak_error=%uticks, candidates=%u, bad_samples=%u\r\n",
         safety_fault_string(safety->fault),
         (unsigned int)safety->peak_position_error,
-        (unsigned int)safety->stall_candidates_seen);
+        (unsigned int)safety->stall_candidates_seen,
+        (unsigned int)safety->implausible_samples);
     write_text(console, message);
 
     (void)snprintf(
