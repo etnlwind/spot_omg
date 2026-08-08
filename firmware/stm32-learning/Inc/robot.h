@@ -101,7 +101,15 @@ typedef struct
      * target and vice versa, exchanging the left/right specific parts of the
      * trajectory along with the timing.  Not a gait to walk on.
      */
-    bool gait_front_legs_swapped;   /* round-robin cursor over the twelve joints */
+    bool gait_front_legs_swapped;
+
+    /*
+     * Folds the front knees the other way by solving the same foot position
+     * through the other inverse-kinematics branch.  The foot path is
+     * unchanged; only the elbow side moves.  Set when the front knee servos
+     * are mounted opposite the rear ones.
+     */
+    bool gait_front_knees_flipped;   /* round-robin cursor over the twelve joints */
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
@@ -118,6 +126,7 @@ bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode);
 const char *robot_balance_mode_string(RobotBalanceMode mode);
 void robot_request_motion_abort(RobotController *robot);
 void robot_set_front_legs_swapped(RobotController *robot, bool swapped);
+void robot_set_front_knees_flipped(RobotController *robot, bool flipped);
 
 RobotResult robot_require_all(RobotController *robot);
 

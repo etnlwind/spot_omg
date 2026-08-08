@@ -81,6 +81,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->motion_abort_requested = false;
     robot->safety_scan_index = 0U;
     robot->gait_front_legs_swapped = false;
+    robot->gait_front_knees_flipped = false;
     safety_init(&robot->safety, NULL);
 }
 
@@ -153,6 +154,13 @@ void robot_set_front_legs_swapped(RobotController *robot, bool swapped)
 {
     if (robot != NULL) {
         robot->gait_front_legs_swapped = swapped;
+    }
+}
+
+void robot_set_front_knees_flipped(RobotController *robot, bool flipped)
+{
+    if (robot != NULL) {
+        robot->gait_front_knees_flipped = flipped;
     }
 }
 
@@ -739,6 +747,29 @@ static bool robot_trot_policy_targets(
         const GaitPolicyLegTarget front_left = targets[0];
         targets[0] = targets[1];   /* FL takes FR's target */
         targets[1] = front_left;   /* FR takes FL's */
+    }
+    if (robot->gait_front_knees_flipped) {
+        /*
+         * Reach the same foot position through the other inverse-kinematics
+         * branch, so the front knees fold the opposite way.
+         *
+         * For a two-link leg, (j2 - j3, -j3) puts the foot exactly where
+         * (j2, j3) does: sin(j2-j3) + sin(j2-j3+j3) is sin(j2-j3) + sin(j2),
+         * and the same cancellation holds for the vertical term.  The path is
+         * identical to the rear legs' -- only the elbow is on the other side.
+         *
+         * Reflecting J3 alone was tried first and is wrong: the foot position
+         * comes from both joints, so reversing one of a coupled pair distorts
+         * the path rather than mirroring it.  That version put four direction
+         * changes in a cycle where a circular path has two, and let the foot
+         * rise through stance instead of holding its height, which is the
+         * small forward jog after push-off it produced on the robot.
+         */
+        for (uint8_t leg = 0U; leg < 2U; ++leg) {
+            const float j3 = targets[leg].j3_deg;
+            targets[leg].j2_deg -= j3;
+            targets[leg].j3_deg = -j3;
+        }
     }
     return true;
 }
