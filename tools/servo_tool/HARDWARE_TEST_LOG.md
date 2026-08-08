@@ -1349,6 +1349,20 @@ URT-2를 호스트에 꽂아 동작하는 결과는 STM32 쪽 펌웨어 회귀�
 `spotctl` 실행만 막고, 잠금을 쓰지 않는 터미널 프로그램은 막지 못합니다.
 진단 중에는 한쪽만 열어두고, 의심되면 `lsof /dev/cu.usbmodem...`으로 확인합니다.
 
+터미널 앱을 닫고 포트를 단독 점유한 상태에서 `scan`, `busprobe 1`, `linestate`,
+`profile`을 다시 측정한 결과는 이전과 **완전히 동일**했습니다. 따라서 포트 공유가
+진단을 왜곡하지는 않았고 지금까지의 측정값은 유효합니다.
+
+`balance status`의 `IMU: unavailable`은 BNO055를 의도적으로 단선한 결과입니다.
+BNO055는 NUCLEO `3V3`에서 전원을 받으므로(README 배선표) 서보 외부 전원과는
+무관하며, 이 증상은 전원 계통의 단서가 아닙니다.
+
+IMU가 없는 상태에서 부팅하면 `balance_required`가 참으로 남아 `trot`, `trot2`,
+`jump`가 잠깁니다. 개방 루프로 시험하려면 `balance off`를 명시적으로 실행해야
+합니다. `robot_set_balance_enabled(false)`가 `balance_required`도 함께 내리도록
+되어 있어 그때 잠금이 풀립니다. `stand`, `hold`, `relax`, `scan`은 이 검사를
+받지 않습니다.
+
 ### `linestate` 측정 결과와 소프트웨어 진단의 한계
 
 ```text
