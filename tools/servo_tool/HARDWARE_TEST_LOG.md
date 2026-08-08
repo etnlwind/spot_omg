@@ -1296,6 +1296,43 @@ STM32에 연결할 때는 UART 헤더로 신호만 오가므로 **URT-2가 자�
 지금 증상과 정확히 일치합니다. 2026-08-06 기록의 전원 원칙도 Type-C 공급이고
 UART 헤더 VCC는 연결하지 않는 구성이었습니다.
 
+### 펌웨어 회귀 여부: 이전 커밋을 플래시해 확인
+
+"보행·점프 커밋 이후 안 되기 시작했다"는 가능성을 실제로 시험했습니다. 마지막으로
+서보가 정상 동작하던 커밋 `7fe2cb0`을 그대로 빌드해 플래시했습니다.
+
+```text
+$ spotctl console send help    # trot2/trotplace/jump/linestate 0건 → 구 빌드 확인
+$ spotctl console send scan
+ID 1..12: timeout, servo_error=0x00
+```
+
+**구 펌웨어에서도 동일하게 12축 전부 timeout입니다.** 따라서 이번 보행·점프
+커밋과 `linestate` 추가는 원인이 아닙니다. `git diff 7fe2cb0..HEAD -- firmware/`
+에서도 `servo_bus.c`, `sts3215.c`, `feetech_protocol.c`, `stm32f4xx_hal_msp.c`는
+변경분이 0입니다.
+
+확인 후 현재 빌드로 되돌렸습니다. 앞으로 이 판별은 다음으로 재현합니다.
+
+```bash
+git worktree add /tmp/spot_good <commit>
+# scratchpad/build_any.sh <project-dir> <output-dir> 로 빌드
+STM32_Programmer_CLI -c port=SWD mode=UR -w firmware.elf -v -rst
+```
+
+CubeIDE 번들 도구의 경로는 다음과 같습니다.
+
+```text
+/Applications/STM32CubeIDE.app/Contents/Eclipse/plugins/
+  com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.14.3.*/tools/bin
+  com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.*/tools/bin
+```
+
+또한 앞서 "분리 시험으로 범위가 배선으로 확정됐다"고 적은 것은 과장이었습니다.
+URT-2를 호스트에 꽂아 동작하는 결과는 STM32 쪽 펌웨어 회귀와도 똑같이
+일치하므로, 그것만으로는 펌웨어를 배제할 수 없었습니다. 배제는 위의 구 펌웨어
+플래시 시험으로 비로소 성립합니다.
+
 ### `linestate` 측정 결과와 소프트웨어 진단의 한계
 
 ```text
