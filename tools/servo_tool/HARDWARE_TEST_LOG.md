@@ -1391,9 +1391,10 @@ Both pins held high: check the URT-2 Type-C supply first; an unpowered URT-2
 is parasitically pulled high through PA9 and looks like this
 ```
 
-조치는 2026-08-06 기록의 전원 원칙 그대로입니다. URT-2 Type-C를 USB 충전기나
-보조배터리에 연결하고 UART 헤더 VCC는 연결하지 않습니다. 전원 경로는 하나만
-사용합니다.
+현재 기체의 URT-2 로직 전원은 NUCLEO `5V` 핀에서 가져가는 구조입니다.
+2026-08-06 기록의 Type-C 공급 구성과 다르므로 그 절의 전원 원칙은 현재 배선에
+그대로 적용되지 않습니다. 확인 대상은 NUCLEO `5V` → URT-2 `VCC` 배선과 그
+레일의 실제 전압입니다.
 
 ### `linestate` 측정 결과와 소프트웨어 진단의 한계
 
