@@ -128,7 +128,6 @@ def test_shared_c_trot2_matches_python_reference():
                 amplitude,
                 TROT2_DEFAULT_FOLD_J2,
                 TROT2_DEFAULT_FOLD_J3,
-                config.gait_forward_signs,
             )
             assert actual_support == expected_support
             for leg in LEGS:
@@ -140,17 +139,29 @@ def test_shared_c_trot2_matches_python_reference():
                     assert abs(actual[(leg, joint)] - expected_angle) < 0.06
 
 
-def test_shared_c_trot2_hardware_signs_stay_inside_servo_limits():
+def test_shared_c_trot2_stays_inside_servo_limits():
+    """Every commanded tick lands inside the joint's configured travel.
+
+    The policy no longer takes per-leg signs -- mounting lives in the
+    calibration -- so this checks the one set of angles it produces against
+    the limits each joint actually has.
+    """
     config = SpotConfig.load(CONFIG)
     policy = SharedGaitPolicy()
-    hardware_signs = {"FL": 1, "FR": 1, "RL": -1, "RR": -1}
-    for index in range(101):
-        targets, _ = policy.trot2_targets(
-            index / 100.0,
+
+    for step in range(50):
+        angles, _ = policy.trot2_targets(
+            step / 50.0,
             1.0,
             TROT2_DEFAULT_FOLD_J2,
             TROT2_DEFAULT_FOLD_J3,
-            hardware_signs,
         )
-        # Uses the measured centers, directions and min/max raw positions.
-        config.angles_to_targets(targets)
+        for leg in LEGS:
+            for joint in (1, 2, 3):
+                position = config.angle_to_position(
+                    leg, joint, angles[(leg, joint)])
+                limits = config.joint(leg, joint)
+                assert limits.minimum <= position <= limits.maximum, (
+                    f"{leg} J{joint} reaches {position}, outside "
+                    f"{limits.minimum}..{limits.maximum}"
+                )

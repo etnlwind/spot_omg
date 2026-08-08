@@ -102,11 +102,11 @@ class SpotConfig:
         self.canonical_poses = canonical_poses or {
             "landing": {2: 40.0, 3: 130.0}
         }
+        # Used only by the legacy Python gait below.  The shared C policy no
+        # longer takes per-leg signs: how a leg is mounted belongs to each
+        # joint's centre and direction, not to the trajectory.
         self.gait_forward_signs = gait_forward_signs or {
-            "FL": -1,
-            "FR": -1,
-            "RL": 1,
-            "RR": 1,
+            "FL": -1, "FR": -1, "RL": 1, "RR": 1
         }
         self.path = path
         self.reference_center = reference_center
@@ -386,11 +386,11 @@ class SpotConfig:
                 for joint in self.joints
             ],
             "pose_saved_at": self.pose_saved_at,
+            "gait_forward_signs": self.gait_forward_signs,
             "canonical_poses": {
                 name: {str(joint): angle for joint, angle in values.items()}
                 for name, values in self.canonical_poses.items()
             },
-            "gait_forward_signs": self.gait_forward_signs,
             "poses": {
                 name: {str(servo_id): value for servo_id, value in pose.items()}
                 for name, pose in self.poses.items()
@@ -525,10 +525,6 @@ class SpotConfig:
                 raise ValueError(f"canonical pose {name!r} has an unknown joint")
             if any(not math.isfinite(angle) for angle in angles.values()):
                 raise ValueError(f"canonical pose {name!r} has a non-finite angle")
-        if set(self.gait_forward_signs) != set(LEG_ORDER):
-            raise ValueError("gait forward signs are required for all four legs")
-        if any(sign not in (-1, 1) for sign in self.gait_forward_signs.values()):
-            raise ValueError("gait forward signs must be +1 or -1")
         for name, targets in self.poses.items():
             if set(targets) != expected_ids:
                 raise ValueError(f"pose {name!r} does not contain all servo IDs")

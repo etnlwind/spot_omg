@@ -286,7 +286,6 @@ def shared_policy_targets(
         phase,
         amplitude_scale,
         travel_scale,
-        config.gait_forward_signs,
     )
     return canonical_targets_to_positions(config, canonical), support
 
@@ -304,7 +303,6 @@ def shared_trot2_targets(
         amplitude_scale,
         fold_j2,
         fold_j3,
-        config.gait_forward_signs,
     )
     return canonical_targets_to_positions(config, canonical), support
 
@@ -703,7 +701,6 @@ def run_dynamic(
                             canonical,
                             sample=sample,
                             support_legs=support_legs,
-                            forward_signs=config.gait_forward_signs,
                             kp=args.balance_kp,
                             kd=args.balance_kd,
                             leg_length_limit=args.balance_limit,
@@ -837,11 +834,6 @@ def main() -> int:
     args = parse_args()
     gait = resolve_gait(args)
     config = SpotConfig.load(CONFIG)
-    if args.preset in {"sim-trot", "trot2"}:
-        # The physical gait signs predate the unified rearward-knee URDF. Keep
-        # hardware calibration untouched and use the URDF-consistent mapping
-        # only inside this simulator-specific preset.
-        config.gait_forward_signs = {leg: -1 for leg in LEGS}
     robot = SpotRobot(None, config)
     base = stance_targets(config, gait)
     use_shared_policy = (

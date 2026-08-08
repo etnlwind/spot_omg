@@ -24,11 +24,9 @@ class SharedGaitPolicy:
     def __init__(self) -> None:
         self._library = ctypes.CDLL(str(self._build_library()))
         float_pointer = ctypes.POINTER(ctypes.c_float)
-        signs_pointer = ctypes.POINTER(ctypes.c_int8)
         self._library.spot_gait_sim_trot_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
-            signs_pointer,
             float_pointer,
             ctypes.POINTER(ctypes.c_uint8),
         )
@@ -37,7 +35,6 @@ class SharedGaitPolicy:
             ctypes.c_float,
             ctypes.c_float,
             ctypes.c_float,
-            signs_pointer,
             float_pointer,
             ctypes.POINTER(ctypes.c_uint8),
         )
@@ -47,7 +44,6 @@ class SharedGaitPolicy:
             ctypes.c_float,
             ctypes.c_float,
             ctypes.c_float,
-            signs_pointer,
             float_pointer,
             ctypes.POINTER(ctypes.c_uint8),
         )
@@ -55,7 +51,6 @@ class SharedGaitPolicy:
         self._library.spot_gait_jump_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
-            signs_pointer,
             float_pointer,
             ctypes.POINTER(ctypes.c_uint8),
         )
@@ -65,7 +60,6 @@ class SharedGaitPolicy:
             float_pointer,
             ctypes.c_int,
             ctypes.c_uint8,
-            signs_pointer,
             float_pointer,
         )
         self._library.spot_gait_balance_targets.restype = ctypes.c_int
@@ -122,13 +116,6 @@ class SharedGaitPolicy:
         return library
 
     @staticmethod
-    def _sign_array(forward_signs: dict[str, int]):
-        values = [int(forward_signs[leg]) for leg in LEGS]
-        if any(value not in (-1, 1) for value in values):
-            raise ValueError("forward signs must be -1 or +1 for every leg")
-        return (ctypes.c_int8 * 4)(*values)
-
-    @staticmethod
     def _unpack(values) -> dict[tuple[str, int], float]:
         return {
             (leg, joint): float(values[leg_index * 3 + joint - 1])
@@ -150,14 +137,12 @@ class SharedGaitPolicy:
         self,
         phase: float,
         amplitude_scale: float,
-        forward_signs: dict[str, int],
     ) -> tuple[dict[tuple[str, int], float], set[str]]:
         values = (ctypes.c_float * 12)()
         mask = ctypes.c_uint8()
         ok = self._library.spot_gait_sim_trot_targets(
             phase,
             amplitude_scale,
-            self._sign_array(forward_signs),
             values,
             ctypes.byref(mask),
         )
@@ -173,7 +158,6 @@ class SharedGaitPolicy:
         phase: float,
         amplitude_scale: float,
         travel_scale: float,
-        forward_signs: dict[str, int],
     ) -> tuple[dict[tuple[str, int], float], set[str]]:
         """Return a shared trot frame with independently scaled travel."""
         values = (ctypes.c_float * 12)()
@@ -182,7 +166,6 @@ class SharedGaitPolicy:
             phase,
             amplitude_scale,
             travel_scale,
-            self._sign_array(forward_signs),
             values,
             ctypes.byref(mask),
         )
@@ -199,7 +182,6 @@ class SharedGaitPolicy:
         amplitude_scale: float,
         fold_j2: float,
         fold_j3: float,
-        forward_signs: dict[str, int],
     ) -> tuple[dict[tuple[str, int], float], set[str]]:
         """Return one circular-foot diagonal-trot frame."""
         values = (ctypes.c_float * 12)()
@@ -209,7 +191,6 @@ class SharedGaitPolicy:
             amplitude_scale,
             fold_j2,
             fold_j3,
-            self._sign_array(forward_signs),
             values,
             ctypes.byref(mask),
         )
@@ -228,7 +209,6 @@ class SharedGaitPolicy:
         self,
         phase: float,
         forward_travel: float,
-        forward_signs: dict[str, int],
     ) -> tuple[dict[tuple[str, int], float], set[str]]:
         """Return one frame of the shared repeating jump trajectory."""
         values = (ctypes.c_float * 12)()
@@ -236,7 +216,6 @@ class SharedGaitPolicy:
         ok = self._library.spot_gait_jump_targets(
             phase,
             forward_travel,
-            self._sign_array(forward_signs),
             values,
             ctypes.byref(mask),
         )
@@ -253,7 +232,6 @@ class SharedGaitPolicy:
         *,
         sample: ImuSample,
         support_legs: set[str],
-        forward_signs: dict[str, int],
         kp: float,
         kd: float,
         leg_length_limit: float,
@@ -288,7 +266,6 @@ class SharedGaitPolicy:
             balance,
             int(mode == "contact-aware"),
             support_mask,
-            self._sign_array(forward_signs),
             values,
         )
         if not ok:

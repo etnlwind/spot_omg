@@ -11,7 +11,6 @@ Python suite instead of being a separate step someone has to remember.
 
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 import sys
@@ -34,35 +33,24 @@ LEGS = ("FL", "FR", "RL", "RR")
 DIAGONALS = (("FL", "RR"), ("FR", "RL"))
 
 
-def _firmware_gait_signs() -> dict[str, int]:
-    """Read g_robot_gait_forward_signs straight out of robot_config.c."""
-    source = (PROJECT / "Src/robot_config.c").read_text()
-    match = re.search(
-        r"g_robot_gait_forward_signs\[4\]\s*=\s*\{([^}]*)\}", source)
-    assert match, "could not find g_robot_gait_forward_signs"
-    values = [int(part.strip()) for part in match.group(1).split(",")]
-    assert len(values) == 4
-    return dict(zip(LEGS, values))
+def test_diagonal_legs_stay_together() -> None:
+    """The two legs of a diagonal do the same thing at the same time.
 
-
-def test_gait_signs_keep_diagonal_legs_together() -> None:
-    """The two legs of a diagonal must do the same thing at the same time.
-
-    This is what a trot is, and it is checkable without a robot.  A sign
-    combination that breaks it produced identical joint angles for the two legs
-    on one side while the policy marked one in stance and the other in swing --
-    impossible, since equal angles put both feet at the same height, and it
-    took several bench runs to recognise.
+    This is what a trot is, and it is checkable without a robot.  It used to
+    depend on a per-leg sign array in robot_config.c, and a combination that
+    broke it produced identical joint angles for the two legs on one side while
+    the policy marked one in stance and the other in swing -- impossible, since
+    equal angles put both feet at the same height, and it took several bench
+    runs to recognise.  The array is gone now, but the property it had to
+    satisfy is worth keeping under test.
     """
     sys.path.insert(0, str(PROJECT.parents[1] / "tools/servo_tool"))
     from servo import SharedGaitPolicy
 
     policy = SharedGaitPolicy()
-    signs = _firmware_gait_signs()
-
     for step in range(20):
         phase = step / 20.0
-        angles, stance = policy.trot2_targets(phase, 1.0, 78.0, 108.0, signs)
+        angles, stance = policy.trot2_targets(phase, 1.0, 78.0, 108.0)
         for left, right in DIAGONALS:
             assert (left in stance) == (right in stance), (
                 f"phase {phase}: {left} and {right} disagree on stance"
@@ -71,6 +59,7 @@ def test_gait_signs_keep_diagonal_legs_together() -> None:
                 assert abs(angles[(left, joint)] - angles[(right, joint)]) < 0.01, (
                     f"phase {phase}: {left} J{joint} != {right} J{joint}"
                 )
+
 
 
 @pytest.mark.parametrize("name,sources", CASES, ids=[case[0] for case in CASES])

@@ -689,14 +689,12 @@ static bool robot_trot_policy_targets(
             amplitude_scale,
             GAIT_POLICY_TROT2_FOLD_J2_DEG,
             GAIT_POLICY_TROT2_FOLD_J3_DEG,
-            g_robot_gait_forward_signs,
             targets);
     }
     return gait_policy_trot_targets(
         phase,
         amplitude_scale,
         travel_scale,
-        g_robot_gait_forward_signs,
         targets);
 }
 
@@ -897,7 +895,6 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                     &sample,
                     &balance_config,
                     support_mask,
-                    g_robot_gait_forward_signs,
                     leg_targets)) {
                 return_to_stand_best_effort(robot);
                 return ROBOT_CONFIG_ERROR;
@@ -1136,7 +1133,6 @@ RobotResult robot_jump(RobotController *robot,
         if (!gait_policy_jump_targets(
                 phase,
                 ROBOT_JUMP_FORWARD_TRAVEL,
-                g_robot_gait_forward_signs,
                 leg_targets) ||
             !gait_policy_to_servo_targets(leg_targets, targets)) {
             return_to_stand_best_effort(robot);

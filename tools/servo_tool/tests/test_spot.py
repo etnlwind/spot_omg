@@ -490,8 +490,7 @@ class SpotConfigTest(unittest.TestCase):
         for amplitude in (0.0, 0.35, 1.0):
             for phase in (0.0, 0.1, 0.25, 0.49, 0.5, 0.75, 0.9, 0.999):
                 shared, support = policy.sim_trot_targets(
-                    phase, amplitude, signs
-                )
+                    phase, amplitude)
                 python = robot.gait_targets(
                     phase, base, gait, amplitude_scale=amplitude
                 )
@@ -514,11 +513,9 @@ class SpotConfigTest(unittest.TestCase):
         signs = self.config.gait_forward_signs
         for phase in (0.0, 0.1, 0.35, 0.5, 0.85, 0.999):
             expected, expected_support = policy.sim_trot_targets(
-                phase, 1.0, signs
-            )
+                phase, 1.0)
             actual, actual_support = policy.trot_targets(
-                phase, 1.0, 1.0, signs
-            )
+                phase, 1.0, 1.0)
             self.assertEqual(actual_support, expected_support)
             for key, expected_angle in expected.items():
                 self.assertAlmostEqual(actual[key], expected_angle, delta=1e-5)
@@ -531,8 +528,7 @@ class SpotConfigTest(unittest.TestCase):
         saw_lift = False
         for phase in (0.0, 0.1, 0.25, 0.35, 0.5, 0.6, 0.85, 0.999):
             targets, support = policy.trot_targets(
-                phase, 1.0, 0.0, signs
-            )
+                phase, 1.0, 0.0)
             expected_support = (
                 {"FL", "RR"} if phase < 0.5 else {"FR", "RL"}
             )
@@ -546,7 +542,7 @@ class SpotConfigTest(unittest.TestCase):
         self.assertTrue(saw_lift)
 
         with self.assertRaises(ValueError):
-            policy.trot_targets(0.5, 1.0, 1.01, signs)
+            policy.trot_targets(0.5, 1.0, 1.01)
 
     def test_shared_c_smootherstep_is_bounded_and_matches_python(self) -> None:
         policy = SharedGaitPolicy()
@@ -569,8 +565,8 @@ class SpotConfigTest(unittest.TestCase):
     def test_shared_c_jump_starts_and_ends_at_stand(self) -> None:
         policy = SharedGaitPolicy()
         signs = self.config.gait_forward_signs
-        start, start_support = policy.jump_targets(0.0, 0.0, signs)
-        end, end_support = policy.jump_targets(1.0, 0.0, signs)
+        start, start_support = policy.jump_targets(0.0, 0.0)
+        end, end_support = policy.jump_targets(1.0, 0.0)
 
         self.assertEqual(start_support, {"FL", "FR", "RL", "RR"})
         self.assertEqual(end_support, start_support)
@@ -587,43 +583,52 @@ class SpotConfigTest(unittest.TestCase):
         policy = SharedGaitPolicy()
         signs = self.config.gait_forward_signs
         for phase in (0.30, 0.42, 0.55, 0.68, 0.82):
-            targets, _ = policy.jump_targets(phase, 0.0, signs)
+            targets, _ = policy.jump_targets(phase, 0.0)
             reference = tuple(targets[("FL", joint)] for joint in (1, 2, 3))
             for leg in ("FR", "RL", "RR"):
                 actual = tuple(targets[(leg, joint)] for joint in (1, 2, 3))
                 for value, expected in zip(actual, reference):
                     self.assertAlmostEqual(value, expected, delta=0.01)
 
-        airborne, support = policy.jump_targets(0.50, 0.0, signs)
+        airborne, support = policy.jump_targets(0.50, 0.0)
         self.assertEqual(support, set())
         self.assertGreater(airborne[("FL", 3)], 44.0)
-        _, landed_support = policy.jump_targets(0.70, 0.0, signs)
+        _, landed_support = policy.jump_targets(0.70, 0.0)
         self.assertEqual(landed_support, {"FL", "FR", "RL", "RR"})
 
-    def test_shared_c_jump_forward_parameter_respects_leg_mirroring(self) -> None:
+    def test_shared_c_jump_forward_travel_moves_all_feet_alike(self) -> None:
         policy = SharedGaitPolicy()
         robot = SpotRobot(RecordingBus(), self.config)
-        signs = self.config.gait_forward_signs
-        in_place, _ = policy.jump_targets(0.60, 0.0, signs)
-        forward, _ = policy.jump_targets(0.60, 0.08, signs)
+        in_place, _ = policy.jump_targets(0.60, 0.0)
+        forward, _ = policy.jump_targets(0.60, 0.08)
 
-        for leg in signs:
+        # Asking for forward travel has to move all four feet the same way.
+        # This used to divide each leg's change by a per-leg sign, which let
+        # the assertion pass whichever way a leg actually went -- the legs are
+        # identical, so there is nothing to normalise away.
+        changes = []
+        for leg in ("FL", "FR", "RL", "RR"):
             base_x, _ = robot.leg_forward_kinematics(
                 in_place[(leg, 2)], in_place[(leg, 3)]
             )
             moved_x, _ = robot.leg_forward_kinematics(
                 forward[(leg, 2)], forward[(leg, 3)]
             )
-            normalized_change = (moved_x - base_x) * signs[leg]
-            self.assertGreater(normalized_change, 0.0)
+            changes.append(moved_x - base_x)
+        self.assertTrue(
+            all(abs(change - changes[0]) < 1e-5 for change in changes),
+            f"legs disagree on forward travel: {changes}",
+        )
+        self.assertNotAlmostEqual(changes[0], 0.0, places=4)
 
         with self.assertRaises(ValueError):
-            policy.jump_targets(0.5, 0.31, signs)
+            policy.jump_targets(0.5, 0.31)
+
 
     def test_shared_c_balance_uses_support_and_body_axes(self) -> None:
         policy = SharedGaitPolicy()
         signs = {leg: -1 for leg in ("FL", "FR", "RL", "RR")}
-        targets, support = policy.sim_trot_targets(0.25, 1.0, signs)
+        targets, support = policy.sim_trot_targets(0.25, 1.0)
         balanced = policy.balance_targets(
             targets,
             sample=ImuSample(
@@ -633,7 +638,6 @@ class SpotConfigTest(unittest.TestCase):
                 pitch_rate=0.0,
             ),
             support_legs=support,
-            forward_signs=signs,
             kp=1.0,
             kd=0.04,
             leg_length_limit=0.15,

@@ -40,6 +40,25 @@ extern "C" {
 
 #define GAIT_POLICY_PI 3.14159265358979323846f
 
+/*
+ * Which way a foot travels along the body while it carries weight: rearward,
+ * so the body is pushed forward.
+ *
+ * Not a per-leg parameter.  It used to be one -- callers passed an array of
+ * forward signs -- on the assumption that the front and rear mechanisms were
+ * mirror images and therefore needed opposite directions.  They are not; the
+ * four legs are identical, so they all push the same way, and the array only
+ * ever encoded how a leg was mounted.
+ *
+ * That mattered beyond tidiness.  A mounting fact in the policy's argument
+ * list is a mounting fact the simulator has to override to match its own URDF,
+ * which is exactly what walk.py did, and it left the simulator unable to
+ * answer questions about the very thing it was being consulted for.  Mounting
+ * now lives entirely in the calibration, where centre and direction already
+ * describe each servo.
+ */
+#define GAIT_POLICY_STANCE_TRAVEL (-1.0f)
+
 typedef struct
 {
     float j1_deg;
@@ -147,7 +166,6 @@ static inline bool gait_policy_trot_targets(
     float global_phase,
     float amplitude_scale,
     float travel_scale,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     static const float phase_offsets[GAIT_POLICY_LEG_COUNT] = {
@@ -157,7 +175,7 @@ static inline bool gait_policy_trot_targets(
     float base_down = 0.0f;
     float lifted_down = 0.0f;
 
-    if (forward_signs == NULL || targets == NULL ||
+    if (targets == NULL ||
         !isfinite(global_phase) || !isfinite(amplitude_scale) ||
         !isfinite(travel_scale) ||
         amplitude_scale < 0.0f || amplitude_scale > 1.0f ||
@@ -182,10 +200,6 @@ static inline bool gait_policy_trot_targets(
     const float lift_height = fmaxf(0.0f, base_down - lifted_down);
 
     for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
-        if (forward_signs[leg] != -1 && forward_signs[leg] != 1) {
-            return false;
-        }
-
         const float local_phase = gait_policy_wrap_phase(
             global_phase + phase_offsets[leg]);
         float forward_wave = 0.0f;
@@ -215,7 +229,7 @@ static inline bool gait_policy_trot_targets(
         }
 
         const float foot_forward = base_forward +
-            (float)forward_signs[leg] * stride * forward_wave *
+            GAIT_POLICY_STANCE_TRAVEL * stride * forward_wave *
             amplitude_scale * travel_scale;
         const float foot_down = base_down - lift_height * lift_wave;
         float upper = 0.0f;
@@ -236,11 +250,10 @@ static inline bool gait_policy_trot_targets(
 static inline bool gait_policy_sim_trot_targets(
     float global_phase,
     float amplitude_scale,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     return gait_policy_trot_targets(
-        global_phase, amplitude_scale, 1.0f, forward_signs, targets);
+        global_phase, amplitude_scale, 1.0f, targets);
 }
 
 /*
@@ -256,7 +269,6 @@ static inline bool gait_policy_trot2_targets(
     float amplitude_scale,
     float fold_j2_deg,
     float fold_j3_deg,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     static const float phase_offsets[GAIT_POLICY_LEG_COUNT] = {
@@ -267,7 +279,7 @@ static inline bool gait_policy_trot2_targets(
     float folded_forward = 0.0f;
     float folded_down = 0.0f;
 
-    if (forward_signs == NULL || targets == NULL ||
+    if (targets == NULL ||
         !isfinite(global_phase) || !isfinite(amplitude_scale) ||
         !isfinite(fold_j2_deg) || !isfinite(fold_j3_deg) ||
         amplitude_scale < 0.0f || amplitude_scale > 1.0f ||
@@ -292,10 +304,6 @@ static inline bool gait_policy_trot2_targets(
     }
 
     for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
-        if (forward_signs[leg] != -1 && forward_signs[leg] != 1) {
-            return false;
-        }
-
         const float local_phase = gait_policy_wrap_phase(
             global_phase + phase_offsets[leg]);
         const bool stance = local_phase < GAIT_POLICY_TROT2_DUTY;
@@ -305,7 +313,7 @@ static inline bool gait_policy_trot2_targets(
                 (1.0f - GAIT_POLICY_TROT2_DUTY);
         const float angle = GAIT_POLICY_PI *
                             gait_policy_cosine_ease(progress);
-        const float direction = (float)forward_signs[leg];
+        const float direction = GAIT_POLICY_STANCE_TRAVEL;
         const float circle_center =
             (folded_forward - base_forward) / direction;
         float travel = circle_center;
@@ -345,7 +353,7 @@ static inline float gait_policy_lerp(float start, float end, float progress)
  *
  * The in-place STM32 command passes forward_travel=0.  A later forward-jump
  * command can reuse the same vertical timing by supplying a small positive
- * travel value; forward_signs maps that body-forward trajectory onto each
+ * travel value; the trajectory is body-forward for every leg, since each
  * mirrored physical leg.
  *
  * Phase waypoints:
@@ -360,7 +368,6 @@ static inline float gait_policy_lerp(float start, float end, float progress)
 static inline bool gait_policy_jump_targets(
     float global_phase,
     float forward_travel,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     static const float waypoint_phase[7] = {
@@ -376,7 +383,7 @@ static inline bool gait_policy_jump_targets(
         0.0f, 0.2f, -1.0f, 1.0f, 1.0f, 0.5f, 0.0f
     };
 
-    if (forward_signs == NULL || targets == NULL ||
+    if (targets == NULL ||
         !isfinite(global_phase) || !isfinite(forward_travel) ||
         fabsf(forward_travel) > GAIT_POLICY_JUMP_FORWARD_LIMIT) {
         return false;
@@ -421,11 +428,8 @@ static inline bool gait_policy_jump_targets(
     }
 
     for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
-        if (forward_signs[leg] != -1 && forward_signs[leg] != 1) {
-            return false;
-        }
         if (!gait_policy_leg_inverse_kinematics(
-                base_forward + (float)forward_signs[leg] * forward_offset,
+                base_forward + GAIT_POLICY_STANCE_TRAVEL * forward_offset,
                 down,
                 &targets[leg].j2_deg,
                 &targets[leg].j3_deg)) {
@@ -457,12 +461,11 @@ static inline bool gait_policy_balance_targets(
     const GaitPolicyImuSample *sample,
     const GaitPolicyBalanceConfig *config,
     uint8_t support_mask,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     static const int8_t side_signs[GAIT_POLICY_LEG_COUNT] = {1, -1, 1, -1};
     static const int8_t end_signs[GAIT_POLICY_LEG_COUNT] = {1, 1, -1, -1};
-    if (sample == NULL || config == NULL || forward_signs == NULL ||
+    if (sample == NULL || config == NULL ||
         targets == NULL || !isfinite(sample->roll) ||
         !isfinite(sample->pitch) || !isfinite(sample->roll_rate) ||
         !isfinite(sample->pitch_rate)) {
@@ -497,7 +500,7 @@ static inline bool gait_policy_balance_targets(
                     config->foot_placement_gain * pitch_control,
                     -config->foot_placement_limit,
                     config->foot_placement_limit);
-                forward += (float)forward_signs[leg] * placement;
+                forward += GAIT_POLICY_STANCE_TRAVEL * placement;
             }
         }
 

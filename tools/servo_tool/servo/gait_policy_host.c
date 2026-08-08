@@ -36,14 +36,13 @@ SPOT_GAIT_EXPORT int spot_gait_trot_targets(
     float phase,
     float amplitude_scale,
     float travel_scale,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     float values[12],
     uint8_t *support_mask)
 {
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
     if (values == NULL || support_mask == NULL ||
         !gait_policy_trot_targets(
-            phase, amplitude_scale, travel_scale, forward_signs, targets)) {
+            phase, amplitude_scale, travel_scale, targets)) {
         return 0;
     }
     pack_targets(targets, values);
@@ -54,14 +53,13 @@ SPOT_GAIT_EXPORT int spot_gait_trot_targets(
 SPOT_GAIT_EXPORT int spot_gait_sim_trot_targets(
     float phase,
     float amplitude_scale,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     float values[12],
     uint8_t *support_mask)
 {
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
     if (values == NULL || support_mask == NULL ||
         !gait_policy_sim_trot_targets(
-            phase, amplitude_scale, forward_signs, targets)) {
+            phase, amplitude_scale, targets)) {
         return 0;
     }
     pack_targets(targets, values);
@@ -74,7 +72,6 @@ SPOT_GAIT_EXPORT int spot_gait_trot2_targets(
     float amplitude_scale,
     float fold_j2_deg,
     float fold_j3_deg,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     float values[12],
     uint8_t *support_mask)
 {
@@ -85,7 +82,6 @@ SPOT_GAIT_EXPORT int spot_gait_trot2_targets(
             amplitude_scale,
             fold_j2_deg,
             fold_j3_deg,
-            forward_signs,
             targets)) {
         return 0;
     }
@@ -97,14 +93,13 @@ SPOT_GAIT_EXPORT int spot_gait_trot2_targets(
 SPOT_GAIT_EXPORT int spot_gait_jump_targets(
     float phase,
     float forward_travel,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     float values[12],
     uint8_t *support_mask)
 {
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
     if (values == NULL || support_mask == NULL ||
         !gait_policy_jump_targets(
-            phase, forward_travel, forward_signs, targets)) {
+            phase, forward_travel, targets)) {
         return 0;
     }
     pack_targets(targets, values);
@@ -117,7 +112,6 @@ SPOT_GAIT_EXPORT int spot_gait_balance_targets(
     const float balance_values[7],
     int contact_aware,
     uint8_t support_mask,
-    const int8_t forward_signs[GAIT_POLICY_LEG_COUNT],
     float values[12])
 {
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
@@ -134,7 +128,7 @@ SPOT_GAIT_EXPORT int spot_gait_balance_targets(
         balance_values[6], contact_aware != 0
     };
     if (!gait_policy_balance_targets(
-            &sample, &config, support_mask, forward_signs, targets)) {
+            &sample, &config, support_mask, targets)) {
         return 0;
     }
     pack_targets(targets, values);

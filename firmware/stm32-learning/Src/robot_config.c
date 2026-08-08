@@ -37,26 +37,6 @@ const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT] = {
     1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U, 11U, 12U
 };
 
-/*
- * Physical forward direction observed on the STM32 robot.
- * Leg order: FL, FR, RL, RR.
- *
- * All four alike, because this robot's front and rear legs are not mirror
- * images: both knees point the same way, as the unified rearward-knee URDF
- * already assumed.  Earlier values here encoded a mirror that is not there.
- *
- * The old {1, 1, -1, -1} was self-contradictory, which the policy output shows
- * plainly.  Under it FL and RL came out at identical joint angles while the
- * policy marked one in stance and the other in swing -- impossible, since equal
- * angles put both feet at the same height.  With uniform signs the diagonal
- * partners agree instead: FL and RR match to 0.00 degrees and share a stance
- * phase, which is what a trot is.
- *
- * test_firmware_c.py asserts that invariant against this array, so a future
- * edit that breaks the pairing fails in the suite rather than on the robot.
- */
-const int8_t g_robot_gait_forward_signs[4] = {-1, -1, -1, -1};
-
 bool robot_config_valid(void)
 {
     bool seen[254] = {false};
@@ -77,13 +57,6 @@ bool robot_config_valid(void)
         }
         seen[joint->servo_id] = true;
         joint_seen[joint->leg_index][joint->joint_index - 1U] = true;
-    }
-
-    for (size_t leg = 0U; leg < 4U; ++leg) {
-        if (g_robot_gait_forward_signs[leg] != -1 &&
-            g_robot_gait_forward_signs[leg] != 1) {
-            return false;
-        }
     }
 
     return true;
