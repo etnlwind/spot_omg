@@ -30,7 +30,7 @@ python simulation/mujoco/walk.py --dynamic --balance \
 | USART2 | PA2 TX, PA3 RX | ST-LINK VCP debug console | 115200, 8-N-1 |
 | SPI1 | PA5 SCK, PA6 MISO, PA7 MOSI | BNO086 | 2 MHz, mode 3 |
 | GPIO | PB6 CS, PA8 INT, PB3 RST, PB5 WAKE | BNO086 제어선 | 모두 active low |
-| I2C1 | PB8 SCL, PB9 SDA | 미사용 (구 BNO055 자리) | 100 kHz |
+| I2C1 | PB8 SCL, PB9 SDA | BNO055 | 100 kHz |
 
 NUCLEO-F446RE Arduino 헤더 기준 `D8/PA9 → URT-2 RX`, `D2/PA10 → URT-2 TX`로
 **교차** 연결합니다. URT-2 UART 헤더의 표기는 URT-2 자신의 신호 기준이라
