@@ -646,6 +646,15 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
     )
 
 
+def announce_port(kind: str, port: str) -> None:
+    """Say which link a command is about to use.
+
+    Written to stderr so it stays visible in the terminal without mixing into
+    output that gets piped or captured.
+    """
+    print(f"ports:[{port}] link={kind}", file=sys.stderr)
+
+
 def console_line_for(args: argparse.Namespace) -> str:
     """Translate a routed spotctl command into one firmware console line.
 
@@ -713,6 +722,7 @@ def run_routed_console_command(args: argparse.Namespace, port: str) -> int:
 def run_console(args: argparse.Namespace) -> int:
     """Open the STM32 console and dispatch the requested console action."""
     port = resolve_console_port(args.stm32_port)
+    announce_port("stm32", port)
     log_file = None
     try:
         if args.log is not None:
@@ -1523,6 +1533,7 @@ def main(argv: list[str] | None = None) -> int:
             return run_console(args)
 
         transport, port = resolve_transport(args)
+        announce_port(transport, port)
         if transport == "stm32":
             if args.command in CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS:
                 return run_routed_console_command(args, port)

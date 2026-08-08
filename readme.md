@@ -39,6 +39,12 @@ spotctl trot2 1 1600  # STM32 전용
 spotctl walk          # URT-2 직결 전용
 ```
 
+어느 포트로 나갔는지는 실행할 때마다 첫 줄에 표시됩니다.
+
+```text
+ports:[/dev/cu.usbmodem312103] link=stm32
+```
+
 macOS에서는 두 장치 모두 `/dev/cu.usbmodem...`으로 잡히므로 포트를 USB vendor
 ID로 구분합니다. ST-LINK는 `0483:374b`이고, 나머지 USB 시리얼 장치를 URT-2로
 봅니다. `spotctl ports`가 어느 쪽인지 표시하며, 둘 다 꽂혀 있으면 추측하지 않고

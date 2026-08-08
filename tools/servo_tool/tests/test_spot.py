@@ -1,3 +1,5 @@
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import math
 from pathlib import Path
@@ -8,6 +10,7 @@ from unittest.mock import patch
 from servo import (
     AttitudeController,
     ConsoleError,
+    ConsoleResponse,
     DynamicLoadBaseline,
     GaitParameters,
     ImuSample,
@@ -23,12 +26,14 @@ from servo.console import classify, estimate_timeout
 from servo.cli import (
     PortInfo,
     _usb_number,
+    announce_port,
     apply_pose,
     capture_stand,
     configure_directions,
     configure_mapping,
     console_exit_code,
     console_line_for,
+    main,
     parse_args,
     resolve_console_port,
     resolve_gait,
@@ -1726,6 +1731,77 @@ class ConsolePortTest(unittest.TestCase):
         self.assertAlmostEqual(estimate_timeout(line), 21.6)
         # A continuous jump has no completion time.
         self.assertIsNone(estimate_timeout(console_line_for(parse_args(["jump"]))))
+
+    def test_announce_port_goes_to_stderr(self) -> None:
+        # Must not mix into output that gets piped or captured.
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            announce_port("stm32", "/dev/cu.usbmodem312103")
+        self.assertEqual(out.getvalue(), "")
+        self.assertEqual(
+            err.getvalue().strip(),
+            "ports:[/dev/cu.usbmodem312103] link=stm32",
+        )
+
+    def test_announced_port_is_the_port_actually_opened(self) -> None:
+        """The banner must report the resolved port, not a restated guess."""
+        opened: list[str] = []
+
+        class SpyConsole:
+            def __init__(self, port: str, baudrate: int) -> None:
+                opened.append(port)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info) -> bool:
+                return False
+
+            def sync(self) -> None:
+                pass
+
+            def send(self, command, *, timeout=-1.0, on_line=None):
+                return ConsoleResponse(
+                    command=command,
+                    lines=("OK",),
+                    telemetry=(),
+                    status="ok",
+                )
+
+        err, out = io.StringIO(), io.StringIO()
+        with patch("servo.cli.serial_ports", return_value=[BLUETOOTH, ST_LINK]), \
+                patch("servo.cli.Stm32Console", SpyConsole), \
+                redirect_stderr(err), redirect_stdout(out):
+            code = main(["targets"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(opened, [ST_LINK.device])
+        self.assertIn(f"ports:[{ST_LINK.device}] link=stm32", err.getvalue())
+
+    def test_announced_port_follows_an_override(self) -> None:
+        opened: list[str] = []
+
+        class SpyBus:
+            def __init__(self, port: str, baudrate: int) -> None:
+                opened.append(port)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info) -> bool:
+                return False
+
+            def scan(self, ids):
+                return []
+
+        err, out = io.StringIO(), io.StringIO()
+        with patch("servo.cli.ServoBus", SpyBus), \
+                redirect_stderr(err), redirect_stdout(out):
+            code = main(["--port", "/dev/ttyUSB7", "scan"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(opened, ["/dev/ttyUSB7"])
+        self.assertIn("ports:[/dev/ttyUSB7] link=urt2", err.getvalue())
 
     def test_console_exit_code_distinguishes_abort_from_failure(self) -> None:
         self.assertEqual(console_exit_code("ok"), 0)

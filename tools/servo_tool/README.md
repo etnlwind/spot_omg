@@ -136,6 +136,17 @@ $ spotctl ports
 /dev/cu.usbmodem312103           0483:374b  STM32 STLink <- STM32 console
 ```
 
+명령을 실행하면 실제로 사용하는 포트와 링크를 먼저 표시합니다.
+
+```text
+$ spotctl targets
+ports:[/dev/cu.usbmodem312103] link=stm32
+ID 1 target=2091
+...
+```
+
+이 줄은 stderr로 나가므로 출력을 파이프하거나 파일로 받을 때 섞이지 않습니다.
+
 필요하면 `--stm32-port` 또는 `SPOT_STM32_PORT`로 직접 지정합니다. 자동 탐지가
 확실하지 않으면 잘못된 포트를 고르는 대신 후보 목록과 함께 오류를 냅니다.
 `--port`, `--via`, `--stm32-port`, `--log`, `--console-timeout`은 모두 전역
