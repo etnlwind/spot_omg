@@ -429,7 +429,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(IMU_RST_GPIO_Port, IMU_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, IMU_WAKE_Pin|IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -444,11 +444,22 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(IMU_INT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : IMU_RST_Pin IMU_WAKE_Pin IMU_CS_Pin */
-  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_WAKE_Pin|IMU_CS_Pin;
+  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : IMU_WAKE_Pin */
+  /*
+   * PS0 doubles as WAKE and this board straps it to 3V3 with a solder jumper
+   * to select SPI, measured at 3.3 V.  Driving the pin would put this output
+   * across that strap, so it stays an input and the D4 wire comes off.
+   */
+  GPIO_InitStruct.Pin = IMU_WAKE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(IMU_WAKE_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
