@@ -1225,6 +1225,32 @@ PA9는 URT-2로 들어가고 PA10은 URT-2에서 나오므로 loopback 경로가
 결과입니다. 이 명령은 URT-2를 분리하고 PA9-PA10을 직결해야 의미가 있습니다.
 마찬가지로 `--via urt2 scan`은 URT-2를 Mac USB에 직접 꽂아야 합니다.
 
+### `linestate` 진단 명령 추가
+
+`uarttest`와 `--via urt2 scan`은 케이블을 옮겨야 의미가 있고, URT-2 LED를 눈으로
+확인하기 어려운 상황이 있어 계측기 없이 배선을 판별할 명령을 추가했습니다.
+`GPIOx_IDR`은 핀이 alternate function 모드여도 실제 패드 레벨을 반영하므로,
+UART 설정을 전혀 건드리지 않고 PA9/PA10의 대기 레벨을 50ms 동안 샘플링합니다.
+UART 유휴 상태는 HIGH입니다.
+
+```text
+# linestate
+LINESTATE samples=... PA10_RX_high=100% PA9_TX_high=100%
+PA10 idle high: URT-2 is driving the line; suspect servo power or the TTL bus
+```
+
+| PA10 | 해석 |
+|---|---|
+| `100%` | URT-2가 라인을 구동 중 → 서보 전원 또는 TTL 버스 쪽 |
+| `0%` | 아무도 구동하지 않음 → URT-2 전원, RX 배선, GND |
+| 중간값 | 플로팅/노이즈 → RX 배선, GND, 3.3V 레벨 스위치 |
+
+이 명령은 서보를 움직이지 않고 UART 설정도 바꾸지 않습니다.
+
+빌드는 CubeIDE에 포함된 GNU Arm 14.3으로 전체 컴파일·링크까지 확인했습니다.
+`Src`와 HAL 드라이버 전체에서 새 코드의 경고는 없고, 남은 경고 3개는 ST의
+`stm32f4xx_hal_flash_ex.c`에 원래 있던 `unused parameter 'Banks'`입니다.
+
 다음 점검은 2026-08-06의 "재발 시 최소 점검 순서"를 따릅니다. 먼저 URT-2를
 Mac에 USB로 직접 연결해 `spotctl --via urt2 scan`으로 서보 12개와 12V 전원을
 확인하고, 그 다음 STM32 연결로 되돌려 URT-2 분리 후 `uarttest`, 이어서

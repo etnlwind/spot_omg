@@ -12,6 +12,7 @@
 #define CONSOLE_SAFE_MOVE_DELTA 256U
 #define UARTTEST_TIMEOUT_MS     10U
 #define BUSPROBE_WINDOW_MS      50U
+#define LINESTATE_WINDOW_MS     50U
 
 static void write_text(AppConsole *console, const char *text)
 {
@@ -290,6 +291,65 @@ static void command_busprobe(AppConsole *console, char *id_text)
         (void)snprintf(&message[used], sizeof(message) - (size_t)used, "\r\n");
     }
     write_text(console, message);
+}
+
+/*
+ * Sample the idle level of the USART1 pins.
+ *
+ * GPIOx_IDR reflects the pad state even while the pin is in alternate
+ * function mode, so this reads the wire without touching the UART setup.
+ * An idle UART line sits HIGH.  When every servo times out and busprobe
+ * receives nothing, PA10 tells apart the two usual causes without a logic
+ * analyzer: a line held LOW means nothing is driving it, which is an
+ * unpowered or disconnected URT-2, while a clean idle HIGH means the URT-2
+ * is driving the line and the fault is further out on the servo bus.
+ */
+static void command_linestate(AppConsole *console)
+{
+    uint32_t rx_high = 0U;
+    uint32_t tx_high = 0U;
+    uint32_t samples = 0U;
+
+    const uint32_t started_at = HAL_GetTick();
+    while ((uint32_t)(HAL_GetTick() - started_at) < LINESTATE_WINDOW_MS) {
+        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == GPIO_PIN_SET) {
+            ++rx_high;
+        }
+        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == GPIO_PIN_SET) {
+            ++tx_high;
+        }
+        ++samples;
+    }
+
+    if (samples == 0U) {
+        write_text(console, "LINESTATE FAIL: no samples\r\n");
+        return;
+    }
+
+    const uint32_t rx_percent = (rx_high * 100U) / samples;
+    const uint32_t tx_percent = (tx_high * 100U) / samples;
+    char message[112];
+    (void)snprintf(message,
+                   sizeof(message),
+                   "LINESTATE samples=%lu PA10_RX_high=%lu%% PA9_TX_high=%lu%%\r\n",
+                   (unsigned long)samples,
+                   (unsigned long)rx_percent,
+                   (unsigned long)tx_percent);
+    write_text(console, message);
+
+    if (rx_percent >= 99U) {
+        write_text(console,
+                   "PA10 idle high: URT-2 is driving the line; suspect servo "
+                   "power or the TTL bus\r\n");
+    } else if (rx_percent <= 1U) {
+        write_text(console,
+                   "PA10 held low: nothing is driving it; suspect URT-2 power, "
+                   "the RX wire or GND\r\n");
+    } else {
+        write_text(console,
+                   "PA10 unstable: floating or noisy; check the RX wire, GND "
+                   "and the 3.3V level switch\r\n");
+    }
 }
 
 static void command_read(AppConsole *console, char *id_text)
@@ -696,6 +756,8 @@ static void execute_line(AppConsole *console)
         command_uarttest(console);
     } else if (strcmp(command, "busprobe") == 0) {
         command_busprobe(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "linestate") == 0) {
+        command_linestate(console);
     } else if (strcmp(command, "read") == 0) {
         command_read(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "move") == 0) {
@@ -846,6 +908,7 @@ void app_console_print_help(AppConsole *console)
                "  scan             ping configured IDs 1..12\r\n"
                "  uarttest         USART1 loopback test (PA9 connected to PA10)\r\n"
                "  busprobe ID      send ping and print raw USART1 response bytes\r\n"
+               "  linestate        sample the idle level of PA9/PA10\r\n"
                "  read ID          read position/load/current/state\r\n"
                "  move ID RAW      safe single move, max delta 256 ticks\r\n"
                "  targets          print calibrated stand raw targets\r\n"
