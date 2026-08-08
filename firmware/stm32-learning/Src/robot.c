@@ -16,11 +16,11 @@
 #define ROBOT_TROT_FRAME_MS          20U
 
 /*
- * How much room a commanded pose must leave to a joint's configured limit.
- * About nine degrees, enough that a pose lands on its angle rather than on a
- * hard stop.
+ * How long the straighten pose is given to arrive before its torque is cut.
+ * Generous next to the move itself, and short next to how long a servo can
+ * lean on a hard stop.
  */
-#define ROBOT_POSE_MARGIN_TICKS     100U
+#define ROBOT_STRAIGHTEN_TIMEOUT_MS 2500U
 #define ROBOT_TROT_RAMP_MS            500U
 #define ROBOT_BALANCE_ERROR_LIMIT     300
 #define ROBOT_BALANCE_RATE_LIMIT      1200
@@ -307,18 +307,33 @@ RobotResult robot_hold(RobotController *robot)
     return ROBOT_OK;
 }
 
+/* Defined below with the gait helpers; used by the straighten pose. */
+static RobotResult sample_joint(RobotController *robot,
+                                size_t index,
+                                const uint16_t targets[ROBOT_JOINT_COUNT],
+                                uint16_t gait_phase,
+                                uint16_t *position,
+                                bool *tripped);
+
 /*
  * Straighten every leg: both links in line, foot below the hip.
  *
- * Refuses when the pose would park a joint against a configured limit.  A
- * calibration whose zero sits at the end of travel cannot reach the angle --
- * the joint hits its hard stop instead -- and driving into a stop is what the
- * stall detector exists to catch, so it is better not to command it.
+ * This commands whatever the calibration currently calls zero, which is the
+ * point -- seeing where the robot actually goes is how a wrong zero becomes
+ * visible.  It does not refuse a pose that sits near a limit, because that
+ * pose is exactly the one worth looking at.
+ *
+ * It does watch.  A joint whose zero is past its mechanical stop cannot arrive,
+ * and will sit there pushing at stall current until the supply gives out, so
+ * every joint is polled through the stall detector and torque is cut on all
+ * twelve the moment one of them is straining without progress.  Joints that
+ * simply run out of time are reported too, with torque off, since not arriving
+ * means still pushing.
  */
 RobotResult robot_stand_straight(RobotController *robot)
 {
     uint16_t target[ROBOT_JOINT_COUNT];
-    uint16_t clearance = 0U;
+    uint16_t position = 0U;
 
     if (robot == NULL || robot->bus == NULL) {
         return ROBOT_INVALID_ARGUMENT;
@@ -328,13 +343,6 @@ RobotResult robot_stand_straight(RobotController *robot)
     }
     if (!robot_straight_targets(target)) {
         return ROBOT_CONFIG_ERROR;
-    }
-
-    const size_t tight = robot_pose_clearance(
-        target, ROBOT_POSE_MARGIN_TICKS, &clearance);
-    if (tight < ROBOT_JOINT_COUNT) {
-        robot->last_failed_servo_id = g_robot_servo_ids[tight];
-        return ROBOT_POSITION_LIMIT;
     }
 
     RobotResult result = robot_hold(robot);
@@ -347,7 +355,40 @@ RobotResult robot_stand_straight(RobotController *robot)
     if (bus_result != SERVO_BUS_OK) {
         return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
     }
-    return ROBOT_OK;
+
+    const uint32_t started_at = HAL_GetTick();
+    for (;;) {
+        uint16_t worst_error = 0U;
+        uint8_t worst_servo_id = 0U;
+
+        for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+            bool tripped = false;
+            result = sample_joint(robot, index, target, 0U, &position,
+                                  &tripped);
+            if (result != ROBOT_OK) {
+                return result;
+            }
+            int32_t error = (int32_t)position - (int32_t)target[index];
+            if (error < 0) {
+                error = -error;
+            }
+            if ((uint32_t)error > worst_error) {
+                worst_error = (uint16_t)error;
+                worst_servo_id = g_robot_servo_ids[index];
+            }
+        }
+
+        if (worst_error <= ROBOT_VERIFY_TOLERANCE) {
+            return ROBOT_OK;
+        }
+        if ((uint32_t)(HAL_GetTick() - started_at) >=
+            ROBOT_STRAIGHTEN_TIMEOUT_MS) {
+            /* Still short of the pose, so still pushing: stop pushing. */
+            (void)robot_relax(robot);
+            robot->last_failed_servo_id = worst_servo_id;
+            return ROBOT_VERIFY_ERROR;
+        }
+    }
 }
 
 RobotResult robot_stand(RobotController *robot)
