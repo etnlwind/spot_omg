@@ -1239,13 +1239,35 @@ LINESTATE samples=... PA10_RX_high=100% PA9_TX_high=100%
 PA10 idle high: URT-2 is driving the line; suspect servo power or the TTL bus
 ```
 
-| PA10 | 해석 |
-|---|---|
-| `100%` | URT-2가 라인을 구동 중 → 서보 전원 또는 TTL 버스 쪽 |
-| `0%` | 아무도 구동하지 않음 → URT-2 전원, RX 배선, GND |
-| 중간값 | 플로팅/노이즈 → RX 배선, GND, 3.3V 레벨 스위치 |
+첫 측정은 `PA10_RX_high=100%`였습니다. 그런데 이 결과만으로는 결론을 낼 수
+없었습니다. PA10은 `GPIO_NOPULL`이라 **플로팅이어도 안정적으로 HIGH로 읽힐 수
+있기** 때문입니다. 또한 이때 출력하던 "suspect servo power or the TTL bus"는
+바로 위의 분리 시험에서 이미 정상으로 확인된 구간을 가리키는 잘못된 안내였습니다.
 
-이 명령은 서보를 움직이지 않고 UART 설정도 바꾸지 않습니다.
+그래서 풀다운을 걸어 판별하도록 고쳤습니다. 유휴 UART 라인도 HIGH, 플로팅 입력도
+HIGH지만, 풀다운을 걸면 **실제로 구동 중인 핀만 HIGH를 유지**하고 열린 핀은
+LOW로 끌려갑니다.
+
+```text
+# linestate
+LINESTATE PA10 float=100% pulldown=100% | PA9 pulldown=0%
+PA10 driven high: URT-2 TX reaches the MCU; the request path PA9 -> URT-2 is
+the remaining suspect
+```
+
+| PA10 pulldown | 해석 |
+|---|---|
+| `100%` | URT-2 TX가 실제로 MCU까지 도달 → 남은 의심은 PA9 → URT-2 요청 경로 |
+| `0%` | 아무도 구동하지 않음 → RX 배선, GND, URT-2 로직 전원 개방 |
+| 중간값 | 약한 구동 또는 노이즈 → GND, 3.3V 레벨 스위치 |
+
+PA9는 정상이라면 URT-2의 입력 핀을 구동하므로 풀다운을 따라 LOW가 됩니다.
+HIGH로 읽히면 무언가가 PA9를 구동한다는 뜻이라 TX/RX 교차를 의심하지만, URT-2
+입력의 풀업으로도 같은 값이 나올 수 있어 단정하지 않고 힌트로만 출력합니다.
+
+측정 동안 두 핀을 잠시 일반 입력으로 바꿨다가 USART1 alternate function으로
+되돌립니다. 콘솔 명령 실행 중에는 서보 버스가 유휴 상태이므로 중단되는 전송은
+없습니다. 이 명령은 서보를 움직이지 않습니다.
 
 빌드는 CubeIDE에 포함된 GNU Arm 14.3으로 전체 컴파일·링크까지 확인했습니다.
 `Src`와 HAL 드라이버 전체에서 새 코드의 경고는 없고, 남은 경고 3개는 ST의

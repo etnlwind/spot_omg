@@ -12,7 +12,8 @@
 #define CONSOLE_SAFE_MOVE_DELTA 256U
 #define UARTTEST_TIMEOUT_MS     10U
 #define BUSPROBE_WINDOW_MS      50U
-#define LINESTATE_WINDOW_MS     50U
+#define LINESTATE_WINDOW_MS     20U
+#define LINESTATE_SETTLE_MS      2U
 
 static void write_text(AppConsole *console, const char *text)
 {
@@ -293,62 +294,96 @@ static void command_busprobe(AppConsole *console, char *id_text)
     write_text(console, message);
 }
 
-/*
- * Sample the idle level of the USART1 pins.
- *
- * GPIOx_IDR reflects the pad state even while the pin is in alternate
- * function mode, so this reads the wire without touching the UART setup.
- * An idle UART line sits HIGH.  When every servo times out and busprobe
- * receives nothing, PA10 tells apart the two usual causes without a logic
- * analyzer: a line held LOW means nothing is driving it, which is an
- * unpowered or disconnected URT-2, while a clean idle HIGH means the URT-2
- * is driving the line and the fault is further out on the servo bus.
- */
-static void command_linestate(AppConsole *console)
+/* Sample one pin as a plain input with the requested pull setting. */
+static uint32_t linestate_sample_percent(uint16_t pin, uint32_t pull)
 {
-    uint32_t rx_high = 0U;
-    uint32_t tx_high = 0U;
-    uint32_t samples = 0U;
+    GPIO_InitTypeDef init = {0};
+    init.Pin = pin;
+    init.Mode = GPIO_MODE_INPUT;
+    init.Pull = pull;
+    init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOA, &init);
+    HAL_Delay(LINESTATE_SETTLE_MS);
 
+    uint32_t high = 0U;
+    uint32_t samples = 0U;
     const uint32_t started_at = HAL_GetTick();
     while ((uint32_t)(HAL_GetTick() - started_at) < LINESTATE_WINDOW_MS) {
-        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10) == GPIO_PIN_SET) {
-            ++rx_high;
-        }
-        if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == GPIO_PIN_SET) {
-            ++tx_high;
+        if (HAL_GPIO_ReadPin(GPIOA, pin) == GPIO_PIN_SET) {
+            ++high;
         }
         ++samples;
     }
+    return samples == 0U ? 0U : (high * 100U) / samples;
+}
 
-    if (samples == 0U) {
-        write_text(console, "LINESTATE FAIL: no samples\r\n");
-        return;
-    }
+static void linestate_restore_usart1_pins(void)
+{
+    GPIO_InitTypeDef init = {0};
+    init.Pin = GPIO_PIN_9 | GPIO_PIN_10;
+    init.Mode = GPIO_MODE_AF_PP;
+    init.Pull = GPIO_NOPULL;
+    init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    init.Alternate = GPIO_AF7_USART1;
+    HAL_GPIO_Init(GPIOA, &init);
+}
 
-    const uint32_t rx_percent = (rx_high * 100U) / samples;
-    const uint32_t tx_percent = (tx_high * 100U) / samples;
-    char message[112];
-    (void)snprintf(message,
-                   sizeof(message),
-                   "LINESTATE samples=%lu PA10_RX_high=%lu%% PA9_TX_high=%lu%%\r\n",
-                   (unsigned long)samples,
-                   (unsigned long)rx_percent,
-                   (unsigned long)tx_percent);
+/*
+ * Probe the USART1 pins to tell a driven wire from a disconnected one.
+ *
+ * An idle UART line sits HIGH, but so does a floating input, so reading the
+ * pad alone proves nothing.  Applying a pull-down settles it: a pin that
+ * something is actively driving stays HIGH, while an open one follows the
+ * pull-down to LOW.
+ *
+ * PA10 is the decisive one, because it should be fed by the URT-2 TX output.
+ * PA9 normally drives a URT-2 input, so it should follow the pull-down; if
+ * it instead reads HIGH, something is driving it, which happens when TX and
+ * RX are swapped.  A pull-up on a URT-2 input can produce the same reading,
+ * so PA9 is reported as a hint rather than a verdict.
+ *
+ * The pins are returned to USART1 alternate function before returning.  The
+ * servo bus is idle while a console command runs, so nothing is interrupted.
+ */
+static void command_linestate(AppConsole *console)
+{
+    char message[128];
+
+    const uint32_t rx_float = linestate_sample_percent(
+        GPIO_PIN_10, GPIO_NOPULL);
+    const uint32_t rx_down = linestate_sample_percent(
+        GPIO_PIN_10, GPIO_PULLDOWN);
+    const uint32_t tx_down = linestate_sample_percent(
+        GPIO_PIN_9, GPIO_PULLDOWN);
+    linestate_restore_usart1_pins();
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "LINESTATE PA10 float=%lu%% pulldown=%lu%% | PA9 pulldown=%lu%%\r\n",
+        (unsigned long)rx_float,
+        (unsigned long)rx_down,
+        (unsigned long)tx_down);
     write_text(console, message);
 
-    if (rx_percent >= 99U) {
+    if (rx_down >= 90U) {
         write_text(console,
-                   "PA10 idle high: URT-2 is driving the line; suspect servo "
-                   "power or the TTL bus\r\n");
-    } else if (rx_percent <= 1U) {
+                   "PA10 driven high: URT-2 TX reaches the MCU; the request "
+                   "path PA9 -> URT-2 is the remaining suspect\r\n");
+    } else if (rx_down <= 10U) {
         write_text(console,
-                   "PA10 held low: nothing is driving it; suspect URT-2 power, "
-                   "the RX wire or GND\r\n");
+                   "PA10 follows the pull-down: nothing drives it; the RX "
+                   "wire, GND or URT-2 logic power is open\r\n");
     } else {
         write_text(console,
-                   "PA10 unstable: floating or noisy; check the RX wire, GND "
-                   "and the 3.3V level switch\r\n");
+                   "PA10 unstable under pull-down: weak drive or noise; "
+                   "check GND and the 3.3V level switch\r\n");
+    }
+
+    if (tx_down >= 90U) {
+        write_text(console,
+                   "PA9 is being driven by something: suspect TX and RX "
+                   "swapped, or a URT-2 pull-up on that pin\r\n");
     }
 }
 
