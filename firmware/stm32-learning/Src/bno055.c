@@ -1,0 +1,162 @@
+#include "bno055.h"
+
+#include <stdlib.h>
+
+#define BNO055_CHIP_ID_ADDR       0x00U
+#define BNO055_PAGE_ID_ADDR       0x07U
+#define BNO055_EULER_H_LSB_ADDR   0x1AU
+#define BNO055_OPR_MODE_ADDR      0x3DU
+#define BNO055_PWR_MODE_ADDR      0x3EU
+#define BNO055_SYS_TRIGGER_ADDR   0x3FU
+
+#define BNO055_CHIP_ID            0xA0U
+#define BNO055_MODE_CONFIG        0x00U
+#define BNO055_MODE_NDOF          0x0CU
+#define BNO055_POWER_NORMAL       0x00U
+
+#define BNO055_TIMEOUT_MS         100U
+
+/* Euler output is 16 LSB per degree; the robot works in tenths. */
+#define BNO055_EULER_TO_TENTHS(raw) ((int16_t)(((int32_t)(raw) * 10) / 16))
+
+static HAL_StatusTypeDef write8(Bno055 *imu, uint8_t reg, uint8_t value)
+{
+    return HAL_I2C_Mem_Write(imu->i2c,
+                             imu->address,
+                             reg,
+                             I2C_MEMADD_SIZE_8BIT,
+                             &value,
+                             1U,
+                             BNO055_TIMEOUT_MS);
+}
+
+static uint16_t detect(Bno055 *imu)
+{
+    /* COM3 low gives 0x28, high gives 0x29; the built robot ties it low. */
+    static const uint8_t candidates[] = {0x28U, 0x29U};
+
+    for (size_t index = 0U; index < sizeof(candidates); ++index) {
+        const uint16_t address = (uint16_t)(candidates[index] << 1);
+        uint8_t chip_id = 0U;
+
+        if (HAL_I2C_IsDeviceReady(imu->i2c, address, 3U,
+                                  BNO055_TIMEOUT_MS) != HAL_OK) {
+            continue;
+        }
+        if (HAL_I2C_Mem_Read(imu->i2c, address, BNO055_CHIP_ID_ADDR,
+                             I2C_MEMADD_SIZE_8BIT, &chip_id, 1U,
+                             BNO055_TIMEOUT_MS) != HAL_OK) {
+            continue;
+        }
+        /*
+         * Check the chip ID rather than trusting the address: other parts live
+         * at 0x28 too, and answering there is not the same as being a BNO055.
+         */
+        if (chip_id == BNO055_CHIP_ID) {
+            return address;
+        }
+    }
+    return 0U;
+}
+
+bool bno055_init(Bno055 *imu, I2C_HandleTypeDef *i2c)
+{
+    if (imu == NULL || i2c == NULL) {
+        return false;
+    }
+
+    imu->i2c = i2c;
+    imu->present = false;
+    imu->address = detect(imu);
+    if (imu->address == 0U) {
+        return false;
+    }
+
+    /* Configuration registers only accept writes outside a fusion mode. */
+    if (write8(imu, BNO055_OPR_MODE_ADDR, BNO055_MODE_CONFIG) != HAL_OK) {
+        return false;
+    }
+    HAL_Delay(25);
+
+    if (write8(imu, BNO055_PAGE_ID_ADDR, 0x00U) != HAL_OK ||
+        write8(imu, BNO055_PWR_MODE_ADDR, BNO055_POWER_NORMAL) != HAL_OK) {
+        return false;
+    }
+    HAL_Delay(10);
+
+    if (write8(imu, BNO055_SYS_TRIGGER_ADDR, 0x00U) != HAL_OK) {
+        return false;
+    }
+    HAL_Delay(10);
+
+    if (write8(imu, BNO055_OPR_MODE_ADDR, BNO055_MODE_NDOF) != HAL_OK) {
+        return false;
+    }
+    HAL_Delay(30);
+
+    imu->present = true;
+    return true;
+}
+
+uint8_t bno055_scan(I2C_HandleTypeDef *i2c, uint8_t *found, uint8_t capacity)
+{
+    uint8_t count = 0U;
+
+    if (i2c == NULL || found == NULL) {
+        return 0U;
+    }
+
+    for (uint8_t address = 1U; address < 127U; ++address) {
+        if (HAL_I2C_IsDeviceReady(i2c, (uint16_t)(address << 1), 2U, 20U) !=
+            HAL_OK) {
+            continue;
+        }
+        if (count < capacity) {
+            found[count] = address;
+        }
+        ++count;
+    }
+    return count;
+}
+
+bool bno055_read_euler(Bno055 *imu,
+                       int16_t *yaw_tenths,
+                       int16_t *roll_tenths,
+                       int16_t *pitch_tenths)
+{
+    uint8_t data[6];
+
+    if (imu == NULL || !imu->present ||
+        yaw_tenths == NULL || roll_tenths == NULL || pitch_tenths == NULL) {
+        return false;
+    }
+
+    if (HAL_I2C_Mem_Read(imu->i2c,
+                         imu->address,
+                         BNO055_EULER_H_LSB_ADDR,
+                         I2C_MEMADD_SIZE_8BIT,
+                         data,
+                         sizeof(data),
+                         BNO055_TIMEOUT_MS) != HAL_OK) {
+        return false;
+    }
+
+    *yaw_tenths = BNO055_EULER_TO_TENTHS(
+        (int16_t)(((uint16_t)data[1] << 8) | data[0]));
+    *roll_tenths = BNO055_EULER_TO_TENTHS(
+        (int16_t)(((uint16_t)data[3] << 8) | data[2]));
+    *pitch_tenths = BNO055_EULER_TO_TENTHS(
+        (int16_t)(((uint16_t)data[5] << 8) | data[4]));
+    return true;
+}
+
+bool bno055_read_attitude(void *context,
+                          int16_t *roll_tenths,
+                          int16_t *pitch_tenths)
+{
+    Bno055 *imu = (Bno055 *)context;
+    int16_t yaw_tenths = 0;
+
+    /* Yaw is deliberately unused: balance only corrects roll and pitch. */
+    return bno055_read_euler(imu, &yaw_tenths, roll_tenths, pitch_tenths);
+}

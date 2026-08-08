@@ -497,6 +497,38 @@ static void command_targets(AppConsole *console)
  * whether the part is dead, mis-wired or answering on I2C because PS1 was
  * left low.  Pulsing reset and watching H_INTN separates those.
  */
+static void command_i2cscan(AppConsole *console)
+{
+    uint8_t found[8];
+    char message[64];
+
+    if (console->imu055 == NULL || console->imu055->i2c == NULL) {
+        write_text(console, "ERROR: I2C scan unavailable\r\n");
+        return;
+    }
+
+    const uint8_t count =
+        bno055_scan(console->imu055->i2c, found, (uint8_t)sizeof(found));
+    if (count == 0U) {
+        write_text(console,
+                   "I2CSCAN: no devices. Check SDA on D14/PB9, SCL on "
+                   "D15/PB8, 3V3 and GND\r\n");
+        return;
+    }
+
+    (void)snprintf(message, sizeof(message), "I2CSCAN found %u:",
+                   (unsigned int)count);
+    write_text(console, message);
+    for (uint8_t index = 0U; index < count && index < sizeof(found); ++index) {
+        (void)snprintf(message, sizeof(message), " 0x%02X",
+                       (unsigned int)found[index]);
+        write_text(console, message);
+    }
+    write_text(console, "\r\n");
+    write_text(console,
+               "  A BNO055 answers at 0x28 or 0x29 with chip id 0xA0\r\n");
+}
+
 static void command_spitest(AppConsole *console)
 {
     Bno086Loopback result;
@@ -1091,6 +1123,8 @@ static void execute_line(AppConsole *console)
         command_profile(console, speed, acceleration);
     } else if (strcmp(command, "echo") == 0) {
         command_echo(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "i2cscan") == 0) {
+        command_i2cscan(console);
     } else if (strcmp(command, "spitest") == 0) {
         command_spitest(console);
     } else if (strcmp(command, "imuprobe") == 0) {
@@ -1107,6 +1141,7 @@ static void execute_line(AppConsole *console)
 void app_console_init(AppConsole *console,
                       UART_HandleTypeDef *uart,
                       RobotController *robot,
+                      Bno055 *imu055,
                       Bno086 *imu,
                       bool *imu_log_enabled)
 {
@@ -1116,6 +1151,7 @@ void app_console_init(AppConsole *console,
 
     console->uart = uart;
     console->robot = robot;
+    console->imu055 = imu055;
     console->imu = imu;
     console->imu_log_enabled = imu_log_enabled;
     console->rx_byte = 0U;
@@ -1223,6 +1259,7 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax            torque off all configured servos\r\n"
+               "  i2cscan          scan I2C1 for the BNO055\r\n"
                "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"
                "  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"

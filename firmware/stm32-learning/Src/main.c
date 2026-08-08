@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_console.h"
+#include "bno055.h"
 #include "bno086.h"
 #include "robot.h"
 #include "servo_bus.h"
@@ -57,7 +58,13 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-static Bno086 imu;
+/*
+ * Both IMUs are compiled in and the attached one is picked at boot.  The
+ * BNO055 lives on I2C1 and the BNO086 on SPI1, so they cannot collide, and
+ * swapping the sensor no longer means reflashing a different build.
+ */
+static Bno055 imu055;
+static Bno086 imu086;
 static bool imu_log_enabled = false;
 static ServoBus servo_bus;
 static RobotController robot;
@@ -118,30 +125,46 @@ int main(void)
   /* USER CODE BEGIN 2 */
   servo_bus_init(&servo_bus, &huart1, 25U);
   robot_init(&robot, &servo_bus);
-  app_console_init(&console, &huart2, &robot, &imu, &imu_log_enabled);
+  app_console_init(&console, &huart2, &robot, &imu055, &imu086, &imu_log_enabled);
 
   uart_print("\r\nPROGRAM START\r\n");
   HAL_Delay(700);
 
   /*
-   * 5 ms subscription: the sensor fuses faster than the balance loop consumes,
-   * so a step never acts on a sample older than one control period.
+   * Try the BNO055 first.  Its probe is a couple of short I2C transfers, while
+   * a BNO086 that is absent or silent costs seconds of SH-2 timeouts, so this
+   * order keeps boot quick in the common case.
    */
-  const Bno086Result imu_result = bno086_init(&imu, &hspi1, 5000U);
-  if (imu_result == BNO086_OK) {
-      uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
-      robot_set_attitude_reader(&robot, bno086_read_attitude, &imu);
-      uart_print("IMU balance default ON: full, absolute level target\r\n");
-  } else {
-      char message[80];
+  imu055.i2c = &hi2c1;
+  if (bno055_init(&imu055, &hi2c1)) {
+      char message[64];
       (void)snprintf(message,
                      sizeof(message),
-                     "BNO086 unavailable: %s (prodIds=%d, resets=%lu)\r\n",
-                     bno086_result_string(imu_result),
-                     imu.product_id_status,
-                     (unsigned long)imu.resets_seen);
+                     "BNO055 NDOF OK at 0x%02X\r\n",
+                     (unsigned int)(imu055.address >> 1));
       uart_print(message);
-      uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
+      robot_set_attitude_reader(&robot, bno055_read_attitude, &imu055);
+      uart_print("IMU balance default ON: full, absolute level target\r\n");
+  } else {
+      /*
+       * 5 ms subscription: the sensor fuses faster than the balance loop
+       * consumes, so a step never acts on a sample older than one period.
+       */
+      const Bno086Result imu_result = bno086_init(&imu086, &hspi1, 5000U);
+      if (imu_result == BNO086_OK) {
+          uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
+          robot_set_attitude_reader(&robot, bno086_read_attitude, &imu086);
+          uart_print("IMU balance default ON: full, absolute level target\r\n");
+      } else {
+          char message[80];
+          (void)snprintf(message,
+                         sizeof(message),
+                         "No IMU: BNO055 absent, BNO086 %s (prodIds=%d)\r\n",
+                         bno086_result_string(imu_result),
+                         imu086.product_id_status);
+          uart_print(message);
+          uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
+      }
   }
   app_console_print_help(&console);
   app_console_print_prompt(&console);
@@ -157,8 +180,8 @@ int main(void)
     static uint32_t last_imu_print = 0U;
 
     app_console_poll(&console);
-    bno086_service(&imu);
-    if (imu_log_enabled && imu.present &&
+    bno086_service(&imu086);
+    if (imu_log_enabled && (imu055.present || imu086.present) &&
         (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U) {
         IMU_PrintEuler();
         last_imu_print = HAL_GetTick();
@@ -498,20 +521,35 @@ static void uart_print(const char *text)
 static void IMU_PrintEuler(void)
 {
     char message[100];
+    int32_t yaw10 = 0;
+    int32_t roll10 = 0;
+    int32_t pitch10 = 0;
 
-    if (!imu.present || !imu.has_attitude) {
+    if (imu055.present) {
+        int16_t yaw = 0;
+        int16_t roll = 0;
+        int16_t pitch = 0;
+        if (!bno055_read_euler(&imu055, &yaw, &roll, &pitch)) {
+            uart_print("Euler read error\r\n");
+            return;
+        }
+        yaw10 = yaw;
+        roll10 = roll;
+        pitch10 = pitch;
+    } else if (imu086.present && imu086.has_attitude) {
+        yaw10 = imu086.yaw_tenths;
+        roll10 = imu086.roll_tenths;
+        pitch10 = imu086.pitch_tenths;
+    } else {
         uart_print("IMU unavailable\r\n");
         return;
     }
 
-    const int32_t yaw10 = imu.yaw_tenths;
-    const int32_t roll10 = imu.roll_tenths;
-    const int32_t pitch10 = imu.pitch_tenths;
-
     /*
-     * Same line shape the BNO055 printed, so the host-side log parsers and the
-     * bench notes in HARDWARE_TEST_LOG.md keep working.  Yaw is relative to
-     * power-on here: the game rotation vector has no magnetometer reference.
+     * Same line shape the BNO055 has always printed, so the host-side parsers
+     * and the bench notes in HARDWARE_TEST_LOG.md keep working.  Note the yaw
+     * differs by sensor: absolute heading on the BNO055, relative to power-on
+     * on the BNO086's game rotation vector.
      */
     snprintf(message,
              sizeof(message),
