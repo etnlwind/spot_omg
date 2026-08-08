@@ -3,6 +3,7 @@
 #include "feetech_protocol.h"
 #include "gait_policy.h"
 #include "robot_config.h"
+#include "safety.h"
 #include "sts3215.h"
 
 #include <stdio.h>
@@ -65,6 +66,9 @@ static bool parse_u32(const char *text,
     return true;
 }
 
+/* Defined below with the other safety helpers; used by print_robot_result. */
+static void print_safety_fault(AppConsole *console);
+
 static void print_bus_result(AppConsole *console,
                              uint8_t servo_id,
                              ServoBusResult result)
@@ -87,6 +91,18 @@ static void print_robot_result(AppConsole *console, RobotResult result)
 
     if (result == ROBOT_OK) {
         write_text(console, "OK\r\n");
+        return;
+    }
+    if (result == ROBOT_SAFETY_FAULT) {
+        print_safety_fault(console);
+        write_text(console,
+                   "ERROR: safety fault; torque off, run recover\r\n");
+        return;
+    }
+    if (result == ROBOT_SERVO_POWER_LOST) {
+        write_text(console,
+                   "ERROR: servo power lost; restore the 12V supply then "
+                   "run recover\r\n");
         return;
     }
     if (result == ROBOT_IMU_ERROR) {
@@ -581,6 +597,115 @@ static void command_spitest(AppConsole *console)
     write_text(console,
                "  The jumper conducts, so this is SPI1 itself: check that PA5 "
                "is not still driven as the LD2 output\r\n");
+}
+
+static const char *leg_name(uint8_t leg_index)
+{
+    static const char *const names[4] = {"FL", "FR", "RL", "RR"};
+    return leg_index < 4U ? names[leg_index] : "??";
+}
+
+/*
+ * Print everything about the joint that faulted.
+ *
+ * A stall is over by the time anyone reads this, and the servo has usually
+ * been powered down since, so the report is the only evidence left: which
+ * joint, how far it was from its target, how hard it was pushing, how long it
+ * held, and where in the stride it happened.
+ */
+static void print_safety_fault(AppConsole *console)
+{
+    const SafetyMonitor *safety = &console->robot->safety;
+    const SafetyFaultRecord *record = &safety->record;
+    char message[128];
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "SAFETY %s\r\n  leg=%s joint=J%u id=%u\r\n",
+                   safety_fault_string(safety->fault),
+                   leg_name(record->leg_index),
+                   (unsigned int)record->joint_index,
+                   (unsigned int)record->servo_id);
+    write_text(console, message);
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "  target=%u actual=%u error=%u\r\n",
+                   (unsigned int)record->target,
+                   (unsigned int)record->actual,
+                   (unsigned int)record->position_error);
+    write_text(console, message);
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "  load=%d current=%d temp=%uC hw_error=0x%02X\r\n",
+                   (int)record->load,
+                   (int)record->current,
+                   (unsigned int)record->temperature_c,
+                   (unsigned int)record->hardware_error);
+    write_text(console, message);
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "  duration=%ums gait_phase=%u action=TORQUE_OFF_ALL\r\n",
+                   (unsigned int)record->duration_ms,
+                   (unsigned int)record->gait_phase);
+    write_text(console, message);
+}
+
+static void command_safety(AppConsole *console)
+{
+    const SafetyMonitor *safety = &console->robot->safety;
+    char message[128];
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Safety: %s, peak_error=%uticks, candidates=%u\r\n",
+        safety_fault_string(safety->fault),
+        (unsigned int)safety->peak_position_error,
+        (unsigned int)safety->stall_candidates_seen);
+    write_text(console, message);
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Limits: error>=%uticks load>=%u current>=%u for %ums, temp>=%uC\r\n",
+        (unsigned int)safety->limits.position_error_ticks,
+        (unsigned int)safety->limits.load_magnitude,
+        (unsigned int)safety->limits.current_magnitude,
+        (unsigned int)safety->limits.sustain_ms,
+        (unsigned int)safety->limits.temperature_limit_c);
+    write_text(console, message);
+
+    if (safety_is_faulted(safety)) {
+        print_safety_fault(console);
+        write_text(console,
+                   "Latched: motion refused until 'recover' succeeds\r\n");
+    }
+}
+
+static void command_recover(AppConsole *console)
+{
+    const RobotResult result = robot_recover(console->robot);
+
+    if (result == ROBOT_SERVO_POWER_LOST) {
+        /*
+         * Say this plainly rather than as a bus timeout: with the rail down
+         * there is nothing to relax or torque off, and the operator needs to
+         * restore the supply before anything else is worth trying.
+         */
+        write_text(console,
+                   "ERROR: servo power lost; no servo answered a ping. "
+                   "Restore the 12V supply, then run recover again\r\n");
+        return;
+    }
+    if (result == ROBOT_OK) {
+        write_text(console,
+                   "Recovered: holding at present positions, torque on\r\n");
+        return;
+    }
+    print_robot_result(console, result);
 }
 
 static void command_imuprobe(AppConsole *console)
@@ -1123,6 +1248,10 @@ static void execute_line(AppConsole *console)
         command_profile(console, speed, acceleration);
     } else if (strcmp(command, "echo") == 0) {
         command_echo(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "safety") == 0) {
+        command_safety(console);
+    } else if (strcmp(command, "recover") == 0) {
+        command_recover(console);
     } else if (strcmp(command, "i2cscan") == 0) {
         command_i2cscan(console);
     } else if (strcmp(command, "spitest") == 0) {
@@ -1259,6 +1388,8 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax            torque off all configured servos\r\n"
+               "  safety           stall detector state and the latched fault\r\n"
+               "  recover          clear a safety fault and hold where the legs are\r\n"
                "  i2cscan          scan I2C1 for the BNO055\r\n"
                "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"
                "  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n"

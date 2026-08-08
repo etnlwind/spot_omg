@@ -1,5 +1,7 @@
 #include "robot.h"
 
+#include "safety.h"
+
 #include "feetech_protocol.h"
 #include "gait_policy.h"
 #include "sts3215.h"
@@ -77,6 +79,8 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->trot_step_sync_wait_ms = 0U;
     robot->trot_step_sync_peak_error_ticks = 0U;
     robot->motion_abort_requested = false;
+    robot->safety_scan_index = 0U;
+    safety_init(&robot->safety, NULL);
 }
 
 bool robot_set_profile(RobotController *robot,
@@ -217,9 +221,46 @@ RobotResult robot_relax(RobotController *robot)
     return final_result;
 }
 
+RobotResult robot_recover(RobotController *robot)
+{
+    if (robot == NULL || robot->bus == NULL) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+
+    /*
+     * Ping before anything else.  A latched stall and a supply that tripped
+     * look identical from the console but want opposite handling: with the
+     * rail down there is nothing to command, and a caller who is told
+     * ROBOT_SERVO_POWER_LOST knows to restore power rather than to keep
+     * retrying.  robot_require_all() already pings all twelve.
+     */
+    RobotResult result = robot_require_all(robot);
+    if (result != ROBOT_OK) {
+        return result == ROBOT_MISSING_SERVO || result == ROBOT_BUS_ERROR
+            ? ROBOT_SERVO_POWER_LOST
+            : result;
+    }
+
+    /*
+     * Servos answer, so clear the latch and hold them where they physically
+     * are.  robot_hold() reads the present positions and commands those before
+     * enabling torque, which is exactly what must happen here: coming back at
+     * the gait target the joint was chasing when it caught would drive it into
+     * the obstacle again the moment torque returns.
+     */
+    safety_clear(&robot->safety);
+    robot->safety_scan_index = 0U;
+    robot->motion_abort_requested = false;
+    return robot_hold(robot);
+}
+
 RobotResult robot_hold(RobotController *robot)
 {
     uint16_t current[ROBOT_JOINT_COUNT];
+
+    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+        return ROBOT_SAFETY_FAULT;
+    }
 
     RobotResult result = robot_require_all(robot);
     if (result != ROBOT_OK) {
@@ -261,6 +302,14 @@ RobotResult robot_hold(RobotController *robot)
 
 RobotResult robot_stand(RobotController *robot)
 {
+    /*
+     * Gated because it commands positions.  robot_relax() deliberately is not:
+     * cutting torque is the safe direction and must work in any state.
+     * robot_recover() clears the latch before it holds, so it is unaffected.
+     */
+    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+        return ROBOT_SAFETY_FAULT;
+    }
     uint16_t target[ROBOT_JOINT_COUNT];
     uint16_t measured_positions[ROBOT_JOINT_COUNT];
 
@@ -402,6 +451,15 @@ static void update_peak(int16_t value, int16_t *peak)
 static void return_to_stand_best_effort(RobotController *robot)
 {
     uint16_t stand_targets[ROBOT_JOINT_COUNT];
+    /*
+     * Deliberately does nothing once a safety fault is latched.  Every other
+     * failure here wants the legs parked, but a stall wants the opposite:
+     * torque is already off, and sending a stand target would re-command the
+     * caught joint and put the current straight back.
+     */
+    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+        return;
+    }
     if (robot != NULL && robot->bus != NULL &&
         robot_stand_targets(stand_targets)) {
         (void)sts3215_sync_positions(robot->bus,
@@ -422,9 +480,113 @@ static bool phase_starts_swing(uint16_t current_global_phase,
     return current_leg_phase < 500U && next_leg_phase >= 500U;
 }
 
+/*
+ * Cut power to every joint and latch the fault.
+ *
+ * All twelve, not just the offending one: a single leg going limp mid-stride
+ * while the other three keep driving is a worse failure than stopping, because
+ * the robot then falls under power instead of settling.
+ *
+ * Nothing here commands a position.  The whole point is to stop asking a
+ * caught joint to move, so this must not be routed through the stand recovery
+ * that the other failure paths use.
+ */
+static void safety_trip(RobotController *robot)
+{
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        (void)sts3215_set_torque(robot->bus, g_robot_servo_ids[index], false);
+    }
+    robot->last_failed_servo_id = robot->safety.record.servo_id;
+}
+
+/*
+ * Read one joint and hand it to the detector.  Full state costs the same as
+ * position alone here -- both pay the 10 ms bus settle in servo_bus_request,
+ * and the extra thirteen bytes are 0.13 ms at 1 Mbps -- so there is no reason
+ * to read less.
+ *
+ * *tripped is set when this sample latched the fault; torque is already off by
+ * the time it returns.
+ */
+static RobotResult sample_joint(RobotController *robot,
+                                size_t index,
+                                const uint16_t targets[ROBOT_JOINT_COUNT],
+                                uint16_t gait_phase,
+                                uint16_t *position,
+                                bool *tripped)
+{
+    Sts3215State state;
+    const uint8_t id = g_robot_servo_ids[index];
+
+    if (tripped != NULL) {
+        *tripped = false;
+    }
+
+    ServoBusResult bus_result = sts3215_read_state(robot->bus, id, &state);
+    if (bus_result != SERVO_BUS_OK) {
+        return bus_failure(robot, id, bus_result);
+    }
+    if (position != NULL) {
+        *position = state.position;
+    }
+
+    const SafetySample sample = {
+        id,
+        g_robot_joints[index].leg_index,
+        g_robot_joints[index].joint_index,
+        targets[index],
+        state.position,
+        state.load,
+        state.current,
+        state.temperature_c,
+        state.hardware_error,
+    };
+    if (safety_update(&robot->safety, &sample, HAL_GetTick(), gait_phase)) {
+        safety_trip(robot);
+        if (tripped != NULL) {
+            *tripped = true;
+        }
+        return ROBOT_SAFETY_FAULT;
+    }
+    return ROBOT_OK;
+}
+
+/*
+ * Sample one joint per control frame.
+ *
+ * Reading all twelve takes about 123 ms, so it cannot happen inside a 20 ms
+ * frame; this walks them instead, a sweep every 240 ms.  When a joint is
+ * already a stall candidate it stays selected rather than advancing, which is
+ * what keeps confirmation inside the sustain window instead of waiting for the
+ * cursor to come round again.
+ */
+static RobotResult sample_next_joint(RobotController *robot,
+                                     const uint16_t targets[ROBOT_JOINT_COUNT],
+                                     uint16_t gait_phase)
+{
+    uint8_t watched_id = 0U;
+    size_t index = robot->safety_scan_index % ROBOT_JOINT_COUNT;
+
+    if (safety_watching(&robot->safety, &watched_id)) {
+        for (size_t candidate = 0U; candidate < ROBOT_JOINT_COUNT;
+             ++candidate) {
+            if (g_robot_servo_ids[candidate] == watched_id) {
+                index = candidate;
+                break;
+            }
+        }
+    } else {
+        robot->safety_scan_index =
+            (uint8_t)((index + 1U) % ROBOT_JOINT_COUNT);
+    }
+
+    return sample_joint(robot, index, targets, gait_phase, NULL, NULL);
+}
+
 static RobotResult wait_for_step_sync(
     RobotController *robot,
-    const uint16_t targets[ROBOT_JOINT_COUNT])
+    const uint16_t targets[ROBOT_JOINT_COUNT],
+    uint16_t gait_phase)
 {
     uint16_t positions[ROBOT_JOINT_COUNT];
     uint16_t barrier_peak_error = 0U;
@@ -439,9 +601,20 @@ static RobotResult wait_for_step_sync(
         if (robot->motion_abort_requested) {
             return ROBOT_MOTION_ABORTED;
         }
-        RobotResult result = robot_read_positions(robot, positions);
-        if (result != ROBOT_OK) {
-            return result;
+        /*
+         * The barrier already had to read every joint, so this is where the
+         * detector gets its whole-robot snapshot for free.
+         */
+        for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+            RobotResult result = sample_joint(robot,
+                                              index,
+                                              targets,
+                                              gait_phase,
+                                              &positions[index],
+                                              NULL);
+            if (result != ROBOT_OK) {
+                return result;
+            }
         }
 
         uint16_t maximum_error = 0U;
@@ -552,6 +725,10 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     if (robot->balance_required &&
         (!robot->balance_enabled || robot->attitude_reader == NULL)) {
         return ROBOT_IMU_ERROR;
+    }
+
+    if (safety_is_faulted(&robot->safety)) {
+        return ROBOT_SAFETY_FAULT;
     }
 
     robot->motion_abort_requested = false;
@@ -751,6 +928,17 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
         }
 
+        /*
+         * Sample inside the frame's own slack: the deadline below is absolute,
+         * so a read that fits in the remaining budget does not move when the
+         * next command goes out.
+         */
+        result = sample_next_joint(robot, targets, global_phase);
+        if (result != ROBOT_OK) {
+            return_to_stand_best_effort(robot);
+            return result;
+        }
+
         if (frame < total_frames) {
             const uint32_t deadline = started_at +
                 synchronization_delay_ms +
@@ -770,7 +958,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                 phase_starts_swing(global_phase, next_global_phase, 500U);
             if (step_starts) {
                 const uint32_t sync_started_at = HAL_GetTick();
-                result = wait_for_step_sync(robot, targets);
+                result = wait_for_step_sync(robot, targets,
+                                            global_phase);
                 synchronization_delay_ms +=
                     HAL_GetTick() - sync_started_at;
                 if (result != ROBOT_OK) {
@@ -838,6 +1027,18 @@ RobotResult robot_jump(RobotController *robot,
         return ROBOT_IMU_ERROR;
     }
 
+    if (safety_is_faulted(&robot->safety)) {
+        return ROBOT_SAFETY_FAULT;
+    }
+
+    /*
+     * No per-frame stall sampling here, unlike the trot gaits.  A jump is
+     * ballistic: the legs are commanded past where the servos can follow, so
+     * large tracking error under high load is the normal case and the stall
+     * test would fire on every takeoff.  Separating a caught leg from an
+     * intended one needs a jump-aware expectation this does not have yet, so
+     * a jump only refuses to start while a fault is already latched.
+     */
     robot->motion_abort_requested = false;
     RobotResult result = robot_stand(robot);
     if (result != ROBOT_OK) {
@@ -969,6 +1170,15 @@ RobotResult robot_move_single_safe(RobotController *robot,
                                    uint16_t target_position,
                                    uint16_t maximum_delta)
 {
+    /*
+     * Gated because this enables torque on one servo.  After a fault the rest
+     * are off, and bringing a single joint back under power is the asymmetric
+     * state the shutdown deliberately avoids.  Recovery goes through
+     * robot_recover(), which brings all twelve back together.
+     */
+    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+        return ROBOT_SAFETY_FAULT;
+    }
     uint16_t current = 0U;
     const RobotJointConfig *joint = config_for_servo(servo_id);
 
@@ -1050,6 +1260,10 @@ const char *robot_result_string(RobotResult result)
         return "IMU balance error";
     case ROBOT_MOTION_ABORTED:
         return "motion aborted";
+    case ROBOT_SAFETY_FAULT:
+        return "safety fault; torque off, run recover";
+    case ROBOT_SERVO_POWER_LOST:
+        return "servo power lost; restore supply then run recover";
     case ROBOT_TILT_LIMIT:
         return "tilt safety limit reached";
     default:

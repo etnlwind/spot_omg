@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "robot_config.h"
+#include "safety.h"
 #include "servo_bus.h"
 
 #include <stdint.h>
@@ -23,7 +24,9 @@ typedef enum
     ROBOT_STEP_SYNC_ERROR,
     ROBOT_IMU_ERROR,
     ROBOT_MOTION_ABORTED,
-    ROBOT_TILT_LIMIT
+    ROBOT_TILT_LIMIT,
+    ROBOT_SAFETY_FAULT,      /* stall detector cut torque; latched */
+    ROBOT_SERVO_POWER_LOST   /* nothing on the bus answers a ping */
 } RobotResult;
 
 typedef bool (*RobotAttitudeReader)(void *context,
@@ -84,6 +87,14 @@ typedef struct
     uint16_t trot_step_sync_wait_ms;
     uint16_t trot_step_sync_peak_error_ticks;
     volatile bool motion_abort_requested;
+
+    /*
+     * Stall detection.  The fault latches here rather than in the monitor's
+     * caller so every motion entry point can refuse to start while it is set,
+     * and only robot_recover() clears it.
+     */
+    SafetyMonitor safety;
+    uint8_t safety_scan_index;   /* round-robin cursor over the twelve joints */
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
@@ -105,6 +116,18 @@ RobotResult robot_require_all(RobotController *robot);
 RobotResult robot_read_positions(
     RobotController *robot,
     uint16_t positions[ROBOT_JOINT_COUNT]);
+
+/*
+ * Bring the robot back after a latched safety fault.
+ *
+ * Pings first, because a stall and a browned-out supply look nothing alike
+ * from here and want opposite handling: with the rail down there is nobody to
+ * send a torque command to, and reporting that plainly beats a bus timeout.
+ * When the servos do answer, this holds them where they physically are rather
+ * than at the gait target they were chasing when the fault hit -- otherwise
+ * enabling torque would fling the joint at the position that caused it.
+ */
+RobotResult robot_recover(RobotController *robot);
 
 RobotResult robot_hold(RobotController *robot);
 RobotResult robot_relax(RobotController *robot);
