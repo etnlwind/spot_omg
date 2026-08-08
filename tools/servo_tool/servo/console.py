@@ -167,11 +167,16 @@ class Stm32Console:
                 raise ImportError(
                     "pyserial is required; run: pip install -r requirements.txt"
                 )
+            # A /dev/cu.* device accepts several readers on macOS and splits
+            # the incoming bytes between them, which silently truncates both
+            # sides.  The lock only keeps other spotctl runs out; a terminal
+            # program that does not take it can still share the port.
             self._serial = serial.Serial(
                 self.port,
                 self.baudrate,
                 timeout=self.timeout,
                 write_timeout=max(self.timeout, 1.0),
+                exclusive=True,
             )
         return self
 
