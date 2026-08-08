@@ -114,7 +114,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   servo_bus_init(&servo_bus, &huart1, 25U);
   robot_init(&robot, &servo_bus);
-  app_console_init(&console, &huart2, &robot, &imu_log_enabled);
+  app_console_init(&console, &huart2, &robot, &imu, &imu_log_enabled);
 
   uart_print("\r\nPROGRAM START\r\n");
   HAL_Delay(700);

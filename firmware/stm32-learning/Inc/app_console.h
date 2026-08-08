@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "bno086.h"
 #include "main.h"
 #include "robot.h"
 
@@ -18,6 +19,7 @@ typedef struct
 {
     UART_HandleTypeDef *uart;
     RobotController *robot;
+    Bno086 *imu;
     bool *imu_log_enabled;
     uint8_t rx_byte;
     char line[APP_CONSOLE_LINE_CAPACITY];
@@ -30,6 +32,7 @@ typedef struct
 void app_console_init(AppConsole *console,
                       UART_HandleTypeDef *uart,
                       RobotController *robot,
+                      Bno086 *imu,
                       bool *imu_log_enabled);
 
 void app_console_on_rx_complete(AppConsole *console,

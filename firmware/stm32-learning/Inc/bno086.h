@@ -82,6 +82,57 @@ Bno086Result bno086_init(Bno086 *imu, uint32_t report_interval_us);
 void bno086_service(Bno086 *imu);
 
 /*
+ * Result of one bring-up probe, for the "imuprobe" console command.
+ *
+ * bno086_init() collapses every bring-up failure into NOT_PRESENT, which does
+ * not say whether the part is silent, mis-wired or answering on the wrong
+ * interface.  This is the IMU counterpart of busprobe/linestate on the servo
+ * bus: it separates those cases without an oscilloscope.
+ */
+typedef struct
+{
+    uint32_t int_float_percent;     /* H_INTN sampled with no pull */
+    uint32_t int_pulldown_percent;  /* ... and against an internal pull-down */
+    /*
+     * H_INTN against a pull-down while RST is held low.  The sensor tri-states
+     * its outputs in reset, so this separates a pin the sensor drives from one
+     * a board pull-up holds high: only the former follows the pull-down here.
+     */
+    uint32_t int_in_reset_percent;
+    bool int_asserted;              /* did H_INTN go low after a reset? */
+    uint32_t assert_delay_ms;
+    bool header_read;
+    uint8_t header[4];              /* raw SHTP header bytes, if any */
+
+    /*
+     * Header read without waiting for H_INTN at all.  This is what decides
+     * between a dead SPI link and a dead interrupt wire: a sensor that boots
+     * into SPI has an advertisement queued, so the bytes come back non-blank
+     * even if H_INTN never reaches the MCU.
+     */
+    bool blind_data_seen;
+    uint32_t blind_attempts;
+    uint8_t blind_header[4];
+} Bno086Probe;
+
+/*
+ * Pulse reset and report what the sensor did.  Safe to call whether or not
+ * bno086_init() succeeded, and it moves no servos.
+ */
+void bno086_probe(Bno086 *imu, Bno086Probe *probe);
+
+/*
+ * Loopback SPI1 with D11/PA7 MOSI jumpered to D12/PA6 MISO, the sensor
+ * disconnected.  This is the SPI counterpart of uarttest: it proves the
+ * peripheral, the three signal pins and the clock settings independently of
+ * the BNO086, so a silent sensor can be blamed on one side or the other.
+ *
+ * Returns the index of the first mismatching byte, or -1 when all match.
+ * *sent and *received hold that byte pair.
+ */
+int bno086_loopback_test(Bno086 *imu, uint8_t *sent, uint8_t *received);
+
+/*
  * RobotAttitudeReader implementation.  Reads the cached angles, so it never
  * blocks and never touches the SPI bus.
  */

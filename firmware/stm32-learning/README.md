@@ -153,6 +153,8 @@ scan             설정된 ID 1..12 확인
 uarttest         USART1 loopback 확인 (URT-2 분리, PA9-PA10 직결)
 busprobe ID      Ping 후 USART1 원시 수신 바이트 출력
 linestate        PA9/PA10을 풀다운으로 눌러 구동/개방 판별; 계측기 불필요
+spitest          SPI1 loopback 확인 (BNO086 분리, D11-D12 직결)
+imuprobe         BNO086 리셋 후 H_INTN과 SHTP 헤더 확인
 read ID          위치, 속도, 부하, 전압, 온도, 전류 읽기
 move ID RAW      단일 서보 안전 이동; 현재 위치에서 최대 256 tick
 targets          stand 목표 raw 위치 확인; 움직이지 않음

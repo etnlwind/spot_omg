@@ -490,6 +490,158 @@ static void command_targets(AppConsole *console)
     }
 }
 
+/*
+ * Bring-up probe for the BNO086, the IMU counterpart of busprobe/linestate.
+ *
+ * bno086_init() reports every failure as "not present", which does not say
+ * whether the part is dead, mis-wired or answering on I2C because PS1 was
+ * left low.  Pulsing reset and watching H_INTN separates those.
+ */
+static void command_spitest(AppConsole *console)
+{
+    uint8_t sent = 0U;
+    uint8_t received = 0U;
+    char message[112];
+
+    if (console->imu == NULL) {
+        write_text(console, "ERROR: SPI loopback unavailable\r\n");
+        return;
+    }
+
+    write_text(console,
+               "SPI1 loopback test: disconnect the BNO086 and connect "
+               "D11/PA7 directly to D12/PA6\r\n");
+
+    const int failed_at = bno086_loopback_test(console->imu, &sent, &received);
+    if (failed_at < 0) {
+        write_text(console,
+                   "SPITEST PASS: SPI1 PA5/PA6/PA7 loopback OK; the MCU side "
+                   "is good, so suspect the sensor or its wiring\r\n");
+        return;
+    }
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "SPITEST FAIL: byte %d sent=0x%02X received=0x%02X\r\n",
+                   failed_at,
+                   (unsigned int)sent,
+                   (unsigned int)received);
+    write_text(console, message);
+    write_text(console,
+               "  With the jumper fitted this means SPI1 itself is at fault: "
+               "check that PA5 is not still driven as the LD2 output\r\n");
+}
+
+static void command_imuprobe(AppConsole *console)
+{
+    Bno086Probe probe;
+    char message[160];
+
+    if (console->imu == NULL) {
+        write_text(console, "ERROR: IMU probe unavailable\r\n");
+        return;
+    }
+
+    bno086_probe(console->imu, &probe);
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "IMUPROBE INT float=%lu%% pulldown=%lu%% in_reset=%lu%%\r\n",
+                   (unsigned long)probe.int_float_percent,
+                   (unsigned long)probe.int_pulldown_percent,
+                   (unsigned long)probe.int_in_reset_percent);
+    write_text(console, message);
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "IMUPROBE blind read (%lu tries): %s %02X %02X %02X %02X\r\n",
+                   (unsigned long)probe.blind_attempts,
+                   probe.blind_data_seen ? "DATA" : "blank",
+                   (unsigned int)probe.blind_header[0],
+                   (unsigned int)probe.blind_header[1],
+                   (unsigned int)probe.blind_header[2],
+                   (unsigned int)probe.blind_header[3]);
+    write_text(console, message);
+
+    if (probe.blind_data_seen && !probe.int_asserted) {
+        /*
+         * The data path works and only the interrupt does not, so the sensor
+         * itself, its supply and the SPI wiring are all fine.
+         */
+        write_text(console,
+                   "IMUPROBE FAIL: SPI answers but H_INTN never asserts. The "
+                   "sensor and SPI wiring are good; the INT wire to D7/PA8 is "
+                   "the fault\r\n");
+        return;
+    }
+
+    if (!probe.int_asserted) {
+        write_text(console,
+                   "IMUPROBE FAIL: H_INTN never went low after reset\r\n");
+        write_text(console,
+                   "  SPI returned no data either, so the sensor is not "
+                   "speaking SPI at all\r\n");
+        if (probe.int_pulldown_percent <= 10U) {
+            write_text(console,
+                       "  INT follows the pull-down even when running: "
+                       "nothing drives it. Check the D7 wire, 3V3 and GND\r\n");
+        } else if (probe.int_in_reset_percent <= 10U) {
+            /*
+             * The pin let go the moment RST went low, so the sensor is alive,
+             * powered and holding it high on purpose.  It just never has SPI
+             * traffic to announce, which is what a wrong interface looks like.
+             */
+            write_text(console,
+                       "  INT released under reset, so the sensor drives it "
+                       "and RST reaches the part. It is alive but not talking "
+                       "SPI: check PS1/PS0 at reset (SPI needs both high)\r\n");
+        } else {
+            /*
+             * Held high even in reset: whatever holds the pin is not the
+             * sensor output, so this says nothing about the sensor itself.
+             */
+            write_text(console,
+                       "  INT stays high even under reset: a board pull-up "
+                       "holds it, or RST on D3 never reaches the part. Verify "
+                       "the D3 wire before trusting any INT reading\r\n");
+        }
+        return;
+    }
+
+    (void)snprintf(message,
+                   sizeof(message),
+                   "IMUPROBE INT asserted after %lums; header %02X %02X %02X %02X\r\n",
+                   (unsigned long)probe.assert_delay_ms,
+                   (unsigned int)probe.header[0],
+                   (unsigned int)probe.header[1],
+                   (unsigned int)probe.header[2],
+                   (unsigned int)probe.header[3]);
+    write_text(console, message);
+
+    const bool blank = (probe.header[0] == 0x00U && probe.header[1] == 0x00U &&
+                        probe.header[2] == 0x00U && probe.header[3] == 0x00U) ||
+                       (probe.header[0] == 0xFFU && probe.header[1] == 0xFFU &&
+                        probe.header[2] == 0xFFU && probe.header[3] == 0xFFU);
+    const uint16_t length =
+        (uint16_t)(((uint16_t)probe.header[1] << 8) | probe.header[0]) & 0x7FFFU;
+
+    if (!probe.header_read) {
+        write_text(console, "IMUPROBE FAIL: SPI transfer error\r\n");
+    } else if (blank) {
+        write_text(console,
+                   "IMUPROBE FAIL: MISO carried no data. Check D12/PA6 and "
+                   "the SPI mode; the part uses CPOL=1 CPHA=1\r\n");
+    } else if (length < 4U || length > 512U) {
+        write_text(console,
+                   "IMUPROBE FAIL: header length implausible. Suspect a bit "
+                   "shift from the clock phase, or a CS/SCK wiring fault\r\n");
+    } else {
+        write_text(console,
+                   "IMUPROBE PASS: SHTP link is up; rerun 'balance status' "
+                   "after a reset\r\n");
+    }
+}
+
 static void command_imu(AppConsole *console, char *mode)
 {
     if (console->imu_log_enabled == NULL) {
@@ -860,6 +1012,10 @@ static void execute_line(AppConsole *console)
         command_profile(console, speed, acceleration);
     } else if (strcmp(command, "echo") == 0) {
         command_echo(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "spitest") == 0) {
+        command_spitest(console);
+    } else if (strcmp(command, "imuprobe") == 0) {
+        command_imuprobe(console);
     } else if (strcmp(command, "imu") == 0) {
         command_imu(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "balance") == 0) {
@@ -872,6 +1028,7 @@ static void execute_line(AppConsole *console)
 void app_console_init(AppConsole *console,
                       UART_HandleTypeDef *uart,
                       RobotController *robot,
+                      Bno086 *imu,
                       bool *imu_log_enabled)
 {
     if (console == NULL) {
@@ -880,6 +1037,7 @@ void app_console_init(AppConsole *console,
 
     console->uart = uart;
     console->robot = robot;
+    console->imu = imu;
     console->imu_log_enabled = imu_log_enabled;
     console->rx_byte = 0U;
     console->line[0] = '\0';
@@ -986,6 +1144,8 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax            torque off all configured servos\r\n"
+               "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"
+               "  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
                "  help             show this help\r\n\r\n");

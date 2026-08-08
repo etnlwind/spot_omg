@@ -460,6 +460,147 @@ Bno086Result bno086_init(Bno086 *imu, uint32_t report_interval_us)
     return imu->has_attitude ? BNO086_OK : BNO086_TIMEOUT;
 }
 
+/* Sample H_INTN as a plain input, mirroring what linestate does for PA9/PA10. */
+static uint32_t probe_int_percent(uint32_t pull)
+{
+    GPIO_InitTypeDef init = {0};
+    init.Pin = BNO086_INT_PIN;
+    init.Mode = GPIO_MODE_INPUT;
+    init.Pull = pull;
+    init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(BNO086_INT_PORT, &init);
+    HAL_Delay(2);
+
+    uint32_t high = 0U;
+    uint32_t samples = 0U;
+    const uint32_t started_at = HAL_GetTick();
+    while ((uint32_t)(HAL_GetTick() - started_at) < 20U) {
+        if (HAL_GPIO_ReadPin(BNO086_INT_PORT, BNO086_INT_PIN) == GPIO_PIN_SET) {
+            ++high;
+        }
+        ++samples;
+    }
+    return samples == 0U ? 0U : (high * 100U) / samples;
+}
+
+void bno086_probe(Bno086 *imu, Bno086Probe *probe)
+{
+    if (imu == NULL || probe == NULL) {
+        return;
+    }
+    memset(probe, 0, sizeof(*probe));
+
+    /*
+     * An idle H_INTN and a disconnected pin both read high, so pull it down:
+     * only a pin something is actually driving stays high.
+     */
+    probe->int_float_percent = probe_int_percent(GPIO_NOPULL);
+    probe->int_pulldown_percent = probe_int_percent(GPIO_PULLDOWN);
+
+    /*
+     * Sample again with the sensor held in reset.  If the sensor is the thing
+     * driving H_INTN, its output goes high-Z here and the pull-down wins.  If
+     * the pin stays high, something independent of the sensor holds it: a
+     * board pull-up, or a reset line that never reaches the part.
+     */
+    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, false);
+    HAL_Delay(5);
+    probe->int_in_reset_percent = probe_int_percent(GPIO_PULLDOWN);
+
+    GPIO_InitTypeDef init = {0};
+    init.Pin = BNO086_INT_PIN;
+    init.Mode = GPIO_MODE_INPUT;
+    init.Pull = GPIO_PULLUP;
+    init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(BNO086_INT_PORT, &init);
+
+    HAL_Delay(20);
+    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, true);
+
+    const uint32_t started_at = HAL_GetTick();
+    while ((uint32_t)(HAL_GetTick() - started_at) < BNO086_RESET_DRAIN_MS) {
+        if (interrupt_asserted()) {
+            probe->int_asserted = true;
+            probe->assert_delay_ms = (uint32_t)(HAL_GetTick() - started_at);
+            break;
+        }
+    }
+
+    /*
+     * Read the header without consulting H_INTN.  A sensor that came up in
+     * SPI mode has its advertisement waiting, so this returns real bytes even
+     * when the interrupt wire is broken -- and stays blank when the sensor is
+     * not speaking SPI, whatever the interrupt line happens to read.
+     */
+    for (uint32_t attempt = 0U; attempt < 24U && !probe->blind_data_seen;
+         ++attempt) {
+        uint8_t header[4] = {0};
+
+        gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, false);
+        const Bno086Result read = spi_read(imu, header, sizeof(header));
+        gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+        probe->blind_attempts = attempt + 1U;
+
+        const bool blank =
+            (header[0] == 0x00U && header[1] == 0x00U &&
+             header[2] == 0x00U && header[3] == 0x00U) ||
+            (header[0] == 0xFFU && header[1] == 0xFFU &&
+             header[2] == 0xFFU && header[3] == 0xFFU);
+        if (read == BNO086_OK && !blank) {
+            memcpy(probe->blind_header, header, sizeof(header));
+            probe->blind_data_seen = true;
+        }
+        HAL_Delay(20);
+    }
+
+    if (!probe->int_asserted) {
+        return;
+    }
+
+    /*
+     * Read the header only.  Its bytes tell wiring apart from protocol: all
+     * 0x00 or all 0xFF means MISO is not carrying data, while a sane length
+     * and channel means the link is up and the fault is further along.
+     */
+    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, false);
+    const Bno086Result result =
+        spi_read(imu, probe->header, sizeof(probe->header));
+    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+    probe->header_read = result == BNO086_OK;
+}
+
+int bno086_loopback_test(Bno086 *imu, uint8_t *sent, uint8_t *received)
+{
+    static const uint8_t pattern[] = {
+        0x00U, 0xFFU, 0x55U, 0xAAU, 0x01U, 0x7EU, 0x81U, 0x42U
+    };
+
+    if (imu == NULL || sent == NULL || received == NULL) {
+        return 0;
+    }
+
+    /* Keep the sensor deselected so a still-attached part cannot answer. */
+    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+
+    for (size_t index = 0U; index < sizeof(pattern); ++index) {
+        uint8_t out = pattern[index];
+        uint8_t in = 0U;
+
+        if (HAL_SPI_TransmitReceive(&imu->spi, &out, &in, 1U, 100U) != HAL_OK) {
+            *sent = out;
+            *received = 0U;
+            return (int)index;
+        }
+        if (in != out) {
+            *sent = out;
+            *received = in;
+            return (int)index;
+        }
+    }
+
+    return -1;
+}
+
 bool bno086_read_attitude(void *context,
                           int16_t *roll_tenths,
                           int16_t *pitch_tenths)

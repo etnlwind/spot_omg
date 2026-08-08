@@ -1582,6 +1582,65 @@ Drivers/STM32F4xx_HAL_Driver/{Src,Inc}/stm32f4xx_hal_spi.{c,h}
 HAL SPI 드라이버는 프로젝트에 없어서 `STM32Cube_FW_F4_V1.28.3`에서 복사했습니다.
 같은 판임은 `stm32f4xx_hal_i2c.c`가 바이트 단위로 동일한 것으로 확인했습니다.
 
+### 첫 실기 시험: BNO086 무응답 (조사 중)
+
+플래시 후 `trot2`가 `ERROR: IMU balance error`로 거부됐습니다. `balance status`는
+`IMU: unavailable`, 부팅 배너는 `BNO086 unavailable: not present`였습니다.
+`balance=off/full`에서 balance가 off인 것이 단서였습니다. IMU가 잡히면
+`robot_set_attitude_reader()`가 `balance_enabled`를 켜므로, off라는 것은 애초에
+리더가 등록되지 않았다는 뜻입니다.
+
+부팅 배너는 `Stm32Console.sync()`가 버리므로, ST-LINK로 SWD 리셋을 걸면서 포트를
+열어둬 배너를 잡았습니다. 버튼을 누를 필요가 없습니다.
+
+```bash
+STM32_Programmer_CLI -c port=SWD mode=HOTPLUG -rst   # 포트를 연 채로
+```
+
+### 진단 명령 `imuprobe`와 `spitest` 추가
+
+`bno086_init()`은 모든 실패를 `not present` 하나로 뭉개서 원인을 못 가립니다.
+URT-2 때 `busprobe`/`linestate`가 했던 역할을 IMU에도 만들었습니다.
+
+측정 결과는 다음과 같습니다.
+
+```text
+IMUPROBE INT float=100% pulldown=100% in_reset=100%
+IMUPROBE blind read (24 tries): blank 00 00 00 00
+IMUPROBE FAIL: H_INTN never went low after reset
+```
+
+세 항목의 의미는 이렇습니다.
+
+| 관측 | 해석 |
+|---|---|
+| `pulldown=100%` | PA8을 뭔가가 HIGH로 잡고 있음 (구동 또는 풀업) |
+| `in_reset=100%` | RST를 누른 채로도 HIGH — 센서 출력이 아니라 **보드 풀업**이 잡고 있거나 RST가 센서에 도달하지 않음 |
+| `blind read blank` | H_INTN을 무시하고 SPI로 24회 읽어도 MISO에 아무것도 없음 |
+
+`in_reset` 항목이 중요합니다. 센서는 리셋 중 출력을 high-Z로 두므로, 센서가
+INT를 구동하고 있었다면 이때 풀다운을 따라 내려가야 합니다. 내려가지 않았으므로
+INT 레벨은 센서 상태에 대해 아무 정보도 주지 못합니다.
+
+`blind read`는 INT 배선을 완전히 우회합니다. SPI 모드로 부팅한 센서는
+advertisement가 큐에 있으므로 INT 선이 끊겨 있어도 바이트가 나와야 합니다.
+전부 `00`이므로 **센서가 SPI로 말하고 있지 않습니다.**
+
+### 아직 확정되지 않은 것
+
+`spitest`(D11-D12 직결 loopback)를 점퍼 없이 돌렸더니 바이트 0~3
+(`00 FF 55 AA`)이 왕복하고 `0x01`에서 실패했습니다. 점퍼가 없으므로 이는 인접한
+PA6/PA7 점퍼선 사이 용량성 결합으로 보이며, MISO가 실제로 구동받지 않는다는
+방증입니다. **점퍼를 끼운 정식 `spitest`는 아직 수행 전입니다.**
+
+PS1을 3V3으로 납땜한 뒤에도 증상은 동일했습니다. 따라서 인터페이스 선택
+가설만으로는 설명되지 않으며, 다음을 순서대로 갈라야 합니다.
+
+1. BNO086 분리 후 D11-D12 직결 → `spitest` — MCU 쪽 SPI 판별
+2. 센서 3V3/GND 실측 — 전원 확인
+3. SCK/MISO/MOSI/CS 4선 재확인 — 특히 `SO`와 `SI`가 바뀌지 않았는지
+4. 브레이크아웃의 PS0/PS1 실제 상태 확인 (제조사마다 점퍼 방식이 다름)
+
 ### 실기에서 먼저 확인할 것
 
 1. 브레이크아웃의 `PS1`이 HIGH인지 (기본은 I2C 모드)
