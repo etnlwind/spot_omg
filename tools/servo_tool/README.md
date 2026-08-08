@@ -121,7 +121,8 @@ spotctl --via urt2 status
 | 목적 | 명령 |
 |---|---|
 | 임의 명령 한 줄 | `spotctl console send read 1` |
-| 대화형 프롬프트 | `spotctl console shell` |
+| 대화형 프롬프트 | `spotctl console shell
+spotctl console watch imu on` |
 | 절차 파일 실행 | `spotctl console script bench.txt` |
 | 세션 기록 남기기 | `spotctl --log logs/bench.log console shell` |
 

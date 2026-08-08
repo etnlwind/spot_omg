@@ -242,6 +242,14 @@ spotctl console send read 1
 spotctl console shell
 ```
 
+`imu on`처럼 펌웨어가 스스로 계속 출력하는 것을 보려면 `watch`를 씁니다.
+`send`는 프롬프트가 돌아올 때까지만 읽고 포트를 닫으므로 이후 스트림을 놓칩니다.
+
+```bash
+spotctl console watch imu on    # 명령을 보낸 뒤 계속 수신, Ctrl+C로 종료
+spotctl console watch           # 이미 켜져 있으면 수신만
+```
+
 `spotctl`은 접속 직후 `echo off`를 보내 부팅 배너를 버리고 프롬프트를 맞춥니다.
 빈 줄은 펌웨어가 무시하고 프롬프트를 출력하지 않으므로 동기화에 쓰지 않습니다.
 자세한 사용법은

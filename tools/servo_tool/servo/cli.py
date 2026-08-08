@@ -332,6 +332,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         nargs="+",
         help="console command and arguments, for example: trot2 1 1600",
     )
+    console_watch = console_actions.add_parser(
+        "watch",
+        help="stream what the firmware prints on its own; Ctrl+C stops",
+    )
+    console_watch.add_argument(
+        "words",
+        nargs="*",
+        help="optional command to run first, for example: imu on",
+    )
     console_actions.add_parser(
         "shell",
         help="interactive prompt; Ctrl+C aborts a motion, Ctrl+D exits",
@@ -522,6 +531,38 @@ def run_console_command(
         on_line=emit,
     )
     return console_exit_code(response.status)
+
+
+def run_console_watch(
+    console: Stm32Console,
+    words: list[str],
+    *,
+    timeout: float | None,
+    log=None,
+) -> int:
+    """Relay the firmware's unprompted output, such as the 10 Hz IMU log."""
+    if words:
+        code = run_console_command(
+            console, " ".join(words), timeout=timeout, log=log
+        )
+        if code != 0:
+            return code
+
+    def emit(line: str) -> None:
+        # Flush every line: this streams, so a block-buffered pipe would hold
+        # the output back until the process exits, which is the opposite of
+        # what someone watching a live attitude log wants.
+        print(line, flush=True)
+        if log is not None:
+            log.write(line + "\n")
+            log.flush()
+
+    print("Streaming; Ctrl+C to stop.", file=sys.stderr)
+    try:
+        console.watch(emit)
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+    return 0
 
 
 def run_console_shell(
@@ -739,6 +780,10 @@ def run_console(args: argparse.Namespace) -> int:
                     " ".join(args.words),
                     timeout=args.console_timeout,
                     log=log_file,
+                )
+            if args.console_command == "watch":
+                return run_console_watch(
+                    console, args.words, timeout=args.console_timeout, log=log_file
                 )
             if args.console_command == "script":
                 return run_console_script(

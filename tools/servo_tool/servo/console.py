@@ -255,6 +255,29 @@ class Stm32Console:
             self._write_line("echo off")
             self._read_until_prompt(time.monotonic() + timeout)
 
+    def watch(self, on_line) -> None:
+        """Relay lines the firmware emits on its own until interrupted.
+
+        ``send`` reads until the prompt returns, which is the wrong shape for
+        the 10 Hz attitude log: that output arrives between commands, with no
+        prompt to stop at.
+        """
+        self._ensure_open()
+        pending = ""
+        while True:
+            chunk = self._serial.read(max(1, self._serial.in_waiting or 1))
+            if not chunk:
+                continue
+            pending += chunk.decode("utf-8", "replace")
+            while "\n" in pending:
+                line, pending = pending.split("\n", 1)
+                text = line.strip("\r").rstrip()
+                # A prompt shares its line with the next report; drop it.
+                if text.startswith(PROMPT.strip()):
+                    text = text[len(PROMPT.strip()):].lstrip()
+                if text:
+                    on_line(text)
+
     def send(
         self,
         command: str,
