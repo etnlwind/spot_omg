@@ -57,7 +57,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-
+#define IMU_RST_Pin GPIO_PIN_3
+#define IMU_RST_GPIO_Port GPIOB
+#define IMU_WAKE_Pin GPIO_PIN_5
+#define IMU_WAKE_GPIO_Port GPIOB
+#define IMU_CS_Pin GPIO_PIN_6
+#define IMU_CS_GPIO_Port GPIOB
+#define IMU_INT_Pin GPIO_PIN_8
+#define IMU_INT_GPIO_Port GPIOA
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

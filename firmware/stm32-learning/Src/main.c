@@ -49,6 +49,8 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+SPI_HandleTypeDef hspi1;
+
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
@@ -69,6 +71,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 static void uart_print(const char *text);
 static void IMU_PrintEuler(void);
@@ -111,6 +114,7 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_I2C1_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   servo_bus_init(&servo_bus, &huart1, 25U);
   robot_init(&robot, &servo_bus);
@@ -123,7 +127,7 @@ int main(void)
    * 5 ms subscription: the sensor fuses faster than the balance loop consumes,
    * so a step never acts on a sample older than one control period.
    */
-  const Bno086Result imu_result = bno086_init(&imu, 5000U);
+  const Bno086Result imu_result = bno086_init(&imu, &hspi1, 5000U);
   if (imu_result == BNO086_OK) {
       uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
       robot_set_attitude_reader(&robot, bno086_read_attitude, &imu);
@@ -235,6 +239,46 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+  /*
+   * The BNO086 samples on the trailing edge of an idle-high clock, so mode 3.
+   * PCLK2 is 16 MHz and /8 gives 2 MHz, under the part's 3 MHz ceiling.
+   */
+  /* USER CODE END SPI1_Init 2 */
 
 }
 
@@ -380,16 +424,34 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(IMU_RST_GPIO_Port, IMU_RST_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, IMU_WAKE_Pin|IMU_CS_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : IMU_INT_Pin */
+  GPIO_InitStruct.Pin = IMU_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(IMU_INT_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : IMU_RST_Pin IMU_WAKE_Pin IMU_CS_Pin */
+  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_WAKE_Pin|IMU_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*
-   * PA5 is no longer driven here.  It carried the LD2 user LED, but the
-   * BNO086 needs it as SPI1_SCK, so bno086_init() claims it as alternate
-   * function.  Driving it from here would fight the SPI peripheral.
+   * PA5 is no longer driven here.  It carried the LD2 user LED, but SPI1
+   * needs it as SCK, so HAL_SPI_MspInit() claims it as alternate function.
    */
 
   /* EXTI interrupt init*/

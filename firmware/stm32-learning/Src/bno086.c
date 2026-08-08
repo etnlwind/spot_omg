@@ -39,18 +39,6 @@
 #define BNO086_INT_TIMEOUT_MS    200U
 #define BNO086_RESET_DRAIN_MS    600U
 
-/*
- * Board wiring.  Kept here rather than in main.h so the whole IMU bring-up is
- * one file and a CubeMX regeneration cannot drop it.
- */
-#define BNO086_CS_PORT    GPIOB
-#define BNO086_CS_PIN     GPIO_PIN_6
-#define BNO086_INT_PORT   GPIOA
-#define BNO086_INT_PIN    GPIO_PIN_8
-#define BNO086_RST_PORT   GPIOB
-#define BNO086_RST_PIN    GPIO_PIN_3
-#define BNO086_WAKE_PORT  GPIOB
-#define BNO086_WAKE_PIN   GPIO_PIN_5
 
 /*
  * Sign conventions, matching what the README documents for this robot:
@@ -79,7 +67,7 @@ static void gpio_write(GPIO_TypeDef *port, uint16_t pin, bool high)
 static bool interrupt_asserted(void)
 {
     /* H_INTN is active low. */
-    return HAL_GPIO_ReadPin(BNO086_INT_PORT, BNO086_INT_PIN) == GPIO_PIN_RESET;
+    return HAL_GPIO_ReadPin(IMU_INT_GPIO_Port, IMU_INT_Pin) == GPIO_PIN_RESET;
 }
 
 static bool wait_for_interrupt(uint32_t timeout_ms)
@@ -91,69 +79,6 @@ static bool wait_for_interrupt(uint32_t timeout_ms)
         }
     }
     return true;
-}
-
-static void configure_pins(void)
-{
-    GPIO_InitTypeDef init = {0};
-
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_SPI1_CLK_ENABLE();
-
-    /* Park the outputs before they are driven so the part is not half woken. */
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
-    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, false);
-    gpio_write(BNO086_WAKE_PORT, BNO086_WAKE_PIN, true);
-
-    /* PA5 SCK, PA6 MISO, PA7 MOSI. */
-    init.Pin = GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
-    init.Mode = GPIO_MODE_AF_PP;
-    init.Pull = GPIO_NOPULL;
-    init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    init.Alternate = GPIO_AF5_SPI1;
-    HAL_GPIO_Init(GPIOA, &init);
-
-    init.Alternate = 0;
-    init.Mode = GPIO_MODE_OUTPUT_PP;
-    init.Speed = GPIO_SPEED_FREQ_HIGH;
-
-    init.Pin = BNO086_CS_PIN;
-    HAL_GPIO_Init(BNO086_CS_PORT, &init);
-    init.Pin = BNO086_RST_PIN;
-    HAL_GPIO_Init(BNO086_RST_PORT, &init);
-    init.Pin = BNO086_WAKE_PIN;
-    HAL_GPIO_Init(BNO086_WAKE_PORT, &init);
-
-    /*
-     * H_INTN is sampled rather than wired to EXTI.  The main loop and the
-     * attitude reader both call bno086_service(), so a level test costs one
-     * GPIO read and needs no shared state with an ISR.
-     */
-    init.Pin = BNO086_INT_PIN;
-    init.Mode = GPIO_MODE_INPUT;
-    init.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(BNO086_INT_PORT, &init);
-}
-
-static Bno086Result configure_spi(Bno086 *imu)
-{
-    imu->spi.Instance = SPI1;
-    imu->spi.Init.Mode = SPI_MODE_MASTER;
-    imu->spi.Init.Direction = SPI_DIRECTION_2LINES;
-    imu->spi.Init.DataSize = SPI_DATASIZE_8BIT;
-    /* The BNO086 samples on the trailing edge of an idle-high clock: mode 3. */
-    imu->spi.Init.CLKPolarity = SPI_POLARITY_HIGH;
-    imu->spi.Init.CLKPhase = SPI_PHASE_2EDGE;
-    imu->spi.Init.NSS = SPI_NSS_SOFT;
-    /* PCLK2 is 16 MHz, so /8 gives 2 MHz against the part's 3 MHz ceiling. */
-    imu->spi.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
-    imu->spi.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    imu->spi.Init.TIMode = SPI_TIMODE_DISABLE;
-    imu->spi.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
-    imu->spi.Init.CRCPolynomial = 10;
-
-    return HAL_SPI_Init(&imu->spi) == HAL_OK ? BNO086_OK : BNO086_SPI_ERROR;
 }
 
 /*
@@ -173,7 +98,7 @@ static Bno086Result spi_read(Bno086 *imu, uint8_t *destination, size_t length)
         const size_t chunk = length < sizeof(zeros) ? length : sizeof(zeros);
         uint8_t *target = destination != NULL ? destination : scratch;
 
-        if (HAL_SPI_TransmitReceive(&imu->spi,
+        if (HAL_SPI_TransmitReceive(imu->spi,
                                     (uint8_t *)zeros,
                                     target,
                                     (uint16_t)chunk,
@@ -207,11 +132,11 @@ static Bno086Result shtp_receive(Bno086 *imu,
         return BNO086_OK;
     }
 
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, false);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
 
     Bno086Result result = spi_read(imu, header, sizeof(header));
     if (result != BNO086_OK) {
-        gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
         return result;
     }
 
@@ -221,7 +146,7 @@ static Bno086Result shtp_receive(Bno086 *imu,
     *channel = header[2];
 
     if (total <= SHTP_HEADER_SIZE || total > SHTP_MAX_PACKET) {
-        gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
         /* A zero-length header is the idle answer, not a fault. */
         return total == 0U ? BNO086_OK : BNO086_PROTOCOL_ERROR;
     }
@@ -235,7 +160,7 @@ static Bno086Result shtp_receive(Bno086 *imu,
         result = spi_read(imu, NULL, body - wanted);
     }
 
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
     if (result != BNO086_OK) {
         return result;
     }
@@ -267,18 +192,18 @@ static Bno086Result shtp_send(Bno086 *imu,
      * WAKE (PS0 in SPI mode) asks the sensor for a transfer window; it answers
      * by asserting H_INTN.  Writing before that window is dropped.
      */
-    gpio_write(BNO086_WAKE_PORT, BNO086_WAKE_PIN, false);
+    gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, false);
     const bool ready = wait_for_interrupt(BNO086_INT_TIMEOUT_MS);
     if (!ready) {
-        gpio_write(BNO086_WAKE_PORT, BNO086_WAKE_PIN, true);
+        gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
         return BNO086_TIMEOUT;
     }
 
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, false);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
     const HAL_StatusTypeDef status =
-        HAL_SPI_Transmit(&imu->spi, packet, (uint16_t)total, 100U);
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
-    gpio_write(BNO086_WAKE_PORT, BNO086_WAKE_PIN, true);
+        HAL_SPI_Transmit(imu->spi, packet, (uint16_t)total, 100U);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
 
     return status == HAL_OK ? BNO086_OK : BNO086_SPI_ERROR;
 }
@@ -394,32 +319,30 @@ void bno086_service(Bno086 *imu)
     }
 }
 
-Bno086Result bno086_init(Bno086 *imu, uint32_t report_interval_us)
+Bno086Result bno086_init(Bno086 *imu,
+                         SPI_HandleTypeDef *spi,
+                         uint32_t report_interval_us)
 {
     uint8_t payload[64];
 
-    if (imu == NULL || report_interval_us == 0U) {
+    if (imu == NULL || spi == NULL || report_interval_us == 0U) {
         return BNO086_PROTOCOL_ERROR;
     }
 
     memset(imu, 0, sizeof(*imu));
-    configure_pins();
-
-    Bno086Result result = configure_spi(imu);
-    if (result != BNO086_OK) {
-        return result;
-    }
+    imu->spi = spi;
 
     /* Hold reset low well past the datasheet minimum, then let it boot. */
-    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, false);
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
     HAL_Delay(20);
-    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, true);
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
 
     /*
      * A healthy part announces itself unprompted: an advertisement on channel
      * 0 and a reset-complete on channel 1.  Seeing any packet is what tells us
      * the part is wired and in SPI mode, so drain until one arrives.
      */
+    Bno086Result result = BNO086_OK;
     bool saw_packet = false;
     const uint32_t started_at = HAL_GetTick();
     while ((uint32_t)(HAL_GetTick() - started_at) < BNO086_RESET_DRAIN_MS) {
@@ -464,18 +387,18 @@ Bno086Result bno086_init(Bno086 *imu, uint32_t report_interval_us)
 static uint32_t probe_int_percent(uint32_t pull)
 {
     GPIO_InitTypeDef init = {0};
-    init.Pin = BNO086_INT_PIN;
+    init.Pin = IMU_INT_Pin;
     init.Mode = GPIO_MODE_INPUT;
     init.Pull = pull;
     init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    HAL_GPIO_Init(BNO086_INT_PORT, &init);
+    HAL_GPIO_Init(IMU_INT_GPIO_Port, &init);
     HAL_Delay(2);
 
     uint32_t high = 0U;
     uint32_t samples = 0U;
     const uint32_t started_at = HAL_GetTick();
     while ((uint32_t)(HAL_GetTick() - started_at) < 20U) {
-        if (HAL_GPIO_ReadPin(BNO086_INT_PORT, BNO086_INT_PIN) == GPIO_PIN_SET) {
+        if (HAL_GPIO_ReadPin(IMU_INT_GPIO_Port, IMU_INT_Pin) == GPIO_PIN_SET) {
             ++high;
         }
         ++samples;
@@ -503,19 +426,19 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
      * the pin stays high, something independent of the sensor holds it: a
      * board pull-up, or a reset line that never reaches the part.
      */
-    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, false);
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
     HAL_Delay(5);
     probe->int_in_reset_percent = probe_int_percent(GPIO_PULLDOWN);
 
     GPIO_InitTypeDef init = {0};
-    init.Pin = BNO086_INT_PIN;
+    init.Pin = IMU_INT_Pin;
     init.Mode = GPIO_MODE_INPUT;
     init.Pull = GPIO_PULLUP;
     init.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    HAL_GPIO_Init(BNO086_INT_PORT, &init);
+    HAL_GPIO_Init(IMU_INT_GPIO_Port, &init);
 
     HAL_Delay(20);
-    gpio_write(BNO086_RST_PORT, BNO086_RST_PIN, true);
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
 
     const uint32_t started_at = HAL_GetTick();
     while ((uint32_t)(HAL_GetTick() - started_at) < BNO086_RESET_DRAIN_MS) {
@@ -536,9 +459,9 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
          ++attempt) {
         uint8_t header[4] = {0};
 
-        gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, false);
+        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
         const Bno086Result read = spi_read(imu, header, sizeof(header));
-        gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
         probe->blind_attempts = attempt + 1U;
 
         const bool blank =
@@ -553,6 +476,11 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
         HAL_Delay(20);
     }
 
+    /* Control read with the sensor deselected; see Bno086Probe. */
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    (void)spi_read(imu, probe->deselected_header,
+                   sizeof(probe->deselected_header));
+
     if (!probe->int_asserted) {
         return;
     }
@@ -562,10 +490,10 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
      * 0x00 or all 0xFF means MISO is not carrying data, while a sane length
      * and channel means the link is up and the fault is further along.
      */
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, false);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
     const Bno086Result result =
         spi_read(imu, probe->header, sizeof(probe->header));
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
     probe->header_read = result == BNO086_OK;
 }
 
@@ -580,13 +508,13 @@ int bno086_loopback_test(Bno086 *imu, uint8_t *sent, uint8_t *received)
     }
 
     /* Keep the sensor deselected so a still-attached part cannot answer. */
-    gpio_write(BNO086_CS_PORT, BNO086_CS_PIN, true);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
 
     for (size_t index = 0U; index < sizeof(pattern); ++index) {
         uint8_t out = pattern[index];
         uint8_t in = 0U;
 
-        if (HAL_SPI_TransmitReceive(&imu->spi, &out, &in, 1U, 100U) != HAL_OK) {
+        if (HAL_SPI_TransmitReceive(imu->spi, &out, &in, 1U, 100U) != HAL_OK) {
             *sent = out;
             *received = 0U;
             return (int)index;

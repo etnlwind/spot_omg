@@ -1626,6 +1626,46 @@ INT 레벨은 센서 상태에 대해 아무 정보도 주지 못합니다.
 advertisement가 큐에 있으므로 INT 선이 끊겨 있어도 바이트가 나와야 합니다.
 전부 `00`이므로 **센서가 SPI로 말하고 있지 않습니다.**
 
+### SPI1을 `.ioc`로 옮김
+
+처음에는 `bno086.c`가 GPIO·클럭·`HAL_SPI_Init()`을 직접 했습니다. 이 구성이
+원인일 수 있다는 의심이 나와, SWD로 실리콘의 레지스터를 직접 읽어 확인했습니다.
+
+```text
+RCC_APB2ENR  0x00005010   bit12 SPI1EN = 1
+SPI1_CR1     0x00000357   SPE MSTR SSM SSI = 1, CPOL=1 CPHA=1, BR=/8, 8-bit MSB
+SPI1_SR      0x00000002   TXE only; MODF/OVR 없음
+GPIOA_MODER  0xA828A8A0   PA5/PA6/PA7 = AF, PA8 = input
+GPIOA_AFRL   0x55507700   PA5/PA6/PA7 = AF5 (SPI1)
+GPIOB_MODER  0x000A1640   PB3/PB5/PB6 = output
+GPIOB_ODR    0x00000068   RST=1 WAKE=1 CS=1
+```
+
+전부 의도대로였습니다. 특히 `PB3`이 기본 대체기능인 `JTDO`에서 빠져나와 output으로
+잡혀 있고 HIGH를 출력 중인 것도 확인돼, "RST가 구동되지 않는다"는 가설은
+소프트웨어 측면에서는 배제됩니다. 즉 **무응답의 원인은 SPI 설정이 아닙니다.**
+
+그럼에도 `servo_bus`가 `huart1`을 넘겨받는 구조와 어긋나므로 `.ioc`로 옮겼습니다.
+이제 `SPI1`과 제어선 4개(`IMU_CS`/`IMU_INT`/`IMU_RST`/`IMU_WAKE`)가 `.ioc`에 있고
+초기화는 CubeMX 생성 코드가, `bno086.c`는 `hspi1` 핸들만 빌려 씁니다.
+
+이전과 동작이 같음은 레지스터를 다시 읽어 확인했습니다. `SPI1_CR1`이 `0x0317`로
+읽히는 순간이 있는데 이는 `SPE`(bit6)만 다른 것이고, HAL은 `HAL_SPI_Init()`이
+아니라 첫 전송에서 `SPE`를 켜기 때문입니다. 전송을 한 번 하면 `0x0357`로 이전과
+완전히 같아집니다.
+
+### `deselected read`: CS를 바꿔도 MISO가 변하지 않음
+
+```text
+IMUPROBE blind read (24 tries): blank 00 00 00 00
+IMUPROBE deselected read: 00 00 00 00
+```
+
+살아 있는 센서라면 CS가 HIGH일 때 MISO를 놓으므로 두 값이 달라야 합니다.
+동일하다는 것은 **MISO(D12/PA6)가 구동되는 출력에 닿아 있지 않다**는 뜻입니다.
+`GPIOA_IDR`에서 PA6이 유휴 시 HIGH로 읽히는 것도 풀업만 걸린 개방 입력과
+일치합니다.
+
 ### 아직 확정되지 않은 것
 
 `spitest`(D11-D12 직결 loopback)를 점퍼 없이 돌렸더니 바이트 0~3

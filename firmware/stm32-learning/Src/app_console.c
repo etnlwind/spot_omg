@@ -563,6 +563,32 @@ static void command_imuprobe(AppConsole *console)
                    (unsigned int)probe.blind_header[3]);
     write_text(console, message);
 
+    (void)snprintf(message,
+                   sizeof(message),
+                   "IMUPROBE deselected read: %02X %02X %02X %02X\r\n",
+                   (unsigned int)probe.deselected_header[0],
+                   (unsigned int)probe.deselected_header[1],
+                   (unsigned int)probe.deselected_header[2],
+                   (unsigned int)probe.deselected_header[3]);
+    write_text(console, message);
+
+    /*
+     * A sensor that is present releases MISO when CS is high, so the two
+     * reads differ.  Identical bytes mean nothing ever drives the line.
+     */
+    if (memcmp(probe.deselected_header, probe.blind_header, 4) == 0 &&
+        !probe.blind_data_seen) {
+        write_text(console,
+                   "  CS makes no difference to MISO: the D12/PA6 wire is not "
+                   "reaching a driven output. Suspect MISO wiring or sensor "
+                   "power before anything protocol related\r\n");
+    } else if (!probe.blind_data_seen) {
+        write_text(console,
+                   "  MISO follows CS, so the sensor is selected and driving: "
+                   "it answers with a zero-length header, meaning it booted "
+                   "but queued no advertisement. Suspect RST on D3\r\n");
+    }
+
     if (probe.blind_data_seen && !probe.int_asserted) {
         /*
          * The data path works and only the interrupt does not, so the sensor

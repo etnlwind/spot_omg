@@ -18,15 +18,17 @@ extern "C" {
  * reads attitude from RAM instead of blocking on a bus transfer mid-gait as
  * the BNO055 path did.
  *
- * Wiring on the NUCLEO-F446RE Arduino header:
+ * SPI1 and the four control pins are declared in stm32-learning.ioc and set
+ * up by the CubeMX code, the same way servo_bus borrows huart1.  The pin
+ * labels come from main.h:
  *
  *   SCK  D13 PA5   SPI1_SCK    (also drives the LD2 user LED)
  *   SO   D12 PA6   SPI1_MISO
  *   SI   D11 PA7   SPI1_MOSI
- *   CS   D10 PB6   GPIO output, active low
- *   INT  D7  PA8   GPIO EXTI, active low
- *   RST  D3  PB3   GPIO output, active low
- *   WAK  D4  PB5   GPIO output, active low  (PS0 in SPI mode)
+ *   CS   D10 PB6   IMU_CS      output, active low
+ *   INT  D7  PA8   IMU_INT     input, active low
+ *   RST  D3  PB3   IMU_RST     output, active low
+ *   WAK  D4  PB5   IMU_WAKE    output, active low (PS0 in SPI mode)
  *
  * D2/PA10 must stay clear: it is USART1_RX from the URT-2.
  */
@@ -42,7 +44,8 @@ typedef enum
 
 typedef struct
 {
-    SPI_HandleTypeDef spi;
+    /* Owned by CubeMX as hspi1; this module only borrows it. */
+    SPI_HandleTypeDef *spi;
 
     /* Latest Game Rotation Vector, Q14 fixed point as the sensor reports it. */
     int16_t quat_i;
@@ -68,7 +71,9 @@ typedef struct
  * the requested interval.  Returns BNO086_NOT_PRESENT when the part does not
  * answer, which leaves the caller free to run open loop.
  */
-Bno086Result bno086_init(Bno086 *imu, uint32_t report_interval_us);
+Bno086Result bno086_init(Bno086 *imu,
+                         SPI_HandleTypeDef *spi,
+                         uint32_t report_interval_us);
 
 /*
  * Drain every SHTP packet the sensor has queued.  Call from the main loop; it
@@ -113,6 +118,14 @@ typedef struct
     bool blind_data_seen;
     uint32_t blind_attempts;
     uint8_t blind_header[4];
+
+    /*
+     * The same four bytes clocked with CS left high.  A live sensor releases
+     * MISO when deselected, so these should differ from the CS-low read.  If
+     * both come back identical, nothing is driving MISO and the wire, not the
+     * protocol, is the fault.
+     */
+    uint8_t deselected_header[4];
 } Bno086Probe;
 
 /*

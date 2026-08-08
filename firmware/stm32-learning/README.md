@@ -125,21 +125,36 @@ huart1.Init.BaudRate == 1000000
 USART2_IRQHandler() → HAL_UART_IRQHandler(&huart2)
 ```
 
-### SPI1은 `.ioc`에 없습니다
+### SPI1: BNO086
 
-BNO086용 SPI1은 CubeMX가 아니라 `bno086.c`가 직접 설정합니다. GPIO, 클럭,
-`HAL_SPI_Init()`을 모두 `bno086_init()` 안에서 하므로 재생성이 이 코드를
-지우지 못합니다. 대신 **CubeMX가 되돌려 버리는 항목이 둘** 있으니 재생성 후
-반드시 확인하세요.
+| Setting | 값 |
+|---|---|
+| Mode | Full-Duplex Master |
+| Frame | 8-bit, MSB first |
+| Clock | CPOL `High`, CPHA `2 Edge` (mode 3) |
+| Prescaler | `/8` → PCLK2 16MHz 기준 2 MHz |
+| NSS | Software (`IMU_CS`를 GPIO로 직접 제어) |
 
-```text
-Inc/stm32f4xx_hal_conf.h  →  #define HAL_SPI_MODULE_ENABLED  (주석 처리되면 빌드 실패)
-Drivers/STM32F4xx_HAL_Driver/{Src,Inc}/stm32f4xx_hal_spi.{c,h}  →  존재 확인
+`SPI1`과 IMU 제어선 4개(`IMU_CS`, `IMU_INT`, `IMU_RST`, `IMU_WAKE`)는
+`.ioc`에 등록되어 있고 초기화는 CubeMX 생성 코드가 담당합니다. `bno086.c`는
+`servo_bus`가 `huart1`을 넘겨받는 것과 같은 방식으로 `hspi1` 핸들만 빌려
+씁니다.
+
+```c
+bno086_init(&imu, &hspi1, 5000U);
 ```
 
-HAL SPI 드라이버는 프로젝트 HAL과 같은 판인 `STM32Cube_FW_F4_V1.28.3`에서
-복사해 넣었습니다. `.ioc`에 SPI1을 추가하면 이 두 가지는 CubeMX가 알아서
-관리하지만, PA5가 `LD2`와 겹치는 것 때문에 핀 배정을 다시 확인해야 합니다.
+CubeMX 재생성 후 확인할 항목은 다음과 같습니다.
+
+```text
+Inc/stm32f4xx_hal_conf.h  →  #define HAL_SPI_MODULE_ENABLED
+Drivers/STM32F4xx_HAL_Driver/{Src,Inc}/stm32f4xx_hal_spi.{c,h}  →  존재 확인
+PA5가 LD2 GPIO_Output이 아니라 SPI1_SCK인지
+```
+
+HAL SPI 드라이버는 프로젝트에 없어서 프로젝트 HAL과 같은 판인
+`STM32Cube_FW_F4_V1.28.3`에서 복사해 넣었습니다. `.ioc`에 SPI1이 들어갔으므로
+CubeMX에서 열면 이 드라이버는 자동으로 관리됩니다.
 
 ## 콘솔 명령
 
