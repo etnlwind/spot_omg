@@ -30,24 +30,22 @@ const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT] = {
  * Physical forward direction observed on the STM32 robot.
  * Leg order: FL, FR, RL, RR.
  *
- * These were {1, 1, -1, -1} on the assumption that the front and rear planar
- * mechanisms are mirror images, so opposite signs would produce the same
- * body-forward foot motion.  On the bench the rear legs looked right and the
- * front legs did not: a diagonal pair shares a phase offset here, but with
- * opposite signs the two feet of that pair travel in opposite directions at
- * the same instant, which reads as the front leg stepping at the wrong time.
+ * Front and rear are opposite on purpose.  The two planar mechanisms are
+ * mirror images and their J2 calibration reflects that -- FL J2 sits 512 ticks
+ * below its centre where RR J2 sits 512 ticks above, for the same 45 degree
+ * stand angle -- so opposite gait signs are what make both feet travel the
+ * same way along the body.  Setting all four alike leaves that mirror
+ * uncancelled: the legs lift identically, because forward_signs does not touch
+ * the vertical component, while the front feet drive the wrong way through
+ * stance.  That was tried on 2026-08-09 and is exactly what the robot did.
  *
- * The simulator had already reached the same conclusion from the other side.
- * walk.py overrides all four to -1 for the sim-trot and trot2 presets, and
- * that is the mapping the validated 10-cycle MuJoCo run used, so the firmware
- * and the simulator had been running different gaits.
- *
- * Whether forward is -1 or +1 for all four is a separate question from the
- * front/rear relationship; the rear sign is kept because the rear legs were
- * the ones that looked correct.  If the robot now walks backwards, negate all
- * four rather than reintroducing a front/rear split.
+ * walk.py overrides these to -1 for its sim-trot and trot2 presets.  That is
+ * not evidence about this file: the simulator's URDF unified the knee
+ * direction, so it needs its own mapping, and the override says so where it
+ * sits -- "keep hardware calibration untouched ... only inside this
+ * simulator-specific preset".
  */
-const int8_t g_robot_gait_forward_signs[4] = {-1, -1, -1, -1};
+const int8_t g_robot_gait_forward_signs[4] = {1, 1, -1, -1};
 
 bool robot_config_valid(void)
 {
