@@ -28,11 +28,26 @@ const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT] = {
 
 /*
  * Physical forward direction observed on the STM32 robot.
- * Leg order: FL, FR, RL, RR. The front and rear planar mechanisms are mirror
- * images, so opposite canonical J2 offsets produce the same body-forward foot
- * motion. Each diagonal pair still shares the exact same gait phase.
+ * Leg order: FL, FR, RL, RR.
+ *
+ * These were {1, 1, -1, -1} on the assumption that the front and rear planar
+ * mechanisms are mirror images, so opposite signs would produce the same
+ * body-forward foot motion.  On the bench the rear legs looked right and the
+ * front legs did not: a diagonal pair shares a phase offset here, but with
+ * opposite signs the two feet of that pair travel in opposite directions at
+ * the same instant, which reads as the front leg stepping at the wrong time.
+ *
+ * The simulator had already reached the same conclusion from the other side.
+ * walk.py overrides all four to -1 for the sim-trot and trot2 presets, and
+ * that is the mapping the validated 10-cycle MuJoCo run used, so the firmware
+ * and the simulator had been running different gaits.
+ *
+ * Whether forward is -1 or +1 for all four is a separate question from the
+ * front/rear relationship; the rear sign is kept because the rear legs were
+ * the ones that looked correct.  If the robot now walks backwards, negate all
+ * four rather than reintroducing a front/rear split.
  */
-const int8_t g_robot_gait_forward_signs[4] = {1, 1, -1, -1};
+const int8_t g_robot_gait_forward_signs[4] = {-1, -1, -1, -1};
 
 bool robot_config_valid(void)
 {
