@@ -30,22 +30,21 @@ const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT] = {
  * Physical forward direction observed on the STM32 robot.
  * Leg order: FL, FR, RL, RR.
  *
- * Front and rear are opposite on purpose.  The two planar mechanisms are
- * mirror images and their J2 calibration reflects that -- FL J2 sits 512 ticks
- * below its centre where RR J2 sits 512 ticks above, for the same 45 degree
- * stand angle -- so opposite gait signs are what make both feet travel the
- * same way along the body.  Setting all four alike leaves that mirror
- * uncancelled: the legs lift identically, because forward_signs does not touch
- * the vertical component, while the front feet drive the wrong way through
- * stance.  That was tried on 2026-08-09 and is exactly what the robot did.
+ * All four alike, because this robot's front and rear legs are not mirror
+ * images: both knees point the same way, as the unified rearward-knee URDF
+ * already assumed.  Earlier values here encoded a mirror that is not there.
  *
- * walk.py overrides these to -1 for its sim-trot and trot2 presets.  That is
- * not evidence about this file: the simulator's URDF unified the knee
- * direction, so it needs its own mapping, and the override says so where it
- * sits -- "keep hardware calibration untouched ... only inside this
- * simulator-specific preset".
+ * The old {1, 1, -1, -1} was self-contradictory, which the policy output shows
+ * plainly.  Under it FL and RL came out at identical joint angles while the
+ * policy marked one in stance and the other in swing -- impossible, since equal
+ * angles put both feet at the same height.  With uniform signs the diagonal
+ * partners agree instead: FL and RR match to 0.00 degrees and share a stance
+ * phase, which is what a trot is.
+ *
+ * test_firmware_c.py asserts that invariant against this array, so a future
+ * edit that breaks the pairing fails in the suite rather than on the robot.
  */
-const int8_t g_robot_gait_forward_signs[4] = {1, 1, -1, -1};
+const int8_t g_robot_gait_forward_signs[4] = {-1, -1, -1, -1};
 
 bool robot_config_valid(void)
 {
