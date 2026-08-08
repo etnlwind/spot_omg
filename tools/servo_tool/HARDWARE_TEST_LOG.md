@@ -1209,6 +1209,22 @@ BUSPROBE RX: no bytes
 이 문장을 실패로 판정하도록 고쳤고, 정상 응답인 `BUSPROBE RX (6): FF FF 01 02
 00 FC`는 영향받지 않습니다. 단위 시험 `94 PASS`.
 
+소프트웨어 쪽은 다음을 확인해 용의선상에서 제외했습니다.
+
+- 보드에 올라간 빌드는 최신입니다. 콘솔 `help`에 `trotplace`, `trot2`, `jump`가
+  모두 있습니다.
+- `MX_USART1_UART_Init()`은 1 Mbps, 8-N-1, `UART_MODE_TX_RX`이고 CubeMX
+  재생성 대비 런타임 보정도 남아 있습니다.
+- `HAL_UART_MspInit()`의 PA9/PA10은 `GPIO_MODE_AF_PP` + `GPIO_AF7_USART1`
+  입니다.
+- 2026-08-06 수정 이후 `servo_bus.c`는 변경되지 않았습니다. 이번 보행·점프
+  커밋은 `gait_policy.h`, `robot.*`, `app_console.c`, `main.c`만 건드렸습니다.
+
+`uarttest`를 URT-2가 붙은 채로 실행하면 `RX status=3`(`HAL_TIMEOUT`)이 나오는데,
+PA9는 URT-2로 들어가고 PA10은 URT-2에서 나오므로 loopback 경로가 없어 당연한
+결과입니다. 이 명령은 URT-2를 분리하고 PA9-PA10을 직결해야 의미가 있습니다.
+마찬가지로 `--via urt2 scan`은 URT-2를 Mac USB에 직접 꽂아야 합니다.
+
 다음 점검은 2026-08-06의 "재발 시 최소 점검 순서"를 따릅니다. 먼저 URT-2를
 Mac에 USB로 직접 연결해 `spotctl --via urt2 scan`으로 서보 12개와 12V 전원을
 확인하고, 그 다음 STM32 연결로 되돌려 URT-2 분리 후 `uarttest`, 이어서
