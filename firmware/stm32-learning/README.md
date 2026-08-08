@@ -28,7 +28,9 @@ python simulation/mujoco/walk.py --dynamic --balance \
 |---|---|---|---|
 | USART1 | PA9 TX, PA10 RX | URT-2 UART header | 1 Mbps, 8-N-1 |
 | USART2 | PA2 TX, PA3 RX | ST-LINK VCP debug console | 115200, 8-N-1 |
-| I2C1 | PB8 SCL, PB9 SDA | BNO055 | 100 kHz |
+| SPI1 | PA5 SCK, PA6 MISO, PA7 MOSI | BNO086 | 2 MHz, mode 3 |
+| GPIO | PB6 CS, PA8 INT, PB3 RST, PB5 WAKE | BNO086 제어선 | 모두 active low |
+| I2C1 | PB8 SCL, PB9 SDA | 미사용 (구 BNO055 자리) | 100 kHz |
 
 NUCLEO-F446RE Arduino 헤더 기준 `D8/PA9 → URT-2 RX`, `D2/PA10 → URT-2 TX`로
 **교차** 연결합니다. URT-2 UART 헤더의 표기는 URT-2 자신의 신호 기준이라
@@ -41,40 +43,64 @@ STM32나 USB에서 공급하지 않습니다. URT-2를 Type-C로 공급할 때 U
 URT-2 Type-C USB와 STM32 UART 헤더가 같은 서보 버스를 동시에 구동하지 않도록
 합니다.
 
-## BNO055 배선과 장착 좌표계
+## BNO086 배선과 장착 좌표계
 
-NUCLEO-F446RE Arduino 헤더 기준 BNO055 I2C 배선은 다음과 같습니다.
+2026-08-08에 IMU를 BNO055(I2C)에서 BNO086(SPI)으로 교체했습니다. NUCLEO-F446RE
+Arduino 헤더 기준 배선은 다음과 같습니다.
 
 ```text
-BNO055 VCC/VIN       → NUCLEO 3V3
-BNO055 GND           → NUCLEO GND
-BNO055 SCL           → D15 / PB8 / I2C1_SCL
-BNO055 SDA           → D14 / PB9 / I2C1_SDA
-BNO055 COM3/I2C-SEL  → GND (주소 0x28)
+BNO086 3V3  → NUCLEO 3V3
+BNO086 GND  → NUCLEO GND
+BNO086 SCK  → D13 / PA5  / SPI1_SCK
+BNO086 SO   → D12 / PA6  / SPI1_MISO
+BNO086 SI   → D11 / PA7  / SPI1_MOSI
+BNO086 CS   → D10 / PB6  / GPIO
+BNO086 INT  → D7  / PA8  / GPIO
+BNO086 RST  → D3  / PB3  / GPIO
+BNO086 WAK  → D4  / PB5  / GPIO
 ```
 
-GND는 URT-2와 IMU가 NUCLEO의 서로 다른 GND 핀을 사용하거나 공통 GND rail에서
-분기해도 됩니다. 오른쪽 Arduino 디지털 헤더의 AREF와 D13 사이 GND도 사용할 수
-있습니다. COM3는 LOW일 때 `0x28`, HIGH일 때 `0x29`이며 펌웨어는 두 주소를 모두
-탐색하지만 검증 구성은 GND에 연결한 `0x28`입니다.
+**`D2`는 비워 둡니다.** `D2`는 `PA10`이고 이 핀은 URT-2에서 돌아오는
+`USART1_RX`입니다. 여기에 `INT`를 물리면 서보 버스가 죽고, 증상은 2026-08-08
+기록의 `BUSPROBE RX: no bytes`와 똑같이 나타납니다.
 
-IMU는 인쇄면을 위로 향하게 수평 장착했습니다. 위에서 본 사진에서 로봇 앞쪽을
-아래로 놓았을 때 보드 글자가 정상 방향으로 읽히며, 글자의 윗방향은 로봇
-뒤쪽입니다. 이는 상하로 뒤집힌 장착이 아닙니다. 실제 `imu on` 시험에서 확인한
-부호는 다음과 같습니다.
+주의할 핀이 둘 더 있습니다.
+
+- `D13/PA5`는 NUCLEO 사용자 LED `LD2`가 달려 있는 핀입니다. 이제 SPI1_SCK이므로
+  펌웨어에서 이 핀을 구동하던 코드(B1 버튼 → LD2 토글)를 제거했습니다. LED와
+  직렬저항이 SCK에 부하로 걸리지만 2MHz에서는 문제되지 않습니다.
+- `D3/PB3`은 SWD의 `SWO` 트레이스 핀입니다. GPIO로 쓰는 데 지장은 없지만 SWO
+  트레이스를 쓰려면 다른 핀으로 옮겨야 합니다.
+
+브레이크아웃 보드는 기본이 I2C 모드이므로 **`PS1`을 HIGH로 묶어 SPI 모드**로
+바꿔야 합니다. SPI 모드에서 `PS0`은 `WAKE` 역할을 하며 위 배선의 `D4`가 그것입니다.
+
+### Game Rotation Vector를 쓰는 이유
+
+펌웨어는 Rotation Vector(`0x05`)가 아니라 **Game Rotation Vector(`0x08`)**를
+구독합니다. 전자는 지자기를 융합에 포함하는데, STS3215 12개의 영구자석이 IMU
+몇 cm 옆에 있어 자기 방위는 없는 것만 못합니다. 균형 제어는 roll/pitch만
+사용하고 이 둘은 자이로/가속도 융합만으로 나옵니다.
+
+대신 이 리포트의 Yaw는 **북쪽이 아니라 전원 투입 시점 기준 상대값**입니다.
+BNO055의 `0..359.9°` 절대 방위와 다르므로, Yaw를 쓰는 코드를 추가할 때는 이
+차이를 전제해야 합니다.
+
+### 부호 규약
+
+로봇 좌표계 목표는 BNO055 때와 동일합니다.
 
 ```text
 Pitch +  : 로봇 앞쪽으로 기울어짐
 Pitch -  : 로봇 뒤쪽으로 기울어짐
 Roll +   : 로봇 오른쪽으로 기울어짐
 Roll -   : 로봇 왼쪽으로 기울어짐
-Yaw 증가 : 로봇 시점에서 오른쪽으로 회전
-Yaw 감소 : 로봇 시점에서 왼쪽으로 회전
 ```
 
-Yaw는 `0..359.9°` 범위이므로 왼쪽 회전으로 0°를 지나면 359°대로 wrap합니다.
-자세 제어에서 Yaw 오차는 `-180..+180°`로 정규화해야 합니다. 현재 장착 방향은
-원하는 로봇 좌표계와 일치해 BNO055 axis remap을 적용하지 않습니다.
+`bno086.c`의 `BNO086_ROLL_SIGN`, `BNO086_PITCH_SIGN`이 이 규약을 맞추는
+자리입니다. **아직 실기 검증 전이므로 `imu on`으로 먼저 확인하세요.** 실제로
+앞으로 기울였을 때 Pitch가 음수로 나오면 해당 상수만 `-1`로 바꿉니다. 균형
+게인으로 보정하지 않습니다.
 
 ## CubeMX 필수 설정
 
@@ -98,6 +124,22 @@ CubeMX 코드 재생성 후에는 다음 두 항목을 먼저 확인합니다.
 huart1.Init.BaudRate == 1000000
 USART2_IRQHandler() → HAL_UART_IRQHandler(&huart2)
 ```
+
+### SPI1은 `.ioc`에 없습니다
+
+BNO086용 SPI1은 CubeMX가 아니라 `bno086.c`가 직접 설정합니다. GPIO, 클럭,
+`HAL_SPI_Init()`을 모두 `bno086_init()` 안에서 하므로 재생성이 이 코드를
+지우지 못합니다. 대신 **CubeMX가 되돌려 버리는 항목이 둘** 있으니 재생성 후
+반드시 확인하세요.
+
+```text
+Inc/stm32f4xx_hal_conf.h  →  #define HAL_SPI_MODULE_ENABLED  (주석 처리되면 빌드 실패)
+Drivers/STM32F4xx_HAL_Driver/{Src,Inc}/stm32f4xx_hal_spi.{c,h}  →  존재 확인
+```
+
+HAL SPI 드라이버는 프로젝트 HAL과 같은 판인 `STM32Cube_FW_F4_V1.28.3`에서
+복사해 넣었습니다. `.ioc`에 SPI1을 추가하면 이 두 가지는 CubeMX가 알아서
+관리하지만, PA5가 `LD2`와 겹치는 것 때문에 핀 배정을 다시 확인해야 합니다.
 
 ## 콘솔 명령
 
@@ -291,7 +333,7 @@ STM32 `balance full`과 같은 이득의 MuJoCo 기본값은 10주기에 약 `2.
 큰 보폭이므로 로봇을 바닥에 놓고
 처음부터 `trot2 3 800`을 실행하지 않습니다.
 
-BNO055가 정상 초기화되면 `balance full`이 부팅 기본값이며 다음 `trot`부터
+BNO086이 정상 초기화되면 `balance full`이 부팅 기본값이며 다음 `trot`부터
 Roll/Pitch를 50Hz로 읽습니다. full 모드는 IMU가 나타내는 절대 Roll/Pitch `0°`를
 목표로 몸체 수평을 유지합니다. 보드와 몸체 사이의 기계적 장착 오차가 있으면
 `robot_config.h`의 `ROBOT_IMU_LEVEL_*_TENTHS`를 0.1° 단위로 보정할 수 있습니다.
@@ -299,7 +341,7 @@ Roll/Pitch를 50Hz로 읽습니다. full 모드는 IMU가 나타내는 절대 Ro
 좌표계는 앞쪽이 내려가면 Pitch `+`, 오른쪽이 내려가면 Roll `+`입니다. Yaw는
 수평 유지에 사용하지 않습니다.
 
-기본 정책은 IMU 필수입니다. BNO055 탐색 또는 초기화가 실패하면 `trot`, `trot2`와 `jump`는
+기본 정책은 IMU 필수입니다. BNO086 리셋 또는 리포트 구독이 실패하면 `trot`, `trot2`와 `jump`는
 `IMU balance error`로 실행을 거부합니다. 센서 없는 개루프 시험이 꼭 필요할 때만
 `balance off`를 명시하면 허용되며, `balance full`, `balance normal`, `balance on`
 중 하나를 실행하면 다시 IMU 필수 정책으로 돌아갑니다. 빌드 기본값은 `robot.h`의
@@ -344,7 +386,7 @@ stand` 순서입니다. J1은 시작과 종료에서 `0°`이고 압축 구간 �
 smootherstep으로 넓어집니다. 제자리 모드에서는 네 다리의 canonical J2/J3 각도가
 항상 같습니다.
 
-BNO055 balance가 켜져 있으면 시작 기준으로 Roll 또는 Pitch가 `30°`를 넘거나 IMU
+BNO086 balance가 켜져 있으면 시작 기준으로 Roll 또는 Pitch가 `30°`를 넘거나 IMU
 읽기가 3회 연속 실패할 때 stand 목표를 요청하고 종료합니다. `balance off`에서는
 이 보호가 비활성화되므로 거치대 시험 외에는 권장하지 않습니다. 이 점프 정책의 IMU는
 현재 능동 자세 보정이 아니라 넘어짐 감시에 사용됩니다.
@@ -386,7 +428,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - MuJoCo와 STM32가 함께 호출하는 Cartesian IK 기반 공용 C trot 정책 구현
 - 원형 스윙 발끝과 L2 접힘을 갖는 공용 C `trot2` 및 STM32 콘솔 명령 구현
 - 20ms 목표 갱신, 500ms 이하 진폭 ramp, 실제 위치 step barrier 구현
-- BNO055 `0x28`, CHIP_ID `0xA0`, NDOF 초기화 확인
+- BNO055 `0x28`, CHIP_ID `0xA0`, NDOF 초기화 확인 (2026-08-08 BNO086 SPI로 교체)
 - IMU 연속 로그 기본 OFF 및 `imu on|off|status` 추가
 - 콘솔 명령 종료를 `CR`, `LF`, `CRLF` 모두 지원
 - CubeMX 재생성으로 사라진 USART2 IRQ 복구

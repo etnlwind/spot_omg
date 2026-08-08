@@ -251,7 +251,7 @@ Sagittal Foot Placement (전후 착지 위치 보정)는 구현되어 있지만 
 
 공용 C 정책은 Cartesian 발끝 궤적, 2-link IK, Roll/Pitch PD 다리 길이 보정과
 J1 보정을 모두 계산합니다. 시뮬레이터는 MuJoCo Virtual IMU와 실제 접촉 다리
-마스크를 전달합니다. STM32는 장착된 BNO055 Roll/Pitch와 수치 미분 각속도,
+마스크를 전달합니다. STM32는 장착된 BNO086 Roll/Pitch와 수치 미분 각속도,
 보행 stance 마스크를 같은 함수에 전달합니다. 실제 발 접촉 센서가 추가되면
 STM32도 위상 마스크 대신 측정 접촉 마스크를 넣을 수 있습니다.
 

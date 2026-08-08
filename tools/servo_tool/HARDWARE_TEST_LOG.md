@@ -1529,6 +1529,67 @@ USART2 115200 콘솔이 안정적이므로 HSI 드리프트도 배제됩니다.
 6. scan 3회 반복 후 read 1
 ```
 
+## 2026-08-08 IMU를 BNO086(SPI)으로 교체
+
+BNO055(I2C1, PB8/PB9)를 BNO086(SPI1)으로 바꿨습니다. 아직 실기 검증 전이며 현재
+확인된 것은 전체 빌드·링크까지입니다.
+
+```text
+BNO086 SCK  → D13 / PA5      BNO086 CS   → D10 / PB6
+BNO086 SO   → D12 / PA6      BNO086 INT  → D7  / PA8
+BNO086 SI   → D11 / PA7      BNO086 RST  → D3  / PB3
+                             BNO086 WAK  → D4  / PB5
+```
+
+### `D2`를 쓰지 않은 이유
+
+처음 배선안은 `INT`가 `D2`였는데, `D2`는 `PA10`이고 이 핀은 URT-2에서 돌아오는
+`USART1_RX`입니다. 그대로 뒀으면 이번에 이틀 걸려 고친 서보 버스가 다시 죽고
+증상도 `BUSPROBE RX: no bytes`로 동일하게 나왔을 것입니다. `INT`를 `D7`(`PA8`)로
+옮겼습니다.
+
+`D13/PA5`는 사용자 LED `LD2` 핀이기도 해서, B1 버튼이 LD2를 토글하던 코드를
+제거했습니다. 남겨 두면 SPI 프레임마다 SCK를 밀게 됩니다.
+
+### Game Rotation Vector 선택
+
+Rotation Vector(`0x05`)가 아니라 Game Rotation Vector(`0x08`)를 구독합니다.
+전자는 지자기를 융합에 포함하는데 STS3215 12개의 영구자석이 IMU 옆에 있어
+자기 방위가 오염됩니다. 균형 제어는 roll/pitch만 쓰고 이 둘은 자이로/가속도만으로
+나옵니다. 대신 Yaw는 절대 방위가 아니라 전원 투입 시점 기준 상대값입니다.
+
+### 균형 루프의 블로킹 읽기 제거
+
+BNO055 경로는 `BNO055_ReadAttitude()`가 균형 루프 안에서 블로킹 I2C 읽기를
+했습니다. 새 드라이버는 `H_INTN`이 내려왔을 때만 SPI를 건드려 캐시를 갱신하고,
+`bno086_read_attitude()`는 캐시를 읽습니다. 대기 중인 리포트가 없으면 GPIO 한 번
+읽는 비용입니다.
+
+`H_INTN`은 EXTI가 아니라 폴링합니다. 메인 루프와 자세 리더가 둘 다 레벨을 보므로
+ISR을 두면 공유 상태만 늘고 샘플까지의 경로는 짧아지지 않습니다. 제어 루프를
+타이머 기반으로 바꾸면 그때 EXTI로 옮깁니다.
+
+### 빌드 관련 주의
+
+`.ioc`에는 SPI1이 없습니다. `bno086.c`가 GPIO·클럭·`HAL_SPI_Init()`을 직접 하므로
+CubeMX 재생성이 이 코드를 지우지는 못하지만, 다음 둘은 되돌아갑니다.
+
+```text
+Inc/stm32f4xx_hal_conf.h  →  #define HAL_SPI_MODULE_ENABLED
+Drivers/STM32F4xx_HAL_Driver/{Src,Inc}/stm32f4xx_hal_spi.{c,h}
+```
+
+HAL SPI 드라이버는 프로젝트에 없어서 `STM32Cube_FW_F4_V1.28.3`에서 복사했습니다.
+같은 판임은 `stm32f4xx_hal_i2c.c`가 바이트 단위로 동일한 것으로 확인했습니다.
+
+### 실기에서 먼저 확인할 것
+
+1. 브레이크아웃의 `PS1`이 HIGH인지 (기본은 I2C 모드)
+2. 부팅 배너가 `BNO086 game rotation vector OK at 200Hz`인지
+3. `imu on`으로 부호 확인 — 앞으로 기울였을 때 Pitch가 양수인지. 반대면
+   `bno086.c`의 `BNO086_PITCH_SIGN`만 `-1`로 바꿉니다. 균형 게인은 건드리지 않습니다.
+4. `scan` 12축 OK — SPI 배선이 서보 버스를 건드리지 않았는지 확인
+
 ## 최종 조립 후 다시 확인할 항목
 
 1. period 2.0초, cycles 1에서 발 방향과 기구 간섭 확인

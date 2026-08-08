@@ -1,7 +1,7 @@
 # Spot OMG
 
 Spot Micro 기반의 12-DOF 4족 로봇 프로젝트입니다. 현재 STM32 실시간 제어,
-URT-2/STS3215 서보 버스, BNO055 자세 피드백, MuJoCo 공용 보행 정책을 구현했으며
+URT-2/STS3215 서보 버스, BNO086 자세 피드백, MuJoCo 공용 보행 정책을 구현했으며
 Jetson/ROS2와 RL 정책 연동은 다음 단계입니다.
 
 ## 🎯 목표
@@ -68,7 +68,7 @@ spot_omg/
 
 - [x] STM32 USART1 1 Mbps URT-2 통신과 STS3215 12축 Sync Write
 - [x] USART2 인터럽트 콘솔과 실행 중 `Ctrl+C` 정지
-- [x] BNO055 IMU와 J1/J2/J3 자세 보정
+- [x] BNO086 IMU(SPI)와 J1/J2/J3 자세 보정
 - [x] `stand`, `trot`, `trotplace`, 원형 발끝 `trot2`, 반복 `jump`
 - [x] STM32/MuJoCo 공용 C 보행·점프 정책
 - [x] 서보 보정·진단용 `spotctl`

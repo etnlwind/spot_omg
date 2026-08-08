@@ -2,7 +2,7 @@
 
 - [`urdf/`](./urdf/README.md): Isaac Sim/Isaac Lab용 12-DOF 로봇 모델
 - [`../firmware/stm32-learning/`](../firmware/stm32-learning/README.md):
-  STM32F446RE, URT-2, STS3215와 BNO055 연결 및 시험 절차
+  STM32F446RE, URT-2, STS3215와 BNO086 연결 및 시험 절차
 - [`../tools/servo_tool/`](../tools/servo_tool/README.md): URT-2 USB 직접 연결 시
   서보 ID·보정값·포즈 관리
 
