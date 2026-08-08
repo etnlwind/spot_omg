@@ -16,6 +16,21 @@
 
 #define BNO055_TIMEOUT_MS         100U
 
+/*
+ * Sign conventions, matching what the README documents for this robot:
+ *
+ *   Pitch +  tipping toward the front of the robot
+ *   Roll  +  tipping toward the right of the robot
+ *
+ * Measured on the bench 2026-08-08: roll already agreed, pitch came out
+ * negative when the robot was tipped forward, so pitch is inverted here.
+ * This is the place to fix it -- the balance loop is written against the
+ * convention above, and compensating in its gains would hide the mismatch.
+ */
+#define BNO055_ROLL_SIGN   (+1)
+#define BNO055_PITCH_SIGN  (-1)
+#define BNO055_YAW_SIGN    (+1)
+
 /* Euler output is 16 LSB per degree; the robot works in tenths. */
 #define BNO055_EULER_TO_TENTHS(raw) ((int16_t)(((int32_t)(raw) * 10) / 16))
 
@@ -141,12 +156,12 @@ bool bno055_read_euler(Bno055 *imu,
         return false;
     }
 
-    *yaw_tenths = BNO055_EULER_TO_TENTHS(
-        (int16_t)(((uint16_t)data[1] << 8) | data[0]));
-    *roll_tenths = BNO055_EULER_TO_TENTHS(
-        (int16_t)(((uint16_t)data[3] << 8) | data[2]));
-    *pitch_tenths = BNO055_EULER_TO_TENTHS(
-        (int16_t)(((uint16_t)data[5] << 8) | data[4]));
+    *yaw_tenths = (int16_t)(BNO055_YAW_SIGN * BNO055_EULER_TO_TENTHS(
+        (int16_t)(((uint16_t)data[1] << 8) | data[0])));
+    *roll_tenths = (int16_t)(BNO055_ROLL_SIGN * BNO055_EULER_TO_TENTHS(
+        (int16_t)(((uint16_t)data[3] << 8) | data[2])));
+    *pitch_tenths = (int16_t)(BNO055_PITCH_SIGN * BNO055_EULER_TO_TENTHS(
+        (int16_t)(((uint16_t)data[5] << 8) | data[4])));
     return true;
 }
 
