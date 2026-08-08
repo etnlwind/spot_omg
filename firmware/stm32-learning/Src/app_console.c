@@ -654,34 +654,35 @@ static void print_safety_fault(AppConsole *console)
 }
 
 /*
- * Diagnostic pairing switch.  "lateral" runs the front legs half a cycle out,
- * putting FL beside RL and FR beside RR so a front and a rear leg sit at the
- * same phase and their angles can be compared directly.  It is not a gait to
- * walk on and does not persist across a reset.
+ * Diagnostic: swap what the two front legs are told to do.
+ *
+ * Exchanges the front-left and front-right targets, so each front leg runs the
+ * trajectory computed for the other.  Useful for telling apart a front pair
+ * that is mirrored in wiring or calibration from one whose trajectory is
+ * simply wrong.  Not a gait to walk on, and it resets on reboot.
  */
-static void command_steppair(AppConsole *console, const char *mode)
+static void command_frontswap(AppConsole *console, const char *mode)
 {
     if (mode == NULL) {
         write_text(console,
-                   console->robot->gait_front_phase_swapped
-                       ? "Step pair: lateral (FL+RL, FR+RR) - diagnostic\r\n"
-                       : "Step pair: diagonal (FL+RR, FR+RL) - normal trot\r\n");
+                   console->robot->gait_front_legs_swapped
+                       ? "Front legs: swapped (FL runs FR, FR runs FL)\r\n"
+                       : "Front legs: normal\r\n");
         return;
     }
-    if (strcmp(mode, "diagonal") == 0) {
-        robot_set_front_phase_swapped(console->robot, false);
-        write_text(console, "Step pair: diagonal (FL+RR, FR+RL)\r\n");
+    if (strcmp(mode, "off") == 0) {
+        robot_set_front_legs_swapped(console->robot, false);
+        write_text(console, "Front legs: normal\r\n");
         return;
     }
-    if (strcmp(mode, "lateral") == 0) {
-        robot_set_front_phase_swapped(console->robot, true);
+    if (strcmp(mode, "on") == 0) {
+        robot_set_front_legs_swapped(console->robot, true);
         write_text(console,
-                   "Step pair: lateral (FL+RL, FR+RR)\r\n"
-                   "  Diagnostic only: front legs run half a cycle out so a "
-                   "front and rear leg share a phase\r\n");
+                   "Front legs: swapped (FL runs FR, FR runs FL)\r\n"
+                   "  Diagnostic only\r\n");
         return;
     }
-    write_text(console, "usage: steppair diagonal|lateral\r\n");
+    write_text(console, "usage: frontswap on|off\r\n");
 }
 
 static void command_safety(AppConsole *console)
@@ -1280,8 +1281,8 @@ static void execute_line(AppConsole *console)
         command_profile(console, speed, acceleration);
     } else if (strcmp(command, "echo") == 0) {
         command_echo(console, strtok(NULL, " \t"));
-    } else if (strcmp(command, "steppair") == 0) {
-        command_steppair(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "frontswap") == 0) {
+        command_frontswap(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "safety") == 0) {
         command_safety(console);
     } else if (strcmp(command, "recover") == 0) {
@@ -1422,7 +1423,7 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax            torque off all configured servos\r\n"
-               "  steppair diagonal|lateral  diagnostic leg pairing (default diagonal)\r\n"
+               "  frontswap on|off  diagnostic: front legs run each other's target\r\n"
                "  safety           stall detector state and the latched fault\r\n"
                "  recover          clear a safety fault and hold where the legs are\r\n"
                "  i2cscan          scan I2C1 for the BNO055\r\n"

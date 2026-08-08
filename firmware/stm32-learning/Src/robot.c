@@ -80,7 +80,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->trot_step_sync_peak_error_ticks = 0U;
     robot->motion_abort_requested = false;
     robot->safety_scan_index = 0U;
-    robot->gait_front_phase_swapped = false;
+    robot->gait_front_legs_swapped = false;
     safety_init(&robot->safety, NULL);
 }
 
@@ -149,10 +149,10 @@ const char *robot_balance_mode_string(RobotBalanceMode mode)
     return mode == ROBOT_BALANCE_FULL ? "full" : "normal";
 }
 
-void robot_set_front_phase_swapped(RobotController *robot, bool swapped)
+void robot_set_front_legs_swapped(RobotController *robot, bool swapped)
 {
     if (robot != NULL) {
-        robot->gait_front_phase_swapped = swapped;
+        robot->gait_front_legs_swapped = swapped;
     }
 }
 
@@ -709,18 +709,19 @@ static bool robot_trot_policy_targets_at(
 }
 
 /*
- * Diagnostic: run the front legs half a cycle out of their usual phase.
+ * Diagnostic: hand the front-left leg what the front-right was computed to do,
+ * and vice versa.
  *
- * The policy pairs legs diagonally, FL with RR and FR with RL, and holds that
- * table privately.  Shifting the whole call by half a cycle swings every leg
- * to its partner's phase, so taking only the front pair from a second call at
- * phase + 0.5 leaves FL beside RL and FR beside RR -- a lateral pairing.
+ * This is a whole-leg swap, not a phase shift.  The two front legs are already
+ * half a cycle apart, so exchanging them moves the timing as a side effect,
+ * but it also exchanges everything the policy makes left- or right-specific --
+ * abduction direction above all.  That is the point: it tests whether the
+ * front pair is wired or calibrated as each other's mirror, which a phase
+ * change alone would not reveal.
  *
- * Done this way on purpose: gait_policy.h is shared with the simulator and its
- * regression tests, and an experiment on the robot has no business changing
- * what they verify.  Walking like this is not the goal; it puts a front leg
- * and a rear leg on the same phase so their angles can be compared directly
- * while chasing the front-leg trajectory complaint.
+ * Done here rather than in gait_policy.h because that file is shared with the
+ * simulator and its regression tests, and an experiment on the robot has no
+ * business changing what they verify.
  */
 static bool robot_trot_policy_targets(
     RobotController *robot,
@@ -734,21 +735,11 @@ static bool robot_trot_policy_targets(
                                       travel_scale, targets)) {
         return false;
     }
-    if (!robot->gait_front_phase_swapped) {
-        return true;
+    if (robot->gait_front_legs_swapped) {
+        const GaitPolicyLegTarget front_left = targets[0];
+        targets[0] = targets[1];   /* FL takes FR's target */
+        targets[1] = front_left;   /* FR takes FL's */
     }
-
-    GaitPolicyLegTarget shifted[GAIT_POLICY_LEG_COUNT];
-    float other = phase + 0.5f;
-    if (other >= 1.0f) {
-        other -= 1.0f;
-    }
-    if (!robot_trot_policy_targets_at(circular, other, amplitude_scale,
-                                      travel_scale, shifted)) {
-        return false;
-    }
-    targets[0] = shifted[0];   /* FL */
-    targets[1] = shifted[1];   /* FR */
     return true;
 }
 

@@ -97,11 +97,11 @@ typedef struct
     uint8_t safety_scan_index;
 
     /*
-     * Diagnostic only.  Runs the front legs half a cycle out of phase, which
-     * pairs FL with RL and FR with RR instead of diagonally, so a front and a
-     * rear leg can be compared at the same phase.  Not a gait to walk on.
+     * Diagnostic only.  Gives the front-left leg the front-right's computed
+     * target and vice versa, exchanging the left/right specific parts of the
+     * trajectory along with the timing.  Not a gait to walk on.
      */
-    bool gait_front_phase_swapped;   /* round-robin cursor over the twelve joints */
+    bool gait_front_legs_swapped;   /* round-robin cursor over the twelve joints */
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
@@ -117,7 +117,7 @@ bool robot_set_balance_enabled(RobotController *robot, bool enabled);
 bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode);
 const char *robot_balance_mode_string(RobotBalanceMode mode);
 void robot_request_motion_abort(RobotController *robot);
-void robot_set_front_phase_swapped(RobotController *robot, bool swapped);
+void robot_set_front_legs_swapped(RobotController *robot, bool swapped);
 
 RobotResult robot_require_all(RobotController *robot);
 

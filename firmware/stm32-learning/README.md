@@ -219,7 +219,7 @@ trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
 trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
 jump [C [MS]]    제자리 반복 점프; 0=계속, 1..20회, 주기 800..5000ms
 relax            전체 토크 해제
-steppair diagonal|lateral  진단용 다리 짝짓기 (기본 diagonal)
+frontswap on|off  진단용: 앞다리가 서로의 궤적을 실행 (기본 off)
 safety           stall 검출기 상태와 래치된 fault 확인
 recover          safety fault 해제 후 현재 위치에서 hold
 imu on            10 Hz IMU 자세 로그 출력 시작
@@ -237,25 +237,26 @@ help             도움말
 플래그를 설정합니다. 현재 frame을 마친 뒤 stand 목표를 전송하고 프롬프트로
 돌아옵니다.
 
-## 진단: `steppair`
+## 진단: `frontswap`
 
-보행 정책은 다리를 대각선으로 짝지읍니다 — `FL`+`RR`, `FR`+`RL`. 앞다리 궤적을
-뒷다리와 직접 대조하려면 두 다리가 **같은 위상**에 있어야 하는데, 대각선 짝에서는
-항상 반주기 어긋나 있어 비교가 어렵습니다.
+앞다리 좌우를 서로 바꿔서 실행합니다. `FL`은 `FR`의 궤적을, `FR`은 `FL`의 궤적을
+받습니다.
 
 ```bash
-spotctl console send steppair lateral    # FL+RL, FR+RR
+spotctl console send frontswap on
 spotctl trot2 1 5000
-spotctl console send steppair diagonal   # 원복
+spotctl console send frontswap off    # 원복
 ```
 
-`lateral`은 앞다리만 반주기 이동시켜 `FL`을 `RL` 옆에, `FR`을 `RR` 옆에 둡니다.
-**보행용이 아니라 관찰용**이며 리셋하면 `diagonal`로 돌아갑니다.
+두 앞다리는 원래 반주기 어긋나 있으므로 교환하면 타이밍도 함께 바뀌지만, 그보다
+**정책이 좌우로 구분해 만드는 성분 전부**가 바뀌는 것이 핵심입니다 — 특히 J1
+abduction 방향. 앞다리 쌍이 배선이나 캘리브레이션에서 서로 거울로 되어 있는
+경우와, 궤적 자체가 틀린 경우를 갈라냅니다.
 
-구현은 `gait_policy.h`를 건드리지 않습니다. 정책을 `phase`와 `phase + 0.5`
-두 번 호출해 앞다리만 후자에서 가져옵니다. 위상 표는 정책 내부에 있고 그 파일은
-시뮬레이터와 회귀 시험이 공유하므로, 로봇에서의 실험이 그들이 검증하는 것을
-바꾸면 안 됩니다.
+**보행용이 아니라 관찰용**이며 리셋하면 `off`로 돌아갑니다.
+
+구현은 `gait_policy.h`를 건드리지 않습니다. 그 파일은 시뮬레이터와 회귀 시험이
+공유하므로, 로봇에서의 실험이 그들이 검증하는 것을 바꾸면 안 됩니다.
 
 ## Stall 안전 보호
 
