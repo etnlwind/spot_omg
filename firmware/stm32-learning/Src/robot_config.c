@@ -97,7 +97,10 @@ bool robot_angle_tenths_to_position(size_t joint_array_index,
     return true;
 }
 
-bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT])
+/* Build a whole-robot pose from one canonical angle per joint number. */
+static bool robot_pose_targets(int16_t upper_deg,
+                               int16_t knee_deg,
+                               uint16_t targets[ROBOT_JOINT_COUNT])
 {
     if (targets == NULL || !robot_config_valid()) {
         return false;
@@ -106,9 +109,9 @@ bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT])
     for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
         int16_t angle = 0;
         if (g_robot_joints[index].joint_index == 2U) {
-            angle = 45;
+            angle = upper_deg;
         } else if (g_robot_joints[index].joint_index == 3U) {
-            angle = 90;
+            angle = knee_deg;
         }
 
         if (!robot_angle_to_position(index, angle, &targets[index])) {
@@ -117,4 +120,41 @@ bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT])
     }
 
     return true;
+}
+
+bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT])
+{
+    return robot_pose_targets(45, 90, targets);
+}
+
+bool robot_straight_targets(uint16_t targets[ROBOT_JOINT_COUNT])
+{
+    /*
+     * Every joint at canonical zero, which puts both links of each leg in
+     * line and the foot straight below the hip.  Unlike the stand pose this
+     * is a physically unambiguous reference: a leg either looks straight or
+     * it does not, so it is the pose to check a calibration against.
+     */
+    return robot_pose_targets(0, 0, targets);
+}
+
+size_t robot_pose_clearance(const uint16_t targets[ROBOT_JOINT_COUNT],
+                            uint16_t margin_ticks,
+                            uint16_t *clearance)
+{
+    if (targets == NULL) {
+        return ROBOT_JOINT_COUNT;
+    }
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const uint16_t low = targets[index] - g_robot_joints[index].minimum;
+        const uint16_t high = g_robot_joints[index].maximum - targets[index];
+        const uint16_t nearest = low < high ? low : high;
+        if (nearest < margin_ticks) {
+            if (clearance != NULL) {
+                *clearance = nearest;
+            }
+            return index;
+        }
+    }
+    return ROBOT_JOINT_COUNT;
 }

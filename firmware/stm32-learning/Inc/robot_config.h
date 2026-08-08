@@ -40,6 +40,19 @@ bool robot_angle_tenths_to_position(size_t joint_array_index,
 
 bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT]);
 
+/* Canonical zero on every joint: both links in line, foot below the hip. */
+bool robot_straight_targets(uint16_t targets[ROBOT_JOINT_COUNT]);
+
+/*
+ * Index of the first joint whose target sits closer than margin_ticks to a
+ * configured limit, or ROBOT_JOINT_COUNT when every joint has room.  A pose
+ * that parks a joint against its stop drives it into the hard stop instead of
+ * reaching the angle, which is worth refusing rather than discovering.
+ */
+size_t robot_pose_clearance(const uint16_t targets[ROBOT_JOINT_COUNT],
+                            uint16_t margin_ticks,
+                            uint16_t *clearance);
+
 #ifdef __cplusplus
 }
 #endif

@@ -132,6 +132,7 @@ RobotResult robot_recover(RobotController *robot);
 RobotResult robot_hold(RobotController *robot);
 RobotResult robot_relax(RobotController *robot);
 RobotResult robot_stand(RobotController *robot);
+RobotResult robot_stand_straight(RobotController *robot);
 RobotResult robot_trot(RobotController *robot,
                        uint8_t cycles,
                        uint16_t period_ms);

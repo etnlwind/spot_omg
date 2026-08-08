@@ -1220,6 +1220,9 @@ static void execute_line(AppConsole *console)
         command_move(console, id, position);
     } else if (strcmp(command, "hold") == 0) {
         print_robot_result(console, robot_hold(console->robot));
+    } else if (strcmp(command, "stand11") == 0) {
+        write_text(console, "Straightening all four legs\r\n");
+        print_robot_result(console, robot_stand_straight(console->robot));
     } else if (strcmp(command, "stand") == 0) {
         write_text(console, "Starting direct synchronized stand move\r\n");
         print_robot_result(console, robot_stand(console->robot));
@@ -1384,6 +1387,7 @@ void app_console_print_help(AppConsole *console)
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"
                "  stand            direct synchronized stand move\r\n"
+               "  stand11          straighten every leg (J2=0, J3=0)\r\n"
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"

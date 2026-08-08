@@ -14,6 +14,13 @@
 #define ROBOT_VERIFY_TIMEOUT_MS      2000U
 #define ROBOT_VERIFY_POLL_MS         100U
 #define ROBOT_TROT_FRAME_MS          20U
+
+/*
+ * How much room a commanded pose must leave to a joint's configured limit.
+ * About nine degrees, enough that a pose lands on its angle rather than on a
+ * hard stop.
+ */
+#define ROBOT_POSE_MARGIN_TICKS     100U
 #define ROBOT_TROT_RAMP_MS            500U
 #define ROBOT_BALANCE_ERROR_LIMIT     300
 #define ROBOT_BALANCE_RATE_LIMIT      1200
@@ -297,6 +304,49 @@ RobotResult robot_hold(RobotController *robot)
         }
     }
 
+    return ROBOT_OK;
+}
+
+/*
+ * Straighten every leg: both links in line, foot below the hip.
+ *
+ * Refuses when the pose would park a joint against a configured limit.  A
+ * calibration whose zero sits at the end of travel cannot reach the angle --
+ * the joint hits its hard stop instead -- and driving into a stop is what the
+ * stall detector exists to catch, so it is better not to command it.
+ */
+RobotResult robot_stand_straight(RobotController *robot)
+{
+    uint16_t target[ROBOT_JOINT_COUNT];
+    uint16_t clearance = 0U;
+
+    if (robot == NULL || robot->bus == NULL) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+    if (safety_is_faulted(&robot->safety)) {
+        return ROBOT_SAFETY_FAULT;
+    }
+    if (!robot_straight_targets(target)) {
+        return ROBOT_CONFIG_ERROR;
+    }
+
+    const size_t tight = robot_pose_clearance(
+        target, ROBOT_POSE_MARGIN_TICKS, &clearance);
+    if (tight < ROBOT_JOINT_COUNT) {
+        robot->last_failed_servo_id = g_robot_servo_ids[tight];
+        return ROBOT_POSITION_LIMIT;
+    }
+
+    RobotResult result = robot_hold(robot);
+    if (result != ROBOT_OK) {
+        return result;
+    }
+
+    const ServoBusResult bus_result = sts3215_sync_positions(
+        robot->bus, g_robot_servo_ids, target, ROBOT_JOINT_COUNT);
+    if (bus_result != SERVO_BUS_OK) {
+        return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
+    }
     return ROBOT_OK;
 }
 
