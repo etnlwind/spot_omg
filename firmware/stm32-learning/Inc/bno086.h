@@ -126,6 +126,22 @@ typedef struct
      * protocol, is the fault.
      */
     uint8_t deselected_header[4];
+
+    /*
+     * Selected, but read while RST is held low.  A reset line that reaches the
+     * part tri-states its outputs here, so these bytes stop matching the
+     * CS-low read.  Identical bytes mean the reset pulse never arrives, which
+     * is why the sensor answers but never announces itself.
+     */
+    uint8_t in_reset_header[4];
+
+    /*
+     * One reset-then-read per SPI clock mode.  The driver assumes mode 3, and
+     * every other check has passed, so a wrong edge is the last untested
+     * assumption: a header that only looks empty because it was sampled on the
+     * wrong clock edge is indistinguishable from a sensor with nothing to say.
+     */
+    uint8_t mode_header[4][4];
 } Bno086Probe;
 
 /*

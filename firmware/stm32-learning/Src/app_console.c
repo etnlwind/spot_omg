@@ -584,6 +584,26 @@ static void command_imuprobe(AppConsole *console)
 
     (void)snprintf(message,
                    sizeof(message),
+                   "IMUPROBE in-reset read   : %02X %02X %02X %02X\r\n",
+                   (unsigned int)probe.in_reset_header[0],
+                   (unsigned int)probe.in_reset_header[1],
+                   (unsigned int)probe.in_reset_header[2],
+                   (unsigned int)probe.in_reset_header[3]);
+    write_text(console, message);
+
+    if (memcmp(probe.in_reset_header, probe.blind_header, 4) == 0) {
+        write_text(console,
+                   "  Holding RST low changes nothing, so the reset pulse "
+                   "never reaches the part: check D3 against the sensor RST "
+                   "pin\r\n");
+    } else {
+        write_text(console,
+                   "  Holding RST low changes the answer, so D3 does reach "
+                   "the part and reset works\r\n");
+    }
+
+    (void)snprintf(message,
+                   sizeof(message),
                    "IMUPROBE deselected read: %02X %02X %02X %02X\r\n",
                    (unsigned int)probe.deselected_header[0],
                    (unsigned int)probe.deselected_header[1],
@@ -606,6 +626,20 @@ static void command_imuprobe(AppConsole *console)
                    "  MISO follows CS, so the sensor is selected and driving: "
                    "it answers with a zero-length header, meaning it booted "
                    "but queued no advertisement. Suspect RST on D3\r\n");
+    }
+
+    for (uint32_t mode = 0U; mode < 4U; ++mode) {
+        (void)snprintf(message,
+                       sizeof(message),
+                       "IMUPROBE mode %lu (CPOL=%lu CPHA=%lu): %02X %02X %02X %02X\r\n",
+                       (unsigned long)mode,
+                       (unsigned long)(mode >> 1),
+                       (unsigned long)(mode & 1U),
+                       (unsigned int)probe.mode_header[mode][0],
+                       (unsigned int)probe.mode_header[mode][1],
+                       (unsigned int)probe.mode_header[mode][2],
+                       (unsigned int)probe.mode_header[mode][3]);
+        write_text(console, message);
     }
 
     if (probe.blind_data_seen && !probe.int_asserted) {

@@ -208,13 +208,13 @@ static Bno086Result shtp_send(Bno086 *imu,
     if (!BNO086_PS0_STRAPPED) {
         gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, false);
     }
-    const bool ready = wait_for_interrupt(BNO086_INT_TIMEOUT_MS);
-    if (!ready) {
-        if (!BNO086_PS0_STRAPPED) {
-            gpio_write(IMU_WAKE_GPIO_Port, IMU_WAKE_Pin, true);
-        }
-        return BNO086_TIMEOUT;
-    }
+    /*
+     * Prefer the window the sensor offers, but do not require it.  A part that
+     * has nothing queued never asserts H_INTN, and refusing to transmit then
+     * means the subscription that would give it something to say can never be
+     * sent.  Writing while CS is asserted is accepted regardless.
+     */
+    (void)wait_for_interrupt(BNO086_INT_TIMEOUT_MS);
 
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
     const HAL_StatusTypeDef status =
@@ -381,10 +381,12 @@ Bno086Result bno086_init(Bno086 *imu,
         }
     }
 
-    if (!saw_packet) {
-        return BNO086_NOT_PRESENT;
-    }
-
+    /*
+     * The advertisement is informational: it enumerates the SHTP channels,
+     * which this driver hardcodes.  Subscribe whether or not it arrived, and
+     * let the reports themselves decide whether the part is really there.
+     */
+    (void)saw_packet;
     imu->present = true;
     result = enable_game_rotation_vector(imu, report_interval_us);
     if (result != BNO086_OK) {
@@ -392,14 +394,22 @@ Bno086Result bno086_init(Bno086 *imu,
         return result;
     }
 
-    /* Give the first reports a chance to land so callers can trust the cache. */
+    /*
+     * Give the first reports a chance to land so callers can trust the cache.
+     * A second is generous next to the 5 ms subscription, but a part that has
+     * just been reset needs the slack.
+     */
     const uint32_t subscribed_at = HAL_GetTick();
     while (!imu->has_attitude &&
-           (uint32_t)(HAL_GetTick() - subscribed_at) < BNO086_INT_TIMEOUT_MS) {
+           (uint32_t)(HAL_GetTick() - subscribed_at) < 1000U) {
         bno086_service(imu);
     }
 
-    return imu->has_attitude ? BNO086_OK : BNO086_TIMEOUT;
+    if (!imu->has_attitude) {
+        imu->present = false;
+        return saw_packet ? BNO086_TIMEOUT : BNO086_NOT_PRESENT;
+    }
+    return BNO086_OK;
 }
 
 /* Sample H_INTN as a plain input, mirroring what linestate does for PA9/PA10. */
@@ -499,6 +509,48 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
     gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
     (void)spi_read(imu, probe->deselected_header,
                    sizeof(probe->deselected_header));
+
+    /* Same read, selected, but with the part held in reset. */
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
+    HAL_Delay(5);
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+    (void)spi_read(imu, probe->in_reset_header,
+                   sizeof(probe->in_reset_header));
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
+    HAL_Delay(100);
+
+    /*
+     * Sweep the four clock modes, resetting the part before each so a fresh
+     * advertisement is waiting, and record what each one reads back.
+     */
+    const uint32_t polarity[4] = {SPI_POLARITY_LOW, SPI_POLARITY_LOW,
+                                  SPI_POLARITY_HIGH, SPI_POLARITY_HIGH};
+    const uint32_t phase[4] = {SPI_PHASE_1EDGE, SPI_PHASE_2EDGE,
+                               SPI_PHASE_1EDGE, SPI_PHASE_2EDGE};
+    for (uint32_t mode = 0U; mode < 4U; ++mode) {
+        imu->spi->Init.CLKPolarity = polarity[mode];
+        imu->spi->Init.CLKPhase = phase[mode];
+        imu->spi->State = HAL_SPI_STATE_RESET;
+        if (HAL_SPI_Init(imu->spi) != HAL_OK) {
+            continue;
+        }
+
+        gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
+        HAL_Delay(20);
+        gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
+        HAL_Delay(250);
+
+        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+        (void)spi_read(imu, probe->mode_header[mode], 4U);
+        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    }
+
+    /* Leave the bus on the mode the driver actually uses. */
+    imu->spi->Init.CLKPolarity = SPI_POLARITY_HIGH;
+    imu->spi->Init.CLKPhase = SPI_PHASE_2EDGE;
+    imu->spi->State = HAL_SPI_STATE_RESET;
+    (void)HAL_SPI_Init(imu->spi);
 
     if (!probe->int_asserted) {
         return;
