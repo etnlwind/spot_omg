@@ -40,6 +40,12 @@ ABORT_BYTE = b"\x03"
 #: Written by the 10 Hz IMU logger, not by any command.
 TELEMETRY_PATTERN = re.compile(r"^Yaw=")
 
+#: print_bus_result() writes "ID 3: timeout, servo_error=0x00" for a servo
+#: that did not answer, and "ID 3: ok, ..." when it did.  Neither carries an
+#: ERROR: prefix, so match the result word directly.  "ID 3 pos=..." and
+#: "  ID 3 OK" have no colon and are not failures.
+BUS_FAILURE_PATTERN = re.compile(r"^\s*ID \d+: (?!ok,)")
+
 #: Commands whose runtime depends on cycle count and period.
 _TIMED_COMMANDS = {
     # command: (default cycles, default period ms)
@@ -90,6 +96,7 @@ def classify(lines: Iterable[str]) -> str:
             or line.startswith("usage:")
             or line.startswith("unknown command")
             or "FAIL" in line
+            or BUS_FAILURE_PATTERN.match(line)
         ):
             return "error"
         if line.startswith("STOPPED:"):

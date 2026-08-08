@@ -35,9 +35,9 @@ spotctl --port PORT status        # URT-2 직결: Feetech 패킷
 spotctl console send trot2 1 1600 # ST-LINK: STM32 콘솔 명령
 ```
 
-macOS에서는 두 장치 모두 `/dev/cu.usbmodem...`으로 잡히므로 포트 이름만으로는
-구분되지 않습니다. `spotctl ports`로 확인한 뒤 `SPOT_SERVO_PORT`와
-`SPOT_STM32_PORT`를 각각 지정하세요.
+macOS에서는 두 장치 모두 `/dev/cu.usbmodem...`으로 잡히므로 포트를 USB vendor
+ID로 구분합니다. ST-LINK는 `0483:374b`이고, 나머지 USB 시리얼 장치를 URT-2로
+봅니다. `spotctl ports`가 어느 쪽인지 표시합니다.
 
 ## 📁 프로젝트 구조
 

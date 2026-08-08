@@ -1101,9 +1101,21 @@ console` 하위 명령을 추가했습니다. 서보 버스의 주인은 그대�
   `jump 0`은 완료 시점이 없어 `Ctrl+C` 또는 `--timeout`이 필요합니다.
 
 포트 선택은 예상보다 까다로웠습니다. 이 Mac에서는 URT-2도
-`/dev/cu.usbmodem5B790788341`로 잡혀 ST-LINK와 이름이 같은 계열입니다. 따라서
-이름 대신 USB description의 `stlink`/`stm32`로 찾고, 확실하지 않으면 잘못된
-포트를 고르는 대신 오류를 내고 `--stm32-port`/`SPOT_STM32_PORT`를 요구합니다.
+`/dev/cu.usbmodem5B790788341`로 잡혀 ST-LINK와 이름이 같은 계열입니다. 그래서
+이름 대신 USB descriptor를 조회해 판별합니다. 실측한 ST-LINK 값은 다음과
+같습니다.
+
+```text
+device        /dev/cu.usbmodem312103
+hwid          USB VID:PID=0483:374B SER=066EFF575380535067195536
+manufacturer  STMicroelectronics
+product       STM32 STLink
+```
+
+vendor `0x0483`이면 콘솔, 그 외 USB 시리얼 장치는 URT-2 후보로 봅니다. 둘 다
+꽂혀 있어도 각각 올바르게 선택되며, `spotctl ports`가 `0483:374b`와 함께 어느
+쪽인지 표시합니다. macOS의 pyserial은 `vid`/`pid`를 `int`가 아니라 `'0x0483'`
+문자열로 돌려주므로 두 형식을 모두 받아 정규화합니다.
 
 검증은 pty를 raw 모드로 열어 펌웨어 응답을 흉내내는 방식으로 진행했습니다.
 `targets` 12줄 파싱, `trot2 1 1600`의 0.4초 지연 후 `OK`, unknown command의
@@ -1111,13 +1123,29 @@ console` 하위 명령을 추가했습니다. 서보 버스의 주인은 그대�
 `0x03` 전송 → `STOPPED: stand target requested` → 종료 코드 `130`을 확인했습니다.
 단위 시험은 Servo Tool `78`개와 `trot2` `5`개로 합계 `83 PASS`입니다.
 
-실기 확인은 아직입니다. 거치대에서 다음 순서로 먼저 시험합니다.
+실기 확인(읽기 전용 명령만)에서 포트 자동 선택과 응답 파싱이 동작했습니다.
+
+```text
+$ spotctl console send targets     -> ID 1..12 target=... , exit 0
+$ spotctl console send profile     -> Profile: speed=3400 acceleration=254
+$ spotctl console send balance status
+   Balance: on, mode: full, target: level, IMU: available, policy: required
+$ spotctl console send scan        -> ID 1..12 timeout, exit 1
+```
+
+`scan`의 12축 timeout은 서보 버스 전원/URT-2 연결 문제이며 콘솔 자체는
+정상입니다. 이 결과 덕분에 분류기의 빈틈을 하나 찾았습니다. `print_bus_result`가
+쓰는 `ID 3: timeout, servo_error=0x00`에는 `ERROR:` 접두사가 없어 처음에는
+성공으로 분류되어 `scan`이 종료 코드 `0`을 냈습니다. `^\s*ID \d+: (?!ok,)`를
+추가해 실패로 판정하도록 고쳤습니다. `ID 3 target=...`, `ID 1 pos=...`,
+`  ID 3 OK`는 콜론이 없어 영향받지 않습니다.
+
+서보를 실제로 움직이는 `stand`, `trot2`, `jump`는 아직 확인하지 않았습니다.
+서보 전원을 연결한 뒤 거치대에서 다음 순서로 진행합니다.
 
 ```bash
-spotctl ports
-export SPOT_STM32_PORT=/dev/cu.usbmodem...
+spotctl console send scan            # 12축 OK 확인이 먼저
 spotctl console send profile 800 80
-spotctl console send balance status
 spotctl console send stand
 spotctl console --log tools/servo_tool/logs/bench.log send trot2 1 1600
 ```

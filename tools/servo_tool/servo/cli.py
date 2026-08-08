@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import dataclass
 from datetime import datetime
 import os
 import statistics
@@ -304,7 +305,79 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def serial_ports() -> list[tuple[str, str]]:
+#: STMicroelectronics; the ST-LINK virtual COM port on every Nucleo board.
+ST_LINK_VENDOR_ID = 0x0483
+
+#: Used only when the backend hides the USB numbers.
+ST_LINK_HINTS = ("stlink", "st-link", "st link", "stm32")
+
+_PORT_NAME_MARKERS = ("usbmodem", "usbserial", "ttyusb", "ttyacm")
+
+
+def _usb_number(value) -> int | None:
+    """Normalize a pyserial vid/pid, which is an int on some platforms and a
+    hex string such as ``'0x0483'`` on others (macOS)."""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value), 16)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True)
+class PortInfo:
+    """One serial port and the USB descriptors behind it."""
+
+    device: str
+    description: str
+    vid: int | None = None
+    pid: int | None = None
+    manufacturer: str | None = None
+    product: str | None = None
+    serial_number: str | None = None
+
+    @property
+    def usb_id(self) -> str:
+        if self.vid is None or self.pid is None:
+            return "-"
+        return f"{self.vid:04x}:{self.pid:04x}"
+
+    @property
+    def is_st_link(self) -> bool:
+        """True for the STM32 debug console, false for the URT-2.
+
+        The vendor ID is the reliable test.  Device names are not: on macOS
+        the URT-2 also enumerates as ``/dev/cu.usbmodem...``.
+        """
+        if self.vid is not None:
+            return self.vid == ST_LINK_VENDOR_ID
+        text = " ".join(
+            part.lower()
+            for part in (self.description, self.product, self.manufacturer)
+            if part
+        )
+        return any(hint in text for hint in ST_LINK_HINTS)
+
+    @property
+    def looks_like_usb_serial(self) -> bool:
+        if self.vid is not None:
+            return True
+        name = self.device.lower()
+        return (
+            any(marker in name for marker in _PORT_NAME_MARKERS)
+            or self.device.upper().startswith("COM")
+        )
+
+    def summary(self) -> str:
+        role = " <- STM32 console" if self.is_st_link else ""
+        return f"{self.device:32} {self.usb_id:10} {self.description}{role}"
+
+
+def serial_ports() -> list[PortInfo]:
+    """Enumerate serial ports together with their USB vendor/product IDs."""
     try:
         from serial.tools import list_ports
     except ImportError as exc:
@@ -313,67 +386,71 @@ def serial_ports() -> list[tuple[str, str]]:
         ) from exc
     return sorted(
         (
-            (item.device, item.description or "unknown device")
+            PortInfo(
+                device=item.device,
+                description=item.description or "unknown device",
+                vid=_usb_number(item.vid),
+                pid=_usb_number(item.pid),
+                manufacturer=item.manufacturer,
+                product=item.product,
+                serial_number=item.serial_number,
+            )
             for item in list_ports.comports()
         ),
-        key=lambda item: item[0],
+        key=lambda port: port.device,
     )
 
 
 def resolve_port(explicit_port: str | None) -> str:
+    """Find the URT-2, which is any USB serial device that is not the ST-LINK."""
     if explicit_port:
         return explicit_port
-    ports = serial_ports()
     likely = [
-        device
-        for device, _ in ports
-        if any(
-            marker in device.lower()
-            for marker in ("usbmodem", "usbserial", "ttyusb", "ttyacm")
-        )
-        or device.upper().startswith("COM")
+        port
+        for port in serial_ports()
+        if port.looks_like_usb_serial and not port.is_st_link
     ]
     if len(likely) == 1:
-        return likely[0]
+        return likely[0].device
     if not likely:
-        raise RuntimeError("no likely URT-2 port found; run 'spotctl ports'")
+        raise RuntimeError(
+            "no likely URT-2 port found; run 'spotctl ports' (an ST-LINK "
+            "console port is not a servo bus)"
+        )
     raise RuntimeError(
         "multiple serial ports found; select one with --port: "
-        + ", ".join(likely)
+        + ", ".join(f"{port.device} ({port.usb_id})" for port in likely)
     )
 
 
-#: Substrings that identify an ST-LINK CDC device in its USB description.
-ST_LINK_HINTS = ("stlink", "st-link", "st link", "stm32")
-
-
 def resolve_console_port(explicit_port: str | None) -> str:
-    """Find the ST-LINK virtual COM port rather than the URT-2.
+    """Find the ST-LINK virtual COM port by its USB vendor ID.
 
-    Device names cannot separate the two: on macOS the URT-2 also enumerates
-    as ``/dev/cu.usbmodem...``.  Match the USB description instead, and rather
-    than guess when that is inconclusive, ask for an explicit port.  Sending
-    console text to the URT-2, or Feetech packets to the console, silently
-    does nothing useful, so a wrong guess is worse than an error.
+    Rather than guess when the lookup is inconclusive, ask for an explicit
+    port: sending console text to the URT-2, or Feetech packets to the
+    console, fails silently instead of reporting anything useful.
     """
     if explicit_port:
         return explicit_port
-    described = [
-        device
-        for device, description in serial_ports()
-        if any(hint in description.lower() for hint in ST_LINK_HINTS)
-    ]
-    if len(described) == 1:
-        return described[0]
-    if len(described) > 1:
+    ports = serial_ports()
+    candidates = [port for port in ports if port.is_st_link]
+    if len(candidates) == 1:
+        return candidates[0].device
+    if len(candidates) > 1:
         raise RuntimeError(
-            "multiple ST-LINK candidates found; select one with "
-            "--stm32-port: " + ", ".join(described)
+            "multiple ST-LINK ports found; select one with --stm32-port: "
+            + ", ".join(
+                f"{port.device} ({port.usb_id}"
+                + (f", SER={port.serial_number}" if port.serial_number else "")
+                + ")"
+                for port in candidates
+            )
         )
+    seen = ", ".join(f"{port.device} ({port.usb_id})" for port in ports)
     raise RuntimeError(
-        "could not identify the ST-LINK virtual COM port; run 'spotctl ports' "
-        "and pass --stm32-port or set SPOT_STM32_PORT (on macOS the URT-2 "
-        "also appears as usbmodem, so the name alone is ambiguous)"
+        "no ST-LINK virtual COM port found (USB vendor "
+        f"{ST_LINK_VENDOR_ID:04x}); pass --stm32-port or set SPOT_STM32_PORT. "
+        f"Ports seen: {seen or 'none'}"
     )
 
 
@@ -571,8 +648,8 @@ def show_ports() -> None:
     if not ports:
         print("No serial ports found.")
         return
-    for device, description in ports:
-        print(f"{device:24} {description}")
+    for port in ports:
+        print(port.summary())
 
 
 def show_status(robot: SpotRobot) -> None:

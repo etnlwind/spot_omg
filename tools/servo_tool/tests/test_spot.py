@@ -21,6 +21,8 @@ from servo import (
 )
 from servo.console import classify, estimate_timeout
 from servo.cli import (
+    PortInfo,
+    _usb_number,
     apply_pose,
     capture_stand,
     configure_directions,
@@ -1430,6 +1432,20 @@ class ConsoleProtocolTest(unittest.TestCase):
             "error",
         )
         self.assertEqual(classify(["unknown command; type help"]), "error")
+        # A servo that did not answer carries no ERROR: prefix.
+        self.assertEqual(
+            classify(["ID 3: timeout, servo_error=0x00"]), "error"
+        )
+        self.assertEqual(
+            classify(["ID 3: servo error, servo_error=0x04"]), "error"
+        )
+        self.assertEqual(classify(["ID 3: ok, servo_error=0x00"]), "info")
+        # Value reports share the "ID N" prefix but are not bus results.
+        self.assertEqual(classify(["ID 3 target=2048"]), "info")
+        self.assertEqual(classify(["  ID 3 OK"]), "info")
+        self.assertEqual(
+            classify(["ID 1 pos=2048 speed=0 load=0 hw=0x00"]), "info"
+        )
         self.assertEqual(
             classify(["UARTTEST FAIL: TX status=1 at byte 0"]), "error"
         )
@@ -1540,33 +1556,84 @@ class ConsoleProtocolTest(unittest.TestCase):
             console.send("   ")
 
 
+#: The measured descriptors of the ST-LINK on the bench Nucleo board.
+ST_LINK = PortInfo(
+    device="/dev/cu.usbmodem312103",
+    description="STM32 STLink",
+    vid=0x0483,
+    pid=0x374B,
+    manufacturer="STMicroelectronics",
+    product="STM32 STLink",
+    serial_number="066EFF575380535067195536",
+)
+#: The URT-2 also enumerates as usbmodem on macOS, so only the IDs separate
+#: it from the ST-LINK.
+URT2 = PortInfo(
+    device="/dev/cu.usbmodem5B790788341",
+    description="USB Single Serial",
+    vid=0x1A86,
+    pid=0x55D3,
+    manufacturer="QinHeng Electronics",
+    product="USB Single Serial",
+)
+BLUETOOTH = PortInfo(
+    device="/dev/cu.Bluetooth-Incoming-Port", description="n/a"
+)
+
+
 class ConsolePortTest(unittest.TestCase):
-    def test_resolve_console_port_matches_the_usb_description(self) -> None:
-        # Both devices are usbmodem on macOS, so only the description tells
-        # the ST-LINK console apart from the URT-2 servo bus.
-        ports = [
-            ("/dev/cu.usbmodem5B790788341", "USB Single Serial"),
-            ("/dev/cu.usbmodem1103", "STM32 STLink"),
-            ("/dev/cu.Bluetooth-Incoming-Port", "n/a"),
-        ]
+    def test_usb_numbers_parse_from_ints_and_hex_strings(self) -> None:
+        # pyserial reports vid/pid as an int on Linux and "0x0483" on macOS.
+        self.assertEqual(_usb_number(0x0483), 0x0483)
+        self.assertEqual(_usb_number("0x0483"), 0x0483)
+        self.assertEqual(_usb_number("0483"), 0x0483)
+        self.assertIsNone(_usb_number(None))
+        self.assertIsNone(_usb_number("n/a"))
+
+    def test_st_link_is_identified_by_vendor_id_not_device_name(self) -> None:
+        self.assertTrue(ST_LINK.is_st_link)
+        self.assertEqual(ST_LINK.usb_id, "0483:374b")
+        # Same usbmodem name, different vendor: this one is the servo bus.
+        self.assertFalse(URT2.is_st_link)
+        self.assertTrue(URT2.looks_like_usb_serial)
+        # Ports with no USB descriptors at all are neither.
+        self.assertFalse(BLUETOOTH.is_st_link)
+        self.assertFalse(BLUETOOTH.looks_like_usb_serial)
+
+    def test_st_link_falls_back_to_usb_strings_without_ids(self) -> None:
+        described = PortInfo(device="/dev/ttyACM0", description="STM32 STLink")
+        self.assertTrue(described.is_st_link)
+        self.assertEqual(described.usb_id, "-")
+
+    def test_resolve_console_port_picks_the_st_link(self) -> None:
+        ports = [BLUETOOTH, URT2, ST_LINK]
         with patch("servo.cli.serial_ports", return_value=ports):
-            self.assertEqual(
-                resolve_console_port(None), "/dev/cu.usbmodem1103"
-            )
+            self.assertEqual(resolve_console_port(None), ST_LINK.device)
+
+    def test_resolve_port_picks_the_urt2_and_skips_the_st_link(self) -> None:
+        # Both plugged in at once must still resolve unambiguously.
+        with patch("servo.cli.serial_ports", return_value=[URT2, ST_LINK]):
+            self.assertEqual(resolve_port(None), URT2.device)
 
     def test_resolve_console_port_refuses_to_guess(self) -> None:
         # A lone URT-2 must never be mistaken for the console.
-        only_urt2 = [("/dev/cu.usbmodem5B790788341", "USB Single Serial")]
-        with patch("servo.cli.serial_ports", return_value=only_urt2):
+        with patch("servo.cli.serial_ports", return_value=[URT2]):
             with self.assertRaises(RuntimeError):
                 resolve_console_port(None)
-        both = [
-            ("/dev/ttyACM0", "STM32 STLink"),
-            ("/dev/ttyACM1", "ST-Link VCP"),
-        ]
-        with patch("servo.cli.serial_ports", return_value=both):
+        second = PortInfo(
+            device="/dev/cu.usbmodem14203",
+            description="STM32 STLink",
+            vid=0x0483,
+            pid=0x374B,
+        )
+        with patch("servo.cli.serial_ports", return_value=[ST_LINK, second]):
             with self.assertRaises(RuntimeError):
                 resolve_console_port(None)
+
+    def test_resolve_port_rejects_an_st_link_only_bus(self) -> None:
+        with patch("servo.cli.serial_ports", return_value=[ST_LINK]):
+            with self.assertRaises(RuntimeError):
+                resolve_port(None)
 
     def test_explicit_port_bypasses_detection(self) -> None:
         self.assertEqual(resolve_console_port("/dev/ttyACM9"), "/dev/ttyACM9")

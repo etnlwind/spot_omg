@@ -100,11 +100,19 @@ spotctl console send stand
 spotctl console send trot2 1 1600
 ```
 
-포트는 `--stm32-port` 또는 `SPOT_STM32_PORT`로 지정합니다. macOS에서는 URT-2도
-`/dev/cu.usbmodem...`으로 잡히기 때문에 이름만으로는 두 장치를 구분할 수
-없습니다. 자동 탐지는 USB description에 ST-LINK/STM32가 들어간 포트만
-선택하며, 확실하지 않으면 잘못 고르는 대신 오류를 냅니다. `spotctl ports`로
-확인한 뒤 명시적으로 지정하세요.
+포트는 자동으로 찾습니다. macOS에서는 URT-2도 `/dev/cu.usbmodem...`으로 잡혀
+이름으로는 구분되지 않으므로, USB vendor ID로 판별합니다. ST-LINK는
+`0483:374b` (STMicroelectronics)이며 그 외 USB 시리얼 장치는 URT-2 후보로
+봅니다. 둘 다 꽂혀 있어도 각각 올바르게 선택됩니다.
+
+```bash
+$ spotctl ports
+/dev/cu.Bluetooth-Incoming-Port  -          n/a
+/dev/cu.usbmodem312103           0483:374b  STM32 STLink <- STM32 console
+```
+
+필요하면 `--stm32-port` 또는 `SPOT_STM32_PORT`로 직접 지정합니다. 자동 탐지가
+확실하지 않으면 잘못된 포트를 고르는 대신 후보 목록과 함께 오류를 냅니다.
 
 `script`는 빈 줄과 `#` 주석을 건너뛰므로 절차 문서를 그대로 실행할 수
 있습니다. 한 명령이라도 실패하면 즉시 중단합니다.
@@ -118,8 +126,10 @@ trot2 1 1600
 relax
 ```
 
-종료 코드는 `0` 성공, `1` 펌웨어 오류(`ERROR:`, `usage:`, unknown command),
-`130` `Ctrl+C` 중단(`STOPPED:`)입니다. 모션 실행 중 `Ctrl+C`를 누르면 클라이언트가
+종료 코드는 `0` 성공, `1` 펌웨어 오류, `130` `Ctrl+C` 중단(`STOPPED:`)입니다.
+오류에는 `ERROR:`, `usage:`, unknown command와 함께 응답하지 않은 서보
+(`ID 3: timeout, servo_error=0x00`)도 포함됩니다. 따라서 `spotctl console send
+scan`은 12축이 모두 응답할 때만 `0`을 반환합니다. 모션 실행 중 `Ctrl+C`를 누르면 클라이언트가
 종료되지 않고 `0x03`을 STM32로 보내므로, 로봇은 stand 자세로 복귀한 뒤 멈춥니다.
 
 대기 시간은 명령의 cycles와 period에서 자동으로 계산합니다. `jump 0`처럼 계속
