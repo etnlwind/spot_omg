@@ -336,19 +336,31 @@ static void linestate_restore_usart1_pins(void)
  * something is actively driving stays HIGH, while an open one follows the
  * pull-down to LOW.
  *
- * PA10 is the decisive one, because it should be fed by the URT-2 TX output.
- * PA9 normally drives a URT-2 input, so it should follow the pull-down; if
- * it instead reads HIGH, something is driving it, which happens when TX and
- * RX are swapped.  A pull-up on a URT-2 input can produce the same reading,
- * so PA9 is reported as a hint rather than a verdict.
+ * What this command cannot do is separate correct wiring from swapped wiring.
+ * The URT-2 output idles HIGH and its input carries a pull-up, so whichever
+ * way round the two wires go, both pins read HIGH under the pull-down.  An
+ * unpowered URT-2 parasitically pulled high through PA9 and its input ESD
+ * diode reads the same way again.  Three states, one measurement.
  *
- * A high reading does NOT prove the URT-2 is powered.  With its logic supply
- * missing, the idle-high PA9 feeds current through the input ESD diode into
- * the URT-2 VDD rail and parasitically raises it to about a diode drop below
- * 3.3 V.  That is enough to hold the pins high while leaving the transceiver
- * far too weak to move data, which looks exactly like a wiring fault.  So
- * when both pins read high, check the URT-2 logic supply -- this build feeds
- * it from the NUCLEO 5V pin -- before suspecting the signal wires.
+ * Measured on 2026-08-08, both pins high is what a HEALTHY bus reads:
+ *
+ *   correct wiring, scan 12/12 OK -> PA10 float=100% pulldown=100% | PA9 100%
+ *   crossed wiring, scan 12 fail  -> PA10 float=100% pulldown=100% | PA9 100%
+ *
+ * Identical.  Do not read this branch as a fault; the earlier verdict that
+ * called it an unpowered URT-2 was firing on a normal bus.
+ *
+ * So when both pins read high, do not trust a verdict from here -- run the
+ * two free hardware checks instead, in this order:
+ *
+ *   1. Watch the URT-2 TX1 LED during "scan".  If it never blinks the URT-2
+ *      is not receiving the request at all, which rules the return path out.
+ *   2. Swap the two signal wires at the URT-2 header and rerun "scan".
+ *
+ * That swap is what actually fixed the 2026-08-08 silent bus: PA9 and PA10
+ * were crossed, so the STM32 was driving the URT-2 output pin while the
+ * URT-2 input sat unconnected on the MCU receive pin.  Swapping cannot make
+ * things worse, because a crossed pair already has two outputs fighting.
  *
  * The pins are returned to USART1 alternate function before returning.  The
  * servo bus is idle while a console command runs, so nothing is interrupted.
@@ -376,13 +388,14 @@ static void command_linestate(AppConsole *console)
 
     if (rx_down >= 90U && tx_down >= 90U) {
         /*
-         * Both pins held high is the signature of a URT-2 with no supply of
-         * its own, parasitically powered through PA9 and the input ESD diode.
+         * Correct wiring, swapped wiring and an unpowered URT-2 all read this
+         * way, so this branch reports the tie rather than picking a winner.
          */
         write_text(console,
-                   "Both pins held high: check the URT-2 logic supply first "
-                   "(NUCLEO 5V pin); an unpowered URT-2 is parasitically "
-                   "pulled high through PA9 and looks like this\r\n");
+                   "Both pins held high: this is also what a working bus "
+                   "reads, so it is not a fault on its own. Run 'scan'; if it "
+                   "fails, watch the URT-2 TX1 LED, then swap the two signal "
+                   "wires at the URT-2 header and rerun 'scan'\r\n");
     } else if (rx_down >= 90U) {
         write_text(console,
                    "PA10 driven high: URT-2 TX reaches the MCU; the request "
