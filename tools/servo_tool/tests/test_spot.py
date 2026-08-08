@@ -270,16 +270,52 @@ class SpotConfigTest(unittest.TestCase):
                 self.assertAlmostEqual(angle, expected_angle, delta=0.05)
 
     def test_joint_angle_raw_conversion_round_trip(self) -> None:
+        """Angles survive the trip to ticks and back, wherever they fit.
+
+        Not every joint can reach every angle.  The front knee horns are
+        installed half a turn round, so their zero sits near the end of travel
+        and a negative angle has nowhere to go -- which is a fact about the
+        hardware, not a conversion bug.  Round-trip what each joint can
+        actually represent, and check the range that matters separately.
+        """
         for leg in ("FL", "FR", "RL", "RR"):
             for joint_number in (1, 2, 3):
+                checked = 0
                 for requested in (-20.0, 0.0, 20.0):
-                    raw = self.config.angle_to_position(
-                        leg, joint_number, requested
-                    )
+                    try:
+                        raw = self.config.angle_to_position(
+                            leg, joint_number, requested
+                        )
+                    except ValueError:
+                        continue
                     restored = self.config.position_to_angle(
                         leg, joint_number, raw
                     )
                     self.assertAlmostEqual(restored, requested, delta=0.05)
+                    checked += 1
+                self.assertGreater(
+                    checked, 0, f"{leg} J{joint_number} represents no angle"
+                )
+
+    def test_every_joint_covers_the_walking_range(self) -> None:
+        """The angles the gait actually commands have to be reachable.
+
+        This is the property the round-trip test above cannot carry once a
+        joint's zero moves to the edge of its travel: what matters is not that
+        every joint reaches -20 degrees, but that each one covers the span the
+        trot policy asks of it.
+        """
+        walking = {1: (-15.0, 15.0), 2: (45.0, 85.0), 3: (65.0, 115.0)}
+        for leg in ("FL", "FR", "RL", "RR"):
+            for joint_number, (low, high) in walking.items():
+                for angle in (low, high):
+                    try:
+                        self.config.angle_to_position(leg, joint_number, angle)
+                    except ValueError as error:
+                        self.fail(
+                            f"{leg} J{joint_number} cannot reach {angle} deg, "
+                            f"which the gait commands: {error}"
+                        )
 
     def test_v3_serializes_one_direction_per_joint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

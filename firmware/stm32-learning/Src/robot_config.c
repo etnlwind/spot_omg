@@ -6,14 +6,25 @@
  * Generated from tools/servo_tool/config/joints.json.
  * Leg index: 0=FL, 1=FR, 2=RL, 3=RR.
  * Joint index: 1=abduction, 2=upper leg, 3=knee.
+ *
+ * The front knee servos are installed with their horns 180 degrees round, and
+ * the two entries for J3 on legs 0 and 1 say so: centre shifted by 2048 ticks
+ * and direction reversed, which is the same mapping their rear counterparts
+ * use once that half turn is taken out.  The legs themselves are identical
+ * front to rear, so nothing else about them differs.
+ *
+ * The stand targets are unchanged by this -- 1036 for servo 3 and 3001 for
+ * servo 6, exactly as before -- because a half turn plus a reversal is the
+ * identity at the pose it was calibrated from.  What changes is everything
+ * either side of it: the knees now travel the same way as the rear ones.
  */
 const RobotJointConfig g_robot_joints[ROBOT_JOINT_COUNT] = {
     {1U,  0U, 1U, 2091U, 0U, 4095U,  1},
     {2U,  0U, 2U, 2235U, 0U, 4095U, -1},
-    {3U,  0U, 3U, 2060U, 0U, 4095U, -1},
+    {3U,  0U, 3U,   12U, 0U, 4095U,  1},
     {4U,  1U, 1U, 2087U, 0U, 4095U, -1},
     {5U,  1U, 2U, 1999U, 0U, 4095U,  1},
-    {6U,  1U, 3U, 1977U, 0U, 4095U,  1},
+    {6U,  1U, 3U, 4025U, 0U, 4095U, -1},
     {7U,  2U, 1U, 2103U, 0U, 4095U, -1},
     {8U,  2U, 2U, 2142U, 0U, 4095U, -1},
     {9U,  2U, 3U, 1996U, 0U, 4095U,  1},
