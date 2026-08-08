@@ -342,6 +342,14 @@ static void linestate_restore_usart1_pins(void)
  * RX are swapped.  A pull-up on a URT-2 input can produce the same reading,
  * so PA9 is reported as a hint rather than a verdict.
  *
+ * A high reading does NOT prove the URT-2 is powered.  With its own supply
+ * missing, the idle-high PA9 feeds current through the input ESD diode into
+ * the URT-2 VDD rail and parasitically raises it to about a diode drop below
+ * 3.3 V.  That is enough to hold the pins high while leaving the transceiver
+ * far too weak to move data, which looks exactly like a wiring fault.  So
+ * when both pins read high, check the URT-2 Type-C supply before suspecting
+ * the wires.
+ *
  * The pins are returned to USART1 alternate function before returning.  The
  * servo bus is idle while a console command runs, so nothing is interrupted.
  */
@@ -366,7 +374,16 @@ static void command_linestate(AppConsole *console)
         (unsigned long)tx_down);
     write_text(console, message);
 
-    if (rx_down >= 90U) {
+    if (rx_down >= 90U && tx_down >= 90U) {
+        /*
+         * Both pins held high is the signature of a URT-2 with no supply of
+         * its own, parasitically powered through PA9 and the input ESD diode.
+         */
+        write_text(console,
+                   "Both pins held high: check the URT-2 Type-C supply "
+                   "first; an unpowered URT-2 is parasitically pulled high "
+                   "through PA9 and looks like this\r\n");
+    } else if (rx_down >= 90U) {
         write_text(console,
                    "PA10 driven high: URT-2 TX reaches the MCU; the request "
                    "path PA9 -> URT-2 is the remaining suspect\r\n");
@@ -380,7 +397,7 @@ static void command_linestate(AppConsole *console)
                    "check GND and the 3.3V level switch\r\n");
     }
 
-    if (tx_down >= 90U) {
+    if (tx_down >= 90U && rx_down < 90U) {
         write_text(console,
                    "PA9 is being driven by something: suspect TX and RX "
                    "swapped, or a URT-2 pull-up on that pin\r\n");

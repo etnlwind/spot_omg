@@ -1363,6 +1363,38 @@ IMU가 없는 상태에서 부팅하면 `balance_required`가 참으로 남아 `
 되어 있어 그때 잠금이 풀립니다. `stand`, `hold`, `relax`, `scan`은 이 검사를
 받지 않습니다.
 
+### 원인: URT-2에 자체 전원이 없었음
+
+배선을 확인한 결과 Mac ↔ STM32는 USB-C(ST-LINK), STM32 ↔ URT-2는 점퍼였고
+**URT-2의 Type-C에는 아무것도 연결되어 있지 않았습니다.**
+
+앞서 `linestate`에서 두 핀이 모두 풀다운을 이기는 것을 보고 "URT-2에 로직
+전원이 있다"고 판단해 무전원 가설을 기각했는데, 이 추론이 틀렸습니다. 전원이
+없는 CMOS 칩도 입력 핀에 VDD로 향하는 ESD 보호 다이오드가 있습니다. STM32의
+PA9는 유휴 상태에서 3.3V를 push-pull로 내보내므로, 이 전류가 URT-2 입력 →
+ESD 다이오드 → URT-2 VDD 레일로 흘러들어 보드를 다이오드 강하만큼 낮은 전압으로
+**기생 구동**합니다.
+
+| 관측 | 기생 전원 상태의 설명 |
+|---|---|
+| PA10 pulldown `100%` | URT-2 출력이 어중간한 VDD로 HIGH 유지 |
+| PA9 pulldown `100%` | STM32 TX가 공급원이므로 HIGH |
+| `BUSPROBE RX: no bytes` | 정상 전압이 아니라 실제 송수신 불가 |
+| Mac 직결 시 12축 정상 | USB가 정규 전원을 공급 |
+
+즉 "풀다운을 이기면 전원이 있다"는 단정이 성립하지 않습니다. 두 핀이 동시에
+HIGH인 것은 오히려 무전원 URT-2의 특징적인 서명입니다. `linestate`가 이 경우를
+먼저 짚도록 판정 순서를 고쳤습니다.
+
+```text
+Both pins held high: check the URT-2 Type-C supply first; an unpowered URT-2
+is parasitically pulled high through PA9 and looks like this
+```
+
+조치는 2026-08-06 기록의 전원 원칙 그대로입니다. URT-2 Type-C를 USB 충전기나
+보조배터리에 연결하고 UART 헤더 VCC는 연결하지 않습니다. 전원 경로는 하나만
+사용합니다.
+
 ### `linestate` 측정 결과와 소프트웨어 진단의 한계
 
 ```text
