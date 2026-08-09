@@ -110,13 +110,24 @@ static void print_robot_result(AppConsole *console, RobotResult result)
                    "ERROR: IMU balance error; stand target requested\r\n");
         return;
     }
+    if (result == ROBOT_ACTUATOR_PROFILE_ERROR) {
+        write_text(console,
+                   "ERROR: trot3 requires profile 3400 254; no motion started\r\n");
+        return;
+    }
+    if (result == ROBOT_TROT3_PERIOD_ERROR) {
+        write_text(console,
+                   "ERROR: trot3 period must be 600..1800ms\r\n");
+        return;
+    }
     if (result == ROBOT_MOTION_ABORTED) {
         write_text(console, "STOPPED: stand target requested\r\n");
         return;
     }
     if (result == ROBOT_TILT_LIMIT) {
         write_text(console,
-                   "ERROR: tilt exceeded 30 degrees; stand target requested\r\n");
+                   "ERROR: motion tilt safety limit reached; stand target "
+                   "requested\r\n");
         return;
     }
 
@@ -605,6 +616,34 @@ static const char *leg_name(uint8_t leg_index)
     return leg_index < 4U ? names[leg_index] : "??";
 }
 
+static uint32_t ticks_to_tenths_degrees(uint32_t ticks)
+{
+    return (ticks * 3600U + 2048U) / 4096U;
+}
+
+static void support_mask_text(uint8_t mask, char text[16])
+{
+    size_t used = 0U;
+    text[0] = '\0';
+    for (uint8_t leg = 0U; leg < 4U; ++leg) {
+        if ((mask & (uint8_t)(1U << leg)) == 0U) {
+            continue;
+        }
+        const int written = snprintf(text + used,
+                                     16U - used,
+                                     "%s%s",
+                                     used == 0U ? "" : "+",
+                                     leg_name(leg));
+        if (written < 0 || (size_t)written >= 16U - used) {
+            break;
+        }
+        used += (size_t)written;
+    }
+    if (used == 0U) {
+        (void)snprintf(text, 16U, "none");
+    }
+}
+
 /*
  * Print everything about the joint that faulted.
  *
@@ -683,6 +722,230 @@ static void command_safety(AppConsole *console)
         print_safety_fault(console);
         write_text(console,
                    "Latched: motion refused until 'recover' succeeds\r\n");
+    }
+}
+
+static void command_gait_diagnostics(AppConsole *console)
+{
+    const ActuatorDiagnostics *diagnostics =
+        robot_gait_diagnostics(console->robot);
+    char message[320];
+
+    if (diagnostics == NULL || diagnostics->total_samples == 0U) {
+        write_text(console, "Gait diagnostics: no samples yet\r\n");
+        return;
+    }
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Gait diagnostics: samples=%lu min_voltage=%umV lag=%u "
+        "lag+droop=%u derate=%s fall=%s late_frames=%u "
+        "limited_frames=%lu\r\n",
+        (unsigned long)diagnostics->total_samples,
+        (unsigned int)diagnostics->minimum_voltage_mv,
+        (unsigned int)diagnostics->lag_samples,
+        (unsigned int)diagnostics->lag_with_voltage_droop_samples,
+        diagnostics->derate_recommended ? "recommended" : "no",
+        console->robot->tilt_snapshot.valid ? "tilt" : "no",
+        (unsigned int)console->robot->balance_late_frames,
+        (unsigned long)console->robot->trot3_limited_frames);
+    write_text(console, message);
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Gait timing: balance=%s nominal=%lums elapsed=%lums "
+        "step_sync_blocking_wait=%ums max_barrier=%ums "
+        "max_balance_gap=%ums\r\n",
+        console->robot->gait_balance_was_enabled ? "on" : "off",
+        (unsigned long)console->robot->gait_nominal_duration_ms,
+        (unsigned long)console->robot->gait_elapsed_ms,
+        (unsigned int)console->robot->trot_step_sync_wait_ms,
+        (unsigned int)console->robot->trot_step_sync_max_wait_ms,
+        (unsigned int)console->robot->balance_max_update_gap_ms);
+    write_text(console, message);
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Step sync monitor: transitions=%u misses=%u "
+        "peak_recent_error=%uticks\r\n",
+        (unsigned int)console->robot->trot_step_sync_count,
+        (unsigned int)console->robot->trot_step_sync_miss_count,
+        (unsigned int)console->robot->trot_step_sync_peak_error_ticks);
+    write_text(console, message);
+
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const ActuatorJointDiagnostics *joint = &diagnostics->joints[index];
+        if (joint->sample_count == 0U) {
+            continue;
+        }
+        const ActuatorTrackingSample *sample = &joint->latest;
+        const uint32_t mean_error_ticks =
+            (joint->absolute_error_sum_ticks + joint->sample_count / 2U) /
+            joint->sample_count;
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "  ID%u %s J%u phase=%u cmd=%u pos=%u err=%d speed_raw=%d "
+            "current=%d load=%d voltage=%umV peak_err=%u(%lu.%ludeg)@%u "
+            "mean_err=%lu(%lu.%ludeg) "
+            "peak_current=%u peak_load=%u min_v=%umV lag=%u samples=%lu\r\n",
+            (unsigned int)sample->servo_id,
+            leg_name(sample->leg_index),
+            (unsigned int)sample->joint_index,
+            (unsigned int)sample->gait_phase,
+            (unsigned int)sample->commanded_position,
+            (unsigned int)sample->measured_position,
+            (int)sample->position_error,
+            (int)sample->measured_speed,
+            (int)sample->current,
+            (int)sample->load,
+            (unsigned int)sample->voltage_mv,
+            (unsigned int)joint->peak_position_error,
+            (unsigned long)(ticks_to_tenths_degrees(
+                joint->peak_position_error) / 10U),
+            (unsigned long)(ticks_to_tenths_degrees(
+                joint->peak_position_error) % 10U),
+            (unsigned int)joint->peak_error_phase,
+            (unsigned long)mean_error_ticks,
+            (unsigned long)(ticks_to_tenths_degrees(mean_error_ticks) / 10U),
+            (unsigned long)(ticks_to_tenths_degrees(mean_error_ticks) % 10U),
+            (unsigned int)joint->peak_current_magnitude,
+            (unsigned int)joint->peak_load_magnitude,
+            (unsigned int)joint->minimum_voltage_mv,
+            (unsigned int)joint->lag_samples,
+            (unsigned long)joint->sample_count);
+        write_text(console, message);
+    }
+
+    const RobotLimiterDiagnostics *limiter =
+        &console->robot->limiter_diagnostics;
+    if (limiter->frame_count > 0U) {
+        write_text(console,
+                   "Limiter distortion (policy/balance target -> command):\r\n");
+        for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+            const uint32_t mean_millideg =
+                limiter->joint_error_sum_millideg[index] /
+                limiter->frame_count;
+            (void)snprintf(
+                message,
+                sizeof(message),
+                "  ID%u %s J%u peak=%u.%03udeg mean=%lu.%03ludeg\r\n",
+                (unsigned int)g_robot_servo_ids[index],
+                leg_name(g_robot_joints[index].leg_index),
+                (unsigned int)g_robot_joints[index].joint_index,
+                (unsigned int)(
+                    limiter->joint_peak_error_millideg[index] / 1000U),
+                (unsigned int)(
+                    limiter->joint_peak_error_millideg[index] % 1000U),
+                (unsigned long)(mean_millideg / 1000U),
+                (unsigned long)(mean_millideg % 1000U));
+            write_text(console, message);
+        }
+        for (uint8_t leg = 0U; leg < ROBOT_LEG_COUNT; ++leg) {
+            const uint32_t mean_milli =
+                limiter->foot_error_sum_milli[leg] / limiter->frame_count;
+            (void)snprintf(
+                message,
+                sizeof(message),
+                "  %s foot peak=%u.%03u mean=%lu.%03lu normalized-link\r\n",
+                leg_name(leg),
+                (unsigned int)(limiter->foot_peak_error_milli[leg] / 1000U),
+                (unsigned int)(limiter->foot_peak_error_milli[leg] % 1000U),
+                (unsigned long)(mean_milli / 1000U),
+                (unsigned long)(mean_milli % 1000U));
+            write_text(console, message);
+        }
+    }
+}
+
+static void command_balance_diagnostics(AppConsole *console)
+{
+    const RobotController *robot = console->robot;
+    char message[320];
+    char support[16];
+
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Balance trace: frames=%u applied=%s; angles/rates use 0.1deg, "
+        "control/length/placement use milli-units\r\n",
+        (unsigned int)robot->balance_trace.count,
+        robot->gait_balance_was_enabled ? "on" : "off");
+    write_text(console, message);
+
+    if (robot->tilt_snapshot.valid) {
+        const RobotTiltSnapshot *tilt = &robot->tilt_snapshot;
+        support_mask_text(tilt->frame.support_mask, support);
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "Tilt snapshot: phase=%u support=%s raw10=%d/%d "
+            "filtered10=%d/%d "
+            "rate10/s=%d/%d control_mrad=%d/%d j1_10=%d knee_10=%d "
+            "len_milli=%d sat=0x%02X limited=0x%03X lag=%u "
+            "worst_sampled=ID%u err=%d min_voltage=%umV\r\n",
+            (unsigned int)tilt->frame.phase,
+            support,
+            (int)tilt->frame.raw_roll_tenths,
+            (int)tilt->frame.raw_pitch_tenths,
+            (int)tilt->frame.roll_tenths,
+            (int)tilt->frame.pitch_tenths,
+            (int)tilt->frame.roll_rate_tenths_s,
+            (int)tilt->frame.pitch_rate_tenths_s,
+            (int)tilt->frame.roll_control_millirad,
+            (int)tilt->frame.pitch_control_millirad,
+            (int)tilt->frame.j1_correction_tenths,
+            (int)tilt->frame.knee_correction_tenths,
+            (int)tilt->frame.leg_length_correction_milli,
+            (unsigned int)tilt->frame.saturation_flags,
+            (unsigned int)tilt->frame.limited_joint_mask,
+            (unsigned int)tilt->frame.tracking_lag_samples,
+            (unsigned int)tilt->worst_servo_id,
+            (int)tilt->worst_position_error_ticks,
+            (unsigned int)tilt->minimum_voltage_mv);
+        write_text(console, message);
+    } else {
+        write_text(console, "Tilt snapshot: none\r\n");
+    }
+
+    const uint8_t count = robot->balance_trace.count;
+    const uint8_t start = (uint8_t)(
+        (robot->balance_trace.write_index + ROBOT_BALANCE_TRACE_CAPACITY -
+         count) % ROBOT_BALANCE_TRACE_CAPACITY);
+    for (uint8_t offset = 0U; offset < count; ++offset) {
+        const uint8_t index = (uint8_t)(
+            (start + offset) % ROBOT_BALANCE_TRACE_CAPACITY);
+        const RobotBalanceTraceFrame *frame =
+            &robot->balance_trace.frames[index];
+        support_mask_text(frame->support_mask, support);
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "  B phase=%u support=%s raw10=%d/%d filtered10=%d/%d "
+            "rate10/s=%d/%d "
+            "control_mrad=%d/%d j1_10=%d len_milli=%d knee_10=%d "
+            "place_milli=%d sat=0x%02X limited=0x%03X lag=%u\r\n",
+            (unsigned int)frame->phase,
+            support,
+            (int)frame->raw_roll_tenths,
+            (int)frame->raw_pitch_tenths,
+            (int)frame->roll_tenths,
+            (int)frame->pitch_tenths,
+            (int)frame->roll_rate_tenths_s,
+            (int)frame->pitch_rate_tenths_s,
+            (int)frame->roll_control_millirad,
+            (int)frame->pitch_control_millirad,
+            (int)frame->j1_correction_tenths,
+            (int)frame->leg_length_correction_milli,
+            (int)frame->knee_correction_tenths,
+            (int)frame->foot_placement_correction_milli,
+            (unsigned int)frame->saturation_flags,
+            (unsigned int)frame->limited_joint_mask,
+            (unsigned int)frame->tracking_lag_samples);
+        write_text(console, message);
     }
 }
 
@@ -909,6 +1172,11 @@ static void command_balance(AppConsole *console, char *mode)
         char message[128];
         (void)snprintf(message,
                        sizeof(message),
+                       "Control revision: %s\r\n",
+                       ROBOT_CONTROL_REV);
+        write_text(console, message);
+        (void)snprintf(message,
+                       sizeof(message),
                        "Balance: %s, mode: %s, target: %s, IMU: %s, policy: %s\r\n",
                        robot->balance_enabled ? "on" : "off",
                        robot_balance_mode_string(robot->balance_mode),
@@ -963,10 +1231,14 @@ static void command_balance(AppConsole *console, char *mode)
         (void)snprintf(
             message,
             sizeof(message),
-            "Step sync: barriers=%u wait=%ums peak_error=%uticks\r\n",
+            "Step sync monitor: transitions=%u misses=%u "
+            "peak_recent_error=%uticks blocking_wait=%ums "
+            "max_balance_gap=%ums\r\n",
             (unsigned int)robot->trot_step_sync_count,
+            (unsigned int)robot->trot_step_sync_miss_count,
+            (unsigned int)robot->trot_step_sync_peak_error_ticks,
             (unsigned int)robot->trot_step_sync_wait_ms,
-            (unsigned int)robot->trot_step_sync_peak_error_ticks);
+            (unsigned int)robot->balance_max_update_gap_ms);
         write_text(console, message);
     } else if (strcmp(mode, "on") == 0) {
         if (!robot_set_balance_enabled(robot, true)) {
@@ -1137,6 +1409,58 @@ static void command_trot2(AppConsole *console,
                                    (uint16_t)period_ms));
 }
 
+static void command_trot3(AppConsole *console,
+                          char *cycles_text,
+                          char *period_text)
+{
+    uint32_t cycles = 1U;
+    uint32_t period_ms = GAIT_POLICY_TROT3_PERIOD_MS;
+
+    if ((cycles_text != NULL &&
+         !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text,
+                    600U,
+                    GAIT_POLICY_TROT3_MAX_PERIOD_MS,
+                    &period_ms))) {
+        write_text(console,
+                   "usage: trot3 [CYCLES [PERIOD_MS]]; "
+                   "cycles=1..10 period=600..1800 (default 1400)\r\n");
+        return;
+    }
+    if (!actuator_profile_supports_trot3(
+            console->robot->profile_speed,
+            console->robot->profile_acceleration)) {
+        write_text(console,
+                   "ERROR: trot3 requires profile 3400 254; no motion started\r\n");
+        return;
+    }
+
+    char message[192];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Starting actuator-feasible trot3: cycles=%lu period=%lums "
+        "limit=%udeg/s accel=%udeg/s2 shift=1.5deg sync=position "
+        "balance=%s/%s rev=%s\r\n",
+        (unsigned long)cycles,
+        (unsigned long)period_ms,
+        (unsigned int)MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S,
+        (unsigned int)MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2,
+        console->robot->balance_enabled ? "on" : "off",
+        robot_balance_mode_string(console->robot->balance_mode),
+        ROBOT_CONTROL_REV);
+    write_text(console, message);
+    const RobotResult result = robot_trot3(console->robot,
+                                           (uint8_t)cycles,
+                                           (uint16_t)period_ms);
+    print_robot_result(console, result);
+    command_gait_diagnostics(console);
+    if (result == ROBOT_TILT_LIMIT) {
+        command_balance_diagnostics(console);
+    }
+}
+
 static void command_jump(AppConsole *console,
                          char *cycles_text,
                          char *period_text)
@@ -1238,6 +1562,10 @@ static void execute_line(AppConsole *console)
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
         command_trot2(console, cycles, period);
+    } else if (strcmp(command, "trot3") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_trot3(console, cycles, period);
     } else if (strcmp(command, "jump") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
@@ -1254,6 +1582,10 @@ static void execute_line(AppConsole *console)
         command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "safety") == 0) {
         command_safety(console);
+    } else if (strcmp(command, "gaitdiag") == 0) {
+        command_gait_diagnostics(console);
+    } else if (strcmp(command, "baldiag") == 0) {
+        command_balance_diagnostics(console);
     } else if (strcmp(command, "recover") == 0) {
         command_recover(console);
     } else if (strcmp(command, "i2cscan") == 0) {
@@ -1391,9 +1723,12 @@ void app_console_print_help(AppConsole *console)
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
+               "  trot3 [C [MS]]   overlap trot (default 1400ms, max 1800ms)\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax            torque off all configured servos\r\n"
                "  safety           stall detector state and the latched fault\r\n"
+               "  gaitdiag         last gait tracking/current/voltage report\r\n"
+               "  baldiag          recent balance frames and tilt snapshot\r\n"
                "  recover          clear a safety fault and hold where the legs are\r\n"
                "  i2cscan          scan I2C1 for the BNO055\r\n"
                "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"

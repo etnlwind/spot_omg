@@ -6,13 +6,14 @@ extern "C" {
 #endif
 
 #include "servo_bus.h"
+#include "motor_capability.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#define STS3215_MIN_POSITION              0U
-#define STS3215_MAX_POSITION              4095U
-#define STS3215_STEPS_PER_REVOLUTION      4096U
+#define STS3215_MIN_POSITION              MOTOR_STS3215_MIN_POSITION
+#define STS3215_MAX_POSITION              MOTOR_STS3215_MAX_POSITION
+#define STS3215_STEPS_PER_REVOLUTION      MOTOR_STS3215_STEPS_PER_REVOLUTION
 
 #define STS3215_ADDR_ID                   5U
 #define STS3215_ADDR_TORQUE_ENABLE        40U

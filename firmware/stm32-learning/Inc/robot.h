@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include "actuator_control.h"
 #include "robot_config.h"
 #include "safety.h"
 #include "servo_bus.h"
@@ -22,6 +23,8 @@ typedef enum
     ROBOT_MOVE_TOO_LARGE,
     ROBOT_VERIFY_ERROR,
     ROBOT_STEP_SYNC_ERROR,
+    ROBOT_ACTUATOR_PROFILE_ERROR,
+    ROBOT_TROT3_PERIOD_ERROR,
     ROBOT_IMU_ERROR,
     ROBOT_MOTION_ABORTED,
     ROBOT_TILT_LIMIT,
@@ -61,6 +64,66 @@ typedef enum
 #define ROBOT_TROT_IN_PLACE_TRAVEL_SCALE 0.39f
 #endif
 
+#define ROBOT_BALANCE_TRACE_CAPACITY 32U
+#define ROBOT_LEG_COUNT 4U
+#define ROBOT_CONTROL_REV "t3-roll-endhold-v3"
+
+typedef enum
+{
+    ROBOT_BALANCE_SATURATION_NONE = 0U,
+    ROBOT_BALANCE_SATURATION_J1 = 1U << 0,
+    ROBOT_BALANCE_SATURATION_LEG_LENGTH = 1U << 1,
+    ROBOT_BALANCE_SATURATION_FOOT_PLACEMENT = 1U << 2,
+    ROBOT_BALANCE_SATURATION_TILT = 1U << 3
+} RobotBalanceSaturation;
+
+typedef struct
+{
+    uint16_t phase;
+    uint8_t support_mask;
+    bool balance_applied;
+    int16_t raw_roll_tenths;
+    int16_t raw_pitch_tenths;
+    int16_t roll_tenths;
+    int16_t pitch_tenths;
+    int16_t roll_rate_tenths_s;
+    int16_t pitch_rate_tenths_s;
+    int16_t roll_control_millirad;
+    int16_t pitch_control_millirad;
+    int16_t j1_correction_tenths;
+    int16_t leg_length_correction_milli;
+    int16_t knee_correction_tenths;
+    int16_t foot_placement_correction_milli;
+    uint8_t saturation_flags;
+    uint16_t limited_joint_mask;
+    uint16_t tracking_lag_samples;
+} RobotBalanceTraceFrame;
+
+typedef struct
+{
+    RobotBalanceTraceFrame frames[ROBOT_BALANCE_TRACE_CAPACITY];
+    uint8_t write_index;
+    uint8_t count;
+} RobotBalanceTrace;
+
+typedef struct
+{
+    bool valid;
+    RobotBalanceTraceFrame frame;
+    uint8_t worst_servo_id;
+    int16_t worst_position_error_ticks;
+    uint16_t minimum_voltage_mv;
+} RobotTiltSnapshot;
+
+typedef struct
+{
+    uint32_t frame_count;
+    uint32_t joint_error_sum_millideg[ROBOT_JOINT_COUNT];
+    uint16_t joint_peak_error_millideg[ROBOT_JOINT_COUNT];
+    uint32_t foot_error_sum_milli[ROBOT_LEG_COUNT];
+    uint16_t foot_peak_error_milli[ROBOT_LEG_COUNT];
+} RobotLimiterDiagnostics;
+
 typedef struct
 {
     ServoBus *bus;
@@ -84,8 +147,16 @@ typedef struct
     int16_t balance_peak_knee_correction_tenths;
     uint16_t balance_late_frames;
     uint16_t trot_step_sync_count;
+    uint16_t trot_step_sync_miss_count;
     uint16_t trot_step_sync_wait_ms;
+    uint16_t trot_step_sync_max_wait_ms;
     uint16_t trot_step_sync_peak_error_ticks;
+    uint16_t balance_max_update_gap_ms;
+    uint32_t gait_nominal_duration_ms;
+    uint32_t gait_elapsed_ms;
+    bool gait_balance_was_enabled;
+    RobotBalanceTrace balance_trace;
+    RobotTiltSnapshot tilt_snapshot;
     volatile bool motion_abort_requested;
 
     /*
@@ -95,6 +166,20 @@ typedef struct
      */
     SafetyMonitor safety;
     uint8_t safety_scan_index;   /* round-robin cursor over the twelve joints */
+
+    /*
+     * Performance diagnostics reuse the same one-joint-per-frame state read
+     * as the safety monitor.  They observe ordinary lag and rail droop; they
+     * never cut torque, which remains exclusively the safety monitor's job.
+     */
+    ActuatorDiagnostics gait_diagnostics;
+    bool gait_diagnostics_active;
+
+    /* Trot3 is trot2 canonical geometry plus this motor-side feasibility. */
+    ActuatorRateLimiter trot3_limiter;
+    ActuatorCommandFrame trot3_last_command;
+    uint32_t trot3_limited_frames;
+    RobotLimiterDiagnostics limiter_diagnostics;
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
@@ -142,6 +227,9 @@ RobotResult robot_trot_in_place(RobotController *robot,
 RobotResult robot_trot2(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms);
+RobotResult robot_trot3(RobotController *robot,
+                        uint8_t cycles,
+                        uint16_t period_ms);
 RobotResult robot_jump(RobotController *robot,
                        uint8_t cycles,
                        uint16_t period_ms);
@@ -152,6 +240,9 @@ RobotResult robot_move_single_safe(RobotController *robot,
                                    uint16_t maximum_delta);
 
 const char *robot_result_string(RobotResult result);
+
+const ActuatorDiagnostics *robot_gait_diagnostics(
+    const RobotController *robot);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,6 @@
 #include "robot.h"
 
+#include "actuator_control.h"
 #include "safety.h"
 
 #include "feetech_protocol.h"
@@ -7,6 +8,7 @@
 #include "sts3215.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 #define ROBOT_PROFILE_SPEED_DEFAULT          3400U
 #define ROBOT_PROFILE_ACCELERATION_DEFAULT   254U
@@ -22,12 +24,13 @@
  */
 #define ROBOT_STRAIGHTEN_TIMEOUT_MS 2500U
 #define ROBOT_TROT_RAMP_MS            500U
+#define ROBOT_TROT3_RAMP_MS           700U
 #define ROBOT_BALANCE_ERROR_LIMIT     300
 #define ROBOT_BALANCE_RATE_LIMIT      1200
 #define ROBOT_BALANCE_IMU_FAILURES    3U
+#define ROBOT_TROT_TILT_LIMIT         120
+#define ROBOT_TROT_TILT_FRAMES          2U
 #define ROBOT_TROT_STEP_SYNC_TOLERANCE 48U
-#define ROBOT_TROT_STEP_SYNC_TIMEOUT_MS 1000U
-#define ROBOT_TROT_STEP_SYNC_POLL_MS   10U
 #define ROBOT_JUMP_FRAME_MS             (1000U / GAIT_POLICY_JUMP_CONTROL_HZ)
 #define ROBOT_JUMP_TILT_LIMIT           300
 #define ROBOT_JUMP_IMU_FAILURES           3U
@@ -83,11 +86,26 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->balance_peak_knee_correction_tenths = 0;
     robot->balance_late_frames = 0U;
     robot->trot_step_sync_count = 0U;
+    robot->trot_step_sync_miss_count = 0U;
     robot->trot_step_sync_wait_ms = 0U;
+    robot->trot_step_sync_max_wait_ms = 0U;
     robot->trot_step_sync_peak_error_ticks = 0U;
+    robot->balance_max_update_gap_ms = 0U;
+    robot->gait_nominal_duration_ms = 0U;
+    robot->gait_elapsed_ms = 0U;
+    robot->gait_balance_was_enabled = false;
+    memset(&robot->balance_trace, 0, sizeof(robot->balance_trace));
+    memset(&robot->tilt_snapshot, 0, sizeof(robot->tilt_snapshot));
     robot->motion_abort_requested = false;
     robot->safety_scan_index = 0U;
     safety_init(&robot->safety, NULL);
+    actuator_diagnostics_reset(&robot->gait_diagnostics);
+    robot->gait_diagnostics_active = false;
+    actuator_rate_limiter_init(&robot->trot3_limiter);
+    robot->trot3_limited_frames = 0U;
+    memset(&robot->limiter_diagnostics,
+           0,
+           sizeof(robot->limiter_diagnostics));
 }
 
 bool robot_set_profile(RobotController *robot,
@@ -467,9 +485,10 @@ static uint16_t smootherstep_per_mille(uint16_t progress)
 }
 
 static uint16_t trot_amplitude_scale(uint32_t frame,
-                                     uint32_t total_frames)
+                                     uint32_t total_frames,
+                                     uint32_t requested_ramp_ms)
 {
-    uint32_t ramp_frames = ROBOT_TROT_RAMP_MS / ROBOT_TROT_FRAME_MS;
+    uint32_t ramp_frames = requested_ramp_ms / ROBOT_TROT_FRAME_MS;
     if (ramp_frames > total_frames / 2U) {
         ramp_frames = total_frames / 2U;
     }
@@ -510,14 +529,30 @@ static int16_t degrees_to_tenths(float degrees)
     return (int16_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
 }
 
+static int16_t balance_rate_tenths_s(int16_t current, int16_t previous)
+{
+    const int32_t delta = (int32_t)current - (int32_t)previous;
+
+    /*
+     * ROBOT_TROT_FRAME_MS ultimately comes from an unsigned control-rate
+     * constant.  Dividing a negative delta by it directly promotes the whole
+     * expression to unsigned on Cortex-M, turning a small negative rate into
+     * a huge positive value that then clamps at +120deg/s.  Keep the entire
+     * derivative signed: decreasing Roll/Pitch must produce a negative D term.
+     */
+    return clamp_i16(
+        delta * INT32_C(1000) / (int32_t)ROBOT_TROT_FRAME_MS,
+        ROBOT_BALANCE_RATE_LIMIT);
+}
+
 static GaitPolicyBalanceConfig shared_balance_config(RobotBalanceMode mode)
 {
     const bool full = mode == ROBOT_BALANCE_FULL;
     const GaitPolicyBalanceConfig config = {
         full ? 1.0f : 0.6f,
         0.04f,
-        full ? 0.15f : 0.10f,
-        5.0f,
+        full ? 0.08f : 0.10f,
+        full ? 15.0f : 5.0f,
         5.0f,
         0.0f,
         0.08f,
@@ -536,6 +571,167 @@ static void update_peak(int16_t value, int16_t *peak)
     const int16_t magnitude = absolute_i16(value);
     if (peak != NULL && magnitude > *peak) {
         *peak = magnitude;
+    }
+}
+
+static int16_t signed_larger_magnitude(int16_t current, int16_t candidate)
+{
+    return absolute_i16(candidate) > absolute_i16(current) ? candidate : current;
+}
+
+static int16_t float_to_i16_scaled(float value, float scale)
+{
+    const float scaled = value * scale;
+    if (scaled >= (float)INT16_MAX) {
+        return INT16_MAX;
+    }
+    if (scaled <= (float)INT16_MIN) {
+        return INT16_MIN;
+    }
+    return (int16_t)(scaled >= 0.0f ? scaled + 0.5f : scaled - 0.5f);
+}
+
+static uint16_t float_magnitude_to_u16(float value, float scale)
+{
+    const float magnitude = fabsf(value) * scale;
+    return magnitude >= (float)UINT16_MAX ?
+        UINT16_MAX : (uint16_t)(magnitude + 0.5f);
+}
+
+static void balance_trace_reset(RobotController *robot)
+{
+    if (robot != NULL) {
+        memset(&robot->balance_trace, 0, sizeof(robot->balance_trace));
+        memset(&robot->tilt_snapshot, 0, sizeof(robot->tilt_snapshot));
+    }
+}
+
+static void balance_trace_push(RobotController *robot,
+                               const RobotBalanceTraceFrame *frame)
+{
+    if (robot == NULL || frame == NULL) {
+        return;
+    }
+    robot->balance_trace.frames[robot->balance_trace.write_index] = *frame;
+    robot->balance_trace.write_index = (uint8_t)(
+        (robot->balance_trace.write_index + 1U) %
+        ROBOT_BALANCE_TRACE_CAPACITY);
+    if (robot->balance_trace.count < ROBOT_BALANCE_TRACE_CAPACITY) {
+        ++robot->balance_trace.count;
+    }
+}
+
+static float canonical_joint_angle(
+    const float angles[ROBOT_JOINT_COUNT],
+    uint8_t leg_index,
+    uint8_t joint_index)
+{
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        if (g_robot_joints[index].leg_index == leg_index &&
+            g_robot_joints[index].joint_index == joint_index) {
+            return angles[index];
+        }
+    }
+    return 0.0f;
+}
+
+static void canonical_foot_position(
+    const float angles[ROBOT_JOINT_COUNT],
+    uint8_t leg_index,
+    float *forward,
+    float *lateral,
+    float *vertical)
+{
+    const float j1 = canonical_joint_angle(angles, leg_index, 1U) *
+        GAIT_POLICY_PI / 180.0f;
+    const float j2 = canonical_joint_angle(angles, leg_index, 2U);
+    const float j3 = canonical_joint_angle(angles, leg_index, 3U);
+    float down = 0.0f;
+    gait_policy_leg_forward_kinematics(j2, j3, forward, &down);
+    *lateral = down * sinf(j1);
+    *vertical = down * cosf(j1);
+}
+
+static void limiter_diagnostics_update(
+    RobotController *robot,
+    const float requested[ROBOT_JOINT_COUNT],
+    const ActuatorCommandFrame *command)
+{
+    if (robot == NULL || requested == NULL || command == NULL) {
+        return;
+    }
+    RobotLimiterDiagnostics *diagnostics = &robot->limiter_diagnostics;
+    if (diagnostics->frame_count < UINT32_MAX) {
+        ++diagnostics->frame_count;
+    }
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const uint16_t error_millideg = float_magnitude_to_u16(
+            requested[index] - command->position_deg[index], 1000.0f);
+        if (error_millideg > diagnostics->joint_peak_error_millideg[index]) {
+            diagnostics->joint_peak_error_millideg[index] = error_millideg;
+        }
+        if (UINT32_MAX - diagnostics->joint_error_sum_millideg[index] >=
+            error_millideg) {
+            diagnostics->joint_error_sum_millideg[index] += error_millideg;
+        } else {
+            diagnostics->joint_error_sum_millideg[index] = UINT32_MAX;
+        }
+    }
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        float requested_forward = 0.0f;
+        float requested_lateral = 0.0f;
+        float requested_vertical = 0.0f;
+        float limited_forward = 0.0f;
+        float limited_lateral = 0.0f;
+        float limited_vertical = 0.0f;
+        canonical_foot_position(requested,
+                                leg,
+                                &requested_forward,
+                                &requested_lateral,
+                                &requested_vertical);
+        canonical_foot_position(command->position_deg,
+                                leg,
+                                &limited_forward,
+                                &limited_lateral,
+                                &limited_vertical);
+        const float df = requested_forward - limited_forward;
+        const float dl = requested_lateral - limited_lateral;
+        const float dv = requested_vertical - limited_vertical;
+        const uint16_t error_milli = float_magnitude_to_u16(
+            sqrtf(df * df + dl * dl + dv * dv), 1000.0f);
+        if (error_milli > diagnostics->foot_peak_error_milli[leg]) {
+            diagnostics->foot_peak_error_milli[leg] = error_milli;
+        }
+        if (UINT32_MAX - diagnostics->foot_error_sum_milli[leg] >=
+            error_milli) {
+            diagnostics->foot_error_sum_milli[leg] += error_milli;
+        } else {
+            diagnostics->foot_error_sum_milli[leg] = UINT32_MAX;
+        }
+    }
+}
+
+static void tilt_snapshot_store(RobotController *robot,
+                                const RobotBalanceTraceFrame *frame)
+{
+    if (robot == NULL || frame == NULL) {
+        return;
+    }
+    robot->tilt_snapshot.valid = true;
+    robot->tilt_snapshot.frame = *frame;
+    robot->tilt_snapshot.minimum_voltage_mv =
+        robot->gait_diagnostics.minimum_voltage_mv;
+    uint16_t worst_magnitude = 0U;
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const ActuatorTrackingSample *sample =
+            &robot->gait_diagnostics.joints[index].latest;
+        const uint16_t magnitude = absolute_i16(sample->position_error);
+        if (magnitude > worst_magnitude) {
+            worst_magnitude = magnitude;
+            robot->tilt_snapshot.worst_servo_id = sample->servo_id;
+            robot->tilt_snapshot.worst_position_error_ticks =
+                sample->position_error;
+        }
     }
 }
 
@@ -562,13 +758,14 @@ static void return_to_stand_best_effort(RobotController *robot)
 
 static bool phase_starts_swing(uint16_t current_global_phase,
                                uint16_t next_global_phase,
-                               uint16_t diagonal_offset)
+                               uint16_t diagonal_offset,
+                               uint16_t duty_phase)
 {
     const uint16_t current_leg_phase = (uint16_t)(
         (current_global_phase + diagonal_offset) % 1000U);
     const uint16_t next_leg_phase = (uint16_t)(
         (next_global_phase + diagonal_offset) % 1000U);
-    return current_leg_phase < 500U && next_leg_phase >= 500U;
+    return current_leg_phase < duty_phase && next_leg_phase >= duty_phase;
 }
 
 /*
@@ -619,6 +816,26 @@ static RobotResult sample_joint(RobotController *robot,
     }
     if (position != NULL) {
         *position = state.position;
+    }
+
+    if (robot->gait_diagnostics_active) {
+        const int32_t signed_error =
+            (int32_t)targets[index] - (int32_t)state.position;
+        const ActuatorTrackingSample tracking = {
+            id,
+            g_robot_joints[index].leg_index,
+            g_robot_joints[index].joint_index,
+            targets[index],
+            state.position,
+            (int16_t)signed_error,
+            state.speed,
+            state.current,
+            state.load,
+            state.voltage_mv,
+            gait_phase
+        };
+        (void)actuator_diagnostics_update(
+            &robot->gait_diagnostics, index, &tracking);
     }
 
     const SafetySample sample = {
@@ -674,72 +891,36 @@ static RobotResult sample_next_joint(RobotController *robot,
     return sample_joint(robot, index, targets, gait_phase, NULL, NULL);
 }
 
-static RobotResult wait_for_step_sync(
+static void observe_step_sync(
     RobotController *robot,
-    const uint16_t targets[ROBOT_JOINT_COUNT],
-    uint16_t gait_phase)
+    const uint16_t targets[ROBOT_JOINT_COUNT])
 {
-    uint16_t positions[ROBOT_JOINT_COUNT];
-    uint16_t barrier_peak_error = 0U;
-    uint8_t worst_servo_id = 0U;
-    const uint32_t started_at = HAL_GetTick();
-
     if (robot->trot_step_sync_count < UINT16_MAX) {
         ++robot->trot_step_sync_count;
     }
 
-    for (;;) {
-        if (robot->motion_abort_requested) {
-            return ROBOT_MOTION_ABORTED;
+    uint16_t maximum_error = 0U;
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const ActuatorJointDiagnostics *joint =
+            &robot->gait_diagnostics.joints[index];
+        if (joint->sample_count == 0U) {
+            continue;
         }
-        /*
-         * The barrier already had to read every joint, so this is where the
-         * detector gets its whole-robot snapshot for free.
-         */
-        for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
-            RobotResult result = sample_joint(robot,
-                                              index,
-                                              targets,
-                                              gait_phase,
-                                              &positions[index],
-                                              NULL);
-            if (result != ROBOT_OK) {
-                return result;
-            }
+        int32_t error = (int32_t)joint->latest.measured_position -
+                        (int32_t)targets[index];
+        if (error < 0) {
+            error = -error;
         }
-
-        uint16_t maximum_error = 0U;
-        for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
-            int32_t error = (int32_t)positions[index] - targets[index];
-            if (error < 0) {
-                error = -error;
-            }
-            if ((uint32_t)error > maximum_error) {
-                maximum_error = (uint16_t)error;
-                worst_servo_id = g_robot_servo_ids[index];
-            }
+        if ((uint32_t)error > maximum_error) {
+            maximum_error = (uint16_t)error;
         }
-        if (maximum_error > barrier_peak_error) {
-            barrier_peak_error = maximum_error;
-        }
-        if (barrier_peak_error > robot->trot_step_sync_peak_error_ticks) {
-            robot->trot_step_sync_peak_error_ticks = barrier_peak_error;
-        }
-        if (maximum_error <= ROBOT_TROT_STEP_SYNC_TOLERANCE) {
-            const uint32_t waited = HAL_GetTick() - started_at;
-            const uint32_t accumulated =
-                (uint32_t)robot->trot_step_sync_wait_ms + waited;
-            robot->trot_step_sync_wait_ms =
-                accumulated > UINT16_MAX ? UINT16_MAX : (uint16_t)accumulated;
-            return ROBOT_OK;
-        }
-        if ((uint32_t)(HAL_GetTick() - started_at) >=
-            ROBOT_TROT_STEP_SYNC_TIMEOUT_MS) {
-            robot->last_failed_servo_id = worst_servo_id;
-            robot->last_bus_result = SERVO_BUS_OK;
-            return ROBOT_STEP_SYNC_ERROR;
-        }
-        HAL_Delay(ROBOT_TROT_STEP_SYNC_POLL_MS);
+    }
+    if (maximum_error > robot->trot_step_sync_peak_error_ticks) {
+        robot->trot_step_sync_peak_error_ticks = maximum_error;
+    }
+    if (maximum_error > ROBOT_TROT_STEP_SYNC_TOLERANCE &&
+        robot->trot_step_sync_miss_count < UINT16_MAX) {
+        ++robot->trot_step_sync_miss_count;
     }
 }
 
@@ -767,14 +948,68 @@ static bool gait_policy_to_servo_targets(
     return true;
 }
 
+static bool gait_policy_to_canonical_angles(
+    const GaitPolicyLegTarget leg_targets[GAIT_POLICY_LEG_COUNT],
+    float angles_deg[ROBOT_JOINT_COUNT])
+{
+    if (leg_targets == NULL || angles_deg == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const RobotJointConfig *joint = &g_robot_joints[index];
+        const GaitPolicyLegTarget *leg = &leg_targets[joint->leg_index];
+        angles_deg[index] = leg->j1_deg;
+        if (joint->joint_index == 2U) {
+            angles_deg[index] = leg->j2_deg;
+        } else if (joint->joint_index == 3U) {
+            angles_deg[index] = leg->j3_deg;
+        }
+    }
+    return true;
+}
+
+static bool canonical_angles_to_servo_targets(
+    const float angles_deg[ROBOT_JOINT_COUNT],
+    uint16_t servo_targets[ROBOT_JOINT_COUNT])
+{
+    if (angles_deg == NULL || servo_targets == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        if (!isfinite(angles_deg[index]) ||
+            !robot_angle_tenths_to_position(
+                index,
+                degrees_to_tenths(angles_deg[index]),
+                &servo_targets[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+typedef enum
+{
+    ROBOT_TROT_POLICY_LINEAR = 0,
+    ROBOT_TROT_POLICY_CIRCULAR,
+    ROBOT_TROT_POLICY_CIRCULAR_OVERLAP
+} RobotTrotPolicy;
+
 static bool robot_trot_policy_targets(
-    bool circular,
+    RobotTrotPolicy policy,
     float phase,
     float amplitude_scale,
     float travel_scale,
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
-    if (circular) {
+    if (policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP) {
+        return gait_policy_trot3_targets(
+            phase,
+            amplitude_scale,
+            GAIT_POLICY_TROT2_FOLD_J2_DEG,
+            GAIT_POLICY_TROT2_FOLD_J3_DEG,
+            targets);
+    }
+    if (policy == ROBOT_TROT_POLICY_CIRCULAR) {
         return gait_policy_trot2_targets(
             phase,
             amplitude_scale,
@@ -793,9 +1028,11 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                                      uint8_t cycles,
                                      uint16_t period_ms,
                                      float travel_scale,
-                                     bool circular)
+                                     RobotTrotPolicy policy,
+                                     bool actuator_limited)
 {
     uint16_t targets[ROBOT_JOINT_COUNT];
+    float canonical_angles[ROBOT_JOINT_COUNT];
     int16_t filtered_roll_error = 0;
     int16_t filtered_pitch_error = 0;
     int16_t filtered_roll_rate = 0;
@@ -803,6 +1040,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     int16_t previous_roll_error = 0;
     int16_t previous_pitch_error = 0;
     uint8_t consecutive_imu_failures = 0U;
+    uint8_t consecutive_tilt_frames = 0U;
     GaitPolicyLegTarget leg_targets[GAIT_POLICY_LEG_COUNT];
 
     if (robot == NULL || robot->bus == NULL || cycles == 0U || cycles > 10U ||
@@ -810,6 +1048,14 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         !isfinite(travel_scale) ||
         travel_scale < -1.0f || travel_scale > 1.0f) {
         return ROBOT_INVALID_ARGUMENT;
+    }
+    if (actuator_limited &&
+        !actuator_profile_supports_trot3(
+            robot->profile_speed, robot->profile_acceleration)) {
+        return ROBOT_ACTUATOR_PROFILE_ERROR;
+    }
+    if (actuator_limited && period_ms > GAIT_POLICY_TROT3_MAX_PERIOD_MS) {
+        return ROBOT_TROT3_PERIOD_ERROR;
     }
     if (robot->balance_required &&
         (!robot->balance_enabled || robot->attitude_reader == NULL)) {
@@ -834,7 +1080,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     /* Reference stance, so the unswapped table: this is what the legs start
      * from regardless of the diagnostic pairing. */
     if (!robot_trot_policy_targets(
-            circular,
+            policy,
             0.0f,
             0.0f,
             travel_scale,
@@ -858,9 +1104,23 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     robot->balance_peak_knee_correction_tenths = 0;
     robot->balance_late_frames = 0U;
     robot->trot_step_sync_count = 0U;
+    robot->trot_step_sync_miss_count = 0U;
     robot->trot_step_sync_wait_ms = 0U;
+    robot->trot_step_sync_max_wait_ms = 0U;
     robot->trot_step_sync_peak_error_ticks = 0U;
-    if (robot->balance_enabled) {
+    robot->balance_max_update_gap_ms = 0U;
+    robot->gait_nominal_duration_ms = (uint32_t)period_ms * cycles;
+    robot->gait_elapsed_ms = 0U;
+    robot->gait_balance_was_enabled = robot->balance_enabled;
+    balance_trace_reset(robot);
+    actuator_diagnostics_reset(&robot->gait_diagnostics);
+    robot->gait_diagnostics_active = true;
+    actuator_rate_limiter_init(&robot->trot3_limiter);
+    robot->trot3_limited_frames = 0U;
+    memset(&robot->limiter_diagnostics,
+           0,
+           sizeof(robot->limiter_diagnostics));
+    if (robot->attitude_reader != NULL) {
         int16_t initial_roll_tenths = 0;
         int16_t initial_pitch_tenths = 0;
         if (robot->attitude_reader == NULL ||
@@ -868,6 +1128,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                 robot->attitude_context,
                 &initial_roll_tenths,
                 &initial_pitch_tenths)) {
+            robot->gait_diagnostics_active = false;
             return ROBOT_IMU_ERROR;
         }
         if (robot->balance_mode == ROBOT_BALANCE_FULL) {
@@ -879,33 +1140,75 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             robot->balance_reference_roll_tenths = initial_roll_tenths;
             robot->balance_reference_pitch_tenths = initial_pitch_tenths;
         }
+        previous_roll_error = clamp_i16(
+            (int32_t)initial_roll_tenths -
+                robot->balance_reference_roll_tenths,
+            ROBOT_BALANCE_ERROR_LIMIT);
+        previous_pitch_error = clamp_i16(
+            (int32_t)initial_pitch_tenths -
+                robot->balance_reference_pitch_tenths,
+            ROBOT_BALANCE_ERROR_LIMIT);
         robot->balance_reference_valid = true;
     }
 
     const uint32_t frames_per_cycle = period_ms / ROBOT_TROT_FRAME_MS;
     const uint32_t total_frames = frames_per_cycle * cycles;
     const uint32_t started_at = HAL_GetTick();
-    uint32_t synchronization_delay_ms = 0U;
+    uint32_t last_attitude_at = started_at;
     const GaitPolicyBalanceConfig balance_config =
         shared_balance_config(robot->balance_mode);
 
     for (uint32_t frame = 0U; frame <= total_frames; ++frame) {
         if (robot->motion_abort_requested) {
+            robot->gait_diagnostics_active = false;
             return_to_stand_best_effort(robot);
             return ROBOT_MOTION_ABORTED;
         }
         const uint16_t global_phase = (uint16_t)(
             ((frame % frames_per_cycle) * 1000U) / frames_per_cycle);
-        const uint16_t amplitude_scale =
-            trot_amplitude_scale(frame, total_frames);
+        const uint16_t amplitude_scale = trot_amplitude_scale(
+            frame,
+            total_frames,
+            actuator_limited ? ROBOT_TROT3_RAMP_MS : ROBOT_TROT_RAMP_MS);
+        bool tilt_limit_pending = false;
 
-        if (robot->balance_enabled && frame > 0U && frame < total_frames) {
+        if (!robot_trot_policy_targets(
+                policy,
+                (float)global_phase / 1000.0f,
+                (float)amplitude_scale / 1000.0f,
+                travel_scale,
+                leg_targets)) {
+            robot->gait_diagnostics_active = false;
+            return_to_stand_best_effort(robot);
+            return ROBOT_CONFIG_ERROR;
+        }
+
+        GaitPolicyLegTarget open_loop_targets[GAIT_POLICY_LEG_COUNT];
+        for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+            open_loop_targets[leg] = leg_targets[leg];
+        }
+        const uint8_t support_mask = gait_policy_support_mask(leg_targets);
+        RobotBalanceTraceFrame trace_frame = {
+            .phase = global_phase,
+            .support_mask = support_mask,
+            .balance_applied = robot->balance_enabled
+        };
+
+        if (robot->attitude_reader != NULL && frame > 0U) {
             int16_t roll_tenths = 0;
             int16_t pitch_tenths = 0;
             if (robot->attitude_reader(
                     robot->attitude_context,
                     &roll_tenths,
                     &pitch_tenths)) {
+                const uint32_t attitude_at = HAL_GetTick();
+                const uint32_t update_gap = attitude_at - last_attitude_at;
+                if (update_gap > robot->balance_max_update_gap_ms) {
+                    robot->balance_max_update_gap_ms =
+                        update_gap > UINT16_MAX ?
+                            UINT16_MAX : (uint16_t)update_gap;
+                }
+                last_attitude_at = attitude_at;
                 const int16_t roll_error = clamp_i16(
                     (int32_t)roll_tenths -
                     robot->balance_reference_roll_tenths,
@@ -914,14 +1217,23 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                     (int32_t)pitch_tenths -
                     robot->balance_reference_pitch_tenths,
                     ROBOT_BALANCE_ERROR_LIMIT);
-                const int16_t roll_rate = clamp_i16(
-                    ((int32_t)roll_error - previous_roll_error) * 1000L /
-                    ROBOT_TROT_FRAME_MS,
-                    ROBOT_BALANCE_RATE_LIMIT);
-                const int16_t pitch_rate = clamp_i16(
-                    ((int32_t)pitch_error - previous_pitch_error) * 1000L /
-                    ROBOT_TROT_FRAME_MS,
-                    ROBOT_BALANCE_RATE_LIMIT);
+                trace_frame.raw_roll_tenths = roll_error;
+                trace_frame.raw_pitch_tenths = pitch_error;
+                if (absolute_i16(roll_error) > ROBOT_TROT_TILT_LIMIT ||
+                    absolute_i16(pitch_error) > ROBOT_TROT_TILT_LIMIT) {
+                    if (consecutive_tilt_frames < UINT8_MAX) {
+                        ++consecutive_tilt_frames;
+                    }
+                    if (consecutive_tilt_frames >= ROBOT_TROT_TILT_FRAMES) {
+                        tilt_limit_pending = true;
+                    }
+                } else {
+                    consecutive_tilt_frames = 0U;
+                }
+                const int16_t roll_rate = balance_rate_tenths_s(
+                    roll_error, previous_roll_error);
+                const int16_t pitch_rate = balance_rate_tenths_s(
+                    pitch_error, previous_pitch_error);
                 previous_roll_error = roll_error;
                 previous_pitch_error = pitch_error;
                 filtered_roll_error = (int16_t)(
@@ -945,66 +1257,158 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                 ++consecutive_imu_failures;
                 if (consecutive_imu_failures >=
                     ROBOT_BALANCE_IMU_FAILURES) {
+                    robot->gait_diagnostics_active = false;
                     return_to_stand_best_effort(robot);
                     return ROBOT_IMU_ERROR;
                 }
             }
-        } else if (frame == total_frames) {
-            filtered_roll_error = 0;
-            filtered_pitch_error = 0;
-            filtered_roll_rate = 0;
-            filtered_pitch_rate = 0;
         }
 
-        if (!robot_trot_policy_targets(
-                circular,
-                (float)global_phase / 1000.0f,
-                (float)amplitude_scale / 1000.0f,
-                travel_scale,
-                leg_targets)) {
-            return_to_stand_best_effort(robot);
-            return ROBOT_CONFIG_ERROR;
-        }
+        const float tenths_degrees_to_radians =
+            GAIT_POLICY_PI / 1800.0f;
+        const GaitPolicyImuSample sample = {
+            (float)filtered_roll_error * tenths_degrees_to_radians,
+            (float)filtered_pitch_error * tenths_degrees_to_radians,
+            (float)filtered_roll_rate * tenths_degrees_to_radians,
+            (float)filtered_pitch_rate * tenths_degrees_to_radians
+        };
+        const float roll_control = balance_config.kp * sample.roll +
+            balance_config.kd * sample.roll_rate;
+        const float pitch_control = balance_config.kp * sample.pitch +
+            balance_config.kd * sample.pitch_rate;
+        trace_frame.roll_tenths = filtered_roll_error;
+        trace_frame.pitch_tenths = filtered_pitch_error;
+        trace_frame.roll_rate_tenths_s = filtered_roll_rate;
+        trace_frame.pitch_rate_tenths_s = filtered_pitch_rate;
+        trace_frame.roll_control_millirad =
+            robot->balance_enabled ?
+                float_to_i16_scaled(roll_control, 1000.0f) : 0;
+        trace_frame.pitch_control_millirad =
+            robot->balance_enabled ?
+                float_to_i16_scaled(pitch_control, 1000.0f) : 0;
 
-        GaitPolicyLegTarget open_loop_targets[GAIT_POLICY_LEG_COUNT];
-        for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
-            open_loop_targets[leg] = leg_targets[leg];
+        if (robot->balance_enabled) {
+            static const int8_t side_signs[GAIT_POLICY_LEG_COUNT] = {
+                1, -1, 1, -1
+            };
+            static const int8_t end_signs[GAIT_POLICY_LEG_COUNT] = {
+                1, 1, -1, -1
+            };
+            for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+                const bool support =
+                    (support_mask & (uint8_t)(1U << leg)) != 0U;
+                float j1_effort = (float)side_signs[leg] * roll_control;
+                if (balance_config.contact_aware && !support) {
+                    j1_effort = -j1_effort;
+                }
+                const float raw_j1 =
+                    balance_config.j1_gain_deg * j1_effort;
+                if (fabsf(raw_j1) > balance_config.j1_limit_deg) {
+                    trace_frame.saturation_flags |=
+                        ROBOT_BALANCE_SATURATION_J1;
+                }
+
+                const float raw_length =
+                    -(float)side_signs[leg] * roll_control +
+                    (float)end_signs[leg] * pitch_control;
+                const float length = gait_policy_clampf(
+                    raw_length,
+                    -balance_config.leg_length_limit,
+                    balance_config.leg_length_limit);
+                trace_frame.leg_length_correction_milli =
+                    signed_larger_magnitude(
+                        trace_frame.leg_length_correction_milli,
+                        float_to_i16_scaled(length, 1000.0f));
+                if (fabsf(raw_length) > balance_config.leg_length_limit) {
+                    trace_frame.saturation_flags |=
+                        ROBOT_BALANCE_SATURATION_LEG_LENGTH;
+                }
+
+                if (balance_config.contact_aware && !support) {
+                    const float raw_placement =
+                        balance_config.foot_placement_gain * pitch_control;
+                    const float placement = gait_policy_clampf(
+                        raw_placement,
+                        -balance_config.foot_placement_limit,
+                        balance_config.foot_placement_limit);
+                    trace_frame.foot_placement_correction_milli =
+                        signed_larger_magnitude(
+                            trace_frame.foot_placement_correction_milli,
+                            float_to_i16_scaled(placement, 1000.0f));
+                    if (fabsf(raw_placement) >
+                        balance_config.foot_placement_limit) {
+                        trace_frame.saturation_flags |=
+                            ROBOT_BALANCE_SATURATION_FOOT_PLACEMENT;
+                    }
+                }
+            }
         }
 
         if (robot->balance_enabled) {
-            const float tenths_degrees_to_radians =
-                GAIT_POLICY_PI / 1800.0f;
-            const GaitPolicyImuSample sample = {
-                (float)filtered_roll_error * tenths_degrees_to_radians,
-                (float)filtered_pitch_error * tenths_degrees_to_radians,
-                (float)filtered_roll_rate * tenths_degrees_to_radians,
-                (float)filtered_pitch_rate * tenths_degrees_to_radians
-            };
-            const uint8_t support_mask =
-                gait_policy_support_mask(leg_targets);
             if (!gait_policy_balance_targets(
                     &sample,
                     &balance_config,
                     support_mask,
                     leg_targets)) {
+                robot->gait_diagnostics_active = false;
                 return_to_stand_best_effort(robot);
                 return ROBOT_CONFIG_ERROR;
             }
             for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
-                update_peak(
-                    degrees_to_tenths(
-                        leg_targets[leg].j1_deg -
-                        open_loop_targets[leg].j1_deg),
+                const int16_t j1_correction = degrees_to_tenths(
+                    leg_targets[leg].j1_deg -
+                    open_loop_targets[leg].j1_deg);
+                const int16_t knee_correction = degrees_to_tenths(
+                    leg_targets[leg].j3_deg -
+                    open_loop_targets[leg].j3_deg);
+                trace_frame.j1_correction_tenths = signed_larger_magnitude(
+                    trace_frame.j1_correction_tenths, j1_correction);
+                trace_frame.knee_correction_tenths = signed_larger_magnitude(
+                    trace_frame.knee_correction_tenths, knee_correction);
+                update_peak(j1_correction,
                     &robot->balance_peak_j1_correction_tenths);
-                update_peak(
-                    degrees_to_tenths(
-                        leg_targets[leg].j3_deg -
-                        open_loop_targets[leg].j3_deg),
+                update_peak(knee_correction,
                     &robot->balance_peak_knee_correction_tenths);
             }
         }
 
-        if (!gait_policy_to_servo_targets(leg_targets, targets)) {
+        if (tilt_limit_pending) {
+            trace_frame.saturation_flags |= ROBOT_BALANCE_SATURATION_TILT;
+            trace_frame.limited_joint_mask =
+                robot->trot3_last_command.limited_joint_mask;
+            trace_frame.tracking_lag_samples =
+                robot->gait_diagnostics.lag_samples;
+            balance_trace_push(robot, &trace_frame);
+            tilt_snapshot_store(robot, &trace_frame);
+            robot->gait_elapsed_ms = HAL_GetTick() - started_at;
+            robot->gait_diagnostics_active = false;
+            return_to_stand_best_effort(robot);
+            return ROBOT_TILT_LIMIT;
+        }
+
+        if (actuator_limited) {
+            if (!gait_policy_to_canonical_angles(
+                    leg_targets, canonical_angles) ||
+                !actuator_rate_limiter_apply(
+                    &robot->trot3_limiter,
+                    canonical_angles,
+                    (float)period_ms /
+                        ((float)frames_per_cycle * 1000.0f),
+                    &robot->trot3_last_command) ||
+                !canonical_angles_to_servo_targets(
+                    robot->trot3_last_command.position_deg, targets)) {
+                robot->gait_diagnostics_active = false;
+                return_to_stand_best_effort(robot);
+                return ROBOT_CONFIG_ERROR;
+            }
+            limiter_diagnostics_update(
+                robot, canonical_angles, &robot->trot3_last_command);
+            if (robot->trot3_last_command.limited_joint_mask != 0U &&
+                robot->trot3_limited_frames < UINT32_MAX) {
+                ++robot->trot3_limited_frames;
+            }
+        } else if (!gait_policy_to_servo_targets(leg_targets, targets)) {
+            robot->gait_diagnostics_active = false;
             return_to_stand_best_effort(robot);
             return ROBOT_CONFIG_ERROR;
         }
@@ -1014,6 +1418,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                                             targets,
                                             ROBOT_JOINT_COUNT);
         if (bus_result != SERVO_BUS_OK) {
+            robot->gait_diagnostics_active = false;
             return_to_stand_best_effort(robot);
             return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
         }
@@ -1025,13 +1430,18 @@ static RobotResult robot_trot_scaled(RobotController *robot,
          */
         result = sample_next_joint(robot, targets, global_phase);
         if (result != ROBOT_OK) {
+            robot->gait_diagnostics_active = false;
             return_to_stand_best_effort(robot);
             return result;
         }
+        trace_frame.limited_joint_mask = actuator_limited ?
+            robot->trot3_last_command.limited_joint_mask : 0U;
+        trace_frame.tracking_lag_samples =
+            robot->gait_diagnostics.lag_samples;
+        balance_trace_push(robot, &trace_frame);
 
         if (frame < total_frames) {
             const uint32_t deadline = started_at +
-                synchronization_delay_ms +
                 ((frame + 1U) * period_ms) / frames_per_cycle;
             const uint32_t now = HAL_GetTick();
             if ((int32_t)(deadline - now) > 0) {
@@ -1043,33 +1453,27 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             const uint16_t next_global_phase = (uint16_t)(
                 ((((frame + 1U) % frames_per_cycle) * 1000U) /
                  frames_per_cycle));
+            const uint16_t duty_phase =
+                policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP ?
+                    (uint16_t)(GAIT_POLICY_TROT3_DUTY * 1000.0f + 0.5f) :
+                    500U;
             const bool step_starts =
-                phase_starts_swing(global_phase, next_global_phase, 0U) ||
-                phase_starts_swing(global_phase, next_global_phase, 500U);
+                phase_starts_swing(
+                    global_phase, next_global_phase, 0U, duty_phase) ||
+                phase_starts_swing(
+                    global_phase, next_global_phase, 500U, duty_phase);
             if (step_starts) {
-                const uint32_t sync_started_at = HAL_GetTick();
-                result = wait_for_step_sync(robot, targets,
-                                            global_phase);
-                synchronization_delay_ms +=
-                    HAL_GetTick() - sync_started_at;
-                if (result != ROBOT_OK) {
-                    return_to_stand_best_effort(robot);
-                    return result;
-                }
+                observe_step_sync(robot, targets);
             }
         }
     }
 
-    if (!robot_stand_targets(targets)) {
-        return ROBOT_CONFIG_ERROR;
-    }
-    bus_result = sts3215_sync_positions(robot->bus,
-                                        g_robot_servo_ids,
-                                        targets,
-                                        ROBOT_JOINT_COUNT);
-    if (bus_result != SERVO_BUS_OK) {
-        return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
-    }
+    robot->gait_diagnostics_active = false;
+    robot->gait_elapsed_ms = HAL_GetTick() - started_at;
+    /* The final phase already has zero gait amplitude and is therefore the
+     * stand geometry. Keep its last balance/limiter output instead of issuing
+     * an unbalanced raw stand command that removes up to 0.08 leg-length
+     * correction in one packet while the body is still rolling. */
     return ROBOT_OK;
 }
 
@@ -1077,7 +1481,8 @@ RobotResult robot_trot(RobotController *robot,
                        uint8_t cycles,
                        uint16_t period_ms)
 {
-    return robot_trot_scaled(robot, cycles, period_ms, 1.0f, false);
+    return robot_trot_scaled(
+        robot, cycles, period_ms, 1.0f, ROBOT_TROT_POLICY_LINEAR, false);
 }
 
 RobotResult robot_trot_in_place(RobotController *robot,
@@ -1089,6 +1494,7 @@ RobotResult robot_trot_in_place(RobotController *robot,
         cycles,
         period_ms,
         ROBOT_TROT_IN_PLACE_TRAVEL_SCALE,
+        ROBOT_TROT_POLICY_LINEAR,
         false);
 }
 
@@ -1096,7 +1502,27 @@ RobotResult robot_trot2(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms)
 {
-    return robot_trot_scaled(robot, cycles, period_ms, 1.0f, true);
+    return robot_trot_scaled(
+        robot, cycles, period_ms, 1.0f, ROBOT_TROT_POLICY_CIRCULAR, false);
+}
+
+RobotResult robot_trot3(RobotController *robot,
+                        uint8_t cycles,
+                        uint16_t period_ms)
+{
+    return robot_trot_scaled(
+        robot,
+        cycles,
+        period_ms,
+        1.0f,
+        ROBOT_TROT_POLICY_CIRCULAR_OVERLAP,
+        true);
+}
+
+const ActuatorDiagnostics *robot_gait_diagnostics(
+    const RobotController *robot)
+{
+    return robot == NULL ? NULL : &robot->gait_diagnostics;
 }
 
 RobotResult robot_jump(RobotController *robot,
@@ -1148,6 +1574,7 @@ RobotResult robot_jump(RobotController *robot,
     robot->balance_peak_knee_correction_tenths = 0;
     robot->balance_late_frames = 0U;
     robot->trot_step_sync_count = 0U;
+    robot->trot_step_sync_miss_count = 0U;
     robot->trot_step_sync_wait_ms = 0U;
     robot->trot_step_sync_peak_error_ticks = 0U;
     if (robot->balance_enabled) {
@@ -1345,6 +1772,10 @@ const char *robot_result_string(RobotResult result)
         return "final position verification failed";
     case ROBOT_STEP_SYNC_ERROR:
         return "step synchronization timeout";
+    case ROBOT_ACTUATOR_PROFILE_ERROR:
+        return "servo profile too slow for trot3";
+    case ROBOT_TROT3_PERIOD_ERROR:
+        return "trot3 period is too slow for diagonal stability";
     case ROBOT_IMU_ERROR:
         return "IMU balance error";
     case ROBOT_MOTION_ABORTED:

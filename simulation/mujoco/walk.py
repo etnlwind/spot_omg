@@ -55,6 +55,18 @@ SIM_PRESETS = {
         stance_j2_angle=45.0,
         stance_j3_angle=90.0,
     ),
+    # Hardware-independent slow-start variant.  Its 0.65 duty factor creates
+    # four-foot overlap before each diagonal pair lifts.
+    "trot3": replace(
+        PRESETS["test"],
+        period=2.0,
+        lift_amplitude=30.0,
+        duty_factor=0.65,
+        control_rate=50.0,
+        stance_j1_angle=4.0,
+        stance_j2_angle=45.0,
+        stance_j3_angle=90.0,
+    ),
 }
 
 TROT2_DEFAULT_FOLD_J2 = 78.0
@@ -139,8 +151,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--j1-balance-gain",
         type=float,
-        default=5.0,
-        help="J1 roll correction in degrees per normalized control effort",
+        help="J1 roll correction; preset-specific degrees/control default",
     )
     parser.add_argument(
         "--j1-balance-limit",
@@ -190,26 +201,29 @@ def resolve_gait(args: argparse.Namespace):
             overrides[field] = value
     gait = replace(gait, **overrides)
     gait.validate()
-    balance_defaults = (
-        (1.0, 0.04, 0.15)
-        if args.preset in {"sim-trot", "trot2"}
-        else (0.6, 0.04, 0.10)
-    )
+    if args.preset == "trot3":
+        balance_defaults = (1.0, 0.04, 0.08, 15.0)
+    elif args.preset in {"sim-trot", "trot2"}:
+        balance_defaults = (1.0, 0.04, 0.15, 5.0)
+    else:
+        balance_defaults = (0.6, 0.04, 0.10, 5.0)
     if args.balance_kp is None:
         args.balance_kp = balance_defaults[0]
     if args.balance_kd is None:
         args.balance_kd = balance_defaults[1]
     if args.balance_limit is None:
         args.balance_limit = balance_defaults[2]
+    if args.j1_balance_gain is None:
+        args.j1_balance_gain = balance_defaults[3]
     if not 1 <= args.cycles <= 1000:
         raise ValueError("cycles must be between 1 and 1000")
     if not 0.0 <= args.settle <= 10.0:
         raise ValueError("settle must be between 0 and 10 seconds")
     if not -1.0 <= args.travel_scale <= 1.0:
         raise ValueError("travel-scale must be between -1 and 1")
-    if args.preset == "trot2":
+    if args.preset in {"trot2", "trot3"}:
         if args.gait != "trot":
-            raise ValueError("trot2 requires --gait trot")
+            raise ValueError(f"{args.preset} requires --gait trot")
         if args.trot2_fold_j2 is None:
             args.trot2_fold_j2 = TROT2_DEFAULT_FOLD_J2
         if args.trot2_fold_j3 is None:
@@ -219,7 +233,7 @@ def resolve_gait(args: argparse.Namespace):
         if not 80.0 <= args.trot2_fold_j3 <= 145.0:
             raise ValueError("trot2-fold-j3 must be between 80 and 145 degrees")
     elif args.trot2_fold_j2 is not None or args.trot2_fold_j3 is not None:
-        raise ValueError("trot2 fold angles require --preset trot2")
+        raise ValueError("trot2 fold angles require --preset trot2 or trot3")
     if args.balance and not args.dynamic:
         raise ValueError("--balance requires --dynamic")
     if not 0.0 <= args.balance_kp <= 5.0:
@@ -299,6 +313,23 @@ def shared_trot2_targets(
     fold_j3: float,
 ) -> tuple[dict[int, int], set[str]]:
     canonical, support = policy.trot2_targets(
+        phase,
+        amplitude_scale,
+        fold_j2,
+        fold_j3,
+    )
+    return canonical_targets_to_positions(config, canonical), support
+
+
+def shared_trot3_targets(
+    config: SpotConfig,
+    policy: SharedGaitPolicy,
+    phase: float,
+    amplitude_scale: float,
+    fold_j2: float,
+    fold_j3: float,
+) -> tuple[dict[int, int], set[str]]:
+    canonical, support = policy.trot3_targets(
         phase,
         amplitude_scale,
         fold_j2,
@@ -754,9 +785,14 @@ def run_dynamic(
         elapsed = min(total_duration, sim_time - gait_started)
         phase = (elapsed / gait.period) % 1.0
         amplitude = amplitude_at(elapsed, total_duration)
-        if args.preset == "trot2":
+        if args.preset in {"trot2", "trot3"}:
             if shared_policy is not None:
-                return shared_trot2_targets(
+                shared_circular_targets = (
+                    shared_trot3_targets
+                    if args.preset == "trot3"
+                    else shared_trot2_targets
+                )
+                return shared_circular_targets(
                     config,
                     shared_policy,
                     phase,
@@ -838,12 +874,16 @@ def main() -> int:
     base = stance_targets(config, gait)
     use_shared_policy = (
         args.controller == "shared-c" or
-        (args.controller == "auto" and args.preset in {"sim-trot", "trot2"})
+        (args.controller == "auto" and
+         args.preset in {"sim-trot", "trot2", "trot3"})
     )
     if use_shared_policy and (
-        args.preset not in {"sim-trot", "trot2"} or args.gait != "trot"
+        args.preset not in {"sim-trot", "trot2", "trot3"} or
+        args.gait != "trot"
     ):
-        raise ValueError("shared-c controller requires trot/sim-trot or trot/trot2")
+        raise ValueError(
+            "shared-c controller requires trot with sim-trot/trot2/trot3"
+        )
     fixed_overrides = {
         name: getattr(args, name)
         for name in (
@@ -868,7 +908,7 @@ def main() -> int:
         raise ValueError("--travel-scale requires --preset sim-trot")
     if not use_shared_policy and args.travel_scale != 1.0:
         raise ValueError("--travel-scale requires the shared-c sim-trot controller")
-    if args.preset == "trot2":
+    if args.preset in {"trot2", "trot3"}:
         unused_overrides = {
             name: getattr(args, name)
             for name in (
@@ -887,7 +927,7 @@ def main() -> int:
         if unused_overrides:
             names = ", ".join(sorted(unused_overrides))
             raise ValueError(
-                f"trot2 derives its circular path from fold angles; "
+                f"{args.preset} derives its circular path from fold angles; "
                 f"unsupported overrides: {names}"
             )
     shared_policy = SharedGaitPolicy() if use_shared_policy else None
@@ -904,7 +944,7 @@ def main() -> int:
         + (
             f", fold=J2 {args.trot2_fold_j2:g}deg/"
             f"J3 {args.trot2_fold_j3:g}deg"
-            if args.preset == "trot2"
+            if args.preset in {"trot2", "trot3"}
             else ""
         )
     )
@@ -924,9 +964,14 @@ def main() -> int:
         for frame in range(round(gait.control_rate * gait.period)):
             elapsed = frame / gait.control_rate
             phase = elapsed / gait.period
-            if args.preset == "trot2":
+            if args.preset in {"trot2", "trot3"}:
                 if shared_policy is not None:
-                    targets, _ = shared_trot2_targets(
+                    shared_circular_targets = (
+                        shared_trot3_targets
+                        if args.preset == "trot3"
+                        else shared_trot2_targets
+                    )
+                    targets, _ = shared_circular_targets(
                         config,
                         shared_policy,
                         phase,
@@ -969,9 +1014,14 @@ def main() -> int:
             elapsed = frame * interval
             phase = (elapsed / gait.period) % 1.0
             amplitude = amplitude_at(elapsed, total_duration)
-            if args.preset == "trot2":
+            if args.preset in {"trot2", "trot3"}:
                 if shared_policy is not None:
-                    targets, _ = shared_trot2_targets(
+                    shared_circular_targets = (
+                        shared_trot3_targets
+                        if args.preset == "trot3"
+                        else shared_trot2_targets
+                    )
+                    targets, _ = shared_circular_targets(
                         config,
                         shared_policy,
                         phase,

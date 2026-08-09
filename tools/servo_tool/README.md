@@ -57,7 +57,8 @@ editable package로 설치하므로 소스 수정은 즉시 `spotctl`에 반영�
 | 선택한 다리 토크 해제 | `spotctl --port PORT relax --leg RL` |
 | 현재 위치에서 토크 유지 | `spotctl --port PORT hold [--leg RL]` |
 | 선택한 다리만 중립 자세 | `spotctl --port PORT stand --leg RL` |
-| STM32 보행·점프 | `spotctl trot2 1 1600`, `spotctl jump 3 1500` |
+| STM32 보행·점프 | `spotctl trot3 1 1400`, `spotctl jump 3 1500` |
+| 마지막 보행 추종/전원 진단 | `spotctl gaitdiag`, `spotctl baldiag` |
 | STM32 상태 확인 | `spotctl targets`, `spotctl profile`, `spotctl balance status` |
 
 포트는 `--port`로 지정하거나 `SPOT_SERVO_PORT` 환경 변수에 저장할 수 있습니다.
@@ -88,21 +89,24 @@ STM32에 연결된 구성에서는 서보 버스의 주인이 STM32입니다. `s
 있는 USB 장치를 보고 어느 링크를 쓸지 스스로 정하므로, 명령을 다르게 칠 필요가
 없습니다. ST-LINK가 붙어 있으면 115200 bps 콘솔로 펌웨어 명령을 보내고, URT-2가
 붙어 있으면 기존 1 Mbps Feetech 경로를 씁니다. 펌웨어 경로에서는 IMU 균형 루프,
-step barrier, `Ctrl+C` 복귀가 그대로 유지됩니다.
+non-blocking step-sync monitor, `Ctrl+C` 복귀가 그대로 유지됩니다.
 
 ```bash
 spotctl stand          # ST-LINK가 붙어 있으면 STM32 콘솔의 stand
                        # URT-2가 붙어 있으면 기존 Feetech stand
 spotctl trot2 1 1600
+spotctl profile 3400 254
+spotctl trot3 1 1400
+spotctl gaitdiag
+spotctl baldiag
 spotctl jump 3 1500
-spotctl profile 800 80
 spotctl balance status
 spotctl targets
 spotctl scan
 ```
 
-STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `jump`, `targets`,
-`profile`, `imu`, `balance`입니다. `scan`, `stand`, `relax`, `hold`는 양쪽 모두
+STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `jump`, `targets`,
+`gaitdiag`, `baldiag`, `profile`, `imu`, `balance`입니다. `scan`, `stand`, `relax`, `hold`는 양쪽 모두
 지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `walk`, `calibrate`,
 `capture-stand`, `pose` 등 나머지는 URT-2 직결 전용입니다.
 

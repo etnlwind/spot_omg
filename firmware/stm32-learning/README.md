@@ -218,6 +218,9 @@ stand11          네 다리를 곧게 폄 (J2=0°, J3=0°); 캘리브레이션 �
 trot [C [MS]]    공용 C sim-trot; 1..10회, 주기 600..5000ms (기본 1회/800ms)
 trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
 trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
+trot3 [C [MS]]   65% duty 중첩 trot + limiter/진단; 기본 1400ms, 진단 최대 1800ms
+gaitdiag          마지막 보행의 tracking/전원/limiter/실제 timing 통계
+baldiag           최근 32 balance frame과 마지막 tilt-safety snapshot
 jump [C [MS]]    제자리 반복 점프; 0=계속, 1..20회, 주기 800..5000ms
 relax            전체 토크 해제
 safety           stall 검출기 상태와 래치된 fault 확인
@@ -228,7 +231,7 @@ imu status        현재 IMU 로그 설정 확인
 balance full      절대 수평 목표와 최대 제한 보정 활성화 (부팅 기본값)
 balance normal    보행 시작 자세를 목표로 일반 보정 활성화
 balance on        마지막으로 선택한 보정 모드 활성화
-balance off       트롯 자세 보정 및 점프 IMU 보호 비활성화
+balance off       트롯 자세 보정 비활성화(트롯 tilt 감시는 유지); 점프 IMU 보호 비활성화
 balance status    IMU, 기준 자세, 최대 오차·관절 보정·지연 frame 확인
 help             도움말
 ```
@@ -326,6 +329,8 @@ ERROR: position limit; servo=3
 ```text
 정책  gait_policy.h        하드웨어 손잡이 없음, 시뮬과 펌웨어가 동일 입력
   ↓ 관절 각도
+액추에이터  actuator_control.c / motor_capability.h   속도·가속도 feasibility
+  ↓ 실행 가능한 관절 각도
 캘리브레이션  robot_config.c / joints.json   center, direction (장착 정보 전부)
   ↓ 서보 tick
 ```
@@ -337,6 +342,102 @@ ERROR: position limit; servo=3
 호스트의 레거시 Python gait(`SpotRobot.gait_targets`)는 공용 정책과 **별개 구현**이라
 자체 `gait_forward_signs`를 씁니다. 이 궤적 부호는 뒷다리 기준인 네 다리 `+1`로
 통일했으며, 관절 `direction`은 앞뒤 동일·좌우 반대 규칙을 따릅니다.
+
+## STS3215 속도 계측과 `trot3`
+
+`motor_capability.h`가 12V STS3215의 actuator 설정을 한곳에서 관리합니다.
+정격 최대 속도는 `270 deg/s`, 실기 command limit은 그 90%인 `243 deg/s`입니다.
+가속도는 세 개의 20ms frame에 command limit까지 도달하는 `4050 deg/s²`로
+제한합니다. 10% 여유는 체중 부하, 버스 지연과 12V 레일 전압 강하를 위한 것이며,
+정책에는 이 숫자가 들어가지 않습니다.
+
+```bash
+conda run -n spot_omg python -m tools.servo_tool.servo.gait_analysis
+```
+
+기본 주기/50Hz의 full-amplitude 한 사이클을 frame 차분한 결과입니다.
+
+| 정책 | J1 최대 | J2 최대 | J3 최대 | 판정 |
+|---|---:|---:|---:|---|
+| `trot` | 0.0°/s | 352.3°/s | 585.7°/s | 정격 크게 초과 |
+| `trot2` | 0.0°/s | 224.6°/s | 278.2°/s | 정격보다 3.0% 높음 |
+| `trot3` (1400ms) | 0.0°/s | 182.8°/s | 227.4°/s | 243°/s command limit 이내 |
+
+회귀 시험의 5% transient margin은 20ms 유한 차분과 무부하 사양 편차를 구분하기
+위한 분석 허용치일 뿐 실제 command limit이 아닙니다. `trot`은 이 허용치도
+초과하므로 빠른 실기에 적합하지 않습니다. `trot2`는 분석 허용치 안이지만 실제
+보행은 부하가 있으므로 243°/s limiter를 거치는 `trot3`가 실험 경로입니다.
+
+`trot3`는 원형 발끝 형상은 유지하면서 duty를 `0.50`에서 `0.65`로 늘립니다.
+사이클 시작과 중간에 각각 15%씩, 합계 30%의 네 발 stance를 두고 첫 명령부터
+대각 두 발을 들지 않습니다. 기존 `trot`/`trot2` canonical 출력은 변경하지
+않았습니다. IMU balance까지 끝난 canonical angle을 `actuator_control.c`가
+속도/가속도 제한한 다음에만 `robot_config.c`가 tick으로 변환합니다.
+
+두 번째 바닥 시험은 phase 0.65에서 FL+RR이 swing으로 전환된 직후 오른쪽 tilt로
+중단됐습니다. 이때 leg-length/knee 보정은 14.3°였지만 J1 횡보정은 0.7°뿐이었습니다.
+따라서 `trot3`는 네 발 overlap 동안 다음 support diagonal로 하중을 넘기고, swing
+구간에는 그 값을 유지하는 1.5° canonical J1 preload를 사용합니다. 이는 좌우 servo
+방향 보정이 아니라 몸체 좌표의 보행 형상이므로 shared policy 안에 있습니다.
+
+```text
+gait phase → trot3 overlap canonical → balance → actuator limiter
+           → center/direction calibration → sync_positions
+```
+
+`sts3215_sync_move()`는 활성화하지 않았습니다. 현재 구현은 모든 서보에 같은
+speed/acceleration 값을 반복하고, STS3215 내부 position profile이 매 20ms 새
+목표를 받을 때의 추종/jerk 개선 근거도 아직 없습니다. 먼저 위치-only Sync Write를
+유지해 command와 actual의 차이를 측정합니다. actuator command frame에는 이미
+관절별 position/velocity/acceleration이 있으므로, 실측 결과가 이득을 보일 때
+관절별 profile packet으로 확장할 수 있습니다.
+
+`trot3`에서는 STS3215 내부 profile이 outer limiter보다 느린 병목이 되지 않도록
+`profile 3400 254`를 요구합니다. `profile 800 80`은 거치대에서 궤적 방향을 보는
+용도였고 실제 기록에서도 무부하 peak error가 314 tick이었습니다. 이 상태로
+바닥 보행을 시작하면 software limiter가 243°/s로 제한해도 servo 내부 profile이
+훨씬 뒤처집니다. 새 firmware는 이 설정에서 움직이지 않고 오류를 반환합니다.
+
+대각 두 발만 지지하는 trot은 느리게 실행할수록 정적으로 안정해지는 보행이
+아닙니다. 2000ms 바닥 시험에서 오른쪽으로 전도된 실측과 MuJoCo 주기 sweep을
+반영해 `trot3` 기본값은 1400ms입니다. 1800ms는 원인 분리를 위한 비교 진단에만
+허용하며 정상 보행 권장값이 아닙니다. roll 또는 pitch가
+12°를 2 frame 연속 넘으면 즉시 보행을 중단하고 stand 목표를 요청합니다.
+0.65 duty의 실제 swing 시작(phase 0.15/0.65)에 non-blocking step-sync monitor를
+맞춥니다.
+단일-cycle 안전 시험은 시작과 종료가 대부분이므로 `trot3`만 amplitude ramp를
+500ms에서 700ms로 늘립니다. 1400ms 한 사이클의 실제 ramp 포함 peak 요구 속도는
+222.0°/s에서 140.9°/s로 줄며, 기존 `trot`/`trot2` ramp는 바뀌지 않습니다.
+
+`trot`, `trot2`, `trot3`는 기존 한 축/frame round-robin state read를 공유합니다.
+진단 때문에 bus read를 추가하지 않으며 deadline도 기존 absolute 20ms 계산을
+그대로 사용합니다. `gaitdiag` 또는 `trot3` 종료 직후 출력에서 다음을 확인합니다.
+
+- servo ID, leg/joint, gait phase
+- commanded/measured position과 signed error
+- measured speed/current/load register 값과 voltage
+- joint별 peak/평균 절대 error를 tick과 degree로 표시
+- joint별 peak error phase, peak current, minimum voltage
+- 96 tick 이상의 tracking lag와 11V 이하 droop가 같은 sample에서 발생했는지
+- 같은 joint가 두 sample 연속 lag일 때의 향후 derate 권고 hook
+- nominal/실제 gait 시간, step-sync miss/오차, balance update 최대 공백
+- limiter의 관절별 각도 변형과 FK로 환산한 발끝 변형
+
+`baldiag`는 UART를 매 frame 출력하지 않고 RAM의 최근 32-frame ring buffer를
+보행 뒤에 덤프합니다. phase, support pair, raw/filtered Roll/Pitch와 rate, PD 출력,
+J1/다리 길이/knee/foot-placement 보정, saturation, limited joint mask와 누적 lag를
+포함합니다. Tilt Safety가 발생하면 그 frame과 당시 최악의 sampled servo error 및
+최저 전압을 별도 snapshot으로 보존합니다.
+
+정상 종료의 마지막 phase도 IMU balance를 계속 적용합니다. gait amplitude가 이미
+0인 마지막 target이 balance된 stand geometry이므로 이를 그대로 hold하며, 별도의
+raw stand packet으로 leg-length correction을 한 frame에 제거하지 않습니다. Tilt,
+bus fault 또는 사용자 중단은 기존 안전 stand 복귀 경로를 계속 사용합니다.
+
+이 tracking 진단은 정상 동작 중 성능을 평가할 뿐 토크를 끄지 않습니다. 큰 오차와
+큰 effort가 지속되면 토크를 끄는 기존 stall protection과 역할이 분리되어 있습니다.
+개별 servo current는 sampling 시점도 서로 다르므로 합산해 전체 소비전류로 해석하지
+않습니다. 전원 한계는 minimum voltage와 lag+droop 동시 발생을 중심으로 판단합니다.
 
 ## Stall 안전 보호
 
@@ -440,7 +541,7 @@ unicast 읽기 하나가 약 10ms입니다([servo_bus.c](Src/servo_bus.c)의 안
 ## 호스트에서 콘솔 명령 보내기
 
 터미널에서 직접 타이핑하는 대신 호스트의 `spotctl console`로 같은 명령을 보낼
-수 있습니다. 서보 버스의 주인은 그대로 STM32이므로 IMU 균형, step barrier,
+수 있습니다. 서보 버스의 주인은 그대로 STM32이므로 IMU 균형, step-sync monitor,
 `Ctrl+C` 복귀가 모두 유지됩니다.
 
 ST-LINK가 붙어 있으면 `spotctl`이 알아서 이 콘솔로 명령을 보냅니다. 포트나
@@ -518,14 +619,13 @@ IK로 J2/J3를 함께 계산합니다. 따라서 보폭에 따른 다리 높이 
 상쇄되고 MuJoCo와 STM32가 같은 canonical 관절 목표를 생성합니다. 시작과 종료는
 최대 `500ms` smootherstep 진폭 ramp를 적용하며 종료 후 stand 자세로 복귀합니다.
 
-각 대각선이 스윙을 시작하기 직전에는 실제 위치 기반 step barrier를 실행합니다.
-직전 목표와 12개 관절의 Present Position 차이가 모두 `48 tick` 이내가
-될 때까지 다음 phase로 진행하지 않습니다. 따라서 느린 관절이 있으면 빠른 관절도
-지지 자세에서 기다린 뒤 대각선 두 발이 함께 스윙을 시작합니다. `1000ms` 안에
-동기화되지 않으면 `step synchronization timeout`과 가장 오차가 큰 서보 ID를
-출력하고 stand 목표를 요청합니다. 이 장벽은 실제 서보 추종 오차를 처리하는
-STM32 전용 하드웨어 계층이며 공용 궤적 수식은 바꾸지 않습니다. `balance status`의 `Step sync` 항목에서 barrier
-횟수, 누적 대기 시간, 진입 시 최대 위치 오차를 확인할 수 있습니다.
+각 대각선이 스윙을 시작하기 직전에는 실제 위치 기반 step-sync monitor를
+실행합니다. 이전 구현은 오차가 `48 tick` 이내가 될 때까지 모든 12축을 반복
+읽으며 phase를 막았습니다. 실기에서 550ms 대기 동안 IMU balance도 멈춰 Roll
+전도를 키운 것이 확인되어 blocking barrier를 제거했습니다. 현재 monitor는 기존
+round-robin의 최근 위치를 현재 목표와 비교해 transition/miss/peak error만 기록하고,
+추가 bus read나 `HAL_Delay` 없이 다음 20ms deadline을 유지합니다. 큰 lag는
+`gaitdiag`와 derate hook으로 처리하며 공용 궤적 수식은 바꾸지 않습니다.
 
 공용 정책은 네 다리에 같은 canonical 관절 목표를 냅니다. 앞뒤 장착 차이는
 `robot_config.c`의 center/direction에서만 처리하며, 현재 같은 쪽 앞뒤 다리는 같은
@@ -546,7 +646,7 @@ trot 3 1200          # 같은 궤적을 더 느린 1200ms 주기로 실행
 ### 제자리 트롯
 
 `trotplace`는 `trot`과 동일한 FL+RR / FR+RL 대각선 위상, 리프트, J1 및 IMU
-균형 보정, 실제 위치 step barrier를 사용합니다. 단순히 보폭을 0으로 만들면 발을
+균형 보정, 실제 위치 step-sync monitor를 사용합니다. 단순히 보폭을 0으로 만들면 발을
 드는 동안 몸체가 수동적으로 뒤로 밀리기 때문에, MuJoCo 10주기 순이동이 가장 작았던
 전진 보상 비율 `0.39`를 기본값으로 사용합니다.
 
@@ -570,8 +670,8 @@ J2/J3를 함께 움직입니다. 원 꼭대기의 기본 접힘은 `J2=78°`, `J
 몸체 수평에서 약 12° 아래까지 접힙니다.
 
 MuJoCo와 STM32는 모두 `gait_policy_trot2_targets()`를 호출합니다. STM32에서는
-기존 기체의 전진 부호 `FL/FR +1`, `RL/RR -1`, 50Hz IMU/J1 보정, 실제 위치 step
-barrier와 `Ctrl+C` stand 복귀를 그대로 사용합니다.
+네 다리에 같은 canonical 진행 방향, 50Hz IMU/J1 보정, 실제 위치 step-sync monitor와
+`Ctrl+C` stand 복귀를 그대로 사용합니다.
 
 첫 실기 시험은 반드시 거치대에서 느리게 실행합니다.
 
@@ -590,6 +690,7 @@ trot2 1 1600
 profile 3400 254
 trot2 1 1200
 trot2 3 800
+trot3 1 1400      # 먼저 거치대; actuator limit 및 tracking report
 ```
 
 STM32 `balance full`과 같은 이득의 MuJoCo 기본값은 10주기에 약 `2.225m` 전진하는
@@ -612,11 +713,18 @@ Roll/Pitch를 50Hz로 읽습니다. full 모드는 IMU가 나타내는 절대 Ro
 있습니다.
 
 Roll/Pitch 각도와 수치 미분 각속도를 결합한 공용 PD/IK 출력을 사용합니다. full
-모드는 MuJoCo `sim-trot`과 같은 `Kp=1.0`, `Kd=0.04`, 정규화 다리 길이 보정
-제한 `0.15`를 사용합니다. normal 모드는 각각 `0.6`, `0.04`, `0.10`입니다.
-두 모드 모두 J1 보정 이득 `5.0`, 제한 `±5°`, 4-sample 각도·각속도 필터,
+모드는 `Kp=1.0`, `Kd=0.04`입니다. Roll 8.3°에서 기존 J1 이득 `5deg/rad`는
+약 0.72°만 만들면서 정규화 다리 길이 `0.145`가 knee 약 14°로 확대됐습니다.
+동역학 부호 검증 뒤 full 모드는 J1 이득을 `15deg/rad`, 다리 길이 제한을
+`0.08`로 조정해 같은 입력을 J1 약 2.17°, knee 약 7.3°로 분담합니다. normal
+모드는 `Kp=0.6`, `Kd=0.04`, 길이 제한 `0.10`, J1 이득 `5deg/rad`를 유지합니다.
+두 모드 모두 J1 제한 `±5°`, 4-sample 각도·각속도 필터,
 오차 `±30°`, 각속도 `±120°/s` 입력 제한을 적용합니다. MuJoCo는 실제 발 접촉을
 지지발 입력으로 쓰고 STM32는 공용 정책의 stance 위상을 사용합니다.
+각속도 차분은 명시적인 signed 32-bit 연산을 사용합니다. 20ms unsigned 상수 때문에
+감소하는 자세 오차가 큰 양의 rate로 바뀌는 Cortex-M 승격 버그가 실기 로그에서
+확인되어 수정했으며, 최초 IMU 오차로 previous sample을 초기화해 시작 D-kick도
+방지합니다.
 `balance status`는 선택 모드와 목표, 마지막 기준·오차, 최대 Roll/Pitch, 최대 J1/J3
 보정과 20ms deadline을 넘긴 frame 수를 출력합니다. IMU 읽기가 3회 연속
 실패하면 stand 목표를 요청하고 명령을 오류로 종료합니다. IMU 없이 부팅했거나
@@ -631,6 +739,28 @@ balance on
 balance normal
 balance full
 ```
+
+Roll 원인 분리 비교는 같은 firmware/profile에서 다음 순서로 한 cycle씩 수행합니다.
+각 실행은 결과와 `gaitdiag`를 자동 출력하며 `baldiag`로 ring buffer를 다시 볼 수
+있습니다. `balance off`에서도 trot의 IMU 관측과 12° Tilt Safety는 유지됩니다.
+다만 이미 바닥 전도가 재현됐으므로 먼저 거치대, 그 다음 몸체를 실제로 받는 상부
+하네스에서만 수행합니다.
+
+```text
+balance off
+trot3 1 1400
+balance full
+trot3 1 1400
+balance off
+trot3 1 1800
+balance full
+trot3 1 1800
+```
+
+비교할 값은 `balance=on/off`, Peak Roll/Pitch, joint별 peak/mean tracking error,
+step-sync miss/peak recent error, blocking wait(0ms), max balance gap,
+limited joint/foot distortion와 Tilt snapshot
+유무입니다. 1800ms 허용은 이 A/B 진단을 위한 것이며 반복 보행 승인이 아닙니다.
 
 ## 제자리 반복 점프
 
@@ -690,7 +820,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - 부팅 시 torque OFF, 안전 단일 이동, current-position hold, direct stand 구현
 - MuJoCo와 STM32가 함께 호출하는 Cartesian IK 기반 공용 C trot 정책 구현
 - 원형 스윙 발끝과 L2 접힘을 갖는 공용 C `trot2` 및 STM32 콘솔 명령 구현
-- 20ms 목표 갱신, 500ms 이하 진폭 ramp, 실제 위치 step barrier 구현
+- 20ms 목표 갱신, 500ms 이하 진폭 ramp, non-blocking step-sync monitor 구현
 - BNO055 `0x28`, CHIP_ID `0xA0`, NDOF 초기화 확인 (2026-08-08 BNO086 SPI로 교체)
 - IMU 연속 로그 기본 OFF 및 `imu on|off|status` 추가
 - 콘솔 명령 종료를 `CR`, `LF`, `CRLF` 모두 지원
@@ -714,7 +844,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - `sts3215.*`: STS3215 레지스터 API와 SYNC_WRITE
 - `gait_policy.h`: MuJoCo/STM32 공용 trot/trot2/jump 궤적, IK, IMU 균형 정책
 - `robot_config.*`: 12관절 ID, center, direction, stand 목표
-- `robot.*`: 공용 정책의 서보 변환, step barrier, jump, hold/stand/relax
+- `robot.*`: 공용 정책의 서보 변환, step-sync monitor, jump, hold/stand/relax
 - `app_console.*`: USART2 인터럽트 기반 진단 콘솔
 
 관절 보정값은 `tools/servo_tool/config/joints.json`에서 옮겼습니다. 기구 조립이나

@@ -293,6 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("trot", "shared-C sim-trot on the STM32"),
         ("trotplace", "in-place diagonal trot on the STM32"),
         ("trot2", "circular-foot diagonal trot on the STM32"),
+        ("trot3", "overlap trot with actuator limiting and diagnostics"),
         ("jump", "repeating in-place jump on the STM32; 0 cycles repeats"),
     ):
         motion = commands.add_parser(name, help=help_text)
@@ -301,6 +302,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser(
         "targets", help="print the STM32 calibrated stand raw targets"
+    )
+    commands.add_parser(
+        "gaitdiag", help="print the last STM32 gait tracking diagnostics"
+    )
+    commands.add_parser(
+        "baldiag", help="print recent STM32 balance frames and tilt snapshot"
     )
     profile = commands.add_parser(
         "profile", help="show or set the STM32 servo speed and acceleration"
@@ -644,7 +651,10 @@ def run_console_script(
 
 #: Firmware console commands promoted to top-level spotctl subcommands.
 CONSOLE_ONLY_COMMANDS = frozenset(
-    {"trot", "trotplace", "trot2", "jump", "targets", "profile", "imu", "balance"}
+    {
+        "trot", "trotplace", "trot2", "trot3", "jump", "targets",
+        "gaitdiag", "baldiag", "profile", "imu", "balance"
+    }
 )
 
 #: Commands both transports implement, routed by the attached device.
@@ -728,8 +738,8 @@ def console_line_for(args: argparse.Namespace) -> str:
                 "STM32 console always moves all twelve joints"
             )
         return command
-    if command == "targets":
-        return "targets"
+    if command in {"targets", "gaitdiag", "baldiag"}:
+        return command
     if command == "profile":
         if args.speed is None and args.accel is None:
             return "profile"
@@ -738,9 +748,15 @@ def console_line_for(args: argparse.Namespace) -> str:
         return f"profile {args.speed} {args.accel}"
     if command in {"imu", "balance"}:
         return command if args.mode is None else f"{command} {args.mode}"
-    if command in {"trot", "trotplace", "trot2", "jump"}:
+    if command in {"trot", "trotplace", "trot2", "trot3", "jump"}:
         if args.cycles is None and args.period_ms is not None:
             raise ValueError("PERIOD_MS requires CYCLES")
+        if command == "trot3" and (
+            args.period_ms is not None and not 600 <= args.period_ms <= 1800
+        ):
+            raise ValueError(
+                "trot3 PERIOD_MS must be 600..1800"
+            )
         parts = [command]
         if args.cycles is not None:
             parts.append(str(args.cycles))

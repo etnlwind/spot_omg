@@ -1,6 +1,6 @@
 #include "robot_config.h"
 
-#include "sts3215.h"
+#include "motor_capability.h"
 
 /*
  * Generated from tools/servo_tool/config/joints.json.
@@ -47,7 +47,7 @@ bool robot_config_valid(void)
             joint_seen[joint->leg_index][joint->joint_index - 1U] ||
             joint->minimum > joint->center ||
             joint->center > joint->maximum ||
-            joint->maximum > STS3215_MAX_POSITION ||
+            joint->maximum > MOTOR_STS3215_MAX_POSITION ||
             (joint->direction != -1 && joint->direction != 1)) {
             return false;
         }
@@ -79,7 +79,7 @@ bool robot_angle_tenths_to_position(size_t joint_array_index,
 
     const RobotJointConfig *joint = &g_robot_joints[joint_array_index];
     int32_t scaled = (int32_t)angle_tenths *
-                     (int32_t)STS3215_STEPS_PER_REVOLUTION;
+                     (int32_t)MOTOR_STS3215_STEPS_PER_REVOLUTION;
     scaled += scaled >= 0 ? 1800 : -1800;
     const int32_t ticks = scaled / 3600;
     const int32_t raw = (int32_t)joint->center +

@@ -165,6 +165,22 @@ STM32에는 같은 정책을 사용하는 `trot2 [cycles [period_ms]]` 명령이
 `test_trot2.py`는 원 궤적, 대각선 동기화와 공용 C/Python 구현 일치를 확인하는
 회귀 시험입니다.
 
+### STS3215 속도 feasibility
+
+공용 C 정책의 800ms 한 사이클을 실제 50Hz frame으로 샘플링해 관절 속도를
+계산할 수 있습니다. motor limit은 policy가 아니라 STM32의
+`motor_capability.h`에서 읽습니다.
+
+```bash
+conda run -n spot_omg python -m tools.servo_tool.servo.gait_analysis
+```
+
+현재 최대값은 `trot J3=585.7°/s`, `trot2 J3=278.2°/s`, 기본 1400ms
+`trot3 J3=227.4°/s`입니다. `trot3`는 원형 발끝은 유지하되 duty 0.65로 네 발
+지지 중첩을 추가하고, 그 뒤 actuator limiter를 거칩니다. `test_gait_velocity.py`가
+기존 trot/trot2 canonical cycle hash, trot3 support mask, joint/phase별 속도와
+정격 270°/s 대비 판정이 바뀌지 않는지 검사합니다.
+
 ```bash
 pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
 ```
@@ -236,10 +252,18 @@ STM32 `trotplace` 기본값도 `0.39`이며 실제 바닥 마찰과 무게 중�
 `ROBOT_TROT_IN_PLACE_TRAVEL_SCALE`을 다시 조정해야 합니다.
 
 일반 프리셋의 기본 이득은 `Kp=0.6`, `Kd=0.04`, 다리 길이 보정 제한 `0.10`이며,
-`sim-trot`은 각각 `1.0`, `0.04`, `0.15`를 사용합니다. J1 Roll Compensation
-(J1 좌우 기울기 보정) 이득은 `5.0`, 제한은 `5°`입니다. 필요하면
+`sim-trot`/`trot2`는 각각 `1.0`, `0.04`, `0.15`를 사용합니다. `trot3`는 실기
+full mode와 같은 `1.0`, `0.04`, 길이 제한 `0.08`, J1 이득 `15deg/rad`를
+사용합니다. 다른 프리셋의 J1 Roll Compensation 이득은 `5.0`이고 모든 모드의
+제한은 `5°`입니다. 필요하면
 `--balance-kp`, `--balance-kd`, `--balance-limit`으로 변경할 수 있지만, 강한
 이득은 발 접촉을 방해해 진행 방향을 바꿀 수 있으므로 기본값부터 사용합니다.
+
+1400ms/5-cycle `trot3` 동역학 비교에서 기존 길이 `0.15`/J1 `5`는 Max Roll
+`3.64°`, Max Pitch `2.38°`, RMS `0.98°`였고, 새 배분은 각각 `3.21°`, `1.87°`,
+`0.85°`였습니다. +5° Roll impulse의 10ms 검증에서도 현재 J1 부호는 Roll을
+`4.776°`로 줄였고, 무보정 `4.848°`, 반대 부호 `4.909°` 순이어서 실제 URDF 축과
+접촉 기준으로 restoring 방향임을 확인했습니다.
 
 Sagittal Foot Placement (전후 착지 위치 보정)는 구현되어 있지만 현재 질량 모델의
 시험에서 Pitch와 좌우 표류를 증가시켜 기본 이득을 `0`으로 두었습니다. 배터리

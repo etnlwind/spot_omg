@@ -1975,9 +1975,322 @@ PS1을 3V3으로 납땜한 뒤에도 증상은 동일했습니다. 따라서 인
 
 ## 최종 조립 후 다시 확인할 항목
 
+> 이 목록은 `trot3 1 2000` 바닥 전도 이전 계획입니다. 현재 `trot3`는 2000ms를
+> 허용하지 않으며, 아래 최신 기록의 `trot3 1 1400` 절차를 우선합니다.
+
 1. period 2.0초, cycles 1에서 발 방향과 기구 간섭 확인
 2. 네 발 접지 구간에 실제로 네 발이 지면에 닿는지 확인
 3. 몸체 무게가 실린 상태에서 전압, 전류, 온도와 위치 추종 확인
 4. period를 2.0 → 1.8 → 1.6초 순서로만 낮추기
 5. RR ID 10의 하드웨어 오류 값 `8` 재발 여부 확인
 6. 실제 보폭과 몸체 흔들림을 기준으로 hip/lift/crouch 재조정
+
+## 2026-08-09 `trot3` 첫 바닥 시험: 저속 servo profile 포화
+
+`trot3 1 1600`을 `profile 800 80`, balance full 상태에서 실행하자 몸체가 옆으로
+넘어졌습니다. 새 round-robin 진단은 다음을 기록했습니다.
+
+```text
+samples=135  min_voltage=11000mV  lag=30  lag+droop=0
+late_frames=0  limited_frames=32
+tracking peak: FL J3=371 ticks, RL/RR J3=357 ticks, FL J2=320 ticks
+step sync: barriers=2 wait=561ms peak_error=357ticks
+balance peak: Roll=29.7deg Pitch=29.3deg J1=2.6deg Knee=14.4deg
+```
+
+전압 강하와 tracking lag가 같은 sample에서 발생한 횟수는 0이므로 80W 전원은 이번
+넘어짐의 일차 원인이 아닙니다. 반면 measured speed가 여러 관절에서 `800`에 붙고
+J2/J3가 300 tick 이상 뒤처졌습니다. outer limiter가 243deg/s여도 STS3215 내부
+profile이 `800/80`이면 더 낮은 병목이 됩니다. 느린 profile은 거치대 궤적 확인에는
+쓸 수 있지만 바닥에서 동적 균형을 유지할 수 있는 설정이 아니었습니다.
+
+수정 후 `trot3`는 `profile 3400 254`가 아니면 모션 시작 전에 거부합니다. 내부
+position profile에는 최대 응답 여유를 주고, 속도/가속도는 policy 이후 software
+actuator limiter가 제한합니다. 재시험은 로봇을 거치대에 고정하고
+`profile 3400 254`, `trot3 1 1600` 한 번부터 시작합니다.
+
+## 2026-08-09 `trot3 1 2000` 첫 바닥 시험: 느린 대각 지지 전도
+
+거치대 확인 뒤 바닥에서 `profile 3400 254`, `trot3 1 2000`을 실행했으며 첫걸음에
+오른쪽으로 넘어졌습니다.
+
+```text
+samples=149  min_voltage=10900mV  lag=28  lag+droop=1
+late_frames=0  limited_frames=32
+tracking peak: RL J2=407, FL J3=309, RL J3=308, RR J3=276 ticks
+J1 peak: FL=21, FR=32, RL=17, RR=16 ticks
+step sync: barriers=2 wait=550ms peak_error=164ticks
+balance peak: Roll=29.7deg Pitch=29.6deg J1=2.6deg Knee=14.4deg
+```
+
+profile 포화는 제거됐고 J1 위치 추종도 양호합니다. 전압 강하와 lag가 동시에 잡힌
+sample도 1개뿐이어서 전원은 일차 원인이 아닙니다. 반면 duty 0.50의 첫 frame부터
+FR+RL이 swing이 되어 지지면이 FL-RR 두 점을 잇는 선으로 축소됩니다. 2000ms는 이
+정적으로 불안정한 구간을 너무 오래 유지합니다. MuJoCo에서도 주기를 800ms에서
+2000ms로 늘릴수록 1-cycle max roll이 약 2.4°에서 6.0°로 증가했습니다.
+
+후속 `trot3`는 원형 발끝을 유지하되 duty 0.65로 바꿔 phase 0에서 네 발로 시작하고,
+기본 1400ms/최대 1600ms만 허용합니다. step-sync는 실제 0.65 duty 이륙점으로 옮기고,
+12° tilt가 2 frame 지속되면 stand로 조기 중단합니다. 기존 `trot`와 `trot2`
+canonical 출력은 바꾸지 않습니다. 다음 바닥 시험 전 거치대에서 새 펌웨어로
+`trot3 1 1400` 한 번을 확인합니다.
+
+### 1400ms 거치대 확인
+
+새 overlap 펌웨어를 `profile 3400 254`로 거치대에서 한 사이클 실행한 결과 자세와
+전원은 안정적이었습니다.
+
+```text
+samples=131 min_voltage=11500mV lag=17 lag+droop=0
+late_frames=0 limited_frames=16
+balance peak: Roll=0.0deg Pitch=0.3deg J1=0.2deg Knee=3.0deg
+step sync: barriers=2 wait=693ms peak_error=195ticks
+tracking peak: RR J2=324, RR J3=280, FL J2=270 ticks
+```
+
+네 발 overlap과 IMU 루프는 정상이나 무부하에서도 종료부(phase 0.90 이후) J2/J3
+tracking lag가 커 `derate=recommended`입니다. 1400ms 한 사이클의 500ms amplitude
+ramp를 포함해 다시 계산하면 peak 요구 속도는 222.0°/s이고, trot3 전용 ramp를
+700ms로 늘리면 140.9°/s입니다. 따라서 geometry와 period는 유지하고 단일-cycle
+시작/종료 ramp만 700ms로 변경했습니다. 이 펌웨어의 거치대 재시험에서 lag와
+step-sync wait가 감소하는지 확인하기 전에는 바닥 5-cycle 시험을 하지 않습니다.
+
+### 700ms ramp 거치대 재시험
+
+동일한 `profile 3400 254`, `trot3 1 1400` 조건에서 새 ramp 펌웨어를 다시
+시험했습니다.
+
+```text
+samples=107 min_voltage=11500mV lag=9 lag+droop=0
+late_frames=0 limited_frames=11
+balance peak: Roll=0.0deg Pitch=0.4deg J1=0.2deg Knee=4.7deg
+step sync: barriers=2 wait=407ms peak_error=80ticks
+tracking peak: FR J3=214, FR J2=191, RL J2=180 ticks
+```
+
+500ms ramp 결과와 비교하면 lag는 17→9, limited frame은 16→11, step-sync wait는
+693→407ms, barrier peak error는 195→80 tick, 최악 joint error는 324→214 tick으로
+감소했습니다. minimum voltage 11.5V와 `lag+droop=0`, `late_frames=0`도 유지됐습니다.
+`derate=recommended`는 FR/RL J2에 lag sample이 두 번씩 있어 아직 유효합니다.
+
+거치대 시험의 자세/전원/타이밍과 이륙 전 barrier는 통과한 것으로 판단합니다.
+다음 단계는 낙상 방지 스트랩이나 손으로 몸체를 즉시 받을 수 있는 상태에서 바닥
+`trot3 1 1400` 한 번뿐입니다. 12°/2-frame tilt abort가 실제 하중에서 동작하고
+lag가 증가하지 않는지 확인하기 전에는 cycles를 늘리지 않습니다.
+
+### 1400ms 첫 바닥 재시험: 두 번째 대각 지지에서 오른쪽 tilt abort
+
+700ms ramp 펌웨어로 바닥에서 `trot3 1 1400`을 실행했으나 다시 오른쪽으로
+넘어졌습니다. 이번에는 tilt safety가 모션을 중단하고 stand 목표를 요청했습니다.
+
+```text
+result: motion tilt safety limit reached
+samples=87 min_voltage=11100mV lag=13 lag+droop=0
+late_frames=0 limited_frames=20
+balance peak: Roll=9.4deg Pitch=3.1deg J1=0.7deg Knee=14.3deg
+step sync: barriers=2 wait=407ms peak_error=140ticks
+tracking peak: FL J3=264, RL J2=226, RL J3=155 ticks
+```
+
+raw IMU tilt가 12°를 2 frame 연속 넘어 phase 약 0.71에서 abort됐고, status의 9.4°는
+필터된 peak입니다. phase 0.65부터 FL+RR이 swing, FR+RL이 support이므로 두 번째
+대각 지지 진입 직후의 전도입니다. 첫 번째 대각 구간은 통과했습니다. 전압과 loop
+deadline은 정상이어서 전원/20ms timing이 일차 원인이 아니며, J1 보정 0.7°에 비해
+knee 보정이 14.3°까지 커진 것은 횡방향 하중 이동 부족을 가리킵니다.
+
+후속 `trot3`에는 duty overlap 동안 다음 support pair로 부드럽게 전환되는 1.5° J1
+preload를 추가합니다. MuJoCo 1400ms/5-cycle에서 기존 max roll 4.61°가 3.64°로
+약 21% 감소했고, IMU feedback gain은 변경하지 않았습니다. 새 J1 방향을 거치대에서
+확인하기 전에는 바닥에서 다시 실행하지 않습니다. 이 preload로도 바닥에서 같은
+대각 전도가 재현되면 diagonal trot의 추가 현장 조정을 중단하고 한 발씩 옮기는
+정적 안정 crawl 정책으로 전환합니다.
+
+### J1 preload 펌웨어 거치대 확인
+
+`shift=1.5deg` banner가 출력되는 새 펌웨어로 `trot3 1 1400`을 거치대에서
+확인했습니다.
+
+```text
+samples=107 min_voltage=11400mV lag=10 lag+droop=0
+late_frames=0 limited_frames=14
+balance peak: Roll=0.3deg Pitch=0.3deg J1=0.2deg Knee=3.8deg
+step sync: barriers=2 wait=407ms peak_error=78ticks
+J1 peak error: FL=8 FR=8 RL=16 RR=8 ticks
+tracking peak: FR J3=188, RL J2=179, FR J2=177 ticks
+```
+
+J1 preload command는 네 축 모두 작은 오차로 추종했고 전압, IMU와 frame timing도
+정상입니다. RL J2/J3의 반복 lag 때문에 `derate=recommended`는 남아 있습니다.
+거치대는 횡방향 실제 하중 이동의 부호를 증명하지 못하므로 바닥 검증이 필요하지만,
+앞선 두 번의 오른쪽 전도 때문에 자유 낙상 가능한 상태에서는 재시험하지 않습니다.
+상부 하네스가 몸체를 실제로 지지해 12° abort 이후에도 넘어지지 않게 한 경우에만
+한 cycle을 허용합니다.
+
+### J1 preload 거치대 1-cycle 재확인
+
+`shift=1.5deg` 펌웨어로 거치대에서 `trot3 1 1400`을 실행해 tilt abort 없이
+`OK`로 완료했습니다.
+
+```text
+samples=107 min_voltage=11400mV lag=13 lag+droop=0
+late_frames=0 limited_frames=21
+balance peak: Roll=0.4deg Pitch=0.3deg J1=0.2deg Knee=4.8deg
+step sync: barriers=2 wait=407ms peak_error=77ticks
+tracking peak: RL J2=213, RL J3=191, FR J3=176 ticks
+```
+
+J1 preload 명령 추종, minimum voltage, deadline과 barrier error는 안정적입니다.
+그러나 거치대가 몸체 횡하중을 지지하므로 Roll 0.4°는 오른쪽 전도 개선의 증거가
+아닙니다. preload 적용 후 바닥 시험은 아직 수행하지 않았습니다. 다음 단계는
+낙상 방지 상부 하네스를 건 상태의 바닥 `trot3 1 1400` 한 번이며, 그 전에는
+2-cycle이나 5-cycle로 늘리지 않습니다.
+
+### J1 preload 바닥 시험 전도: step-sync 동안 Roll loop 정지 확인
+
+상부 지지 조건의 바닥 시험에서도 오른쪽 전도가 재현됐습니다.
+
+```text
+Peak Roll=8.3deg  Peak Pitch=2.7deg
+Peak J1 correction=0.6deg  Peak Knee correction=14.3deg
+tracking lag=11  limited_frames=17
+Step sync wait=550ms  Peak step sync error=165ticks
+minimum voltage=11.1V  lag+droop=0
+```
+
+전압 부족보다 제어 배분과 timing이 우선 원인입니다. 코드 추적 결과 `Step sync
+wait`는 통계가 아니라 실제 blocking barrier입니다. 다음 gait deadline에 550ms가
+더해지고 그동안 IMU를 읽거나 새 balance target을 보내지 않습니다. 따라서
+`late_frames=0`은 이 공백을 검출하지 못했습니다. 두 번째 대각 지지 전환 근처에서
+balance가 수백 ms 동결되는 것이 현재 가장 큰 전도 원인 후보입니다.
+
+Roll 8.3°는 0.145rad입니다. 기존 full-mode `J1 gain=5deg/rad`는 rate가 0이라고
+보면 약 0.72°만 만들므로 실측 0.6°가 설정과 일치합니다. 반면 leg-length 입력
+0.145는 IK 비선형성으로 J3 약 13.8°가 되어 실측 14.3°와 일치합니다. J1 saturation
+때문이 아니라 Roll 권한이 knee 쪽에 과도하게 배분된 상태였습니다.
+
+MuJoCo에서 +5° body Roll을 준 뒤 실제 URDF 축/접촉/actuator로 10ms 검증했습니다.
+현재 `side_sign`은 Roll을 4.216°로 줄였고, J1 무보정은 4.394°, 부호 반전은
+4.548°로 키웠습니다. 따라서 현재 J1 부호는 restoring 방향이며 반전하지 않습니다.
+full mode만 J1 gain을 15deg/rad로 올리고 leg-length limit을 0.08로 줄였습니다.
+8.3° 입력 배분은 J1 약 2.17°, knee 약 7.3°입니다. 공용 trot3 궤적과 calibration
+부호는 바꾸지 않았습니다.
+
+새 진단은 joint별 peak/mean tick(degree), limiter가 만든 joint/foot-space 변형,
+step barrier 누적/최대 시간, balance update 최대 공백을 출력합니다. 32-frame
+`baldiag` ring과 Tilt Safety 마지막-frame snapshot도 추가했습니다. 다음 네 조건은
+거치대 후 몸체를 받는 상부 하네스에서 각 1-cycle만 비교합니다.
+
+```text
+balance off  -> trot3 1 1400
+balance full -> trot3 1 1400
+balance off  -> trot3 1 1800
+balance full -> trot3 1 1800
+```
+
+원인이 확인된 뒤 blocking step barrier는 제거했습니다. 새 step-sync는 기존
+round-robin sample의 최근 measured position을 현재 목표와 비교해 transition,
+`48 tick` 초과 miss, peak recent error만 기록합니다. 추가 12축 read와 대기 없이
+원래 20ms deadline으로 계속 진행하므로 새 로그의 `blocking_wait`는 0ms여야 하고
+`max_balance_gap`은 정상적으로 약 20ms 부근이어야 합니다. lag가 큰 경우 phase를
+얼리는 대신 진단/derate 대상으로 남깁니다. 공용 trot3 canonical trajectory는
+변경하지 않았습니다.
+
+### Non-blocking sync 및 Balance OFF/ON 1400/1800 비교
+
+요청한 네 조건이 모두 `OK`, `fall=no`로 끝났습니다.
+
+| 조건 | lag | limiter frame | sync recent peak | max tracking | min V | balance gap |
+|---|---:|---:|---:|---:|---:|---:|
+| OFF 1400 | 10 | 0 | 170 tick | RL J2 183 tick | 11.5V | 23ms |
+| ON 1400 | 14 | 27 | 185 tick | RL J2 212 tick | 11.5V | 23ms |
+| OFF 1800 | 12 | 0 | 96 tick | FR J2 275 tick | 11.4V | 22ms |
+| ON 1800 | 14 | 48 | 212 tick | RL J2 248 tick | 11.3V | 22ms |
+
+모든 실행의 `blocking_wait=0`, `max_barrier=0`, 실제 elapsed는 nominal+15ms였습니다.
+따라서 이전 550ms freeze는 제거됐고 50Hz timing도 회복됐습니다. OFF에서는
+1400/1800 모두 limiter와 foot distortion이 정확히 0이어서 canonical trot3 자체가
+actuator limiter에 의해 변형되는 것은 아닙니다. ON에서만 1400은 J3 peak 1.214°와
+foot 0.021 normalized-link, 1800은 J3 peak 2.120°와 foot 0.031이 발생했습니다.
+
+Balance trace에서 더 중요한 결함을 발견했습니다. raw Roll이 `0.8→0.7°`처럼
+감소하는 frame에도 rate가 `+31.6°/s`, 최대 `+62.4°/s`로 기록됐습니다. 감소분은
+음수여야 합니다. `ROBOT_TROT_FRAME_MS`가 unsigned여서 ARM의 usual arithmetic
+conversion이 음의 numerator를 큰 unsigned 값으로 바꾸고, 결과가 +120°/s limit에
+걸린 뒤 rate filter에서 감쇠한 것이 원인입니다. 이 가짜 양의 D항 때문에 ON에서만
+balance target이 흔들리고 limiter frame과 tracking lag가 늘었습니다.
+
+미분 계산의 numerator와 divisor를 명시적인 signed `int32_t`로 고쳤고, gait 시작
+시 previous attitude error도 최초 IMU sample로 초기화해 첫-frame derivative kick을
+제거했습니다. 이 수정은 canonical gait, J1 부호와 P gain을 바꾸지 않습니다.
+OFF 결과는 영향받지 않으므로 다음 실기는 수정 firmware에서 `balance full`,
+`trot3 1 1400` 한 번만 먼저 재확인합니다. 감소하는 raw Roll에서 rate도 음수가
+되는지, limiter frame이 27보다 크게 줄어드는지가 합격 조건입니다.
+
+### Signed derivative 재시험이 수정 전 binary로 실행됨
+
+후속 거치대 ON/1400 로그는 `lag=13`, `limited_frames=24`였지만 signed derivative
+수정이 들어간 동작은 아니었습니다. phase 714에서 raw Roll 0.9°, filtered rate
++0.6°/s인 뒤 phase 728에서 raw Roll이 0.8°로 감소했는데 filtered rate가 다시
++30.4°/s로 뛰었습니다. 올바른 입력은 raw -5.0°/s이고 filtered 출력은 약
+-0.8°/s입니다. +30.4는 이전 unsigned 경로가 raw rate를 +120°/s로 clamp했을 때
+정확히 나오는 값입니다.
+
+로컬 ARM binary disassembly는 signed `subs`, `multiply by 50`, signed clamp 경로를
+확인했습니다. 보드 binary를 확실히 구분하도록 `ROBOT_CONTROL_REV`를 추가했고,
+`balance status`와 trot3 시작 banner가 `t3-roll-drate-v2`를 출력하도록 했습니다.
+clean build/flash 뒤 revision 문자열 확인 전에는 이 재시험을 수정 firmware 결과로
+사용하지 않습니다.
+
+### `t3-roll-drate-v2` 거치대 검증 통과
+
+`balance status`와 trot3 banner에서 revision을 확인한 뒤 ON/1400을 재시험했습니다.
+
+```text
+revision=t3-roll-drate-v2
+result=OK fall=no
+lag=10 limited_frames=0 min_voltage=11.6V lag+droop=0
+elapsed=1415ms blocking_wait=0ms max_balance_gap=22ms
+step monitor: transitions=2 misses=2 peak_recent_error=173ticks
+max tracking: RL J2=182, FR J3=174, FR J2=164ticks
+```
+
+raw Roll이 0.8→0.7°로 감소할 때 filtered rate가 `-1.2, -0.9, -0.6°/s`로
+정상 감쇠했고, 자세가 증가할 때만 양수로 바뀌었습니다. 이전의 가짜
+`+30~62°/s` spike가 사라졌습니다. 그 결과 같은 거치대 조건의 limiter frame은
+24~27→0, foot distortion도 전 다리 0으로 줄었고 lag는 13~14→10으로 감소했습니다.
+
+J1 peak error는 17 tick 이하로 잘 추종하지만 J2/J3에는 무부하에서도 최대
+182 tick(16.0°), 평균 최대 75 tick(6.6°)이 남았습니다. 따라서 balance/limiter
+문제는 해결됐으나 actuator tracking은 아직 병목입니다. 다음 시험은 몸체를 실제로
+받는 상부 하네스가 있는 바닥에서 `balance full`, `trot3 1 1400` 한 cycle만
+허용하며, 자유 낙상 상태나 다중 cycle은 아직 허용하지 않습니다.
+
+### `t3-roll-drate-v2` 바닥 하네스 시험: 전도 방지, 종료 보정 단절 발견
+
+바닥/상부 하네스에서 ON/1400 한 cycle이 `OK`, `fall=no`로 완료됐습니다.
+
+```text
+min_voltage=11.0V lag=14 lag+droop=0 limited_frames=10
+blocking_wait=0ms max_balance_gap=22ms sync_recent_peak=142ticks
+raw Roll=-5.5deg -> +7.8deg, raw Pitch peak=3.0deg
+max tracking: RL J2=250, FL J3=245, RL J3=245ticks
+```
+
+Roll은 Tilt limit 12° 안에 있었지만 총 13.3° 범위로 왕복했습니다. J1 command는
+최대 약 1.9°였고 J1 실제 오차는 최대 28 tick(2.5°) 이하인 반면, leg-length는
+여러 frame에서 ±0.08 limit에 도달해 knee correction이 약 6.7°에 붙었습니다.
+따라서 J1 actuator 자체보다 J2/J3 load tracking과 제한된 leg-length authority가
+현재 바닥 병목입니다. 전압은 내려갔지만 `lag+droop=0`이므로 전원 단독 원인은
+아닙니다.
+
+J1 gain을 15/20/25/30deg/rad로 MuJoCo 1400ms/5-cycle sweep한 결과 Max Roll은
+각각 3.21/3.71/4.34/4.99°였습니다. gain 15가 가장 좋아 J1 gain은 더 올리지
+않습니다.
+
+별도로 마지막 phase 0에서 filtered attitude/rate를 강제로 0으로 만들면서 balance
+leg-length correction을 한 packet에 제거하고, loop 직후 raw stand를 다시 보내는
+종료 단절을 확인했습니다. 이 frame의 limiter mask는 `0xD26`, FL/RR J3 왜곡은
+6.65/6.12°였습니다. 정상 완료 시 마지막 IMU/balance/limiter target을 유지하고
+중복 raw stand packet을 보내지 않도록 수정했으며 revision을
+`t3-roll-endhold-v3`로 올렸습니다. 다음 시험은 먼저 거치대 ON/1400에서 phase 0
+limiter spike가 사라지는지 확인합니다.

@@ -90,6 +90,29 @@ SPOT_GAIT_EXPORT int spot_gait_trot2_targets(
     return 1;
 }
 
+SPOT_GAIT_EXPORT int spot_gait_trot3_targets(
+    float phase,
+    float amplitude_scale,
+    float fold_j2_deg,
+    float fold_j3_deg,
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_trot3_targets(
+            phase,
+            amplitude_scale,
+            fold_j2_deg,
+            fold_j3_deg,
+            targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
 SPOT_GAIT_EXPORT int spot_gait_jump_targets(
     float phase,
     float forward_travel,

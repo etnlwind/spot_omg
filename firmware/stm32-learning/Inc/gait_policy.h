@@ -33,6 +33,18 @@ extern "C" {
 #define GAIT_POLICY_TROT2_FOLD_J2_DEG 78.0f
 #define GAIT_POLICY_TROT2_FOLD_J3_DEG 108.0f
 
+/*
+ * Slow real-hardware starts need a finite support polygon.  With duty=0.5 a
+ * diagonal pair lifts at phase zero and leaves only a two-point support line;
+ * duty=0.65 gives 30% of each cycle with all four feet scheduled in stance.
+ * This belongs to the hardware-independent trot3 geometry, not the actuator
+ * capability layer.
+ */
+#define GAIT_POLICY_TROT3_PERIOD_MS 1400U
+#define GAIT_POLICY_TROT3_MAX_PERIOD_MS 1800U
+#define GAIT_POLICY_TROT3_DUTY 0.65f
+#define GAIT_POLICY_TROT3_WEIGHT_SHIFT_DEG 1.5f
+
 #define GAIT_POLICY_JUMP_PERIOD_MS 1200U
 #define GAIT_POLICY_JUMP_CONTROL_HZ 50U
 #define GAIT_POLICY_JUMP_J1_DEG 4.0f
@@ -264,11 +276,12 @@ static inline bool gait_policy_sim_trot_targets(
  * circle apex is derived from the requested folded J2/J3 pose, so the upper
  * link approaches body-horizontal and both joints remain coupled by IK.
  */
-static inline bool gait_policy_trot2_targets(
+static inline bool gait_policy_circular_trot_targets(
     float global_phase,
     float amplitude_scale,
     float fold_j2_deg,
     float fold_j3_deg,
+    float duty_factor,
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     static const float phase_offsets[GAIT_POLICY_LEG_COUNT] = {
@@ -282,9 +295,11 @@ static inline bool gait_policy_trot2_targets(
     if (targets == NULL ||
         !isfinite(global_phase) || !isfinite(amplitude_scale) ||
         !isfinite(fold_j2_deg) || !isfinite(fold_j3_deg) ||
+        !isfinite(duty_factor) ||
         amplitude_scale < 0.0f || amplitude_scale > 1.0f ||
         fold_j2_deg < 60.0f || fold_j2_deg > 95.0f ||
-        fold_j3_deg < 80.0f || fold_j3_deg > 145.0f) {
+        fold_j3_deg < 80.0f || fold_j3_deg > 145.0f ||
+        duty_factor < 0.50f || duty_factor > 0.80f) {
         return false;
     }
 
@@ -306,11 +321,10 @@ static inline bool gait_policy_trot2_targets(
     for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
         const float local_phase = gait_policy_wrap_phase(
             global_phase + phase_offsets[leg]);
-        const bool stance = local_phase < GAIT_POLICY_TROT2_DUTY;
+        const bool stance = local_phase < duty_factor;
         const float progress = stance ?
-            local_phase / GAIT_POLICY_TROT2_DUTY :
-            (local_phase - GAIT_POLICY_TROT2_DUTY) /
-                (1.0f - GAIT_POLICY_TROT2_DUTY);
+            local_phase / duty_factor :
+            (local_phase - duty_factor) / (1.0f - duty_factor);
         const float angle = GAIT_POLICY_PI *
                             gait_policy_cosine_ease(progress);
         const float direction = GAIT_POLICY_STANCE_TRAVEL;
@@ -339,6 +353,70 @@ static inline bool gait_policy_trot2_targets(
         }
         targets[leg].j1_deg = GAIT_POLICY_SIM_TROT_STANCE_J1_DEG;
         targets[leg].stance = stance;
+    }
+    return true;
+}
+
+static inline bool gait_policy_trot2_targets(
+    float global_phase,
+    float amplitude_scale,
+    float fold_j2_deg,
+    float fold_j3_deg,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    return gait_policy_circular_trot_targets(
+        global_phase,
+        amplitude_scale,
+        fold_j2_deg,
+        fold_j3_deg,
+        GAIT_POLICY_TROT2_DUTY,
+        targets);
+}
+
+/* Circular-foot gait with four-foot overlap for slow physical starts. */
+static inline bool gait_policy_trot3_targets(
+    float global_phase,
+    float amplitude_scale,
+    float fold_j2_deg,
+    float fold_j3_deg,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    if (!gait_policy_circular_trot_targets(
+        global_phase,
+        amplitude_scale,
+        fold_j2_deg,
+        fold_j3_deg,
+        GAIT_POLICY_TROT3_DUTY,
+        targets)) {
+        return false;
+    }
+
+    /*
+     * Move load toward the next support diagonal while all four feet are
+     * scheduled down.  Positive selects FL+RR; negative selects FR+RL.  The
+     * transition occupies only the duty overlap, then remains constant while
+     * the opposite diagonal swings.  This is canonical body geometry, not a
+     * servo mounting correction.
+     */
+    static const int8_t diagonal_signs[GAIT_POLICY_LEG_COUNT] = {
+        1, -1, -1, 1
+    };
+    const float phase = gait_policy_wrap_phase(global_phase);
+    const float overlap = GAIT_POLICY_TROT3_DUTY - 0.5f;
+    float transfer = -1.0f;
+    if (phase < overlap) {
+        transfer = -1.0f + 2.0f * gait_policy_cosine_ease(phase / overlap);
+    } else if (phase < 0.5f) {
+        transfer = 1.0f;
+    } else if (phase < 0.5f + overlap) {
+        transfer = 1.0f - 2.0f * gait_policy_cosine_ease(
+            (phase - 0.5f) / overlap);
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        targets[leg].j1_deg +=
+            (float)diagonal_signs[leg] *
+            GAIT_POLICY_TROT3_WEIGHT_SHIFT_DEG * transfer * amplitude_scale;
     }
     return true;
 }
