@@ -106,7 +106,7 @@ class SpotConfig:
         # longer takes per-leg signs: how a leg is mounted belongs to each
         # joint's centre and direction, not to the trajectory.
         self.gait_forward_signs = gait_forward_signs or {
-            "FL": -1, "FR": -1, "RL": 1, "RR": 1
+            "FL": 1, "FR": 1, "RL": 1, "RR": 1
         }
         self.path = path
         self.reference_center = reference_center
@@ -266,6 +266,22 @@ class SpotConfig:
         self.validate_targets(targets)
         return targets
 
+    def straight_targets(self) -> dict[int, int]:
+        """Every joint at canonical zero: both links in line, foot under hip.
+
+        Mirrors robot_straight_targets() in the firmware.  A zero angle adds
+        no ticks, so this pose is exactly the calibrated centres -- the one
+        pose direction cannot influence, and the pose the robot was posed in
+        when it was calibrated.  That makes it the reference to check a
+        calibration against: a leg either looks straight or it does not.
+        """
+        angles = {
+            (leg, joint_number): 0.0
+            for leg in LEG_ORDER
+            for joint_number in range(1, JOINTS_PER_LEG + 1)
+        }
+        return self.angles_to_targets(angles)
+
     def stand45_targets(self) -> dict[int, int]:
         # From a straight neutral leg, J2 tilts the upper link by 45 degrees.
         # J3 is relative to that upper link, so a 90-degree knee bend places
@@ -329,7 +345,9 @@ class SpotConfig:
         clean_name = name.strip()
         if not clean_name or any(character in clean_name for character in "\r\n"):
             raise ValueError("pose name must be non-empty and fit on one line")
-        if clean_name.lower() in {"neutral", "stand", "stand45", "landing"}:
+        if clean_name.lower() in {
+            "neutral", "stand", "stand11", "stand45", "landing"
+        }:
             raise ValueError(
                 f"pose name {clean_name!r} is reserved for calibrated stances"
             )

@@ -50,7 +50,12 @@ PRESETS = {
 }
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the spotctl parser.
+
+    Separate from parse_args() so tests can ask what subcommands exist
+    without running one.
+    """
     parser = argparse.ArgumentParser(
         prog="spotctl",
         description="Inspect and safely exercise the Spot OMG servos.",
@@ -193,6 +198,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     for command, help_text in (
         ("stand", "move to the calibrated neutral stance"),
+        ("stand11", "straighten every leg (all joints at zero degrees)"),
         ("stand45", "generate a 45-degree stance from current calibration"),
         ("landing", "move to the calibrated landing stance"),
     ):
@@ -349,7 +355,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "script", help="run console commands from a file, stopping on error"
     )
     console_script.add_argument("path", type=Path)
-    return parser.parse_args(argv)
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_parser().parse_args(argv)
 
 
 #: STMicroelectronics; the ST-LINK virtual COM port on every Nucleo board.
@@ -638,7 +648,7 @@ CONSOLE_ONLY_COMMANDS = frozenset(
 )
 
 #: Commands both transports implement, routed by the attached device.
-DUAL_COMMANDS = frozenset({"scan", "stand", "relax", "hold"})
+DUAL_COMMANDS = frozenset({"scan", "stand", "stand11", "relax", "hold"})
 
 
 def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
@@ -711,7 +721,7 @@ def console_line_for(args: argparse.Namespace) -> str:
                 "--max-id, or use --via urt2"
             )
         return "scan"
-    if command in {"stand", "relax", "hold"}:
+    if command in {"stand", "stand11", "relax", "hold"}:
         if getattr(args, "leg", None):
             raise ValueError(
                 f"'{command} --leg' needs a URT-2 direct connection; the "
@@ -1291,6 +1301,8 @@ def apply_pose(
 ) -> None:
     if name in {"neutral", "stand"}:
         targets = robot.config.pose("neutral")
+    elif name == "stand11":
+        targets = robot.config.straight_targets()
     elif name == "stand45":
         targets = robot.config.stand45_targets()
     elif name == "landing":
@@ -1718,7 +1730,7 @@ def main(argv: list[str] | None = None) -> int:
                     tolerance=args.tolerance,
                 )
                 print(f"Applied pose: {args.name}")
-            elif args.command in {"stand", "stand45", "landing"}:
+            elif args.command in {"stand", "stand11", "stand45", "landing"}:
                 if args.command == "stand" and args.leg:
                     robot.require_all()
                     neutral = config.pose("neutral")
@@ -1736,6 +1748,8 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 elif args.command == "stand":
                     targets = config.pose("neutral")
+                elif args.command == "stand11":
+                    targets = config.straight_targets()
                 elif args.command == "stand45":
                     targets = config.stand45_targets()
                 else:

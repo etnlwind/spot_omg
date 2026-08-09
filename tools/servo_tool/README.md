@@ -46,6 +46,7 @@ editable package로 설치하므로 소스 수정은 즉시 `spotctl`에 반영�
 | 모터 부하 기반 발 접촉 확인 | `spotctl --port PORT contacts` |
 | 공중 보행 동적 부하 기록 | `spotctl --port PORT walk ... --profile-loads` |
 | 보정된 중립 자세 | `spotctl --port PORT stand` |
+| 다리를 곧게 편 11자 자세 | `spotctl --port PORT stand11` |
 | 보정값 기반 45도 자세 | `spotctl --port PORT stand45` |
 | 보정값 기반 착지 자세 | `spotctl --port PORT landing` |
 | 저장 포즈 적용 | `spotctl --port PORT pose NAME` |
@@ -284,9 +285,9 @@ raw = center + direction * round(angle_deg * 4096 / 360)
 전진·후진은 모터 `direction`을 바꾸지 않고 보행 궤적의 진행 부호로 결정합니다.
 보행 제어기는 상·하단 링크 길이를 각각 1로 정규화한 planar 2-link IK를 사용합니다.
 지지 구간에는 발끝 높이를 유지하면서 앞뒤로 이동하고, 스윙 구간에는 발끝을
-위로 들어 이동합니다. 앞·뒤 다리의 기구학적 진행 차이는
-`gait_forward_signs`로 분리합니다. 실제 관찰에 따라 FL/FR은 `-1`, RL/RR은
-`+1`을 사용하며, 이 값은 자세용 모터 방향과 독립적입니다.
+위로 들어 이동합니다. 레거시 Python 보행의 `gait_forward_signs`는 뒷다리의
+정상 동작을 기준으로 네 다리 모두 `+1`을 사용합니다. 앞·뒤 장착 차이는 관절별
+`direction`에서 처리하며 궤적 부호로 다시 나누지 않습니다.
 
 예를 들어 네 다리 J3에 모두 같은 각도를 명령해도 하드웨어 raw 값은 각 모터의
 `center`와 `direction`에 따라 서로 다르게 계산됩니다. `stand45`는 11자 중립
@@ -465,8 +466,14 @@ spotctl --port /dev/cu.usbmodem5B790788341 pose crouch
 J3 `+90°`를 적용해 매번 계산합니다. `pose landing`은 다리를 더 낮게 눕히는
 하단 링크가 바닥과 수평이 되도록 J2 `+40°`, J3 `+130°`를 최신 보정값에서
 동적으로 계산합니다. 두 상대 관절각의 차이는 `90°`입니다. 과거에
-저장된 동명의 raw 포즈는 실행하지 않습니다. `neutral`, `stand`, `stand45`,
-`landing` 이름은 일반 `save-pose`로 덮어쓸 수 없습니다.
+저장된 동명의 raw 포즈는 실행하지 않습니다. `neutral`, `stand`, `stand11`,
+`stand45`, `landing` 이름은 일반 `save-pose`로 덮어쓸 수 없습니다.
+
+`stand11`은 모든 관절을 canonical `0°`로 보냅니다. `0°`는 틱을 더하지 않으므로
+이 자세는 곧 보정 `center` 값 그대로이고, `direction`의 영향을 받지 않는
+유일한 자세입니다. 로봇을 11자로 세워 보정한 바로 그 자세이므로 보정값이
+맞는지 눈으로 확인할 때의 기준이 됩니다. 모든 서보에 `2048`을 보내는
+`raw-center`와는 다릅니다 — 그쪽은 보정 이전의 값입니다.
 
 ```bash
 spotctl --port PORT landing --speed 100 --accel 5

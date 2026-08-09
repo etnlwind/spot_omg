@@ -17,10 +17,11 @@ FLAGS=(
   -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy
   -IDrivers/CMSIS/Device/ST/STM32F4xx/Include
   -IDrivers/CMSIS/Include
+  -IDrivers/sh2
 )
 
 fail=0
-for f in Src/*.c Drivers/STM32F4xx_HAL_Driver/Src/*.c; do
+for f in Src/*.c Drivers/STM32F4xx_HAL_Driver/Src/*.c Drivers/sh2/*.c; do
   case "$f" in *_template.c) continue;; esac
   "$GCC" "${FLAGS[@]}" "$f" -o "$OUT/$(basename "${f%.c}").o" 2>>"$OUT/err.log" || { echo "FAILED $f"; fail=1; }
 done

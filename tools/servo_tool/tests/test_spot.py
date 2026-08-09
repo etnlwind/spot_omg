@@ -3,6 +3,7 @@ import io
 import json
 import math
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -24,10 +25,13 @@ from servo import (
 )
 from servo.console import classify, estimate_timeout
 from servo.cli import (
+    CONSOLE_ONLY_COMMANDS,
+    DUAL_COMMANDS,
     PortInfo,
     _usb_number,
     announce_port,
     apply_pose,
+    build_parser,
     capture_stand,
     configure_directions,
     configure_mapping,
@@ -45,6 +49,10 @@ from servo.cli import (
 
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
+APP_CONSOLE = (
+    Path(__file__).resolve().parents[3]
+    / "firmware" / "stm32-learning" / "Src" / "app_console.c"
+)
 
 
 class RecordingBus:
@@ -241,9 +249,9 @@ class SpotConfigTest(unittest.TestCase):
         generated = self.config.stand45_targets()
         expected = {
             2: 1723,
-            3: 1036,
+            3: 3084,
             5: 2511,
-            6: 3001,
+            6: 953,
             8: 1630,
             9: 3020,
             11: 2552,
@@ -251,13 +259,31 @@ class SpotConfigTest(unittest.TestCase):
         }
         for servo_id, position in expected.items():
             self.assertEqual(generated[servo_id], position)
+        self.assertEqual(self.config.joint("FL", 3).servo_id, 3)
+        self.assertEqual(self.config.joint("FR", 3).servo_id, 6)
         self.assertEqual(
             tuple(
                 self.config.joint(leg, 1).direction
                 for leg in ("FL", "FR", "RL", "RR")
             ),
-            (1, -1, -1, 1),
+            (-1, 1, -1, 1),
         )
+
+    def test_straight_targets_are_exactly_the_calibrated_centres(self) -> None:
+        """Zero degrees adds no ticks, so this pose cannot depend on direction.
+
+        That is the point of it: the robot is posed straight before it is
+        calibrated, so commanding zero should send every servo back to the
+        number that was written down, whatever sign convention came later.
+        """
+        targets = self.config.straight_targets()
+        for leg in ("FL", "FR", "RL", "RR"):
+            for joint_number in (1, 2, 3):
+                joint = self.config.joint(leg, joint_number)
+                self.assertEqual(
+                    targets[joint.servo_id], joint.center,
+                    f"{leg} J{joint_number} should command its centre",
+                )
 
     def test_all_legs_share_the_same_canonical_stand45_angles(self) -> None:
         targets = self.config.stand45_targets()
@@ -272,11 +298,9 @@ class SpotConfigTest(unittest.TestCase):
     def test_joint_angle_raw_conversion_round_trip(self) -> None:
         """Angles survive the trip to ticks and back, wherever they fit.
 
-        Not every joint can reach every angle.  The front knee horns are
-        installed half a turn round, so their zero sits near the end of travel
-        and a negative angle has nowhere to go -- which is a fact about the
-        hardware, not a conversion bug.  Round-trip what each joint can
-        actually represent, and check the range that matters separately.
+        Not every calibration is guaranteed to reach every possible angle.
+        Round-trip what each joint can actually represent, and check the range
+        that matters separately.
         """
         for leg in ("FL", "FR", "RL", "RR"):
             for joint_number in (1, 2, 3):
@@ -333,7 +357,7 @@ class SpotConfigTest(unittest.TestCase):
         )
         self.assertEqual(
             data["gait_forward_signs"],
-            {"FL": -1, "FR": -1, "RL": 1, "RR": 1},
+            {"FL": 1, "FR": 1, "RL": 1, "RR": 1},
         )
 
     def test_v2_direction_tables_are_migrated_when_loading(self) -> None:
@@ -694,22 +718,24 @@ class SpotConfigTest(unittest.TestCase):
         # Loaded hardware trials establish this progression as forward: during
         # stance each planted foot travels front-to-rear relative to the body,
         # so ground reaction drives the body forward.
-        for leg in ("FL", "RR"):
-            servo_id = self.config.joint(leg, 2).servo_id
+        def body_forward(leg: str, targets: dict[int, int]) -> float:
+            j2 = self.config.joint(leg, 2).servo_id
+            j3 = self.config.joint(leg, 3).servo_id
+            upper = self.config.position_to_angle(leg, 2, targets[j2])
+            knee = self.config.position_to_angle(leg, 3, targets[j3])
+            forward, _ = robot.leg_forward_kinematics(upper, knee)
+            return forward * self.config.gait_forward_signs[leg]
+
+        for leg in ("FL", "FR", "RL", "RR"):
             offset = robot.PHASE_OFFSETS["trot"][leg]
             stance_start = robot.gait_targets((-offset) % 1.0, base, gait)
             stance_end = robot.gait_targets(
                 (gait.duty_factor - offset) % 1.0, base, gait
             )
-            self.assertGreater(stance_start[servo_id], stance_end[servo_id])
-        for leg in ("FR", "RL"):
-            servo_id = self.config.joint(leg, 2).servo_id
-            offset = robot.PHASE_OFFSETS["trot"][leg]
-            stance_start = robot.gait_targets((-offset) % 1.0, base, gait)
-            stance_end = robot.gait_targets(
-                (gait.duty_factor - offset) % 1.0, base, gait
+            self.assertGreater(
+                body_forward(leg, stance_start),
+                body_forward(leg, stance_end),
             )
-            self.assertLess(stance_start[servo_id], stance_end[servo_id])
 
     def test_each_foot_moves_rearward_on_ground_and_forward_in_air(self) -> None:
         robot = SpotRobot(RecordingBus(), self.config)
@@ -779,8 +805,10 @@ class SpotConfigTest(unittest.TestCase):
         def foot_at_swing_progress(progress: float) -> tuple[float, float]:
             phase = gait.duty_factor + (1.0 - gait.duty_factor) * progress
             targets = robot.gait_targets(phase, base, gait)
-            upper = self.config.position_to_angle("FL", 2, targets[2])
-            knee = self.config.position_to_angle("FL", 3, targets[3])
+            j2 = self.config.joint("FL", 2).servo_id
+            j3 = self.config.joint("FL", 3).servo_id
+            upper = self.config.position_to_angle("FL", 2, targets[j2])
+            knee = self.config.position_to_angle("FL", 3, targets[j3])
             forward, down = robot.leg_forward_kinematics(upper, knee)
             return forward * self.config.gait_forward_signs["FL"], down
 
@@ -1042,8 +1070,8 @@ class SpotConfigTest(unittest.TestCase):
             - self.config.joint(leg, 1).center
             for leg in ("FL", "FR", "RL", "RR")
         }
-        self.assertGreater(raw_deltas["FL"], 0)
-        self.assertLess(raw_deltas["FR"], 0)
+        self.assertLess(raw_deltas["FL"], 0)
+        self.assertGreater(raw_deltas["FR"], 0)
         self.assertLess(raw_deltas["RL"], 0)
         self.assertGreater(raw_deltas["RR"], 0)
 
@@ -1750,7 +1778,40 @@ class ConsolePortTest(unittest.TestCase):
         )
         self.assertEqual(console_line_for(parse_args(["imu"])), "imu")
         self.assertEqual(console_line_for(parse_args(["stand"])), "stand")
+        self.assertEqual(console_line_for(parse_args(["stand11"])), "stand11")
         self.assertEqual(console_line_for(parse_args(["scan"])), "scan")
+
+    def test_every_shared_command_name_reaches_the_firmware(self) -> None:
+        """A command routes over the STM32 link only if two lists agree.
+
+        DUAL_COMMANDS decides whether the command may be routed at all, and
+        console_line_for() turns it into a console line.  Adding a command to
+        one and not the other leaves spotctl refusing something the firmware
+        implements, which is how stand11 shipped broken.  Any subcommand that
+        shares its name with a firmware console command should reach it.
+        """
+        source = APP_CONSOLE.read_text()
+        firmware = set(
+            re.findall(r'strcmp\(command,\s*"([a-z0-9]+)"\)', source)
+        )
+        self.assertIn("stand11", firmware, "app_console.c lost stand11")
+
+        choices = set(
+            build_parser()._subparsers._group_actions[0].choices
+        )
+        routable = CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS
+        for name in sorted(firmware & choices):
+            with self.subTest(command=name):
+                self.assertIn(
+                    name, routable,
+                    f"'{name}' exists on both sides but is not routable; "
+                    f"add it to DUAL_COMMANDS or CONSOLE_ONLY_COMMANDS",
+                )
+                self.assertTrue(
+                    console_line_for(parse_args([name])),
+                    f"'{name}' is routable but console_line_for() cannot "
+                    f"translate it",
+                )
 
     def test_routed_commands_reject_urt2_only_options(self) -> None:
         # The firmware owns the trajectory over this link, so these would be

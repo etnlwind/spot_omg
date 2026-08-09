@@ -8,19 +8,19 @@
  * Joint index: 1=abduction, 2=upper leg, 3=knee.
  *
  * These values come from calibrating the physical robot and are not derived
- * here.  The front knees look wrong in motion and the arithmetic suggests
- * their J3 direction is the reason -- flipping it puts the front stand targets
- * at 3084 and 953, beside the rear legs' 3020 and 1023, where the current
- * values sit at their mirror.  That is a hypothesis about the hardware, so it
- * belongs to whoever measures the hardware, not to this file.
+ * here.  On 2026-08-09 the mounting rule was confirmed: front and rear on the
+ * same side use the same motor direction, while left and right are mirrored.
+ * ID 3 and ID 6 were physically exchanged on 2026-08-09, restoring the
+ * standard mapping: ID 3 is FL J3 and ID 6 is FR J3.  Centres remain attached
+ * to their measured physical IDs and must be rechecked after remounting.
  */
 const RobotJointConfig g_robot_joints[ROBOT_JOINT_COUNT] = {
-    {1U,  0U, 1U, 2091U, 0U, 4095U,  1},
+    {1U,  0U, 1U, 2091U, 0U, 4095U, -1},
     {2U,  0U, 2U, 2235U, 0U, 4095U, -1},
-    {3U,  0U, 3U, 2060U, 0U, 4095U, -1},
-    {4U,  1U, 1U, 2087U, 0U, 4095U, -1},
+    {3U,  0U, 3U, 2060U, 0U, 4095U,  1},
+    {4U,  1U, 1U, 2087U, 0U, 4095U,  1},
     {5U,  1U, 2U, 1999U, 0U, 4095U,  1},
-    {6U,  1U, 3U, 1977U, 0U, 4095U,  1},
+    {6U,  1U, 3U, 1977U, 0U, 4095U, -1},
     {7U,  2U, 1U, 2103U, 0U, 4095U, -1},
     {8U,  2U, 2U, 2142U, 0U, 4095U, -1},
     {9U,  2U, 3U, 1996U, 0U, 4095U,  1},
