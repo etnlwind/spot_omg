@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2026 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -56,6 +56,7 @@ TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 /*
@@ -69,6 +70,7 @@ static bool imu_log_enabled = false;
 static ServoBus servo_bus;
 static RobotController robot;
 static AppConsole console;
+static AppConsole wifi_console;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,6 +81,7 @@ static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static void uart_print(const char *text);
 static void IMU_PrintEuler(void);
@@ -122,10 +125,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C1_Init();
   MX_SPI1_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   servo_bus_init(&servo_bus, &huart1, 25U);
   robot_init(&robot, &servo_bus);
   app_console_init(&console, &huart2, &robot, &imu055, &imu086, &imu_log_enabled);
+  app_console_init(&wifi_console, &huart3, &robot, &imu055, &imu086, &imu_log_enabled);
 
   uart_print("\r\nPROGRAM START\r\n");
   HAL_Delay(700);
@@ -136,38 +141,47 @@ int main(void)
    * order keeps boot quick in the common case.
    */
   imu055.i2c = &hi2c1;
-  if (bno055_init(&imu055, &hi2c1)) {
-      char message[64];
+  if (bno055_init(&imu055, &hi2c1))
+  {
+    char message[64];
+    (void)snprintf(message,
+                   sizeof(message),
+                   "BNO055 NDOF OK at 0x%02X\r\n",
+                   (unsigned int)(imu055.address >> 1));
+    uart_print(message);
+    robot_set_attitude_reader(&robot, bno055_read_attitude, &imu055);
+    uart_print("IMU balance default ON: full, absolute level target\r\n");
+  }
+  else
+  {
+    /*
+     * 5 ms subscription: the sensor fuses faster than the balance loop
+     * consumes, so a step never acts on a sample older than one period.
+     */
+    const Bno086Result imu_result = bno086_init(&imu086, &hspi1, 5000U);
+    if (imu_result == BNO086_OK)
+    {
+      uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
+      robot_set_attitude_reader(&robot, bno086_read_attitude, &imu086);
+      uart_print("IMU balance default ON: full, absolute level target\r\n");
+    }
+    else
+    {
+      char message[80];
       (void)snprintf(message,
                      sizeof(message),
-                     "BNO055 NDOF OK at 0x%02X\r\n",
-                     (unsigned int)(imu055.address >> 1));
+                     "No IMU: BNO055 absent, BNO086 %s (prodIds=%d)\r\n",
+                     bno086_result_string(imu_result),
+                     imu086.product_id_status);
       uart_print(message);
-      robot_set_attitude_reader(&robot, bno055_read_attitude, &imu055);
-      uart_print("IMU balance default ON: full, absolute level target\r\n");
-  } else {
-      /*
-       * 5 ms subscription: the sensor fuses faster than the balance loop
-       * consumes, so a step never acts on a sample older than one period.
-       */
-      const Bno086Result imu_result = bno086_init(&imu086, &hspi1, 5000U);
-      if (imu_result == BNO086_OK) {
-          uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
-          robot_set_attitude_reader(&robot, bno086_read_attitude, &imu086);
-          uart_print("IMU balance default ON: full, absolute level target\r\n");
-      } else {
-          char message[80];
-          (void)snprintf(message,
-                         sizeof(message),
-                         "No IMU: BNO055 absent, BNO086 %s (prodIds=%d)\r\n",
-                         bno086_result_string(imu_result),
-                         imu086.product_id_status);
-          uart_print(message);
-          uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
-      }
+      uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
+    }
   }
   app_console_print_help(&console);
   app_console_print_prompt(&console);
+
+  app_console_print_help(&wifi_console);
+  app_console_print_prompt(&wifi_console);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -180,11 +194,14 @@ int main(void)
     static uint32_t last_imu_print = 0U;
 
     app_console_poll(&console);
+    app_console_poll(&wifi_console);
+
     bno086_service(&imu086);
     if (imu_log_enabled && (imu055.present || imu086.present) &&
-        (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U) {
-        IMU_PrintEuler();
-        last_imu_print = HAL_GetTick();
+        (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U)
+    {
+      IMU_PrintEuler();
+      last_imu_print = HAL_GetTick();
     }
 
     HAL_Delay(1);
@@ -434,6 +451,39 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -454,7 +504,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(IMU_RST_GPIO_Port, IMU_RST_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, IMU_WAKE_Pin|IMU_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -469,22 +519,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(IMU_INT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : IMU_RST_Pin IMU_WAKE_Pin IMU_CS_Pin */
-  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_CS_Pin;
+  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_WAKE_Pin|IMU_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : IMU_WAKE_Pin */
-  /*
-   * PS0 doubles as WAKE and this board straps it to 3V3 with a solder jumper
-   * to select SPI, measured at 3.3 V.  Driving the pin would put this output
-   * across that strap, so it stays an input and the D4 wire comes off.
-   */
-  GPIO_InitStruct.Pin = IMU_WAKE_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(IMU_WAKE_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
@@ -505,66 +544,72 @@ static void MX_GPIO_Init(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 {
-    app_console_on_rx_complete(&console, huart);
+  app_console_on_rx_complete(&console, huart);
+  app_console_on_rx_complete(&wifi_console, huart);
 }
 
 static void uart_print(const char *text)
 {
-    HAL_UART_Transmit(
-        &huart2,
-        (uint8_t *)text,
-        strlen(text),
-        HAL_MAX_DELAY
-    );
+  HAL_UART_Transmit(
+      &huart2,
+      (uint8_t *)text,
+      strlen(text),
+      HAL_MAX_DELAY);
 }
 
 static void IMU_PrintEuler(void)
 {
-    char message[100];
-    int32_t yaw10 = 0;
-    int32_t roll10 = 0;
-    int32_t pitch10 = 0;
+  char message[100];
+  int32_t yaw10 = 0;
+  int32_t roll10 = 0;
+  int32_t pitch10 = 0;
 
-    if (imu055.present) {
-        int16_t yaw = 0;
-        int16_t roll = 0;
-        int16_t pitch = 0;
-        if (!bno055_read_euler(&imu055, &yaw, &roll, &pitch)) {
-            uart_print("Euler read error\r\n");
-            return;
-        }
-        yaw10 = yaw;
-        roll10 = roll;
-        pitch10 = pitch;
-    } else if (imu086.present && imu086.has_attitude) {
-        yaw10 = imu086.yaw_tenths;
-        roll10 = imu086.roll_tenths;
-        pitch10 = imu086.pitch_tenths;
-    } else {
-        uart_print("IMU unavailable\r\n");
-        return;
+  if (imu055.present)
+  {
+    int16_t yaw = 0;
+    int16_t roll = 0;
+    int16_t pitch = 0;
+    if (!bno055_read_euler(&imu055, &yaw, &roll, &pitch))
+    {
+      uart_print("Euler read error\r\n");
+      return;
     }
+    yaw10 = yaw;
+    roll10 = roll;
+    pitch10 = pitch;
+  }
+  else if (imu086.present && imu086.has_attitude)
+  {
+    yaw10 = imu086.yaw_tenths;
+    roll10 = imu086.roll_tenths;
+    pitch10 = imu086.pitch_tenths;
+  }
+  else
+  {
+    uart_print("IMU unavailable\r\n");
+    return;
+  }
 
-    /*
-     * Same line shape the BNO055 has always printed, so the host-side parsers
-     * and the bench notes in HARDWARE_TEST_LOG.md keep working.  Note the yaw
-     * differs by sensor: absolute heading on the BNO055, relative to power-on
-     * on the BNO086's game rotation vector.
-     */
-    snprintf(message,
-             sizeof(message),
-             "Yaw=%s%ld.%01ld, Roll=%s%ld.%01ld, Pitch=%s%ld.%01ld deg\r\n",
-             yaw10 < 0 ? "-" : "",
-             labs(yaw10) / 10,
-             labs(yaw10) % 10,
-             roll10 < 0 ? "-" : "",
-             labs(roll10) / 10,
-             labs(roll10) % 10,
-             pitch10 < 0 ? "-" : "",
-             labs(pitch10) / 10,
-             labs(pitch10) % 10);
+  /*
+   * Same line shape the BNO055 has always printed, so the host-side parsers
+   * and the bench notes in HARDWARE_TEST_LOG.md keep working.  Note the yaw
+   * differs by sensor: absolute heading on the BNO055, relative to power-on
+   * on the BNO086's game rotation vector.
+   */
+  snprintf(message,
+           sizeof(message),
+           "Yaw=%s%ld.%01ld, Roll=%s%ld.%01ld, Pitch=%s%ld.%01ld deg\r\n",
+           yaw10 < 0 ? "-" : "",
+           labs(yaw10) / 10,
+           labs(yaw10) % 10,
+           roll10 < 0 ? "-" : "",
+           labs(roll10) / 10,
+           labs(roll10) % 10,
+           pitch10 < 0 ? "-" : "",
+           labs(pitch10) / 10,
+           labs(pitch10) % 10);
 
-    uart_print(message);
+  uart_print(message);
 }
 
 /* USER CODE END 4 */
