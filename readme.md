@@ -39,6 +39,23 @@ spotctl trot2 1 1600  # STM32 전용
 spotctl walk          # URT-2 직결 전용
 ```
 
+ESP32-C3 Wi-Fi bridge를 통한 STM32 콘솔 연결도 지원합니다. 주소는 장치 환경에
+맞게 지정하며 기본 TCP 포트는 `3333`입니다.
+
+```bash
+# 기존 USB/Serial
+spotctl stand
+
+# ESP32-C3 Wi-Fi bridge
+spotctl --host 192.168.0.112 stand
+
+# Interactive STM32 console over Wi-Fi
+spotctl --host 192.168.0.112 console
+
+# Explicit TCP port
+spotctl --host 192.168.0.112 --tcp-port 3333 trot3 1 1400
+```
+
 어느 포트로 나갔는지는 실행할 때마다 첫 줄에 표시됩니다.
 
 ```text
