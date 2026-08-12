@@ -28,10 +28,7 @@ import time
 from types import TracebackType
 from typing import Callable, Iterable
 
-try:
-    import serial
-except ImportError:  # pragma: no cover - depends on local environment
-    serial = None
+from .transport import SerialTransport, Transport
 
 PROMPT = "# "
 CONSOLE_BAUDRATE = 115_200
@@ -142,7 +139,7 @@ def estimate_timeout(command: str) -> float | None:
 
 
 class Stm32Console:
-    """Own the ST-LINK virtual COM port and exchange console lines."""
+    """Exchange console lines over a serial or TCP byte transport."""
 
     def __init__(
         self,
@@ -151,39 +148,29 @@ class Stm32Console:
         timeout: float = 0.2,
         *,
         serial_port=None,
+        transport: Transport | None = None,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
-        self._serial = serial_port
+        self._transport = transport or SerialTransport(
+            port, baudrate, timeout, serial_port=serial_port
+        )
+        # Kept as an alias for compatibility with existing callers/tests.
+        self._serial = self._transport
         self._lock = threading.RLock()
 
     @property
     def is_open(self) -> bool:
-        return self._serial is not None and self._serial.is_open
+        return self._transport.is_open
 
     def open(self) -> "Stm32Console":
         if not self.is_open:
-            if serial is None:
-                raise ImportError(
-                    "pyserial is required; run: pip install -r requirements.txt"
-                )
-            # A /dev/cu.* device accepts several readers on macOS and splits
-            # the incoming bytes between them, which silently truncates both
-            # sides.  The lock only keeps other spotctl runs out; a terminal
-            # program that does not take it can still share the port.
-            self._serial = serial.Serial(
-                self.port,
-                self.baudrate,
-                timeout=self.timeout,
-                write_timeout=max(self.timeout, 1.0),
-                exclusive=True,
-            )
+            self._transport.open()
         return self
 
     def close(self) -> None:
-        if self._serial is not None:
-            self._serial.close()
+        self._transport.close()
 
     def __enter__(self) -> "Stm32Console":
         return self.open()

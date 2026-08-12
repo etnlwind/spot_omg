@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .bus import ServoBus
 from .console import CONSOLE_BAUDRATE, ConsoleError, Stm32Console
+from .transport import TcpTransport
 from .contact import LEGS, LoadContactEstimator
 from .load_profile import DynamicLoadBaseline
 from .spot import GaitParameters, SpotConfig, SpotRobot
@@ -21,6 +22,7 @@ from .sts3215 import STS3215
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
 DEFAULT_PROFILE_DIR = Path(__file__).resolve().parents[1] / "logs"
+DEFAULT_TCP_PORT = 3333
 PRESETS = {
     "test": GaitParameters(
         period=4.0,
@@ -66,10 +68,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="URT-2 port; defaults to SPOT_SERVO_PORT or auto-detection",
     )
     parser.add_argument("--baudrate", type=int, default=1_000_000)
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("SPOT_TCP_HOST"),
+        help="ESP32-C3 STM32 bridge host; selecting this always uses TCP",
+    )
+    parser.add_argument(
+        "--tcp-port",
+        type=int,
+        default=int(os.environ.get("SPOT_TCP_PORT", DEFAULT_TCP_PORT)),
+        help=f"ESP32-C3 bridge TCP port (default: {DEFAULT_TCP_PORT})",
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument(
         "--via",
-        choices=("auto", "urt2", "stm32"),
+        choices=("auto", "urt2", "stm32", "tcp"),
         default=os.environ.get("SPOT_TRANSPORT", "auto"),
         help=(
             "which link to use; auto picks it from the attached USB device "
@@ -669,6 +682,10 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
     otherwise the attached USB device decides.  With one of each plugged in
     there is no right answer, so ask instead of guessing.
     """
+    if args.host:
+        return "tcp", args.host
+    if args.via == "tcp":
+        raise RuntimeError("--via tcp requires --host HOST")
     if args.via == "stm32":
         return "stm32", resolve_console_port(args.stm32_port)
     if args.via == "urt2":
@@ -714,6 +731,16 @@ def announce_port(kind: str, port: str) -> None:
     output that gets piped or captured.
     """
     print(f"ports:[{port}] link={kind}", file=sys.stderr)
+
+
+def open_console(args: argparse.Namespace, kind: str, endpoint: str) -> Stm32Console:
+    """Build a console using the selected byte-stream transport."""
+    if kind == "tcp":
+        transport = TcpTransport(endpoint, args.tcp_port)
+        return Stm32Console(
+            f"{endpoint}:{args.tcp_port}", transport=transport
+        )
+    return Stm32Console(endpoint, args.console_baudrate)
 
 
 def console_line_for(args: argparse.Namespace) -> str:
@@ -766,7 +793,9 @@ def console_line_for(args: argparse.Namespace) -> str:
     raise ValueError(f"'{command}' has no STM32 console equivalent")
 
 
-def run_routed_console_command(args: argparse.Namespace, port: str) -> int:
+def run_routed_console_command(
+    args: argparse.Namespace, port: str, kind: str = "stm32"
+) -> int:
     """Run one routed command over the STM32 console."""
     line = console_line_for(args)
     log_file = None
@@ -776,7 +805,7 @@ def run_routed_console_command(args: argparse.Namespace, port: str) -> int:
             log_file = args.log.open("a", encoding="utf-8")
             started = datetime.now().isoformat(timespec="seconds")
             log_file.write(f"\n=== {started} {port} ===\n")
-        with Stm32Console(port, args.console_baudrate) as console:
+        with open_console(args, kind, port) as console:
             console.sync()
             return run_console_command(
                 console, line, timeout=args.console_timeout, log=log_file
@@ -788,17 +817,23 @@ def run_routed_console_command(args: argparse.Namespace, port: str) -> int:
 
 def run_console(args: argparse.Namespace) -> int:
     """Open the STM32 console and dispatch the requested console action."""
-    port = resolve_console_port(args.stm32_port)
-    announce_port("stm32", port)
+    if args.host:
+        kind, port = "tcp", args.host
+    else:
+        if args.via == "tcp":
+            raise RuntimeError("--via tcp requires --host HOST")
+        kind, port = "stm32", resolve_console_port(args.stm32_port)
+    display_port = f"{port}:{args.tcp_port}" if kind == "tcp" else port
+    announce_port(kind, display_port)
     log_file = None
     try:
         if args.log is not None:
             args.log.parent.mkdir(parents=True, exist_ok=True)
             log_file = args.log.open("a", encoding="utf-8")
             started = datetime.now().isoformat(timespec="seconds")
-            log_file.write(f"\n=== {started} {port} ===\n")
+            log_file.write(f"\n=== {started} {display_port} ===\n")
 
-        with Stm32Console(port, args.console_baudrate) as console:
+        with open_console(args, kind, port) as console:
             console.sync()
             if args.console_command == "send":
                 return run_console_command(
@@ -1606,10 +1641,11 @@ def main(argv: list[str] | None = None) -> int:
             return run_console(args)
 
         transport, port = resolve_transport(args)
-        announce_port(transport, port)
-        if transport == "stm32":
+        announced = f"{port}:{args.tcp_port}" if transport == "tcp" else port
+        announce_port(transport, announced)
+        if transport in {"stm32", "tcp"}:
             if args.command in CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS:
-                return run_routed_console_command(args, port)
+                return run_routed_console_command(args, port, transport)
             raise RuntimeError(
                 f"'{args.command}' needs a URT-2 connected directly to this "
                 "computer; the STM32 console does not implement it"

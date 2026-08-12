@@ -1729,6 +1729,25 @@ class ConsolePortTest(unittest.TestCase):
         self.assertIsNone(args.stm32_port)
         self.assertEqual(args.console_baudrate, 115200)
 
+    def test_tcp_arguments_parse_with_default_and_explicit_port(self) -> None:
+        args = parse_args(["--host", "192.168.0.112", "stand"])
+        self.assertEqual(args.host, "192.168.0.112")
+        self.assertEqual(args.tcp_port, 3333)
+        args = parse_args([
+            "--host", "robot.local", "--tcp-port", "4444", "stand"
+        ])
+        self.assertEqual(args.host, "robot.local")
+        self.assertEqual(args.tcp_port, 4444)
+
+    def test_host_selects_tcp_before_serial_routing(self) -> None:
+        args = parse_args([
+            "--host", "192.168.0.112", "--port", "/dev/ttyUSB3", "stand"
+        ])
+        self.assertEqual(resolve_transport(args), ("tcp", "192.168.0.112"))
+        args = parse_args(["--via", "tcp", "stand"])
+        with self.assertRaisesRegex(RuntimeError, "requires --host"):
+            resolve_transport(args)
+
     def test_transport_follows_the_attached_device(self) -> None:
         with patch("servo.cli.serial_ports", return_value=[BLUETOOTH, ST_LINK]):
             self.assertEqual(

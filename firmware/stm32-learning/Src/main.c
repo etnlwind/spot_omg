@@ -188,23 +188,40 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+      /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-    static uint32_t last_imu_print = 0U;
+      /* USER CODE BEGIN 3 */
+      static uint32_t last_imu_print = 0U;
+//      static uint32_t uart3_test_tick = 0U;
 
-    app_console_poll(&console);
-    app_console_poll(&wifi_console);
+      // /* USART3 -> ESP32 단방향 테스트 */
+      // if ((uint32_t)(HAL_GetTick() - uart3_test_tick) >= 1000U)
+      // {
+      //     uart3_test_tick = HAL_GetTick();
 
-    bno086_service(&imu086);
-    if (imu_log_enabled && (imu055.present || imu086.present) &&
-        (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U)
-    {
-      IMU_PrintEuler();
-      last_imu_print = HAL_GetTick();
-    }
+      //     const char msg[] = "STM32 USART3 TX OK\r\n";
 
-    HAL_Delay(1);
+      //     HAL_UART_Transmit(
+      //         &huart3,
+      //         (uint8_t *)msg,
+      //         sizeof(msg) - 1U,
+      //         100U
+      //     );
+      // }
+
+      app_console_poll(&console);
+      app_console_poll(&wifi_console);
+
+      bno086_service(&imu086);
+
+      if (imu_log_enabled && (imu055.present || imu086.present) &&
+          (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U)
+      {
+          IMU_PrintEuler();
+          last_imu_print = HAL_GetTick();
+      }
+
+      HAL_Delay(1);
   }
   /* USER CODE END 3 */
 }

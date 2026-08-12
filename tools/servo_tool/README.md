@@ -91,6 +91,23 @@ STM32에 연결된 구성에서는 서보 버스의 주인이 STM32입니다. `s
 붙어 있으면 기존 1 Mbps Feetech 경로를 씁니다. 펌웨어 경로에서는 IMU 균형 루프,
 non-blocking step-sync monitor, `Ctrl+C` 복귀가 그대로 유지됩니다.
 
+ESP32-C3 Wi-Fi UART bridge를 사용할 때는 `--host`를 지정합니다. 이 옵션이
+있으면 USB 자동 탐지보다 우선하며 기본 TCP 포트는 `3333`입니다.
+
+```bash
+# 기존 USB/Serial
+spotctl stand
+
+# ESP32-C3 Wi-Fi bridge
+spotctl --host 192.168.0.112 stand
+
+# Interactive STM32 console over Wi-Fi
+spotctl --host 192.168.0.112 console
+
+# Explicit TCP port
+spotctl --host 192.168.0.112 --tcp-port 3333 trot3 1 1400
+```
+
 ```bash
 spotctl stand          # ST-LINK가 붙어 있으면 STM32 콘솔의 stand
                        # URT-2가 붙어 있으면 기존 Feetech stand
@@ -115,6 +132,7 @@ STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `jump`, `
 ```bash
 spotctl --via stm32 stand
 spotctl --via urt2 status
+spotctl --host 192.168.0.112 --via tcp stand
 ```
 
 `--via`는 `SPOT_TRANSPORT` 환경 변수로도 고정할 수 있습니다.
