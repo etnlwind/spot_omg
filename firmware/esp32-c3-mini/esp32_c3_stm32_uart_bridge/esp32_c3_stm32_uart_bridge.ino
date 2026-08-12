@@ -17,11 +17,30 @@
  */
 
 #include <WiFi.h>
+#include <cstring>
 
 HardwareSerial STM32Serial(1);
 
-const char* WIFI_SSID     = "TP-Link_A9CF";
-const char* WIFI_PASSWORD = "a@0128a@0128";
+struct WiFiCredential {
+  const char* ssid;
+  const char* password;
+};
+
+static const WiFiCredential WIFI_NETWORKS[] = {
+  {"TP-Link_A9CF", "a@0128a@0128"},
+  // {"SSID2", "PASSWORD2"},
+  // {"SSID3", "PASSWORD3"},
+};
+
+static constexpr size_t MAX_WIFI_NETWORKS = 3;
+static constexpr size_t WIFI_NETWORK_COUNT =
+    sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
+static_assert(WIFI_NETWORK_COUNT > 0, "Register at least one Wi-Fi network");
+static_assert(WIFI_NETWORK_COUNT <= MAX_WIFI_NETWORKS,
+              "Up to three Wi-Fi networks can be registered");
+
+static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
+static constexpr uint32_t WIFI_RETRY_DELAY_MS = 3000;
 
 static constexpr uint16_t TCP_PORT = 3333;
 WiFiServer server(TCP_PORT);
@@ -35,17 +54,96 @@ static void connectWiFi()
 {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  Serial.print("Connecting WiFi");
+  WiFi.setAutoReconnect(false);
 
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+    Serial.println();
+    Serial.println("Scanning WiFi...");
 
-  Serial.println();
-  Serial.println("WiFi connected");
+    WiFi.disconnect();
+    WiFi.scanDelete();
+    const int networkCount = WiFi.scanNetworks();
+
+    if (networkCount < 0) {
+      Serial.printf("WiFi scan failed (error=%d)\n", networkCount);
+    } else {
+      const WiFiCredential* selectedNetwork = nullptr;
+      int selectedScanIndex = -1;
+      int32_t selectedRssi = INT32_MIN;
+
+      Serial.println("Found:");
+
+      for (int scanIndex = 0; scanIndex < networkCount; ++scanIndex) {
+        for (size_t credentialIndex = 0;
+             credentialIndex < WIFI_NETWORK_COUNT;
+             ++credentialIndex) {
+          const WiFiCredential& credential = WIFI_NETWORKS[credentialIndex];
+
+          if (WiFi.SSID(scanIndex) != credential.ssid) {
+            continue;
+          }
+
+          const int32_t rssi = WiFi.RSSI(scanIndex);
+          Serial.printf("  %-24s RSSI=%ld dBm\n",
+                        credential.ssid,
+                        static_cast<long>(rssi));
+
+          if (selectedNetwork == nullptr || rssi > selectedRssi) {
+            selectedNetwork = &credential;
+            selectedScanIndex = scanIndex;
+            selectedRssi = rssi;
+          }
+          break;
+        }
+      }
+
+      if (selectedNetwork != nullptr) {
+        uint8_t selectedBssid[6];
+        std::memcpy(selectedBssid, WiFi.BSSID(selectedScanIndex),
+                    sizeof(selectedBssid));
+        const int32_t selectedChannel = WiFi.channel(selectedScanIndex);
+
+        Serial.println();
+        Serial.println("Selected:");
+        Serial.printf("  %s\n", selectedNetwork->ssid);
+        Serial.println();
+        Serial.print("Connecting");
+
+        WiFi.begin(selectedNetwork->ssid,
+                   selectedNetwork->password,
+                   selectedChannel,
+                   selectedBssid);
+
+        const uint32_t started = millis();
+        while (WiFi.status() != WL_CONNECTED &&
+               (millis() - started) < WIFI_CONNECT_TIMEOUT_MS) {
+          delay(500);
+          Serial.print(".");
+        }
+        Serial.println();
+
+        if (WiFi.status() == WL_CONNECTED) {
+          WiFi.scanDelete();
+          Serial.println("WiFi connected");
+          Serial.printf("SSID : %s\n", WiFi.SSID().c_str());
+          Serial.printf("RSSI : %ld dBm\n", static_cast<long>(WiFi.RSSI()));
+          Serial.print("IP   : ");
+          Serial.println(WiFi.localIP());
+          return;
+        }
+
+        Serial.printf("Connection failed (status=%d)\n", WiFi.status());
+      } else {
+        Serial.println("  No registered networks are in range");
+      }
+    }
+
+    WiFi.disconnect();
+    WiFi.scanDelete();
+    Serial.printf("Retrying in %lu seconds...\n",
+                  static_cast<unsigned long>(WIFI_RETRY_DELAY_MS / 1000));
+    delay(WIFI_RETRY_DELAY_MS);
+  }
 }
 
 static void printStatus()
