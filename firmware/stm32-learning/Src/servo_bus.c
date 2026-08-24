@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define SERVO_BUS_REQUEST_SETTLE_MS 10U
+#define SERVO_BUS_INTER_REQUEST_MS 1U
 
 static bool timeout_elapsed(uint32_t started_at, uint32_t timeout_ms)
 {
@@ -152,29 +152,33 @@ ServoBusResult servo_bus_request(ServoBus *bus,
     bus->last_servo_error = 0U;
 
     /*
-     * Leave enough quiet time for the URT-2 automatic half-duplex direction
-     * circuit and the previous servo status packet to return to idle. This
-     * applies only to unicast request/response transactions; synchronized
-     * broadcast writes used by the stand ramp remain unaffected.
+     * Leave a short idle interval between unicast transactions. This is not
+     * the URT-2-specific 10 ms settling delay: it only gives the previous
+     * status packet and an automatic half-duplex adapter time to return to
+     * the idle state before a back-to-back request.
      */
     if (expect_response && servo_id != FEETECH_BROADCAST_ID) {
-        HAL_Delay(SERVO_BUS_REQUEST_SETTLE_MS);
+        HAL_Delay(SERVO_BUS_INTER_REQUEST_MS);
     }
+
+    /* Drop stale bytes and UART error state from an earlier transaction. */
     flush_uart_rx(bus->uart);
 
     /*
-     * The URT-2 UART header may reflect the TTL bus onto RX while TX is
-     * active. Disable the STM32 receiver during transmission so the echo
-     * cannot overrun the one-byte UART receive register. Re-enable it as
-     * soon as HAL has observed the final stop bit.
+     * The Waveshare Bus Servo Adapter (A), and some similar automatic UART
+     * half-duplex adapters, can reflect outgoing bytes or switching noise
+     * onto the STM32 RX input. Disable only the STM32 receiver while the
+     * blocking transmit is in progress; the adapter still controls the
+     * single-wire bus direction automatically.
      */
     CLEAR_BIT(bus->uart->Instance->CR1, USART_CR1_RE);
-    HAL_StatusTypeDef transmit_status = HAL_UART_Transmit(
+    const HAL_StatusTypeDef transmit_status = HAL_UART_Transmit(
         bus->uart,
         tx_packet,
         (uint16_t)tx_length,
         bus->timeout_ms);
     SET_BIT(bus->uart->Instance->CR1, USART_CR1_RE);
+
     if (transmit_status != HAL_OK) {
         return SERVO_BUS_HAL_ERROR;
     }
@@ -195,6 +199,11 @@ ServoBusResult servo_bus_request(ServoBus *bus,
             return result;
         }
 
+        /*
+         * Some automatic half-duplex adapters or wiring arrangements can
+         * still reflect the transmitted instruction onto RX. Ignore at most
+         * one exact copy, then continue waiting for the servo status packet.
+         */
         if (!echo_discarded && rx_length == tx_length &&
             memcmp(rx_packet, tx_packet, tx_length) == 0) {
             echo_discarded = true;

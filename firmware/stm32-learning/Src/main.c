@@ -92,9 +92,9 @@ static void IMU_PrintEuler(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -136,10 +136,11 @@ int main(void)
   HAL_Delay(700);
 
   /*
-   * Try the BNO055 first.  Its probe is a couple of short I2C transfers, while
+   * Try the BNO055 first. Its probe is a couple of short I2C transfers, while
    * a BNO086 that is absent or silent costs seconds of SH-2 timeouts, so this
    * order keeps boot quick in the common case.
    */
+  uart_print("Waveshare servo bus ready: USART1 at 1000000 baud\r\n");
   imu055.i2c = &hi2c1;
   if (bno055_init(&imu055, &hi2c1))
   {
@@ -177,6 +178,7 @@ int main(void)
       uart_print("Trot/jump locked: use balance off only for explicit open-loop test\r\n");
     }
   }
+
   app_console_print_help(&console);
   app_console_print_prompt(&console);
 
@@ -191,58 +193,58 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      static uint32_t last_imu_print = 0U;
-//      static uint32_t uart3_test_tick = 0U;
+    static uint32_t last_imu_print = 0U;
+    //      static uint32_t uart3_test_tick = 0U;
 
-      // /* USART3 -> ESP32 단방향 테스트 */
-      // if ((uint32_t)(HAL_GetTick() - uart3_test_tick) >= 1000U)
-      // {
-      //     uart3_test_tick = HAL_GetTick();
+    // /* USART3 -> ESP32 단방향 테스트 */
+    // if ((uint32_t)(HAL_GetTick() - uart3_test_tick) >= 1000U)
+    // {
+    //     uart3_test_tick = HAL_GetTick();
 
-      //     const char msg[] = "STM32 USART3 TX OK\r\n";
+    //     const char msg[] = "STM32 USART3 TX OK\r\n";
 
-      //     HAL_UART_Transmit(
-      //         &huart3,
-      //         (uint8_t *)msg,
-      //         sizeof(msg) - 1U,
-      //         100U
-      //     );
-      // }
+    //     HAL_UART_Transmit(
+    //         &huart3,
+    //         (uint8_t *)msg,
+    //         sizeof(msg) - 1U,
+    //         100U
+    //     );
+    // }
 
-      app_console_poll(&console);
-      app_console_poll(&wifi_console);
+    app_console_poll(&console);
+    app_console_poll(&wifi_console);
 
-      bno086_service(&imu086);
+    bno086_service(&imu086);
 
-      if (imu_log_enabled && (imu055.present || imu086.present) &&
-          (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U)
-      {
-          IMU_PrintEuler();
-          last_imu_print = HAL_GetTick();
-      }
+    if (imu_log_enabled && (imu055.present || imu086.present) &&
+        (uint32_t)(HAL_GetTick() - last_imu_print) >= 100U)
+    {
+      IMU_PrintEuler();
+      last_imu_print = HAL_GetTick();
+    }
 
-      HAL_Delay(1);
+    HAL_Delay(1);
   }
   /* USER CODE END 3 */
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -253,9 +255,8 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -268,10 +269,10 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief I2C1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_I2C1_Init(void)
 {
 
@@ -298,14 +299,13 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
 }
 
 /**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief SPI1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_SPI1_Init(void)
 {
 
@@ -339,14 +339,13 @@ static void MX_SPI1_Init(void)
    * PCLK2 is 16 MHz and /8 gives 2 MHz, under the part's 3 MHz ceiling.
    */
   /* USER CODE END SPI1_Init 2 */
-
 }
 
 /**
-  * @brief TIM2 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM2 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM2_Init(void)
 {
 
@@ -384,14 +383,13 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
-
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_USART1_UART_Init(void)
 {
 
@@ -431,14 +429,13 @@ static void MX_USART1_UART_Init(void)
   }
 
   /* USER CODE END USART1_Init 2 */
-
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART2 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_USART2_UART_Init(void)
 {
 
@@ -464,14 +461,13 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
-
 }
 
 /**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART3 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_USART3_UART_Init(void)
 {
 
@@ -497,14 +493,13 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 2 */
 
   /* USER CODE END USART3_Init 2 */
-
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -518,7 +513,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, IMU_RST_Pin|IMU_WAKE_Pin|IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(IMU_RST_GPIO_Port, IMU_RST_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, IMU_WAKE_Pin | IMU_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -527,7 +525,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : IMU_RST_Pin IMU_WAKE_Pin */
-  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_WAKE_Pin;
+  GPIO_InitStruct.Pin = IMU_RST_Pin | IMU_WAKE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -636,9 +634,9 @@ static void IMU_PrintEuler(void)
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -651,12 +649,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
