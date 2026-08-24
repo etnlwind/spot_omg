@@ -34,7 +34,7 @@ extern "C" {
  *   SI   D11 PA7   SPI1_MOSI
  *   CS   D10 PB6   IMU_CS      output, active low
  *   INT  D7  PA8   IMU_INT     input, active low
- *   RST  D3  PB3   IMU_RST     output, active low
+ *   RST      PB2   IMU_RST     output, active low
  *   WAK  D4  PB5   IMU_WAKE    output, active low (PS0 in SPI mode)
  *
  * D2/PA10 must stay clear: it is USART1_RX from the URT-2.
