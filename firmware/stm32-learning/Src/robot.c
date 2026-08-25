@@ -246,6 +246,21 @@ RobotResult robot_relax(RobotController *robot)
     return final_result;
 }
 
+RobotResult robot_relax_servo(RobotController *robot, uint8_t servo_id)
+{
+    if (robot == NULL || robot->bus == NULL ||
+        config_for_servo(servo_id) == NULL) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+
+    const ServoBusResult result = sts3215_set_torque(robot->bus,
+                                                      servo_id,
+                                                      false);
+    return result == SERVO_BUS_OK
+        ? ROBOT_OK
+        : bus_failure(robot, servo_id, result);
+}
+
 RobotResult robot_recover(RobotController *robot)
 {
     if (robot == NULL || robot->bus == NULL) {
