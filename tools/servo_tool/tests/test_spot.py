@@ -43,7 +43,10 @@ from servo.cli import (
     resolve_gait,
     resolve_port,
     resolve_transport,
+    run_stm32_calibration,
     run_walk,
+    save_captured_stand,
+    Stm32CalibrationLink,
     swap_servo_ids_on_bus,
 )
 
@@ -1399,6 +1402,136 @@ class ServoStateTest(unittest.TestCase):
         self.assertEqual(values.torque_limit, 900)
 
 
+class CalibrationConsole:
+    """Immediate-motion STM32 console fake for calibration routing tests."""
+
+    def __init__(self, positions: dict[int, int]) -> None:
+        self.positions = dict(positions)
+        self.commands: list[str] = []
+
+    @staticmethod
+    def _response(command: str, *lines: str) -> ConsoleResponse:
+        return ConsoleResponse(
+            command=command,
+            lines=tuple(lines),
+            telemetry=(),
+            status="ok" if lines == ("OK",) else "info",
+        )
+
+    def send(self, command: str) -> ConsoleResponse:
+        self.commands.append(command)
+        words = command.split()
+        if words[0] in {"profile", "hold", "relax"}:
+            return self._response(command, "OK")
+        if words[0] == "read":
+            servo_id = int(words[1])
+            position = self.positions[servo_id]
+            return self._response(
+                command,
+                f"ID {servo_id} pos={position} speed=0 load=0 "
+                "voltage=12000mV temp=31C current=0 moving=0 hw=0x00",
+            )
+        if words[0] == "move":
+            servo_id = int(words[1])
+            target = int(words[2])
+            if abs(target - self.positions[servo_id]) > 256:
+                return ConsoleResponse(
+                    command=command,
+                    lines=("ERROR: move exceeds safe delta",),
+                    telemetry=(),
+                    status="error",
+                )
+            self.positions[servo_id] = target
+            return self._response(command, "OK")
+        raise AssertionError(f"unexpected command: {command}")
+
+
+class Stm32CalibrationTest(unittest.TestCase):
+    def load_config(self, directory: str) -> SpotConfig:
+        config = SpotConfig.load(CONFIG)
+        config.path = Path(directory) / "joints.json"
+        return config
+
+    def test_stm32_calibration_saves_zero_and_relaxes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.load_config(directory)
+            positions = {
+                servo_id: config.pose("neutral")[servo_id]
+                for servo_id in config.servo_ids
+            }
+            console = CalibrationConsole(positions)
+            commands = iter(("leg FL", "joint 2", "zero", "quit"))
+            with patch("builtins.input", side_effect=lambda _prompt: next(commands)):
+                run_stm32_calibration(
+                    console,
+                    config,
+                    speed=100,
+                    acceleration=10,
+                    max_offset=300,
+                )
+
+            self.assertEqual(config.joint("FL", 2).center, 2048)
+            self.assertEqual(console.positions[2], 2048)
+            self.assertEqual(console.commands[:2], ["profile 100 10", "relax"])
+            self.assertIn("move 2 2048", console.commands)
+            self.assertEqual(console.commands[-1], "relax 2")
+            saved = SpotConfig.load(config.path)
+            self.assertEqual(saved.joint("FL", 2).center, 2048)
+
+    def test_stm32_calibration_splits_moves_at_firmware_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.load_config(directory)
+            console = CalibrationConsole({
+                servo_id: (1000 if servo_id == 2 else 2048)
+                for servo_id in config.servo_ids
+            })
+            link = Stm32CalibrationLink(console, config)
+            link.move(2, 2048, speed=100, acceleration=10)
+            moves = [
+                int(command.split()[2])
+                for command in console.commands
+                if command.startswith("move 2 ")
+            ]
+            self.assertEqual(moves, [1256, 1512, 1768, 2024, 2048])
+
+    def test_stm32_calibration_releases_previous_servo(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.load_config(directory)
+            console = CalibrationConsole({
+                servo_id: 2048 for servo_id in config.servo_ids
+            })
+            link = Stm32CalibrationLink(console, config)
+
+            link.move(2, 2050, speed=100, acceleration=10)
+            link.move(5, 2050, speed=100, acceleration=10)
+
+            self.assertLess(
+                console.commands.index("relax 2"),
+                console.commands.index("move 5 2050"),
+            )
+
+    def test_stm32_capture_stand_reads_without_torque_or_motion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = self.load_config(directory)
+            positions = {
+                servo_id: 2000 + servo_id for servo_id in config.servo_ids
+            }
+            console = CalibrationConsole(positions)
+
+            captured = save_captured_stand(
+                config,
+                Stm32CalibrationLink(console, config).read_positions(),
+            )
+
+            self.assertEqual(captured, positions)
+            self.assertTrue(all(
+                command.startswith("read ") for command in console.commands
+            ))
+            self.assertEqual(
+                SpotConfig.load(config.path).pose("neutral"), positions
+            )
+
+
 class FakeConsoleSerial:
     """Emulate the STM32 USART2 console closely enough to parse it.
 
@@ -1936,6 +2069,36 @@ class ConsolePortTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(opened, ["/dev/ttyUSB7"])
         self.assertIn("ports:[/dev/ttyUSB7] link=urt2", err.getvalue())
+
+    def test_calibrate_routes_to_the_stm32_calibration_bridge(self) -> None:
+        err, out = io.StringIO(), io.StringIO()
+        with patch("servo.cli.serial_ports", return_value=[ST_LINK]), \
+                patch(
+                    "servo.cli.run_stm32_calibration_command", return_value=0
+                ) as calibrate, \
+                redirect_stderr(err), redirect_stdout(out):
+            code = main(["calibrate", "--speed", "100", "--accel", "10"])
+
+        self.assertEqual(code, 0)
+        calibrate.assert_called_once()
+        call_args = calibrate.call_args.args
+        self.assertEqual(call_args[1:], (ST_LINK.device, "stm32"))
+        self.assertIn(f"ports:[{ST_LINK.device}] link=stm32", err.getvalue())
+
+    def test_capture_stand_routes_to_stm32_without_motion(self) -> None:
+        err, out = io.StringIO(), io.StringIO()
+        with patch("servo.cli.serial_ports", return_value=[ST_LINK]), \
+                patch(
+                    "servo.cli.run_stm32_capture_stand_command", return_value=0
+                ) as capture, \
+                redirect_stderr(err), redirect_stdout(out):
+            code = main(["capture-stand"])
+
+        self.assertEqual(code, 0)
+        capture.assert_called_once()
+        call_args = capture.call_args.args
+        self.assertEqual(call_args[1:], (ST_LINK.device, "stm32"))
+        self.assertIn(f"ports:[{ST_LINK.device}] link=stm32", err.getvalue())
 
     def test_console_exit_code_distinguishes_abort_from_failure(self) -> None:
         self.assertEqual(console_exit_code("ok"), 0)

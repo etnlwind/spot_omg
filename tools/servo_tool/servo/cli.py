@@ -7,6 +7,7 @@ import csv
 from dataclasses import dataclass
 from datetime import datetime
 import os
+import re
 import statistics
 import sys
 import time
@@ -23,6 +24,13 @@ from .sts3215 import STS3215
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
 DEFAULT_PROFILE_DIR = Path(__file__).resolve().parents[1] / "logs"
 DEFAULT_TCP_PORT = 3333
+STM32_SAFE_MOVE_DELTA = 256
+STM32_CALIBRATION_TOLERANCE = 4
+STM32_CALIBRATION_POLL_SECONDS = 0.05
+STM32_STATE_PATTERN = re.compile(
+    r"^ID\s+(?P<id>\d+)\s+pos=(?P<position>\d+)\b.*"
+    r"\bmoving=(?P<moving>[01])\b"
+)
 PRESETS = {
     "test": GaitParameters(
         period=4.0,
@@ -147,7 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
         "configure-directions", help="interactively set canonical joint directions"
     )
     calibrate = commands.add_parser(
-        "calibrate", help="interactively adjust and save neutral offsets"
+        "calibrate",
+        help="adjust neutral offsets over a direct URT-2 or STM32 console",
     )
     calibrate.add_argument("--speed", type=int, default=200)
     calibrate.add_argument("--accel", type=int, default=20)
@@ -1154,11 +1163,11 @@ def configure_mapping(config: SpotConfig) -> None:
     print(f"Saved servo mapping: {config.path}")
 
 
-def show_calibration(robot: SpotRobot) -> None:
+def _show_calibration(config: SpotConfig, read_positions) -> None:
     print("Leg Joint ID Offset Center Present")
     print("--- ----- -- ------ ------ -------")
-    positions = robot.read_positions()
-    for joint in robot.config.joints:
+    positions = read_positions()
+    for joint in config.joints:
         print(
             f"{joint.leg:>3} {joint.joint:>5} {joint.servo_id:>2} "
             f"{joint.offset:>+6} {joint.center:>6} "
@@ -1166,8 +1175,11 @@ def show_calibration(robot: SpotRobot) -> None:
         )
 
 
-def run_calibration(
-    robot: SpotRobot,
+def _run_calibration_session(
+    config: SpotConfig,
+    prepare,
+    read_positions,
+    move,
     *,
     speed: int,
     acceleration: int,
@@ -1177,15 +1189,15 @@ def run_calibration(
         raise ValueError("invalid calibration speed or acceleration")
     if not 1 <= max_offset <= 1000:
         raise ValueError("max-offset must be between 1 and 1000")
-    robot.prepare_for_motion(speed=speed, acceleration=acceleration)
+    prepare(speed=speed, acceleration=acceleration)
     selected_leg = "FL"
     selected_joint = 1
     adjustments = {"+1": 1, "-1": -1, "+5": 5, "-5": -5,
                    "+10": 10, "-10": -10}
     print("Commands: leg FL | joint 1 | +/-1 | +/-5 | +/-10 | zero | show | quit")
-    show_calibration(robot)
+    _show_calibration(config, read_positions)
     while True:
-        joint = robot.config.joint(selected_leg, selected_joint)
+        joint = config.joint(selected_leg, selected_joint)
         command = input(
             f"[{selected_leg} J{selected_joint} ID={joint.servo_id}]> "
         ).strip()
@@ -1202,41 +1214,311 @@ def run_calibration(
             if abs(new_offset) > max_offset:
                 print(f"Offset is limited to +/-{max_offset}.")
                 continue
-            target = robot.config.reference_center + new_offset
+            target = config.reference_center + new_offset
             if not joint.minimum <= target <= joint.maximum:
                 print("Target is outside this joint's limits.")
                 continue
-            STS3215(robot.bus, joint.servo_id).move(
-                target, speed=speed, acceleration=acceleration
+            move(
+                joint.servo_id,
+                target,
+                speed=speed,
+                acceleration=acceleration,
             )
-            robot.config.set_joint_center(joint.servo_id, target)
-            robot.config.save()
+            config.set_joint_center(joint.servo_id, target)
+            config.save()
             print(f"Saved ID {joint.servo_id}: offset={new_offset:+d}, center={target}")
         elif parts == ["SHOW"]:
-            show_calibration(robot)
+            _show_calibration(config, read_positions)
         elif parts in (["QUIT"], ["EXIT"], ["Q"]):
             return
         elif command:
             print("Unknown command. Use leg, joint, +/-1/5/10, zero, show, or quit.")
 
 
+def show_calibration(robot: SpotRobot) -> None:
+    """Print calibration through the original direct-bus interface."""
+    _show_calibration(robot.config, robot.read_positions)
+
+
+def run_calibration(
+    robot: SpotRobot,
+    *,
+    speed: int,
+    acceleration: int,
+    max_offset: int,
+) -> None:
+    """Run calibration over a host-connected URT-2 servo bus."""
+
+    def move(
+        servo_id: int,
+        target: int,
+        *,
+        speed: int,
+        acceleration: int,
+    ) -> None:
+        STS3215(robot.bus, servo_id).move(
+            target, speed=speed, acceleration=acceleration
+        )
+
+    _run_calibration_session(
+        robot.config,
+        robot.prepare_for_motion,
+        robot.read_positions,
+        move,
+        speed=speed,
+        acceleration=acceleration,
+        max_offset=max_offset,
+    )
+
+
+class Stm32CalibrationLink:
+    """Adapt the STM32 text console to the calibration session interface."""
+
+    def __init__(self, console: Stm32Console, config: SpotConfig, log=None) -> None:
+        self.console = console
+        self.config = config
+        self.log = log
+        self.active_servo_id: int | None = None
+
+    def _send(self, command: str):
+        if self.log is not None:
+            self.log.write(f"# {command}\n")
+        response = self.console.send(command)
+        if self.log is not None:
+            for line in response.lines:
+                self.log.write(line + "\n")
+            self.log.flush()
+        if not response.ok:
+            detail = response.text or response.status
+            raise RuntimeError(f"STM32 command '{command}' failed: {detail}")
+        return response
+
+    def prepare(self, *, speed: int, acceleration: int) -> None:
+        self._send(f"profile {speed} {acceleration}")
+        # Calibration moves one unloaded joint at a time. Establish a known
+        # torque-off baseline instead of energizing all twelve with `hold`.
+        self._send("relax")
+
+    def read_position(self, servo_id: int) -> tuple[int, bool]:
+        response = self._send(f"read {servo_id}")
+        for line in response.lines:
+            match = STM32_STATE_PATTERN.match(line)
+            if match is None or int(match.group("id")) != servo_id:
+                continue
+            return int(match.group("position")), match.group("moving") == "1"
+        raise RuntimeError(
+            f"STM32 read {servo_id} returned no parseable position: "
+            f"{response.text or '<empty>'}"
+        )
+
+    def read_positions(self) -> dict[int, int]:
+        return {
+            servo_id: self.read_position(servo_id)[0]
+            for servo_id in self.config.servo_ids
+        }
+
+    def _wait_for_position(
+        self,
+        servo_id: int,
+        target: int,
+        *,
+        distance: int,
+        speed: int,
+    ) -> int:
+        deadline = time.monotonic() + max(
+            3.0, distance / max(speed, 1) + 3.0
+        )
+        while True:
+            position, moving = self.read_position(servo_id)
+            error = abs(position - target)
+            if not moving:
+                if error <= STM32_CALIBRATION_TOLERANCE:
+                    return position
+                raise RuntimeError(
+                    f"servo {servo_id} stopped at {position}, "
+                    f"target was {target}"
+                )
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"servo {servo_id} timed out moving to {target}; "
+                    f"last position {position}"
+                )
+            time.sleep(STM32_CALIBRATION_POLL_SECONDS)
+
+    def move(
+        self,
+        servo_id: int,
+        target: int,
+        *,
+        speed: int,
+        acceleration: int,
+    ) -> None:
+        del acceleration  # Set once by profile in prepare().
+        if (
+            self.active_servo_id is not None
+            and self.active_servo_id != servo_id
+        ):
+            self._send(f"relax {self.active_servo_id}")
+            self.active_servo_id = None
+
+        position, _ = self.read_position(servo_id)
+        while position != target:
+            delta = target - position
+            if delta > STM32_SAFE_MOVE_DELTA:
+                waypoint = position + STM32_SAFE_MOVE_DELTA
+            elif delta < -STM32_SAFE_MOVE_DELTA:
+                waypoint = position - STM32_SAFE_MOVE_DELTA
+            else:
+                waypoint = target
+            self._send(f"move {servo_id} {waypoint}")
+            self.active_servo_id = servo_id
+            position = self._wait_for_position(
+                servo_id,
+                waypoint,
+                distance=abs(waypoint - position),
+                speed=speed,
+            )
+            if (
+                waypoint == target
+                and abs(position - target) <= STM32_CALIBRATION_TOLERANCE
+            ):
+                return
+
+    def relax(self) -> None:
+        if self.active_servo_id is None:
+            return
+        servo_id = self.active_servo_id
+        self._send(f"relax {servo_id}")
+        self.active_servo_id = None
+
+
+def run_stm32_calibration(
+    console: Stm32Console,
+    config: SpotConfig,
+    *,
+    speed: int,
+    acceleration: int,
+    max_offset: int,
+    log=None,
+) -> None:
+    """Run the normal calibration UI through the STM32 safety console."""
+    link = Stm32CalibrationLink(console, config, log=log)
+    primary_error: BaseException | None = None
+    try:
+        _run_calibration_session(
+            config,
+            link.prepare,
+            link.read_positions,
+            link.move,
+            speed=speed,
+            acceleration=acceleration,
+            max_offset=max_offset,
+        )
+    except BaseException as exc:
+        primary_error = exc
+        raise
+    finally:
+        try:
+            link.relax()
+            print("STM32 calibration finished; torque disabled on all servos.")
+        except Exception as exc:
+            if primary_error is None:
+                raise
+            print(
+                f"WARNING: STM32 relax failed after calibration: {exc}",
+                file=sys.stderr,
+            )
+
+
+def run_stm32_calibration_command(
+    args: argparse.Namespace,
+    port: str,
+    kind: str = "stm32",
+) -> int:
+    """Open the STM32 console and calibrate while it owns the servo bus."""
+    config = SpotConfig.load(args.config)
+    log_file = None
+    try:
+        if args.log is not None:
+            args.log.parent.mkdir(parents=True, exist_ok=True)
+            log_file = args.log.open("a", encoding="utf-8")
+            started = datetime.now().isoformat(timespec="seconds")
+            log_file.write(f"\n=== {started} {port} calibrate ===\n")
+        with open_console(args, kind, port) as console:
+            console.sync()
+            run_stm32_calibration(
+                console,
+                config,
+                speed=args.speed,
+                acceleration=args.accel,
+                max_offset=args.max_offset,
+                log=log_file,
+            )
+        return 0
+    finally:
+        if log_file is not None:
+            log_file.close()
+
+
+def save_captured_stand(
+    config: SpotConfig,
+    positions: dict[int, int],
+    leg: str | None = None,
+) -> dict[int, int]:
+    """Save a torque-free physical straight pose as calibrated centers."""
+    missing = set(config.servo_ids) - set(positions)
+    if missing:
+        raise RuntimeError(
+            "cannot capture stand; missing positions for IDs "
+            + ", ".join(map(str, sorted(missing)))
+        )
+    selected = (
+        {
+            config.joint(leg, joint_number).servo_id
+            for joint_number in (1, 2, 3)
+        }
+        if leg else set(config.servo_ids)
+    )
+    for servo_id in selected:
+        config.set_joint_center(servo_id, positions[servo_id])
+    config.save()
+    return {servo_id: positions[servo_id] for servo_id in sorted(selected)}
+
+
 def capture_stand(robot: SpotRobot, leg: str | None = None) -> dict[int, int]:
     """Capture the current physical pose as calibrated neutral centers."""
     robot.require_all()
-    positions = robot.read_positions()
-    selected = (
-        {
-            robot.config.joint(leg, joint_number).servo_id
-            for joint_number in (1, 2, 3)
-        }
-        if leg else set(robot.config.servo_ids)
-    )
-    for servo_id, position in positions.items():
-        if servo_id not in selected:
-            continue
-        robot.config.set_joint_center(servo_id, position)
-    robot.config.save()
-    return {servo_id: positions[servo_id] for servo_id in sorted(selected)}
+    return save_captured_stand(robot.config, robot.read_positions(), leg)
+
+
+def print_captured_stand(
+    config: SpotConfig,
+    positions: dict[int, int],
+    leg: str | None,
+) -> None:
+    for servo_id in sorted(positions):
+        print(f"ID {servo_id:2}: center={positions[servo_id]}")
+    scope = leg if leg else "all legs"
+    print(f"Captured current pose as stand ({scope}): {config.path}")
+
+
+def run_stm32_capture_stand_command(
+    args: argparse.Namespace,
+    port: str,
+    kind: str = "stm32",
+) -> int:
+    """Read and save a physical pose through STM32 without enabling torque."""
+    config = SpotConfig.load(args.config)
+    with open_console(args, kind, port) as console:
+        console.sync()
+        link = Stm32CalibrationLink(console, config)
+        captured = save_captured_stand(
+            config,
+            link.read_positions(),
+            args.leg,
+        )
+    print_captured_stand(config, captured, args.leg)
+    return 0
 
 
 def change_servo_id(
@@ -1644,6 +1926,12 @@ def main(argv: list[str] | None = None) -> int:
         announced = f"{port}:{args.tcp_port}" if transport == "tcp" else port
         announce_port(transport, announced)
         if transport in {"stm32", "tcp"}:
+            if args.command == "calibrate":
+                return run_stm32_calibration_command(args, port, transport)
+            if args.command in {"capture-stand", "save-stand"}:
+                return run_stm32_capture_stand_command(
+                    args, port, transport
+                )
             if args.command in CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS:
                 return run_routed_console_command(args, port, transport)
             raise RuntimeError(
@@ -1712,10 +2000,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             elif args.command in {"capture-stand", "save-stand"}:
                 positions = capture_stand(robot, args.leg)
-                for servo_id in sorted(positions):
-                    print(f"ID {servo_id:2}: center={positions[servo_id]}")
-                scope = args.leg if args.leg else "all legs"
-                print(f"Captured current pose as stand ({scope}): {config.path}")
+                print_captured_stand(config, positions, args.leg)
             elif args.command == "save-pose":
                 robot.require_all()
                 config.set_pose(args.name, robot.read_positions())

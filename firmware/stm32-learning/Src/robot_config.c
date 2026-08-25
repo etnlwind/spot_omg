@@ -11,22 +11,23 @@
  * here.  On 2026-08-09 the mounting rule was confirmed: front and rear on the
  * same side use the same motor direction, while left and right are mirrored.
  * ID 3 and ID 6 were physically exchanged on 2026-08-09, restoring the
- * standard mapping: ID 3 is FL J3 and ID 6 is FR J3.  Centres remain attached
- * to their measured physical IDs and must be rechecked after remounting.
+ * standard mapping: ID 3 is FL J3 and ID 6 is FR J3. IDs 2, 5, 8 and 11 were
+ * replaced with STS3250 J2 motors and all twelve straight-pose centres were
+ * recaptured by hand through the STM32 console on 2026-08-26.
  */
 const RobotJointConfig g_robot_joints[ROBOT_JOINT_COUNT] = {
-    {1U,  0U, 1U, 2091U, 0U, 4095U, -1},
-    {2U,  0U, 2U, 2235U, 0U, 4095U, -1},
-    {3U,  0U, 3U, 2060U, 0U, 4095U,  1},
-    {4U,  1U, 1U, 2087U, 0U, 4095U,  1},
-    {5U,  1U, 2U, 1999U, 0U, 4095U,  1},
-    {6U,  1U, 3U, 1977U, 0U, 4095U, -1},
-    {7U,  2U, 1U, 2103U, 0U, 4095U, -1},
-    {8U,  2U, 2U, 2142U, 0U, 4095U, -1},
-    {9U,  2U, 3U, 1996U, 0U, 4095U,  1},
-    {10U, 3U, 1U, 1958U, 0U, 4095U,  1},
-    {11U, 3U, 2U, 2040U, 0U, 4095U,  1},
-    {12U, 3U, 3U, 2047U, 0U, 4095U, -1},
+    {1U,  0U, 1U, 1929U, 0U, 4095U, -1},
+    {2U,  0U, 2U, 2077U, 0U, 4095U, -1},
+    {3U,  0U, 3U, 1965U, 0U, 4095U,  1},
+    {4U,  1U, 1U, 2089U, 0U, 4095U,  1},
+    {5U,  1U, 2U, 1922U, 0U, 4095U,  1},
+    {6U,  1U, 3U, 2081U, 0U, 4095U, -1},
+    {7U,  2U, 1U, 2104U, 0U, 4095U, -1},
+    {8U,  2U, 2U, 1942U, 0U, 4095U, -1},
+    {9U,  2U, 3U, 1964U, 0U, 4095U,  1},
+    {10U, 3U, 1U, 1951U, 0U, 4095U,  1},
+    {11U, 3U, 2U, 2255U, 0U, 4095U,  1},
+    {12U, 3U, 3U, 2046U, 0U, 4095U, -1},
 };
 
 const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT] = {

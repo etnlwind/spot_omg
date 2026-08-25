@@ -498,6 +498,23 @@ static void command_move(AppConsole *console,
     print_robot_result(console, result);
 }
 
+static void command_relax(AppConsole *console, char *id_text)
+{
+    if (id_text == NULL) {
+        print_robot_result(console, robot_relax(console->robot));
+        return;
+    }
+
+    uint32_t id = 0U;
+    if (!parse_u32(id_text, 1U, 12U, &id)) {
+        write_text(console, "usage: relax [ID]; ID=1..12\r\n");
+        return;
+    }
+
+    print_robot_result(console,
+                       robot_relax_servo(console->robot, (uint8_t)id));
+}
+
 static void command_targets(AppConsole *console)
 {
     uint16_t targets[ROBOT_JOINT_COUNT];
@@ -1571,7 +1588,7 @@ static void execute_line(AppConsole *console)
         char *period = strtok(NULL, " \t");
         command_jump(console, cycles, period);
     } else if (strcmp(command, "relax") == 0) {
-        print_robot_result(console, robot_relax(console->robot));
+        command_relax(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "targets") == 0) {
         command_targets(console);
     } else if (strcmp(command, "profile") == 0) {
@@ -1725,7 +1742,7 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  trot3 [C [MS]]   overlap trot (default 1400ms, max 1800ms)\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
-               "  relax            torque off all configured servos\r\n"
+               "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
                "  gaitdiag         last gait tracking/current/voltage report\r\n"
                "  baldiag          recent balance frames and tilt snapshot\r\n"

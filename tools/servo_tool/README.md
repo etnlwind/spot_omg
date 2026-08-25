@@ -124,8 +124,9 @@ spotctl scan
 
 STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `jump`, `targets`,
 `gaitdiag`, `baldiag`, `profile`, `imu`, `balance`입니다. `scan`, `stand`, `relax`, `hold`는 양쪽 모두
-지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `walk`, `calibrate`,
-`capture-stand`, `pose` 등 나머지는 URT-2 직결 전용입니다.
+지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `calibrate`와 `capture-stand`도
+URT-2 직결과 STM32 콘솔을 모두 지원합니다. `walk`, `pose` 등 나머지는 URT-2
+직결 전용입니다.
 
 둘 다 꽂혀 있으면 추측하지 않고 `--via`를 요구합니다.
 
@@ -256,15 +257,26 @@ macOS에서는 포트가 보통 `/dev/cu.usbserial-*`, Windows에서는 `COM3` �
 spotctl configure-mapping
 ```
 
-중립점 보정은 12개 서보의 연결을 먼저 확인한 후 토크를 활성화합니다.
+중립점 보정은 12개 서보의 연결을 먼저 확인합니다. URT-2가 Mac에 직접 연결되어
+있으면 Feetech 버스로 보정하고, ST-LINK만 연결되어 있으면 같은 명령을 STM32
+콘솔의 `profile`, `read`, `move`, `relax`로 자동 라우팅합니다. STM32 경로는 시작
+시 전체 토크를 끄고, 현재 조정하는 관절 하나만 활성화하며 다른 관절로 넘어갈 때
+이전 관절의 토크를 끕니다.
 
 ```bash
-spotctl --port /dev/cu.usbmodem5B790788341 calibrate
+spotctl calibrate --speed 100 --accel 10 --max-offset 300
 ```
 
+STM32 경로에서는 펌웨어의 단일 이동 제한인 256 tick보다 큰 보정도 안전한 중간
+목표로 자동 분할하고, 각 목표의 정지를 확인한 뒤 다음 명령을 보냅니다. 보정 화면을
+종료하거나 오류가 발생하면 마지막 활성 관절의 토크를 자동으로 끕니다. 보정값은 호스트의
+`config/joints.json`과 Markdown 표에 저장되며, STM32 펌웨어에서 사용하려면
+`Src/robot_config.c`의 center 값도 함께 갱신하여 다시 빌드해야 합니다.
+
 서보혼을 손으로 정렬한 현재 자세를 그대로 `stand` 중앙값으로 저장하려면 다음을
-실행합니다. `capture-stand`는 모터를 움직이거나 토크를 켜지 않고 현재 위치를
-읽어 각 관절의 `center`, `offset`, `neutral` 포즈에 함께 저장합니다.
+실행합니다. `capture-stand`는 URT-2 직결과 STM32 콘솔 양쪽에서 지원되며, 모터를
+움직이거나 토크를 켜지 않고 현재 위치를 읽어 각 관절의 `center`, `offset`,
+`neutral` 포즈에 함께 저장합니다.
 
 ```bash
 spotctl --port /dev/cu.usbmodem5B790788341 capture-stand
