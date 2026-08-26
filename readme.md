@@ -35,6 +35,7 @@ URT-2를 Mac/Jetson에 USB로 직접 연결한 포트는 1 Mbps Feetech 서보 �
 
 ```bash
 spotctl stand         # ST-LINK면 STM32 콘솔, URT-2면 Feetech 버스
+spotctl landing       # 두 경로 모두 보정된 착지 자세
 spotctl trot2 1 1600  # STM32 전용
 spotctl walk          # URT-2 직결 전용
 ```
@@ -64,8 +65,9 @@ ports:[/dev/cu.usbmodem312103] link=stm32
 
 macOS에서는 두 장치 모두 `/dev/cu.usbmodem...`으로 잡히므로 포트를 USB vendor
 ID로 구분합니다. ST-LINK는 `0483:374b`이고, 나머지 USB 시리얼 장치를 URT-2로
-봅니다. `spotctl ports`가 어느 쪽인지 표시하며, 둘 다 꽂혀 있으면 추측하지 않고
-`--via stm32` 또는 `--via urt2`를 요구합니다.
+봅니다. `spotctl ports`가 어느 쪽인지 표시하며, 둘 다 꽂혀 있으면 명령 지원 범위에
+따라 STM32 전용은 STM32, URT-2 전용은 URT-2, 양쪽 지원은 STM32를 자동 선택하고
+필요할 때만 `--via stm32` 또는 `--via urt2`로 경로를 강제할 수 있습니다.
 
 ## 📁 프로젝트 구조
 

@@ -1567,6 +1567,9 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "stand") == 0) {
         write_text(console, "Starting direct synchronized stand move\r\n");
         print_robot_result(console, robot_stand(console->robot));
+    } else if (strcmp(command, "landing") == 0) {
+        write_text(console, "Starting direct synchronized landing move\r\n");
+        print_robot_result(console, robot_landing(console->robot));
     } else if (strcmp(command, "trot") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
@@ -1737,6 +1740,7 @@ void app_console_print_help(AppConsole *console)
                "  hold             torque on at all current positions\r\n"
                "  stand            direct synchronized stand move\r\n"
                "  stand11          straighten every leg (J2=0, J3=0)\r\n"
+               "  landing          calibrated landing pose (J2=40, J3=130)\r\n"
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"

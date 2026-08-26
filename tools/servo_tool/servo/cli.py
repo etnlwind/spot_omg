@@ -680,7 +680,9 @@ CONSOLE_ONLY_COMMANDS = frozenset(
 )
 
 #: Commands both transports implement, routed by the attached device.
-DUAL_COMMANDS = frozenset({"scan", "stand", "stand11", "relax", "hold"})
+DUAL_COMMANDS = frozenset(
+    {"scan", "stand", "stand11", "landing", "relax", "hold"}
+)
 
 
 def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
@@ -688,8 +690,10 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
 
     ``kind`` is ``"stm32"`` for the ST-LINK text console or ``"urt2"`` for the
     direct Feetech bus.  An explicit ``--via`` or an explicit port wins;
-    otherwise the attached USB device decides.  With one of each plugged in
-    there is no right answer, so ask instead of guessing.
+    otherwise the command's capabilities and attached USB devices decide.  If
+    both links are present, console-only commands select the STM32, direct-bus
+    commands select the URT-2, and commands supported by both prefer the STM32
+    because it is the robot's normal onboard control path.
     """
     if args.host:
         return "tcp", args.host
@@ -716,14 +720,13 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
         if port.looks_like_usb_serial and not port.is_st_link
     ]
     if st_link and urt2:
-        raise RuntimeError(
-            "both an STM32 console and a URT-2 are attached; select one with "
-            "--via stm32 or --via urt2 ("
-            + ", ".join(
-                f"{port.device} ({port.usb_id})" for port in st_link + urt2
-            )
-            + ")"
+        shared_bridge_commands = {"calibrate", "capture-stand", "save-stand"}
+        automatically_stm32 = (
+            CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS | shared_bridge_commands
         )
+        if args.command in automatically_stm32:
+            return "stm32", resolve_console_port(None)
+        return "urt2", resolve_port(None)
     if st_link:
         return "stm32", resolve_console_port(None)
     if urt2:
@@ -767,7 +770,7 @@ def console_line_for(args: argparse.Namespace) -> str:
                 "--max-id, or use --via urt2"
             )
         return "scan"
-    if command in {"stand", "stand11", "relax", "hold"}:
+    if command in {"stand", "stand11", "landing", "relax", "hold"}:
         if getattr(args, "leg", None):
             raise ValueError(
                 f"'{command} --leg' needs a URT-2 direct connection; the "

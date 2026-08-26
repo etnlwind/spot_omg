@@ -424,7 +424,10 @@ RobotResult robot_stand_straight(RobotController *robot)
     }
 }
 
-RobotResult robot_stand(RobotController *robot)
+typedef bool (*RobotPoseTargets)(uint16_t targets[ROBOT_JOINT_COUNT]);
+
+static RobotResult robot_move_to_pose(RobotController *robot,
+                                      RobotPoseTargets build_targets)
 {
     /*
      * Gated because it commands positions.  robot_relax() deliberately is not:
@@ -437,10 +440,10 @@ RobotResult robot_stand(RobotController *robot)
     uint16_t target[ROBOT_JOINT_COUNT];
     uint16_t measured_positions[ROBOT_JOINT_COUNT];
 
-    if (robot == NULL || robot->bus == NULL) {
+    if (robot == NULL || robot->bus == NULL || build_targets == NULL) {
         return ROBOT_INVALID_ARGUMENT;
     }
-    if (!robot_stand_targets(target)) {
+    if (!build_targets(target)) {
         return ROBOT_CONFIG_ERROR;
     }
 
@@ -488,6 +491,16 @@ RobotResult robot_stand(RobotController *robot)
         }
         HAL_Delay(ROBOT_VERIFY_POLL_MS);
     }
+}
+
+RobotResult robot_stand(RobotController *robot)
+{
+    return robot_move_to_pose(robot, robot_stand_targets);
+}
+
+RobotResult robot_landing(RobotController *robot)
+{
+    return robot_move_to_pose(robot, robot_landing_targets);
 }
 
 static uint16_t smootherstep_per_mille(uint16_t progress)
