@@ -141,6 +141,47 @@ def test_trot_final_frame_keeps_balance_and_does_not_jump_to_raw_stand() -> None
     assert "robot_stand_targets" not in gait_body[completion:]
 
 
+def test_bno086_bringup_keeps_cubemx_and_transport_in_sync() -> None:
+    ioc = (PROJECT / "stm32-learning.ioc").read_text()
+    main = (PROJECT / "Src/main.c").read_text()
+    driver = (PROJECT / "Src/bno086.c").read_text()
+    console = (PROJECT / "Src/app_console.c").read_text()
+
+    assert "SPI1.CLKPolarity=SPI_POLARITY_HIGH" in ioc
+    assert "SPI1.CLKPhase=SPI_PHASE_2EDGE" in ioc
+    assert "SPI1.BaudRatePrescaler=SPI_BAUDRATEPRESCALER_16" in ioc
+    assert "PB2.GPIO_Label=IMU_RST" in ioc
+    assert "PB2.PinState=GPIO_PIN_SET" in ioc
+    assert "hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH" in main
+    assert "hspi1.Init.CLKPhase = SPI_PHASE_2EDGE" in main
+    assert "hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16" in main
+
+    # Production reads are interrupt-gated; only imuprobe performs blind reads.
+    hal_read_start = driver.index("static int hal_read(")
+    hal_read_end = driver.index("static int hal_write(", hal_read_start)
+    hal_read = driver[hal_read_start:hal_read_end]
+    assert "if (!interrupt_asserted())" in hal_read
+    assert "total < sizeof(header) || total > len" in hal_read
+    assert "chip_select();" in hal_read
+    assert "chip_deselect();" in hal_read
+
+    assert "BNO086_RESET_LOW_MS      30U" in driver
+    assert "sh2_getProdIds(&imu->product_ids)" in driver
+    assert "imu->product_ids.numEntries == 0U" in driver
+    assert "SH2_GAME_ROTATION_VECTOR" in driver
+    assert "BNO086 RESET:" in main
+    assert "BNO086 SHTP:" in main
+    assert "BNO086 Product ID:" in main
+    assert "BNO086 Rotation Vector:" in main
+
+    # The meter-friendly reset test must hold PB2 low long enough to observe.
+    assert 'strcmp(command, "imursttest")' in console
+    assert "bno086_test_set_reset(console->imu, false)" in console
+    assert "HAL_Delay(5000U)" in console
+    assert "bno086_test_set_reset(console->imu, true)" in console
+    assert "HAL_GPIO_ReadPin(IMU_RST_GPIO_Port, IMU_RST_Pin)" in driver
+
+
 def test_step_sync_monitor_cannot_pause_gait_or_add_bus_reads() -> None:
     source = (PROJECT / "Src/robot.c").read_text()
     gait_start = source.index("static RobotResult robot_trot_scaled(")

@@ -68,6 +68,22 @@ typedef struct
     uint32_t last_report_tick;
     uint32_t protocol_errors;
 
+    /* Blocking-SPI bring-up trace, printed by main after bno086_init(). */
+    bool int_before_reset;
+    bool int_during_reset;
+    bool int_after_boot_wait;
+    bool first_interrupt_seen;
+    uint32_t reset_released_tick;
+    uint32_t first_interrupt_delay_ms;
+    bool first_packet_seen;
+    uint8_t first_header[4];
+    uint16_t first_packet_length;
+    uint8_t first_packet_channel;
+    uint8_t first_packet_sequence;
+    uint32_t packets_received;
+    uint32_t invalid_headers;
+    uint32_t spi_errors;
+
     /*
      * Result of sh2_getProdIds() at bring-up.  That call waits for a reply,
      * so unlike a bare configuration write it says whether the part answers.
@@ -165,6 +181,20 @@ typedef struct
  * bno086_init() succeeded, and it moves no servos.
  */
 void bno086_probe(Bno086 *imu, Bno086Probe *probe);
+
+/*
+ * Direct reset-line diagnostic used by the "imursttest" console command.
+ * This deliberately invalidates any active SH-2 session.  `released=false`
+ * holds the active-low reset at 0 V until a later call releases it.
+ */
+typedef struct
+{
+    bool reset_high;
+    bool interrupt_asserted;
+} Bno086PinState;
+
+void bno086_test_set_reset(Bno086 *imu, bool released);
+Bno086PinState bno086_test_read_pins(void);
 
 /*
  * Loopback SPI1 with D11/PA7 MOSI jumpered to D12/PA6 MISO, the sensor
