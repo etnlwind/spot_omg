@@ -218,6 +218,7 @@ RobotResult robot_hold(RobotController *robot);
 RobotResult robot_relax(RobotController *robot);
 RobotResult robot_relax_servo(RobotController *robot, uint8_t servo_id);
 RobotResult robot_stand(RobotController *robot);
+RobotResult robot_landing(RobotController *robot);
 RobotResult robot_stand_straight(RobotController *robot);
 RobotResult robot_trot(RobotController *robot,
                        uint8_t cycles,

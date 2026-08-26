@@ -45,6 +45,20 @@ static void test_trot3_rejects_an_inner_profile_below_its_outer_limit(void)
     assert(actuator_profile_supports_trot3(3400U, 254U));
 }
 
+static void test_landing_targets_use_the_canonical_pose(void)
+{
+    uint16_t targets[ROBOT_JOINT_COUNT];
+    assert(robot_landing_targets(targets));
+
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        const uint8_t joint = g_robot_joints[index].joint_index;
+        const int16_t angle = joint == 2U ? 40 : (joint == 3U ? 130 : 0);
+        uint16_t expected = 0U;
+        assert(robot_angle_to_position(index, angle, &expected));
+        assert(targets[index] == expected);
+    }
+}
+
 static ActuatorTrackingSample tracking_sample(uint16_t command,
                                                uint16_t measured,
                                                uint16_t voltage_mv)
@@ -216,6 +230,7 @@ int main(void)
 {
     test_rate_limiter_contract();
     test_trot3_rejects_an_inner_profile_below_its_outer_limit();
+    test_landing_targets_use_the_canonical_pose();
     test_tracking_and_power_diagnostics();
     test_open_loop_trot3_does_not_need_limiting(1400U);
     test_open_loop_trot3_does_not_need_limiting(1800U);

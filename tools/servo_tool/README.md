@@ -111,6 +111,7 @@ spotctl --host 192.168.0.112 --tcp-port 3333 trot3 1 1400
 ```bash
 spotctl stand          # ST-LINK가 붙어 있으면 STM32 콘솔의 stand
                        # URT-2가 붙어 있으면 기존 Feetech stand
+spotctl landing        # 양쪽 모두 canonical J2=40°, J3=130° 착지 자세
 spotctl trot2 1 1600
 spotctl profile 3400 254
 spotctl trot3 1 1400
@@ -123,12 +124,15 @@ spotctl scan
 ```
 
 STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `jump`, `targets`,
-`gaitdiag`, `baldiag`, `profile`, `imu`, `balance`입니다. `scan`, `stand`, `relax`, `hold`는 양쪽 모두
+`gaitdiag`, `baldiag`, `profile`, `imu`, `balance`입니다. `scan`, `stand`, `stand11`,
+`landing`, `relax`, `hold`는 양쪽 모두
 지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `calibrate`와 `capture-stand`도
 URT-2 직결과 STM32 콘솔을 모두 지원합니다. `walk`, `pose` 등 나머지는 URT-2
 직결 전용입니다.
 
-둘 다 꽂혀 있으면 추측하지 않고 `--via`를 요구합니다.
+둘 다 꽂혀 있으면 명령 지원 범위로 자동 선택합니다. STM32 전용 명령은 STM32,
+URT-2 직결 전용 명령은 URT-2, 양쪽 지원 명령은 기본적으로 STM32를 사용합니다.
+특정 경로를 강제할 때만 `--via stm32` 또는 `--via urt2`를 지정합니다.
 
 ```bash
 spotctl --via stm32 stand

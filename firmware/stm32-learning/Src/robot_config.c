@@ -124,6 +124,11 @@ bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT])
     return robot_pose_targets(45, 90, targets);
 }
 
+bool robot_landing_targets(uint16_t targets[ROBOT_JOINT_COUNT])
+{
+    return robot_pose_targets(40, 130, targets);
+}
+
 bool robot_straight_targets(uint16_t targets[ROBOT_JOINT_COUNT])
 {
     /*

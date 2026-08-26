@@ -1893,12 +1893,31 @@ class ConsolePortTest(unittest.TestCase):
                 ("urt2", URT2.device),
             )
 
-    def test_transport_asks_when_both_links_are_attached(self) -> None:
-        # Guessing here would either move the robot the wrong way or send
-        # console text into the servo bus.
+    def test_transport_uses_command_capabilities_when_both_are_attached(self) -> None:
         with patch("servo.cli.serial_ports", return_value=[URT2, ST_LINK]):
-            with self.assertRaises(RuntimeError):
-                resolve_transport(parse_args(["stand"]))
+            # Shared commands prefer the robot's onboard STM32 path.
+            self.assertEqual(
+                resolve_transport(parse_args(["stand"])),
+                ("stm32", ST_LINK.device),
+            )
+            self.assertEqual(
+                resolve_transport(parse_args(["landing"])),
+                ("stm32", ST_LINK.device),
+            )
+            self.assertEqual(
+                resolve_transport(parse_args(["calibrate"])),
+                ("stm32", ST_LINK.device),
+            )
+            # Link-specific commands select the only transport implementing
+            # them, even though both serial devices are visible.
+            self.assertEqual(
+                resolve_transport(parse_args(["trot2"])),
+                ("stm32", ST_LINK.device),
+            )
+            self.assertEqual(
+                resolve_transport(parse_args(["walk"])),
+                ("urt2", URT2.device),
+            )
             self.assertEqual(
                 resolve_transport(parse_args(["--via", "stm32", "stand"])),
                 ("stm32", ST_LINK.device),
@@ -1945,6 +1964,7 @@ class ConsolePortTest(unittest.TestCase):
         self.assertEqual(console_line_for(parse_args(["imu"])), "imu")
         self.assertEqual(console_line_for(parse_args(["stand"])), "stand")
         self.assertEqual(console_line_for(parse_args(["stand11"])), "stand11")
+        self.assertEqual(console_line_for(parse_args(["landing"])), "landing")
         self.assertEqual(console_line_for(parse_args(["scan"])), "scan")
 
     def test_every_shared_command_name_reaches_the_firmware(self) -> None:
@@ -2083,6 +2103,22 @@ class ConsolePortTest(unittest.TestCase):
         calibrate.assert_called_once()
         call_args = calibrate.call_args.args
         self.assertEqual(call_args[1:], (ST_LINK.device, "stm32"))
+        self.assertIn(f"ports:[{ST_LINK.device}] link=stm32", err.getvalue())
+
+    def test_landing_auto_detects_and_routes_to_stm32(self) -> None:
+        err, out = io.StringIO(), io.StringIO()
+        with patch("servo.cli.serial_ports", return_value=[ST_LINK]), \
+                patch(
+                    "servo.cli.run_routed_console_command", return_value=0
+                ) as routed, \
+                redirect_stderr(err), redirect_stdout(out):
+            code = main(["landing"])
+
+        self.assertEqual(code, 0)
+        routed.assert_called_once()
+        call_args = routed.call_args.args
+        self.assertEqual(call_args[1:], (ST_LINK.device, "stm32"))
+        self.assertEqual(console_line_for(call_args[0]), "landing")
         self.assertIn(f"ports:[{ST_LINK.device}] link=stm32", err.getvalue())
 
     def test_capture_stand_routes_to_stm32_without_motion(self) -> None:

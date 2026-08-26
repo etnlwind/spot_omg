@@ -40,6 +40,9 @@ bool robot_angle_tenths_to_position(size_t joint_array_index,
 
 bool robot_stand_targets(uint16_t targets[ROBOT_JOINT_COUNT]);
 
+/* Canonical landing stance: J1=0, J2=40, J3=130 degrees. */
+bool robot_landing_targets(uint16_t targets[ROBOT_JOINT_COUNT]);
+
 /* Canonical zero on every joint: both links in line, foot below the hip. */
 bool robot_straight_targets(uint16_t targets[ROBOT_JOINT_COUNT]);
 
