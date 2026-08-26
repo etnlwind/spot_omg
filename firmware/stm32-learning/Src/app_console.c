@@ -989,6 +989,61 @@ static void command_recover(AppConsole *console)
     print_robot_result(console, result);
 }
 
+static const char *pin_level(bool high)
+{
+    return high ? "HIGH" : "LOW";
+}
+
+static void command_imursttest(AppConsole *console)
+{
+    char message[160];
+
+    if (console->imu == NULL) {
+        write_text(console, "ERROR: IMU reset test unavailable\r\n");
+        return;
+    }
+
+    const Bno086PinState before = bno086_test_read_pins();
+    (void)snprintf(message, sizeof(message),
+                   "IMURSTTEST before: PB2/RST=%s PA8/INT=%s\r\n",
+                   pin_level(before.reset_high),
+                   pin_level(!before.interrupt_asserted));
+    write_text(console, message);
+    write_text(console,
+               "IMURSTTEST: starting in 1 second; put the meter on BNO086 "
+               "RST-GND\r\n");
+    HAL_Delay(1000U);
+
+    bno086_test_set_reset(console->imu, false);
+    const Bno086PinState during = bno086_test_read_pins();
+    (void)snprintf(message, sizeof(message),
+                   "IMURSTTEST HOLD 5s: PB2/RST=%s PA8/INT=%s; "
+                   "BNO086 RST-GND must be near 0V NOW\r\n",
+                   pin_level(during.reset_high),
+                   pin_level(!during.interrupt_asserted));
+    write_text(console, message);
+    HAL_Delay(5000U);
+
+    bno086_test_set_reset(console->imu, true);
+    HAL_Delay(100U);
+    const Bno086PinState after = bno086_test_read_pins();
+    (void)snprintf(message, sizeof(message),
+                   "IMURSTTEST released: PB2/RST=%s PA8/INT=%s; "
+                   "BNO086 RST-GND should be near 3.2V\r\n",
+                   pin_level(after.reset_high),
+                   pin_level(!after.interrupt_asserted));
+    write_text(console, message);
+
+    if (during.reset_high || !after.reset_high) {
+        write_text(console,
+                   "IMURSTTEST FAIL: MCU PB2 readback did not follow the test\r\n");
+    } else {
+        write_text(console,
+                   "IMURSTTEST MCU PASS: PB2 went LOW then HIGH. If the sensor "
+                   "RST pin did not, fix the PB2-to-RST wire\r\n");
+    }
+}
+
 static void command_imuprobe(AppConsole *console)
 {
     Bno086Probe probe;
@@ -1032,11 +1087,11 @@ static void command_imuprobe(AppConsole *console)
     if (memcmp(probe.in_reset_header, probe.blind_header, 4) == 0) {
         write_text(console,
                    "  Holding RST low changes nothing, so the reset pulse "
-                   "never reaches the part: check D3 against the sensor RST "
+                   "never reaches the part: check PB2 against the sensor RST "
                    "pin\r\n");
     } else {
         write_text(console,
-                   "  Holding RST low changes the answer, so D3 does reach "
+                   "  Holding RST low changes the answer, so PB2 does reach "
                    "the part and reset works\r\n");
     }
 
@@ -1063,7 +1118,7 @@ static void command_imuprobe(AppConsole *console)
         write_text(console,
                    "  MISO follows CS, so the sensor is selected and driving: "
                    "it answers with a zero-length header, meaning it booted "
-                   "but queued no advertisement. Suspect RST on D3\r\n");
+                   "but queued no advertisement. Suspect RST on PB2\r\n");
     }
 
     for (uint32_t mode = 0U; mode < 4U; ++mode) {
@@ -1119,8 +1174,8 @@ static void command_imuprobe(AppConsole *console)
              */
             write_text(console,
                        "  INT stays high even under reset: a board pull-up "
-                       "holds it, or RST on D3 never reaches the part. Verify "
-                       "the D3 wire before trusting any INT reading\r\n");
+                       "holds it, or RST on PB2 never reaches the part. Verify "
+                       "the PB2 wire before trusting any INT reading\r\n");
         }
         return;
     }
@@ -1614,6 +1669,8 @@ static void execute_line(AppConsole *console)
         command_spitest(console);
     } else if (strcmp(command, "imuprobe") == 0) {
         command_imuprobe(console);
+    } else if (strcmp(command, "imursttest") == 0) {
+        command_imursttest(console);
     } else if (strcmp(command, "imu") == 0) {
         command_imu(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "balance") == 0) {
@@ -1754,6 +1811,7 @@ void app_console_print_help(AppConsole *console)
                "  i2cscan          scan I2C1 for the BNO055\r\n"
                "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"
                "  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n"
+               "  imursttest       hold PB2/BNO086 RST low for 5 seconds\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
                "  help             show this help\r\n\r\n");

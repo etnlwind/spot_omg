@@ -84,17 +84,110 @@ static void MX_SPI1_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static void uart_print(const char *text);
+static void print_bno086_bringup(const Bno086 *imu, Bno086Result result);
 static void IMU_PrintEuler(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static const char *gpio_level(bool active_low_asserted)
+{
+  return active_low_asserted ? "LOW" : "HIGH";
+}
+
+static void print_bno086_bringup(const Bno086 *imu, Bno086Result result)
+{
+  char message[180];
+
+  (void)snprintf(message,
+                 sizeof(message),
+                 "BNO086 RESET: INT before=%s during=%s after=%s; first LOW=%s",
+                 gpio_level(imu->int_before_reset),
+                 gpio_level(imu->int_during_reset),
+                 gpio_level(imu->int_after_boot_wait),
+                 imu->first_interrupt_seen ? "yes" : "no");
+  uart_print(message);
+  if (imu->first_interrupt_seen)
+  {
+    (void)snprintf(message,
+                   sizeof(message),
+                   " at %lums\r\n",
+                   (unsigned long)imu->first_interrupt_delay_ms);
+    uart_print(message);
+  }
+  else
+  {
+    uart_print("\r\n");
+  }
+
+  (void)snprintf(message,
+                 sizeof(message),
+                 "BNO086 SHTP: first=%s header=%02X %02X %02X %02X "
+                 "len=%u channel=%u seq=%u packets=%lu invalid=%lu spierr=%lu\r\n",
+                 imu->first_packet_seen ? "valid" : "none",
+                 (unsigned int)imu->first_header[0],
+                 (unsigned int)imu->first_header[1],
+                 (unsigned int)imu->first_header[2],
+                 (unsigned int)imu->first_header[3],
+                 (unsigned int)imu->first_packet_length,
+                 (unsigned int)imu->first_packet_channel,
+                 (unsigned int)imu->first_packet_sequence,
+                 (unsigned long)imu->packets_received,
+                 (unsigned long)imu->invalid_headers,
+                 (unsigned long)imu->spi_errors);
+  uart_print(message);
+
+  (void)snprintf(message,
+                 sizeof(message),
+                 "BNO086 Product ID: status=%d entries=%u\r\n",
+                 imu->product_id_status,
+                 (unsigned int)imu->product_ids.numEntries);
+  uart_print(message);
+  for (uint8_t index = 0U; index < imu->product_ids.numEntries; ++index)
+  {
+    const sh2_ProductId_t *id = &imu->product_ids.entry[index];
+    (void)snprintf(message,
+                   sizeof(message),
+                   "  product[%u]: part=%lu version=%u.%u.%u build=%lu reset=%u\r\n",
+                   (unsigned int)index,
+                   (unsigned long)id->swPartNumber,
+                   (unsigned int)id->swVersionMajor,
+                   (unsigned int)id->swVersionMinor,
+                   (unsigned int)id->swVersionPatch,
+                   (unsigned long)id->swBuildNumber,
+                   (unsigned int)id->resetCause);
+    uart_print(message);
+  }
+
+  if (result == BNO086_OK && imu->has_attitude)
+  {
+    (void)snprintf(message,
+                   sizeof(message),
+                   "BNO086 Rotation Vector: reports=%lu "
+                   "q_x10000=(%ld,%ld,%ld,%ld) angles_tenths=(%d,%d,%d)\r\n",
+                   (unsigned long)imu->report_count,
+                   (long)(imu->quat_i * 10000.0f),
+                   (long)(imu->quat_j * 10000.0f),
+                   (long)(imu->quat_k * 10000.0f),
+                   (long)(imu->quat_real * 10000.0f),
+                   (int)imu->roll_tenths,
+                   (int)imu->pitch_tenths,
+                   (int)imu->yaw_tenths);
+    uart_print(message);
+  }
+
+  (void)snprintf(message,
+                 sizeof(message),
+                 "BNO086 bring-up result: %s\r\n",
+                 bno086_result_string(result));
+  uart_print(message);
+}
 /* USER CODE END 0 */
 
 /**
- * @brief  The application entry point.
- * @retval int
- */
+  * @brief  The application entry point.
+  * @retval int
+  */
 int main(void)
 {
 
@@ -159,7 +252,9 @@ int main(void)
      * 5 ms subscription: the sensor fuses faster than the balance loop
      * consumes, so a step never acts on a sample older than one period.
      */
+    uart_print("BNO086 bring-up: SPI1 mode 3, 1MHz; CS=PB6 RST=PB2 INT=PA8(active-low)\r\n");
     const Bno086Result imu_result = bno086_init(&imu086, &hspi1, 5000U);
+    print_bno086_bringup(&imu086, imu_result);
     if (imu_result == BNO086_OK)
     {
       uart_print("BNO086 game rotation vector OK at 200Hz\r\n");
@@ -229,22 +324,22 @@ int main(void)
 }
 
 /**
- * @brief System Clock Configuration
- * @retval None
- */
+  * @brief System Clock Configuration
+  * @retval None
+  */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-   */
+  */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
   /** Initializes the RCC Oscillators according to the specified parameters
-   * in the RCC_OscInitTypeDef structure.
-   */
+  * in the RCC_OscInitTypeDef structure.
+  */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -255,8 +350,9 @@ void SystemClock_Config(void)
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
@@ -269,10 +365,10 @@ void SystemClock_Config(void)
 }
 
 /**
- * @brief I2C1 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_I2C1_Init(void)
 {
 
@@ -299,13 +395,14 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
- * @brief SPI1 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_SPI1_Init(void)
 {
 
@@ -321,10 +418,10 @@ static void MX_SPI1_Init(void)
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -339,13 +436,14 @@ static void MX_SPI1_Init(void)
    * PCLK2 is 16 MHz and /8 gives 2 MHz, under the part's 3 MHz ceiling.
    */
   /* USER CODE END SPI1_Init 2 */
+
 }
 
 /**
- * @brief TIM2 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_TIM2_Init(void)
 {
 
@@ -383,13 +481,14 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
+
 }
 
 /**
- * @brief USART1 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_USART1_UART_Init(void)
 {
 
@@ -429,13 +528,14 @@ static void MX_USART1_UART_Init(void)
   }
 
   /* USER CODE END USART1_Init 2 */
+
 }
 
 /**
- * @brief USART2 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_USART2_UART_Init(void)
 {
 
@@ -461,13 +561,14 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
 }
 
 /**
- * @brief USART3 Initialization Function
- * @param None
- * @retval None
- */
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_USART3_UART_Init(void)
 {
 
@@ -493,13 +594,14 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 2 */
 
   /* USER CODE END USART3_Init 2 */
+
 }
 
 /**
- * @brief GPIO Initialization Function
- * @param None
- * @retval None
- */
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -513,10 +615,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(IMU_RST_GPIO_Port, IMU_RST_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, IMU_WAKE_Pin | IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, IMU_RST_Pin|IMU_WAKE_Pin|IMU_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -525,7 +624,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : IMU_RST_Pin IMU_WAKE_Pin */
-  GPIO_InitStruct.Pin = IMU_RST_Pin | IMU_WAKE_Pin;
+  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_WAKE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -634,9 +733,9 @@ static void IMU_PrintEuler(void)
 /* USER CODE END 4 */
 
 /**
- * @brief  This function is executed in case of error occurrence.
- * @retval None
- */
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -649,12 +748,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
- * @brief  Reports the name of the source file and the source line number
- *         where the assert_param error has occurred.
- * @param  file: pointer to the source file name
- * @param  line: assert_param error line source number
- * @retval None
- */
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */

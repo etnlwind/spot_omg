@@ -33,6 +33,8 @@
 #define BNO086_PS0_STRAPPED      1
 
 #define BNO086_INT_TIMEOUT_MS    200U
+#define BNO086_RESET_LOW_MS      30U
+#define BNO086_BOOT_WAIT_MS      300U
 #define BNO086_RESET_DRAIN_MS    600U
 
 
@@ -58,6 +60,16 @@
 static void gpio_write(GPIO_TypeDef *port, uint16_t pin, bool high)
 {
     HAL_GPIO_WritePin(port, pin, high ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void chip_select(void)
+{
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+}
+
+static void chip_deselect(void)
+{
+    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
 }
 
 static bool interrupt_asserted(void)
@@ -99,12 +111,28 @@ static Bno086Result spi_read(Bno086 *imu, uint8_t *destination, size_t length)
                                     target,
                                     (uint16_t)chunk,
                                     100U) != HAL_OK) {
+            imu->spi_errors++;
             return BNO086_SPI_ERROR;
         }
         if (destination != NULL) {
             destination += chunk;
         }
         length -= chunk;
+    }
+    return BNO086_OK;
+}
+
+static Bno086Result spi_write(Bno086 *imu,
+                              const uint8_t *source,
+                              size_t length)
+{
+    if (imu == NULL || source == NULL || length == 0U || length > UINT16_MAX) {
+        return BNO086_PROTOCOL_ERROR;
+    }
+    if (HAL_SPI_Transmit(imu->spi, (uint8_t *)source,
+                         (uint16_t)length, 100U) != HAL_OK) {
+        imu->spi_errors++;
+        return BNO086_SPI_ERROR;
     }
     return BNO086_OK;
 }
@@ -122,17 +150,34 @@ static sh2_Hal_t sh2_hal;
  * seen to move, so read regardless there: an empty header is unambiguous, and
  * gating on a pin that may not work would hide a link that does.
  */
-static bool hal_ignore_interrupt;
-
 static int hal_open(sh2_Hal_t *self)
 {
     (void)self;
 
-    /* sh2_open() expects the part to come up from a known state. */
+    /* Reset with CS inactive, then leave the part time to queue advertisement. */
+    chip_deselect();
+    active_imu->int_before_reset = interrupt_asserted();
     gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
-    HAL_Delay(20);
+    HAL_Delay(BNO086_RESET_LOW_MS);
+    active_imu->int_during_reset = interrupt_asserted();
     gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
-    HAL_Delay(300);
+    const uint32_t released_at = HAL_GetTick();
+    active_imu->reset_released_tick = released_at;
+    while ((uint32_t)(HAL_GetTick() - released_at) < BNO086_BOOT_WAIT_MS) {
+        if (!active_imu->first_interrupt_seen && interrupt_asserted()) {
+            active_imu->first_interrupt_seen = true;
+            active_imu->first_interrupt_delay_ms =
+                (uint32_t)(HAL_GetTick() - released_at);
+        }
+        HAL_Delay(1U);
+    }
+    active_imu->int_after_boot_wait = interrupt_asserted();
+    if (active_imu->int_after_boot_wait &&
+        !active_imu->first_interrupt_seen) {
+        active_imu->first_interrupt_seen = true;
+        active_imu->first_interrupt_delay_ms =
+            (uint32_t)(HAL_GetTick() - released_at);
+    }
     return SH2_OK;
 }
 
@@ -159,13 +204,19 @@ static int hal_read(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len,
     if (active_imu == NULL) {
         return 0;
     }
-    if (!hal_ignore_interrupt && !interrupt_asserted()) {
+    if (!interrupt_asserted()) {
         return 0;
     }
 
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+    if (!active_imu->first_interrupt_seen) {
+        active_imu->first_interrupt_seen = true;
+        active_imu->first_interrupt_delay_ms =
+            (uint32_t)(HAL_GetTick() - active_imu->reset_released_tick);
+    }
+
+    chip_select();
     if (spi_read(active_imu, header, sizeof(header)) != BNO086_OK) {
-        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+        chip_deselect();
         return 0;
     }
 
@@ -173,8 +224,20 @@ static int hal_read(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len,
     const uint16_t total =
         (uint16_t)(((uint16_t)header[1] << 8) | header[0]) & 0x7FFFU;
     if (total < sizeof(header) || total > len) {
-        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+        active_imu->invalid_headers++;
+        if (!active_imu->first_packet_seen) {
+            memcpy(active_imu->first_header, header, sizeof(header));
+        }
+        chip_deselect();
         return 0;
+    }
+
+    if (!active_imu->first_packet_seen) {
+        active_imu->first_packet_seen = true;
+        memcpy(active_imu->first_header, header, sizeof(header));
+        active_imu->first_packet_length = total;
+        active_imu->first_packet_channel = header[2];
+        active_imu->first_packet_sequence = header[3];
     }
 
     memcpy(pBuffer, header, sizeof(header));
@@ -183,7 +246,7 @@ static int hal_read(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len,
         result = spi_read(active_imu, &pBuffer[sizeof(header)],
                           (size_t)total - sizeof(header));
     }
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    chip_deselect();
 
     if (result != BNO086_OK) {
         return 0;
@@ -191,6 +254,7 @@ static int hal_read(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len,
     if (t_us != NULL) {
         *t_us = hal_get_time_us(self);
     }
+    active_imu->packets_received++;
     return (int)total;
 }
 
@@ -209,12 +273,11 @@ static int hal_write(sh2_Hal_t *self, uint8_t *pBuffer, unsigned len)
      */
     (void)wait_for_interrupt(BNO086_INT_TIMEOUT_MS);
 
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
-    const HAL_StatusTypeDef status =
-        HAL_SPI_Transmit(active_imu->spi, pBuffer, (uint16_t)len, 100U);
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    chip_select();
+    const Bno086Result result = spi_write(active_imu, pBuffer, len);
+    chip_deselect();
 
-    return status == HAL_OK ? (int)len : 0;
+    return result == BNO086_OK ? (int)len : 0;
 }
 
 static void update_angles(Bno086 *imu)
@@ -319,9 +382,9 @@ Bno086Result bno086_init(Bno086 *imu,
 
     memset(imu, 0, sizeof(*imu));
     imu->spi = spi;
+    imu->product_id_status = SH2_ERR;
     imu->report_interval_us = report_interval_us;
     active_imu = imu;
-    hal_ignore_interrupt = true;
 
     sh2_hal.open = hal_open;
     sh2_hal.close = hal_close;
@@ -345,6 +408,14 @@ Bno086Result bno086_init(Bno086 *imu,
      * is the first hard evidence that the part is talking at all.
      */
     imu->product_id_status = sh2_getProdIds(&imu->product_ids);
+
+    if (imu->product_id_status != SH2_OK ||
+        imu->product_ids.numEntries == 0U) {
+        const bool link_seen = imu->first_packet_seen;
+        sh2_close();
+        active_imu = NULL;
+        return link_seen ? BNO086_PROTOCOL_ERROR : BNO086_NOT_PRESENT;
+    }
 
     imu->present = true;
     if (subscribe(imu) != SH2_OK) {
@@ -370,8 +441,6 @@ Bno086Result bno086_init(Bno086 *imu,
         return BNO086_TIMEOUT;
     }
 
-    /* Reports are flowing, so trust the interrupt from here on. */
-    hal_ignore_interrupt = false;
     return BNO086_OK;
 }
 
@@ -451,9 +520,9 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
          ++attempt) {
         uint8_t header[4] = {0};
 
-        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+        chip_select();
         const Bno086Result read = spi_read(imu, header, sizeof(header));
-        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+        chip_deselect();
         probe->blind_attempts = attempt + 1U;
 
         const bool blank =
@@ -469,17 +538,17 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
     }
 
     /* Control read with the sensor deselected; see Bno086Probe. */
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    chip_deselect();
     (void)spi_read(imu, probe->deselected_header,
                    sizeof(probe->deselected_header));
 
     /* Same read, selected, but with the part held in reset. */
     gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, false);
     HAL_Delay(5);
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+    chip_select();
     (void)spi_read(imu, probe->in_reset_header,
                    sizeof(probe->in_reset_header));
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    chip_deselect();
     gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
     HAL_Delay(100);
 
@@ -504,9 +573,9 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
         gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, true);
         HAL_Delay(250);
 
-        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+        chip_select();
         (void)spi_read(imu, probe->mode_header[mode], 4U);
-        gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+        chip_deselect();
     }
 
     /* Leave the bus on the mode the driver actually uses. */
@@ -524,11 +593,40 @@ void bno086_probe(Bno086 *imu, Bno086Probe *probe)
      * 0x00 or all 0xFF means MISO is not carrying data, while a sane length
      * and channel means the link is up and the fault is further along.
      */
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, false);
+    chip_select();
     const Bno086Result result =
         spi_read(imu, probe->header, sizeof(probe->header));
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    chip_deselect();
     probe->header_read = result == BNO086_OK;
+}
+
+void bno086_test_set_reset(Bno086 *imu, bool released)
+{
+    if (imu == NULL) {
+        return;
+    }
+
+    /* A manually reset device no longer has a valid SH-2 session. */
+    if (!released && active_imu == imu) {
+        sh2_close();
+        active_imu = NULL;
+        imu->present = false;
+        imu->has_attitude = false;
+        imu->resubscribe = false;
+    }
+
+    chip_deselect();
+    gpio_write(IMU_RST_GPIO_Port, IMU_RST_Pin, released);
+    HAL_Delay(2U);
+}
+
+Bno086PinState bno086_test_read_pins(void)
+{
+    Bno086PinState state;
+    state.reset_high =
+        HAL_GPIO_ReadPin(IMU_RST_GPIO_Port, IMU_RST_Pin) == GPIO_PIN_SET;
+    state.interrupt_asserted = interrupt_asserted();
+    return state;
 }
 
 static void loopback_set_gpio_mode(void)
@@ -572,7 +670,7 @@ void bno086_loopback_test(Bno086 *imu, Bno086Loopback *result)
     result->failed_byte = -1;
 
     /* Keep the sensor deselected so a still-attached part cannot answer. */
-    gpio_write(IMU_CS_GPIO_Port, IMU_CS_Pin, true);
+    chip_deselect();
 
     /*
      * DC continuity first.  Drive PA7 as a plain output and read PA6 against

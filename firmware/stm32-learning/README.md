@@ -28,8 +28,8 @@ python simulation/mujoco/walk.py --dynamic --balance \
 |---|---|---|---|
 | USART1 | PA9 TX, PA10 RX | URT-2 UART header | 1 Mbps, 8-N-1 |
 | USART2 | PA2 TX, PA3 RX | ST-LINK VCP debug console | 115200, 8-N-1 |
-| SPI1 | PA5 SCK, PA6 MISO, PA7 MOSI | BNO086 | 2 MHz, mode 3 |
-| GPIO | PB6 CS, PA8 INT, PB3 RST, PB5 WAKE | BNO086 제어선 | 모두 active low |
+| SPI1 | PA5 SCK, PA6 MISO, PA7 MOSI | BNO086 | 1 MHz, mode 3 |
+| GPIO | PB6 CS, PA8 INT, PB2 RST, PB5 WAKE | BNO086 제어선 | 모두 active low |
 | I2C1 | PB8 SCL, PB9 SDA | BNO055 | 100 kHz |
 
 NUCLEO-F446RE Arduino 헤더 기준 `D8/PA9 → URT-2 RX`, `D2/PA10 → URT-2 TX`로
@@ -92,8 +92,8 @@ BNO086 SO   → D12 / PA6  / SPI1_MISO
 BNO086 SI   → D11 / PA7  / SPI1_MOSI
 BNO086 CS   → D10 / PB6  / GPIO
 BNO086 INT  → D7  / PA8  / GPIO
-BNO086 RST  → D3  / PB3  / GPIO
-BNO086 WAK  → D4  / PB5  / GPIO
+BNO086 RST  → PB2 / GPIO
+BNO086 WAK  → 연결하지 않음 (PB5는 High 출력으로만 예약)
 ```
 
 **`D2`는 비워 둡니다.** `D2`는 `PA10`이고 이 핀은 URT-2에서 돌아오는
@@ -104,12 +104,14 @@ BNO086 WAK  → D4  / PB5  / GPIO
 
 - `D13/PA5`는 NUCLEO 사용자 LED `LD2`가 달려 있는 핀입니다. 이제 SPI1_SCK이므로
   펌웨어에서 이 핀을 구동하던 코드(B1 버튼 → LD2 토글)를 제거했습니다. LED와
-  직렬저항이 SCK에 부하로 걸리지만 2MHz에서는 문제되지 않습니다.
-- `D3/PB3`은 SWD의 `SWO` 트레이스 핀입니다. GPIO로 쓰는 데 지장은 없지만 SWO
-  트레이스를 쓰려면 다른 핀으로 옮겨야 합니다.
+  직렬저항이 SCK에 부하로 걸리므로 최초 bring-up은 1MHz로 수행합니다.
+- Reset은 CubeMX label `IMU_RST`인 `PB2`입니다. 과거 문서의 `D3/PB3` 표기는
+  현재 배선과 맞지 않으므로 사용하지 않습니다.
 
-브레이크아웃 보드는 기본이 I2C 모드이므로 **`PS1`을 HIGH로 묶어 SPI 모드**로
-바꿔야 합니다. SPI 모드에서 `PS0`은 `WAKE` 역할을 하며 위 배선의 `D4`가 그것입니다.
+현재 보드는 후면 `PS0`, `PS1` 점퍼를 모두 납땜해 두 핀이 약 3.2V HIGH이며 SPI
+모드로 부팅합니다. 이 구성에서는 `WAK`를 호스트가 구동하지 않으므로 BNO086의
+WAK 핀은 연결하지 않습니다. CubeMX의 `PB5/IMU_WAKE` High 출력은 예약 상태일
+뿐 실제 보드와 배선되지 않습니다.
 
 ### Game Rotation Vector를 쓰는 이유
 
@@ -168,7 +170,7 @@ USART2_IRQHandler() → HAL_UART_IRQHandler(&huart2)
 | Mode | Full-Duplex Master |
 | Frame | 8-bit, MSB first |
 | Clock | CPOL `High`, CPHA `2 Edge` (mode 3) |
-| Prescaler | `/8` → PCLK2 16MHz 기준 2 MHz |
+| Prescaler | `/16` → PCLK2 16MHz 기준 1 MHz |
 | NSS | Software (`IMU_CS`를 GPIO로 직접 제어) |
 
 `SPI1`과 IMU 제어선 4개(`IMU_CS`, `IMU_INT`, `IMU_RST`, `IMU_WAKE`)는
@@ -186,7 +188,40 @@ CubeMX 재생성 후 확인할 항목은 다음과 같습니다.
 Inc/stm32f4xx_hal_conf.h  →  #define HAL_SPI_MODULE_ENABLED
 Drivers/STM32F4xx_HAL_Driver/{Src,Inc}/stm32f4xx_hal_spi.{c,h}  →  존재 확인
 PA5가 LD2 GPIO_Output이 아니라 SPI1_SCK인지
+PB2/IMU_RST 초기 출력이 High인지
+PA8/IMU_INT가 Pull-up Input인지
+PB6/IMU_CS 초기 출력이 High인지
 ```
+
+### BNO086 단계별 bring-up
+
+부팅 시 BNO055가 없으면 BNO086 경로가 자동 실행됩니다. 순서는 `CS High → RST
+Low 30ms → RST High → 300ms 부팅/INT 관찰 → 최초 SHTP packet → Product ID →
+Game Rotation Vector 200Hz`입니다. 정상 경로의 SPI read는 active-low `IMU_INT`가
+Low일 때만 수행하며, 각 packet은 4-byte SHTP header의 continuation bit를 제외한
+길이가 `4..1024` 범위인지 확인합니다.
+
+```text
+BNO086 bring-up: SPI1 mode 3, 1MHz; CS=PB6 RST=PB2 INT=PA8(active-low)
+BNO086 RESET: INT before=HIGH during=HIGH after=LOW; first LOW=yes at ...ms
+BNO086 SHTP: first=valid header=.. .. 00 .. len=... channel=0 seq=... packets=...
+BNO086 Product ID: status=0 entries=...
+  product[0]: part=... version=... build=... reset=...
+BNO086 Rotation Vector: reports=... q_x10000=(...,...,...,...) angles_tenths=(...,...,...)
+BNO086 bring-up result: ok
+```
+
+부팅 로그가 실패하면 먼저 `spotctl console send imuprobe`를 실행합니다. 이 명령만 INT를
+무시한 blind header read와 SPI mode sweep을 수행하므로 다음처럼 범위를 나눕니다.
+
+- `first LOW=no`, blind read `DATA`: SPI는 동작하고 PA8/INT 배선 문제입니다.
+- INT가 Low지만 header가 `00 00 00 00` 또는 `FF FF FF FF`: PA6/MISO, CS, 전원,
+  또는 SPI mode를 확인합니다.
+- header 길이가 `4..1024` 밖: SCK edge, CS timing 또는 신호 품질 문제입니다.
+- SHTP packet은 valid지만 Product ID `status != 0`: MOSI/PA7 또는 host-to-sensor
+  command 경로를 우선 확인합니다.
+- Product ID는 성공하지만 Rotation Vector timeout: report enable/SH-2 처리 단계
+  문제이며 기본 SPI 배선은 정상입니다.
 
 HAL SPI 드라이버는 프로젝트에 없어서 프로젝트 HAL과 같은 판인
 `STM32Cube_FW_F4_V1.28.3`에서 복사해 넣었습니다. `.ioc`에 SPI1이 들어갔으므로
