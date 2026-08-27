@@ -1236,6 +1236,83 @@ static void command_imu(AppConsole *console, char *mode)
     }
 }
 
+static void command_imucal(AppConsole *console, char *mode)
+{
+    Bno055 *imu = console->imu055;
+    char message[160];
+
+    if (imu == NULL || !imu->present) {
+        write_text(console, "ERROR: BNO055 is not active\r\n");
+        return;
+    }
+
+    if (mode == NULL || strcmp(mode, "status") == 0) {
+        Bno055CalibrationStatus status;
+        if (!bno055_get_calibration_status(imu, &status)) {
+            write_text(console, "IMUCAL: failed to read device status\r\n");
+            return;
+        }
+        (void)snprintf(
+            message, sizeof(message),
+            "IMUCAL device: sys=%u gyro=%u accel=%u mag=%u saved=%s restored=%s\r\n",
+            (unsigned int)status.system, (unsigned int)status.gyro,
+            (unsigned int)status.accel, (unsigned int)status.mag,
+            imu->device_profile_valid ? "yes" : "no",
+            imu->device_profile_restored ? "yes" : "no");
+        write_text(console, message);
+        (void)snprintf(
+            message, sizeof(message),
+            "IMUCAL logic: axis=(Roll<-sensorPitch, Pitch<-sensorRoll) "
+            "level=%s zero=(%d.%01d,%d.%01d)deg\r\n",
+            imu->level_valid ? "saved" : "none",
+            imu->level_roll_tenths / 10, abs(imu->level_roll_tenths % 10),
+            imu->level_pitch_tenths / 10, abs(imu->level_pitch_tenths % 10));
+        write_text(console, message);
+    } else if (strcmp(mode, "device") == 0) {
+        Bno055CalibrationStatus status;
+        if (!bno055_get_calibration_status(imu, &status)) {
+            write_text(console, "IMUCAL device: status read failed\r\n");
+            return;
+        }
+        write_text(console,
+                   "IMUCAL device: saving requires gyro/accel/mag all 3\r\n");
+        if (status.system != 3U) {
+            write_text(console,
+                       "IMUCAL warning: sys is not 3; saving completed sensor offsets anyway\r\n");
+        }
+        if (bno055_save_device_calibration(imu)) {
+            write_text(console,
+                       "IMUCAL device saved to flash and active\r\n");
+        } else {
+            write_text(console,
+                       "IMUCAL device NOT saved; run 'imucal status'\r\n");
+        }
+    } else if (strcmp(mode, "level") == 0) {
+        write_text(console,
+                   "IMUCAL level: keep the robot still and physically level for 1 second\r\n");
+        if (bno055_save_level_calibration(imu, 100U)) {
+            (void)snprintf(message, sizeof(message),
+                           "IMUCAL level saved: zero Roll=%d.%01d Pitch=%d.%01d deg\r\n",
+                           imu->level_roll_tenths / 10,
+                           abs(imu->level_roll_tenths % 10),
+                           imu->level_pitch_tenths / 10,
+                           abs(imu->level_pitch_tenths % 10));
+            write_text(console, message);
+        } else {
+            write_text(console, "IMUCAL level save failed\r\n");
+        }
+    } else if (strcmp(mode, "clear") == 0) {
+        if (bno055_clear_calibration(imu)) {
+            write_text(console,
+                       "IMUCAL cleared; reset the board before device calibration\r\n");
+        } else {
+            write_text(console, "IMUCAL clear failed\r\n");
+        }
+    } else {
+        write_text(console, "usage: imucal status|device|level|clear\r\n");
+    }
+}
+
 static void command_balance(AppConsole *console, char *mode)
 {
     RobotController *robot = console->robot;
@@ -1673,6 +1750,8 @@ static void execute_line(AppConsole *console)
         command_imursttest(console);
     } else if (strcmp(command, "imu") == 0) {
         command_imu(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "imucal") == 0) {
+        command_imucal(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "balance") == 0) {
         command_balance(console, strtok(NULL, " \t"));
     } else {
@@ -1813,6 +1892,7 @@ void app_console_print_help(AppConsole *console)
                "  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n"
                "  imursttest       hold PB2/BNO086 RST low for 5 seconds\r\n"
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
+               "  imucal status|device|level|clear BNO055 persistent calibration\r\n"
                "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
                "  help             show this help\r\n\r\n");
     write_text(console,

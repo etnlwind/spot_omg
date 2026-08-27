@@ -182,6 +182,23 @@ def test_bno086_bringup_keeps_cubemx_and_transport_in_sync() -> None:
     assert "HAL_GPIO_ReadPin(IMU_RST_GPIO_Port, IMU_RST_Pin)" in driver
 
 
+def test_bno055_calibration_separates_device_profile_and_logic_zero() -> None:
+    driver = (PROJECT / "Src/bno055.c").read_text()
+    header = (PROJECT / "Inc/bno055.h").read_text()
+    console = (PROJECT / "Src/app_console.c").read_text()
+    linker = (PROJECT / "STM32F446RETX_FLASH.ld").read_text()
+
+    assert "BNO055_OFFSET_START_ADDR" in driver
+    assert "status.gyro != 3U || status.accel != 3U || status.mag != 3U" in driver
+    assert "BNO055_CAL_DEVICE_VALID" in driver
+    assert "BNO055_CAL_LEVEL_VALID" in driver
+    assert "const int16_t mapped_roll = sensor_pitch" in driver
+    assert "const int16_t mapped_pitch = sensor_roll" in driver
+    assert "bno055_save_level_calibration" in header
+    assert 'strcmp(command, "imucal")' in console
+    assert "LENGTH = 384K" in linker
+
+
 def test_step_sync_monitor_cannot_pause_gait_or_add_bus_reads() -> None:
     source = (PROJECT / "Src/robot.c").read_text()
     gait_start = source.index("static RobotResult robot_trot_scaled(")
