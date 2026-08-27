@@ -35,8 +35,22 @@ typedef struct
 {
     I2C_HandleTypeDef *i2c;
     uint16_t address;     /* 8-bit form, as HAL wants it; 0 when absent */
+    int16_t level_roll_tenths;
+    int16_t level_pitch_tenths;
+    uint8_t device_profile[22];
+    bool device_profile_valid;
+    bool device_profile_restored;
+    bool level_valid;
     bool present;
 } Bno055;
+
+typedef struct
+{
+    uint8_t system;
+    uint8_t gyro;
+    uint8_t accel;
+    uint8_t mag;
+} Bno055CalibrationStatus;
 
 /*
  * Probe both possible addresses, verify the chip ID and enter NDOF fusion.
@@ -69,6 +83,15 @@ bool bno055_read_euler(Bno055 *imu,
                        int16_t *yaw_tenths,
                        int16_t *roll_tenths,
                        int16_t *pitch_tenths);
+
+/* Device calibration is the BNO055's own offset/radius profile. */
+bool bno055_get_calibration_status(Bno055 *imu,
+                                   Bno055CalibrationStatus *status);
+bool bno055_save_device_calibration(Bno055 *imu);
+
+/* Logic calibration defines robot-level zero after the mounting-axis map. */
+bool bno055_save_level_calibration(Bno055 *imu, uint16_t samples);
+bool bno055_clear_calibration(Bno055 *imu);
 
 #ifdef __cplusplus
 }

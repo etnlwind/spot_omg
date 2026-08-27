@@ -63,7 +63,7 @@ BNO055 배선은 `VIN→3V3`, `GND→GND`, `SCL→D15/PB8`, `SDA→D14/PB9`이�
 모두 탐색하고 칩 ID `0xA0`으로 확인하므로 `COM3` 연결은 필수가 아닙니다.
 현재 기체는 `COM3`를 연결하지 않아 `0x29`로 잡힙니다.
 
-### 부호 규약
+### BNO055 좌표계와 영구 보정
 
 ```text
 Pitch +  : 로봇 앞쪽으로 기울어짐
@@ -72,10 +72,29 @@ Roll  +  : 로봇 오른쪽으로 기울어짐
 Roll  -  : 로봇 왼쪽으로 기울어짐
 ```
 
-2026-08-08 실기에서 확인한 결과 Roll은 이 규약과 일치했고 Pitch는 반대였습니다.
-`bno055.c`의 `BNO055_PITCH_SIGN`을 `-1`로 두어 맞췄고, 앞으로 숙였을 때 Pitch가
-양수로 커지는 것을 재확인했습니다. 부호는 이 상수에서 맞추며 균형 게인으로
-보정하지 않습니다 — 게인에서 뒤집으면 불일치가 드러나지 않고 숨습니다.
+현재 장착은 센서 축이 로봇 축에서 90도 돌아가 있습니다. 2026-08-27 실측에서
+센서 Roll은 로봇 앞쪽, 센서 Pitch는 로봇 오른쪽으로 증가했으므로 device reading
+뒤의 logic mapping은 `robot Roll = sensor Pitch`, `robot Pitch = sensor Roll`입니다.
+균형 제어는 이 매핑 뒤의 로봇 좌표만 봅니다.
+
+보정은 서로 다른 두 층으로 저장합니다.
+
+- `imucal device`: BNO055 내부의 accel/gyro/mag offset과 radius 22 bytes를 저장하고
+  다음 부팅의 CONFIG mode에서 복원합니다. `gyro/accel/mag`가 모두 3일 때 저장하며,
+  종합 fusion 지표인 `sys`가 3 미만이면 경고만 출력합니다.
+- `imucal level`: 로봇을 물리적으로 수평·정지시킨 채 1초간 100 sample을 평균내어
+  logic Roll/Pitch zero를 저장합니다. 내부 센서 보정값은 바꾸지 않습니다.
+
+두 profile은 STM32F446 Flash sector 7에 validity flag와 checksum을 붙여 저장합니다.
+링커는 마지막 128 KiB를 firmware image에서 제외하므로 코드 업데이트가 보정 영역을
+덮지 않습니다. Flash erase는 `imucal device|level|clear` 때만 발생합니다.
+
+```text
+imucal status    내부 보정 0..3과 저장/복원 상태, logic zero 확인
+imucal device    내부 보정 profile 저장 (네 상태가 모두 3이어야 함)
+imucal level     현재 수평 자세를 robot Roll/Pitch 0으로 저장
+imucal clear     두 profile 삭제; 이후 보드 reset 필요
+```
 
 `imu on`의 출력은 `spotctl console watch`로 봅니다.
 
@@ -240,6 +259,7 @@ uarttest         USART1 loopback 확인 (URT-2 분리, PA9-PA10 직결)
 busprobe ID      Ping 후 USART1 원시 수신 바이트 출력
 linestate        PA9/PA10을 풀다운으로 눌러 구동/개방 판별; 계측기 불필요
 i2cscan          I2C1에서 BNO055 탐색
+imucal status|device|level|clear BNO055 내부/로직 보정 저장
 spitest          SPI1 loopback 확인 (BNO086 분리, D11-D12 직결)
 imuprobe         BNO086 리셋 후 H_INTN과 SHTP 헤더 확인
 read ID          위치, 속도, 부하, 전압, 온도, 전류 읽기

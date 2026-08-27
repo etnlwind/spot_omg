@@ -114,6 +114,14 @@ static void print_bno086_bringup(const Bno086 *imu, Bno086Result result)
                    " at %lums\r\n",
                    (unsigned long)imu->first_interrupt_delay_ms);
     uart_print(message);
+    (void)snprintf(message,
+                   sizeof(message),
+                   "BNO055 calibration: device=%s level=%s zero=(%d,%d) tenths\r\n",
+                   imu055.device_profile_restored ? "restored" : "none",
+                   imu055.level_valid ? "restored" : "none",
+                   (int)imu055.level_roll_tenths,
+                   (int)imu055.level_pitch_tenths);
+    uart_print(message);
   }
   else
   {
@@ -237,7 +245,7 @@ int main(void)
   imu055.i2c = &hi2c1;
   if (bno055_init(&imu055, &hi2c1))
   {
-    char message[64];
+    char message[128];
     (void)snprintf(message,
                    sizeof(message),
                    "BNO055 NDOF OK at 0x%02X\r\n",
