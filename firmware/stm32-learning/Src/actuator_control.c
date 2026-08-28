@@ -20,6 +20,26 @@ static uint16_t magnitude_i16(int16_t value)
     return (uint16_t)(wide < 0 ? -wide : wide);
 }
 
+/* Canonical actuator arrays are ordered J1,J2,J3 for each of four legs. */
+static bool joint_uses_sts3250(size_t joint_array_index)
+{
+    return (joint_array_index % 3U) == 1U;
+}
+
+static float command_velocity_limit(size_t joint_array_index)
+{
+    return joint_uses_sts3250(joint_array_index) ?
+        MOTOR_STS3250_COMMAND_VELOCITY_LIMIT_DEG_S :
+        MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S;
+}
+
+static float command_acceleration_limit(size_t joint_array_index)
+{
+    return joint_uses_sts3250(joint_array_index) ?
+        MOTOR_STS3250_COMMAND_ACCELERATION_LIMIT_DEG_S2 :
+        MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2;
+}
+
 void actuator_rate_limiter_init(ActuatorRateLimiter *limiter)
 {
     if (limiter != NULL) {
@@ -76,10 +96,11 @@ bool actuator_rate_limiter_apply(
     }
 
     command->limited_joint_mask = 0U;
-    const float maximum_delta_velocity =
-        MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2 * dt_seconds;
-
     for (size_t index = 0U; index < ACTUATOR_CONTROL_JOINT_COUNT; ++index) {
+        const float velocity_limit = command_velocity_limit(index);
+        const float acceleration_limit = command_acceleration_limit(index);
+        const float maximum_delta_velocity =
+            acceleration_limit * dt_seconds;
         const float previous_position = limiter->position_deg[index];
         const float previous_velocity = limiter->velocity_deg_s[index];
         const float error = requested_deg[index] - previous_position;
@@ -88,13 +109,12 @@ bool actuator_rate_limiter_apply(
         /* Begin braking before the target instead of relying on a position
          * snap, because snapping would violate the acceleration contract. */
         const float stopping_velocity = sqrtf(
-            2.0f * MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2 *
-            fabsf(error));
+            2.0f * acceleration_limit * fabsf(error));
         float desired_velocity = error / dt_seconds;
         desired_velocity = clampf(
             desired_velocity,
-            -MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S,
-            MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S);
+            -velocity_limit,
+            velocity_limit);
         if (fabsf(desired_velocity) > stopping_velocity) {
             desired_velocity = direction * stopping_velocity;
         }
@@ -105,8 +125,8 @@ bool actuator_rate_limiter_apply(
             maximum_delta_velocity);
         const float next_velocity = clampf(
             previous_velocity + velocity_change,
-            -MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S,
-            MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S);
+            -velocity_limit,
+            velocity_limit);
         const float next_position =
             previous_position + next_velocity * dt_seconds;
 
@@ -158,6 +178,7 @@ bool actuator_diagnostics_update(ActuatorDiagnostics *diagnostics,
     if (error > joint->peak_position_error) {
         joint->peak_position_error = error;
         joint->peak_error_phase = sample->gait_phase;
+        joint->peak_error_sample = *sample;
     }
     if (current > joint->peak_current_magnitude) {
         joint->peak_current_magnitude = current;

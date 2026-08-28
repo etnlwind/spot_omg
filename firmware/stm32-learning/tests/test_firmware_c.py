@@ -89,6 +89,8 @@ def test_gait_diagnostics_reuse_the_existing_round_robin_read() -> None:
     sample_body = source[sample_start:sample_end]
     assert sample_body.count("sts3215_read_state") == 1
     assert sample_body.count("actuator_diagnostics_update") == 1
+    assert "gait_command_velocity_deg_s" in sample_body
+    assert "gait_command_acceleration_deg_s2" in sample_body
 
 
 def test_balance_off_keeps_observation_and_tilt_snapshot() -> None:
@@ -189,7 +191,9 @@ def test_bno055_calibration_separates_device_profile_and_logic_zero() -> None:
     linker = (PROJECT / "STM32F446RETX_FLASH.ld").read_text()
 
     assert "BNO055_OFFSET_START_ADDR" in driver
-    assert "status.gyro != 3U || status.accel != 3U || status.mag != 3U" in driver
+    assert "BNO055_MODE_IMUPLUS       0x08U" in driver
+    assert "status.gyro != 3U || status.accel != 3U" in driver
+    assert "status.mag != 3U" not in driver
     assert "BNO055_CAL_DEVICE_VALID" in driver
     assert "BNO055_CAL_LEVEL_VALID" in driver
     assert "const int16_t mapped_roll = sensor_pitch" in driver
@@ -197,6 +201,28 @@ def test_bno055_calibration_separates_device_profile_and_logic_zero() -> None:
     assert "bno055_save_level_calibration" in header
     assert 'strcmp(command, "imucal")' in console
     assert "LENGTH = 384K" in linker
+
+
+def test_baltest_reuses_balance_policy_without_servo_io() -> None:
+    policy = (PROJECT / "Inc/gait_policy.h").read_text()
+    robot = (PROJECT / "Src/robot.c").read_text()
+    console = (PROJECT / "Src/app_console.c").read_text()
+
+    target_start = policy.index("static inline bool gait_policy_balance_targets(")
+    target_body = policy[target_start:]
+    assert "gait_policy_balance_preview(" in target_body
+
+    preview_start = robot.index("bool robot_balance_preview(")
+    preview_end = robot.index("static int16_t absolute_i16", preview_start)
+    preview_body = robot[preview_start:preview_end]
+    assert "shared_balance_config(robot->balance_mode)" in preview_body
+    assert "gait_policy_balance_preview(" in preview_body
+    assert "GAIT_POLICY_PI / 1800.0f" in preview_body
+    assert "robot->bus" not in preview_body
+    assert "servo" not in preview_body.lower()
+
+    assert 'strcmp(command, "baltest")' in console
+    assert "no servo command sent" in console
 
 
 def test_step_sync_monitor_cannot_pause_gait_or_add_bus_reads() -> None:

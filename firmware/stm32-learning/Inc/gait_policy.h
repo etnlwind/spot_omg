@@ -40,10 +40,12 @@ extern "C" {
  * This belongs to the hardware-independent trot3 geometry, not the actuator
  * capability layer.
  */
-#define GAIT_POLICY_TROT3_PERIOD_MS 1400U
-#define GAIT_POLICY_TROT3_MAX_PERIOD_MS 1800U
+#define GAIT_POLICY_TROT3_PERIOD_MS 2200U
+#define GAIT_POLICY_TROT3_MAX_PERIOD_MS 2400U
 #define GAIT_POLICY_TROT3_DUTY 0.65f
 #define GAIT_POLICY_TROT3_WEIGHT_SHIFT_DEG 1.5f
+#define GAIT_POLICY_TROT3_FOLD_J2_DEG 78.0f
+#define GAIT_POLICY_TROT3_FOLD_J3_DEG 100.0f
 
 #define GAIT_POLICY_JUMP_PERIOD_MS 1200U
 #define GAIT_POLICY_JUMP_CONTROL_HZ 50U
@@ -98,6 +100,15 @@ typedef struct
     float foot_placement_limit;
     bool contact_aware;
 } GaitPolicyBalanceConfig;
+
+typedef struct
+{
+    float roll_control;
+    float pitch_control;
+    float j1_correction_deg[GAIT_POLICY_LEG_COUNT];
+    float down_correction[GAIT_POLICY_LEG_COUNT];
+    float forward_correction[GAIT_POLICY_LEG_COUNT];
+} GaitPolicyBalancePreview;
 
 static inline float gait_policy_clampf(float value, float minimum, float maximum)
 {
@@ -535,61 +546,84 @@ static inline uint8_t gait_policy_support_mask(
     return mask;
 }
 
-static inline bool gait_policy_balance_targets(
+static inline bool gait_policy_balance_preview(
     const GaitPolicyImuSample *sample,
     const GaitPolicyBalanceConfig *config,
     uint8_t support_mask,
-    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+    GaitPolicyBalancePreview *preview)
 {
     static const int8_t side_signs[GAIT_POLICY_LEG_COUNT] = {1, -1, 1, -1};
     static const int8_t end_signs[GAIT_POLICY_LEG_COUNT] = {1, 1, -1, -1};
     if (sample == NULL || config == NULL ||
-        targets == NULL || !isfinite(sample->roll) ||
+        preview == NULL || !isfinite(sample->roll) ||
         !isfinite(sample->pitch) || !isfinite(sample->roll_rate) ||
         !isfinite(sample->pitch_rate)) {
         return false;
     }
 
-    const float roll_control =
+    preview->roll_control =
         config->kp * sample->roll + config->kd * sample->roll_rate;
-    const float pitch_control =
+    preview->pitch_control =
         config->kp * sample->pitch + config->kd * sample->pitch_rate;
 
     for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
-        float forward = 0.0f;
-        float down = 0.0f;
-        gait_policy_leg_forward_kinematics(
-            targets[leg].j2_deg, targets[leg].j3_deg, &forward, &down);
-
         const bool support = !config->contact_aware ||
             (support_mask & (uint8_t)(1U << leg)) != 0U;
+        float j1_correction = 0.0f;
+        float forward_correction = 0.0f;
         if (config->contact_aware) {
-            float j1_effort = (float)side_signs[leg] * roll_control;
+            float j1_effort =
+                (float)side_signs[leg] * preview->roll_control;
             if (!support) {
                 j1_effort = -j1_effort;
             }
-            targets[leg].j1_deg += gait_policy_clampf(
+            j1_correction = gait_policy_clampf(
                 config->j1_gain_deg * j1_effort,
                 -config->j1_limit_deg,
                 config->j1_limit_deg);
 
             if (!support) {
                 const float placement = gait_policy_clampf(
-                    config->foot_placement_gain * pitch_control,
+                    config->foot_placement_gain * preview->pitch_control,
                     -config->foot_placement_limit,
                     config->foot_placement_limit);
-                forward += GAIT_POLICY_STANCE_TRAVEL * placement;
+                forward_correction =
+                    GAIT_POLICY_STANCE_TRAVEL * placement;
             }
         }
 
-        const float down_correction = gait_policy_clampf(
-            -(float)side_signs[leg] * roll_control +
-             (float)end_signs[leg] * pitch_control,
+        preview->j1_correction_deg[leg] = j1_correction;
+        preview->forward_correction[leg] = forward_correction;
+        preview->down_correction[leg] = gait_policy_clampf(
+            -(float)side_signs[leg] * preview->roll_control +
+             (float)end_signs[leg] * preview->pitch_control,
             -config->leg_length_limit,
             config->leg_length_limit);
+    }
+    return true;
+}
+
+static inline bool gait_policy_balance_targets(
+    const GaitPolicyImuSample *sample,
+    const GaitPolicyBalanceConfig *config,
+    uint8_t support_mask,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    GaitPolicyBalancePreview preview;
+    if (targets == NULL || !gait_policy_balance_preview(
+            sample, config, support_mask, &preview)) {
+        return false;
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        float forward = 0.0f;
+        float down = 0.0f;
+        gait_policy_leg_forward_kinematics(
+            targets[leg].j2_deg, targets[leg].j3_deg, &forward, &down);
+        targets[leg].j1_deg += preview.j1_correction_deg[leg];
         if (!gait_policy_leg_inverse_kinematics(
-                forward,
-                down + down_correction,
+                forward + preview.forward_correction[leg],
+                down + preview.down_correction[leg],
                 &targets[leg].j2_deg,
                 &targets[leg].j3_deg)) {
             return false;

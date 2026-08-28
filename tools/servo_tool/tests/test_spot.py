@@ -1676,7 +1676,7 @@ class ConsoleProtocolTest(unittest.TestCase):
     def test_estimate_timeout_scales_with_cycles_and_period(self) -> None:
         self.assertAlmostEqual(estimate_timeout("trot2 1 1600"), 21.6)
         self.assertAlmostEqual(estimate_timeout("trot3 1 1600"), 21.6)
-        self.assertAlmostEqual(estimate_timeout("trot3"), 21.4)
+        self.assertAlmostEqual(estimate_timeout("trot3"), 22.2)
         self.assertAlmostEqual(estimate_timeout("jump 3 1500"), 24.5)
         # Documented defaults apply when the arguments are omitted.
         self.assertAlmostEqual(estimate_timeout("trotplace"), 20.8)
@@ -1943,11 +1943,11 @@ class ConsolePortTest(unittest.TestCase):
             "trot3 1 1600",
         )
         self.assertEqual(
-            console_line_for(parse_args(["trot3", "1", "1800"])),
-            "trot3 1 1800",
+            console_line_for(parse_args(["trot3", "1", "2400"])),
+            "trot3 1 2400",
         )
-        with self.assertRaisesRegex(ValueError, "600..1800"):
-            console_line_for(parse_args(["trot3", "1", "2000"]))
+        with self.assertRaisesRegex(ValueError, "600..2400"):
+            console_line_for(parse_args(["trot3", "1", "2401"]))
         self.assertEqual(console_line_for(parse_args(["baldiag"])), "baldiag")
         self.assertEqual(console_line_for(parse_args(["gaitdiag"])), "gaitdiag")
         self.assertEqual(console_line_for(parse_args(["trot2"])), "trot2")

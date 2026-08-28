@@ -248,7 +248,7 @@ int main(void)
     char message[128];
     (void)snprintf(message,
                    sizeof(message),
-                   "BNO055 NDOF OK at 0x%02X\r\n",
+                   "BNO055 IMUPLUS OK at 0x%02X\r\n",
                    (unsigned int)(imu055.address >> 1));
     uart_print(message);
     robot_set_attitude_reader(&robot, bno055_read_attitude, &imu055);

@@ -24,14 +24,20 @@ static void test_rate_limiter_contract(void)
         assert(actuator_rate_limiter_apply(
             &limiter, requested, 0.020f, &command));
         for (size_t index = 0U; index < ACTUATOR_CONTROL_JOINT_COUNT; ++index) {
+            const bool sts3250 = (index % 3U) == 1U;
+            const float velocity_limit = sts3250 ?
+                MOTOR_STS3250_COMMAND_VELOCITY_LIMIT_DEG_S :
+                MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S;
+            const float acceleration_limit = sts3250 ?
+                MOTOR_STS3250_COMMAND_ACCELERATION_LIMIT_DEG_S2 :
+                MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2;
             assert(fabsf(command.velocity_deg_s[index]) <=
-                   MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S + 0.001f);
+                   velocity_limit + 0.001f);
             assert(fabsf(command.acceleration_deg_s2[index]) <=
-                   MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2 + 0.01f);
+                   acceleration_limit + 0.01f);
             assert(fabsf(command.velocity_deg_s[index] -
                          previous_velocity[index]) <=
-                   MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2 * 0.020f +
-                   0.001f);
+                   acceleration_limit * 0.020f + 0.001f);
             previous_velocity[index] = command.velocity_deg_s[index];
         }
     }
@@ -64,9 +70,17 @@ static ActuatorTrackingSample tracking_sample(uint16_t command,
                                                uint16_t voltage_mv)
 {
     const ActuatorTrackingSample sample = {
-        3U, 0U, 3U, command, measured,
-        (int16_t)((int32_t)command - measured),
-        45, 120, -300, voltage_mv, 650U
+        .servo_id = 3U,
+        .leg_index = 0U,
+        .joint_index = 3U,
+        .commanded_position = command,
+        .measured_position = measured,
+        .position_error = (int16_t)((int32_t)command - measured),
+        .measured_speed = 45,
+        .current = 120,
+        .load = -300,
+        .voltage_mv = voltage_mv,
+        .gait_phase = 650U,
     };
     return sample;
 }
@@ -91,6 +105,7 @@ static void test_tracking_and_power_diagnostics(void)
     assert(actuator_diagnostics_derate_recommended(&diagnostics));
     assert(diagnostics.joints[2].peak_position_error == 150U);
     assert(diagnostics.joints[2].peak_error_phase == 650U);
+    assert(diagnostics.joints[2].peak_error_sample.position_error == 150);
     assert(diagnostics.joints[2].absolute_error_sum_ticks == 310U);
     assert(diagnostics.minimum_voltage_mv == 10800U);
     assert(diagnostics.lag_with_voltage_droop_samples == 2U);
@@ -155,8 +170,8 @@ static void test_open_loop_trot3_does_not_need_limiting(uint16_t period_ms)
         assert(gait_policy_trot3_targets(
             phase,
             amplitude,
-            GAIT_POLICY_TROT2_FOLD_J2_DEG,
-            GAIT_POLICY_TROT2_FOLD_J3_DEG,
+            GAIT_POLICY_TROT3_FOLD_J2_DEG,
+            GAIT_POLICY_TROT3_FOLD_J3_DEG,
             legs));
         for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
             const RobotJointConfig *joint = &g_robot_joints[index];
@@ -192,8 +207,8 @@ static void test_trot3_pipeline_stays_feasible_and_inside_joint_limits(void)
         assert(gait_policy_trot3_targets(
             phase,
             1.0f,
-            GAIT_POLICY_TROT2_FOLD_J2_DEG,
-            GAIT_POLICY_TROT2_FOLD_J3_DEG,
+            GAIT_POLICY_TROT3_FOLD_J2_DEG,
+            GAIT_POLICY_TROT3_FOLD_J3_DEG,
             legs));
 
         for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
@@ -213,10 +228,17 @@ static void test_trot3_pipeline_stays_feasible_and_inside_joint_limits(void)
         }
         for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
             uint16_t raw = 0U;
+            const bool sts3250 = (index % 3U) == 1U;
+            const float velocity_limit = sts3250 ?
+                MOTOR_STS3250_COMMAND_VELOCITY_LIMIT_DEG_S :
+                MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S;
+            const float acceleration_limit = sts3250 ?
+                MOTOR_STS3250_COMMAND_ACCELERATION_LIMIT_DEG_S2 :
+                MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2;
             assert(fabsf(command.velocity_deg_s[index]) <=
-                   MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S + 0.001f);
+                   velocity_limit + 0.001f);
             assert(fabsf(command.acceleration_deg_s2[index]) <=
-                   MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2 + 0.01f);
+                   acceleration_limit + 0.01f);
             assert(robot_angle_tenths_to_position(
                 index, degrees_to_tenths(command.position_deg[index]), &raw));
             assert(raw >= g_robot_joints[index].minimum);

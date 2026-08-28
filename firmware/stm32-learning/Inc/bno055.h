@@ -53,7 +53,7 @@ typedef struct
 } Bno055CalibrationStatus;
 
 /*
- * Probe both possible addresses, verify the chip ID and enter NDOF fusion.
+ * Probe both possible addresses, verify the chip ID and enter IMUPLUS fusion.
  * Returns false when the part does not answer, leaving the caller free to try
  * another sensor or run open loop.
  */

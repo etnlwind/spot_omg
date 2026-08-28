@@ -15,7 +15,7 @@
 
 #define BNO055_CHIP_ID            0xA0U
 #define BNO055_MODE_CONFIG        0x00U
-#define BNO055_MODE_NDOF          0x0CU
+#define BNO055_MODE_IMUPLUS       0x08U
 #define BNO055_POWER_NORMAL       0x00U
 
 #define BNO055_TIMEOUT_MS         100U
@@ -222,7 +222,7 @@ bool bno055_init(Bno055 *imu, I2C_HandleTypeDef *i2c)
         imu->device_profile_restored = true;
     }
 
-    if (write8(imu, BNO055_OPR_MODE_ADDR, BNO055_MODE_NDOF) != HAL_OK) {
+    if (write8(imu, BNO055_OPR_MODE_ADDR, BNO055_MODE_IMUPLUS) != HAL_OK) {
         return false;
     }
     HAL_Delay(30);
@@ -316,7 +316,7 @@ bool bno055_save_device_calibration(Bno055 *imu)
 {
     Bno055CalibrationStatus status;
     if (!bno055_get_calibration_status(imu, &status) ||
-        status.gyro != 3U || status.accel != 3U || status.mag != 3U) {
+        status.gyro != 3U || status.accel != 3U) {
         return false;
     }
 
@@ -332,7 +332,7 @@ bool bno055_save_device_calibration(Bno055 *imu)
                          sizeof(imu->device_profile),
                          BNO055_TIMEOUT_MS) == HAL_OK;
     const bool mode_ok =
-        write8(imu, BNO055_OPR_MODE_ADDR, BNO055_MODE_NDOF) == HAL_OK;
+        write8(imu, BNO055_OPR_MODE_ADDR, BNO055_MODE_IMUPLUS) == HAL_OK;
     HAL_Delay(30U);
     if (!read_ok || !mode_ok) {
         return false;

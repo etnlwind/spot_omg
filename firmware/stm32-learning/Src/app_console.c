@@ -117,7 +117,7 @@ static void print_robot_result(AppConsole *console, RobotResult result)
     }
     if (result == ROBOT_TROT3_PERIOD_ERROR) {
         write_text(console,
-                   "ERROR: trot3 period must be 600..1800ms\r\n");
+                   "ERROR: trot3 period must be 600..2400ms\r\n");
         return;
     }
     if (result == ROBOT_MOTION_ABORTED) {
@@ -799,6 +799,7 @@ static void command_gait_diagnostics(AppConsole *console)
             continue;
         }
         const ActuatorTrackingSample *sample = &joint->latest;
+        const ActuatorTrackingSample *peak = &joint->peak_error_sample;
         const uint32_t mean_error_ticks =
             (joint->absolute_error_sum_ticks + joint->sample_count / 2U) /
             joint->sample_count;
@@ -834,6 +835,22 @@ static void command_gait_diagnostics(AppConsole *console)
             (unsigned int)joint->minimum_voltage_mv,
             (unsigned int)joint->lag_samples,
             (unsigned long)joint->sample_count);
+        write_text(console, message);
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "    peak_ctx=%s cmd=%u pos=%u err=%d "
+            "target_v=%ddeg/s target_a=%ddeg/s2 "
+            "match_age=%ufr(~%ums) match_err=%dticks\r\n",
+            peak->stance ? "stance" : "swing",
+            (unsigned int)peak->commanded_position,
+            (unsigned int)peak->measured_position,
+            (int)peak->position_error,
+            (int)peak->commanded_velocity_deg_s,
+            (int)peak->commanded_acceleration_deg_s2,
+            (unsigned int)peak->matched_target_age_frames,
+            (unsigned int)peak->matched_target_age_frames * 20U,
+            (int)peak->matched_target_error);
         write_text(console, message);
     }
 
@@ -1275,11 +1292,7 @@ static void command_imucal(AppConsole *console, char *mode)
             return;
         }
         write_text(console,
-                   "IMUCAL device: saving requires gyro/accel/mag all 3\r\n");
-        if (status.system != 3U) {
-            write_text(console,
-                       "IMUCAL warning: sys is not 3; saving completed sensor offsets anyway\r\n");
-        }
+                   "IMUCAL device: IMUPLUS save requires gyro/accel both 3\r\n");
         if (bno055_save_device_calibration(imu)) {
             write_text(console,
                        "IMUCAL device saved to flash and active\r\n");
@@ -1423,6 +1436,47 @@ static void command_balance(AppConsole *console, char *mode)
         write_text(console,
                    "usage: balance full|normal|on|off|status\r\n");
     }
+}
+
+static void command_balance_test(AppConsole *console)
+{
+    static const char *const leg_names[ROBOT_LEG_COUNT] = {
+        "FL", "FR", "RL", "RR"
+    };
+    RobotBalancePreview preview;
+    if (!robot_balance_preview(console->robot, &preview)) {
+        write_text(console, "BALTEST failed: IMU sample unavailable\r\n");
+        return;
+    }
+
+    char message[128];
+    const int32_t roll = preview.roll_tenths;
+    const int32_t pitch = preview.pitch_tenths;
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "BALTEST dry-run mode=%s level error: Roll=%s%ld.%01ld "
+        "Pitch=%s%ld.%01ld deg\r\n",
+        robot_balance_mode_string(console->robot->balance_mode),
+        roll < 0 ? "-" : "", labs(roll) / 10, labs(roll) % 10,
+        pitch < 0 ? "-" : "", labs(pitch) / 10, labs(pitch) % 10);
+    write_text(console, message);
+
+    for (uint8_t leg = 0U; leg < ROBOT_LEG_COUNT; ++leg) {
+        const int32_t j1 = preview.j1_correction_tenths[leg];
+        const int32_t down = preview.leg_length_correction_milli[leg];
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "  %s J1=%s%ld.%01lddeg down=%s%ld milli\r\n",
+            leg_names[leg],
+            j1 < 0 ? "-" : "", labs(j1) / 10, labs(j1) % 10,
+            down < 0 ? "-" : "", labs(down));
+        write_text(console, message);
+    }
+    write_text(console,
+               "BALTEST: down is normalized leg-length x1000; "
+               "static P-term only; no servo command sent\r\n");
 }
 
 static void command_profile(AppConsole *console,
@@ -1574,7 +1628,7 @@ static void command_trot3(AppConsole *console,
                     &period_ms))) {
         write_text(console,
                    "usage: trot3 [CYCLES [PERIOD_MS]]; "
-                   "cycles=1..10 period=600..1800 (default 1400)\r\n");
+                   "cycles=1..10 period=600..2400 (default 2200)\r\n");
         return;
     }
     if (!actuator_profile_supports_trot3(
@@ -1590,12 +1644,15 @@ static void command_trot3(AppConsole *console,
         message,
         sizeof(message),
         "Starting actuator-feasible trot3: cycles=%lu period=%lums "
-        "limit=%udeg/s accel=%udeg/s2 shift=1.5deg sync=position "
+        "limits=J1/J3:%udeg/s J2:%udeg/s fold=J2:%u/J3:%u "
+        "shift=1.5deg sync=position "
         "balance=%s/%s rev=%s\r\n",
         (unsigned long)cycles,
         (unsigned long)period_ms,
         (unsigned int)MOTOR_STS3215_COMMAND_VELOCITY_LIMIT_DEG_S,
-        (unsigned int)MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2,
+        (unsigned int)MOTOR_STS3250_COMMAND_VELOCITY_LIMIT_DEG_S,
+        (unsigned int)GAIT_POLICY_TROT3_FOLD_J2_DEG,
+        (unsigned int)GAIT_POLICY_TROT3_FOLD_J3_DEG,
         console->robot->balance_enabled ? "on" : "off",
         robot_balance_mode_string(console->robot->balance_mode),
         ROBOT_CONTROL_REV);
@@ -1738,6 +1795,8 @@ static void execute_line(AppConsole *console)
         command_gait_diagnostics(console);
     } else if (strcmp(command, "baldiag") == 0) {
         command_balance_diagnostics(console);
+    } else if (strcmp(command, "baltest") == 0) {
+        command_balance_test(console);
     } else if (strcmp(command, "recover") == 0) {
         command_recover(console);
     } else if (strcmp(command, "i2cscan") == 0) {
@@ -1880,12 +1939,13 @@ void app_console_print_help(AppConsole *console)
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
-               "  trot3 [C [MS]]   overlap trot (default 1400ms, max 1800ms)\r\n"
+               "  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
                "  gaitdiag         last gait tracking/current/voltage report\r\n"
                "  baldiag          recent balance frames and tilt snapshot\r\n"
+               "  baltest          preview static balance correction; no servo motion\r\n"
                "  recover          clear a safety fault and hold where the legs are\r\n"
                "  i2cscan          scan I2C1 for the BNO055\r\n"
                "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"
