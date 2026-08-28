@@ -66,7 +66,16 @@ typedef enum
 
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
+#define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
 #define ROBOT_CONTROL_REV "t3-roll-endhold-v3"
+
+typedef struct
+{
+    int16_t roll_tenths;
+    int16_t pitch_tenths;
+    int16_t j1_correction_tenths[ROBOT_LEG_COUNT];
+    int16_t leg_length_correction_milli[ROBOT_LEG_COUNT];
+} RobotBalancePreview;
 
 typedef enum
 {
@@ -178,6 +187,14 @@ typedef struct
     /* Trot3 is trot2 canonical geometry plus this motor-side feasibility. */
     ActuatorRateLimiter trot3_limiter;
     ActuatorCommandFrame trot3_last_command;
+    float gait_previous_command_velocity_deg_s[ROBOT_JOINT_COUNT];
+    int16_t gait_command_velocity_deg_s[ROBOT_JOINT_COUNT];
+    int16_t gait_command_acceleration_deg_s2[ROBOT_JOINT_COUNT];
+    uint16_t gait_target_history[ROBOT_GAIT_TARGET_HISTORY_CAPACITY]
+                                [ROBOT_JOINT_COUNT];
+    uint8_t gait_target_history_write_index;
+    uint8_t gait_target_history_count;
+    uint8_t gait_support_mask;
     uint32_t trot3_limited_frames;
     RobotLimiterDiagnostics limiter_diagnostics;
 } RobotController;
@@ -194,6 +211,7 @@ void robot_set_attitude_reader(RobotController *robot,
 bool robot_set_balance_enabled(RobotController *robot, bool enabled);
 bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode);
 const char *robot_balance_mode_string(RobotBalanceMode mode);
+bool robot_balance_preview(RobotController *robot, RobotBalancePreview *preview);
 void robot_request_motion_abort(RobotController *robot);
 
 RobotResult robot_require_all(RobotController *robot);

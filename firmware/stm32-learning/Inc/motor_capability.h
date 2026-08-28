@@ -2,7 +2,8 @@
 #define MOTOR_CAPABILITY_H
 
 /*
- * STS3215 actuator capability/configuration for the 12 V robot.
+ * Mixed actuator capability/configuration for the 12 V robot:
+ * J1/J3 use STS3215 30kg; J2 uses STS3250 50kg.
  *
  * This file deliberately sits outside gait_policy.h.  The shared policy says
  * where a canonical joint should be; this file says how quickly the physical
@@ -34,6 +35,11 @@
  * software trajectory bound, not the STS3215 acceleration-register unit.
  */
 #define MOTOR_STS3215_COMMAND_ACCELERATION_LIMIT_DEG_S2 4050.0f
+
+/* STS3250: 0.133s/60deg at 12V = about 451deg/s, with 10% headroom. */
+#define MOTOR_STS3250_NOMINAL_MAX_VELOCITY_DEG_S 451.0f
+#define MOTOR_STS3250_COMMAND_VELOCITY_LIMIT_DEG_S 406.0f
+#define MOTOR_STS3250_COMMAND_ACCELERATION_LIMIT_DEG_S2 6767.0f
 
 /*
  * The outer trot3 limiter only works when the servo's inner position profile

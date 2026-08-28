@@ -573,6 +573,8 @@ static int16_t balance_rate_tenths_s(int16_t current, int16_t previous)
         ROBOT_BALANCE_RATE_LIMIT);
 }
 
+static int16_t float_to_i16_scaled(float value, float scale);
+
 static GaitPolicyBalanceConfig shared_balance_config(RobotBalanceMode mode)
 {
     const bool full = mode == ROBOT_BALANCE_FULL;
@@ -587,6 +589,49 @@ static GaitPolicyBalanceConfig shared_balance_config(RobotBalanceMode mode)
         true
     };
     return config;
+}
+
+bool robot_balance_preview(RobotController *robot, RobotBalancePreview *preview)
+{
+    if (robot == NULL || preview == NULL || robot->attitude_reader == NULL) {
+        return false;
+    }
+
+    int16_t roll_tenths = 0;
+    int16_t pitch_tenths = 0;
+    if (!robot->attitude_reader(robot->attitude_context,
+                                &roll_tenths,
+                                &pitch_tenths)) {
+        return false;
+    }
+
+    const float tenths_degrees_to_radians =
+        GAIT_POLICY_PI / 1800.0f;
+    const GaitPolicyImuSample sample = {
+        (float)roll_tenths * tenths_degrees_to_radians,
+        (float)pitch_tenths * tenths_degrees_to_radians,
+        0.0f,
+        0.0f
+    };
+    const GaitPolicyBalanceConfig config =
+        shared_balance_config(robot->balance_mode);
+    GaitPolicyBalancePreview gait_preview;
+    if (!gait_policy_balance_preview(&sample,
+                                     &config,
+                                     (1U << ROBOT_LEG_COUNT) - 1U,
+                                     &gait_preview)) {
+        return false;
+    }
+
+    preview->roll_tenths = roll_tenths;
+    preview->pitch_tenths = pitch_tenths;
+    for (uint8_t leg = 0U; leg < ROBOT_LEG_COUNT; ++leg) {
+        preview->j1_correction_tenths[leg] = float_to_i16_scaled(
+            gait_preview.j1_correction_deg[leg], 10.0f);
+        preview->leg_length_correction_milli[leg] = float_to_i16_scaled(
+            gait_preview.down_correction[leg], 1000.0f);
+    }
+    return true;
 }
 
 static int16_t absolute_i16(int16_t value)
@@ -849,18 +894,47 @@ static RobotResult sample_joint(RobotController *robot,
     if (robot->gait_diagnostics_active) {
         const int32_t signed_error =
             (int32_t)targets[index] - (int32_t)state.position;
+        uint8_t matched_age = 0U;
+        int32_t matched_error = signed_error;
+        uint32_t smallest_absolute_error =
+            (uint32_t)(signed_error < 0 ? -signed_error : signed_error);
+        for (uint8_t age = 0U; age < robot->gait_target_history_count;
+             ++age) {
+            const uint8_t history_index = (uint8_t)(
+                (robot->gait_target_history_write_index +
+                 ROBOT_GAIT_TARGET_HISTORY_CAPACITY - 1U - age) %
+                ROBOT_GAIT_TARGET_HISTORY_CAPACITY);
+            const int32_t history_error =
+                (int32_t)robot->gait_target_history[history_index][index] -
+                (int32_t)state.position;
+            const uint32_t absolute_error = (uint32_t)(
+                history_error < 0 ? -history_error : history_error);
+            if (absolute_error < smallest_absolute_error) {
+                smallest_absolute_error = absolute_error;
+                matched_error = history_error;
+                matched_age = age;
+            }
+        }
         const ActuatorTrackingSample tracking = {
-            id,
-            g_robot_joints[index].leg_index,
-            g_robot_joints[index].joint_index,
-            targets[index],
-            state.position,
-            (int16_t)signed_error,
-            state.speed,
-            state.current,
-            state.load,
-            state.voltage_mv,
-            gait_phase
+            .servo_id = id,
+            .leg_index = g_robot_joints[index].leg_index,
+            .joint_index = g_robot_joints[index].joint_index,
+            .commanded_position = targets[index],
+            .measured_position = state.position,
+            .position_error = (int16_t)signed_error,
+            .measured_speed = state.speed,
+            .current = state.current,
+            .load = state.load,
+            .voltage_mv = state.voltage_mv,
+            .gait_phase = gait_phase,
+            .commanded_velocity_deg_s =
+                robot->gait_command_velocity_deg_s[index],
+            .commanded_acceleration_deg_s2 =
+                robot->gait_command_acceleration_deg_s2[index],
+            .matched_target_age_frames = matched_age,
+            .matched_target_error = (int16_t)matched_error,
+            .stance = (robot->gait_support_mask &
+                (uint8_t)(1U << g_robot_joints[index].leg_index)) != 0U
         };
         (void)actuator_diagnostics_update(
             &robot->gait_diagnostics, index, &tracking);
@@ -885,6 +959,21 @@ static RobotResult sample_joint(RobotController *robot,
         return ROBOT_SAFETY_FAULT;
     }
     return ROBOT_OK;
+}
+
+static void gait_target_history_push(
+    RobotController *robot,
+    const uint16_t targets[ROBOT_JOINT_COUNT])
+{
+    memcpy(robot->gait_target_history[robot->gait_target_history_write_index],
+           targets,
+           sizeof(robot->gait_target_history[0]));
+    robot->gait_target_history_write_index = (uint8_t)(
+        (robot->gait_target_history_write_index + 1U) %
+        ROBOT_GAIT_TARGET_HISTORY_CAPACITY);
+    if (robot->gait_target_history_count < ROBOT_GAIT_TARGET_HISTORY_CAPACITY) {
+        ++robot->gait_target_history_count;
+    }
 }
 
 /*
@@ -1033,8 +1122,8 @@ static bool robot_trot_policy_targets(
         return gait_policy_trot3_targets(
             phase,
             amplitude_scale,
-            GAIT_POLICY_TROT2_FOLD_J2_DEG,
-            GAIT_POLICY_TROT2_FOLD_J3_DEG,
+            GAIT_POLICY_TROT3_FOLD_J2_DEG,
+            GAIT_POLICY_TROT3_FOLD_J3_DEG,
             targets);
     }
     if (policy == ROBOT_TROT_POLICY_CIRCULAR) {
@@ -1145,6 +1234,18 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     robot->gait_diagnostics_active = true;
     actuator_rate_limiter_init(&robot->trot3_limiter);
     robot->trot3_limited_frames = 0U;
+    memset(robot->gait_previous_command_velocity_deg_s,
+           0,
+           sizeof(robot->gait_previous_command_velocity_deg_s));
+    memset(robot->gait_command_velocity_deg_s,
+           0,
+           sizeof(robot->gait_command_velocity_deg_s));
+    memset(robot->gait_command_acceleration_deg_s2,
+           0,
+           sizeof(robot->gait_command_acceleration_deg_s2));
+    robot->gait_target_history_write_index = 0U;
+    robot->gait_target_history_count = 0U;
+    robot->gait_support_mask = 0U;
     memset(&robot->limiter_diagnostics,
            0,
            sizeof(robot->limiter_diagnostics));
@@ -1216,6 +1317,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             open_loop_targets[leg] = leg_targets[leg];
         }
         const uint8_t support_mask = gait_policy_support_mask(leg_targets);
+        robot->gait_support_mask = support_mask;
         RobotBalanceTraceFrame trace_frame = {
             .phase = global_phase,
             .support_mask = support_mask,
@@ -1431,6 +1533,21 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             }
             limiter_diagnostics_update(
                 robot, canonical_angles, &robot->trot3_last_command);
+            const float dt_seconds = (float)period_ms /
+                ((float)frames_per_cycle * 1000.0f);
+            for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+                const float velocity =
+                    robot->trot3_last_command.velocity_deg_s[index];
+                robot->gait_command_velocity_deg_s[index] =
+                    float_to_i16_scaled(velocity, 1.0f);
+                robot->gait_command_acceleration_deg_s2[index] =
+                    float_to_i16_scaled(
+                        (velocity -
+                         robot->gait_previous_command_velocity_deg_s[index]) /
+                            dt_seconds,
+                        1.0f);
+                robot->gait_previous_command_velocity_deg_s[index] = velocity;
+            }
             if (robot->trot3_last_command.limited_joint_mask != 0U &&
                 robot->trot3_limited_frames < UINT32_MAX) {
                 ++robot->trot3_limited_frames;
@@ -1441,6 +1558,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             return ROBOT_CONFIG_ERROR;
         }
 
+        gait_target_history_push(robot, targets);
         bus_result = sts3215_sync_positions(robot->bus,
                                             g_robot_servo_ids,
                                             targets,

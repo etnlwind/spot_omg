@@ -791,10 +791,10 @@ def console_line_for(args: argparse.Namespace) -> str:
         if args.cycles is None and args.period_ms is not None:
             raise ValueError("PERIOD_MS requires CYCLES")
         if command == "trot3" and (
-            args.period_ms is not None and not 600 <= args.period_ms <= 1800
+            args.period_ms is not None and not 600 <= args.period_ms <= 2400
         ):
             raise ValueError(
-                "trot3 PERIOD_MS must be 600..1800"
+                "trot3 PERIOD_MS must be 600..2400"
             )
         parts = [command]
         if args.cycles is not None:

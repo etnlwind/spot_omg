@@ -60,6 +60,11 @@ typedef struct
     int16_t load;
     uint16_t voltage_mv;
     uint16_t gait_phase;
+    int16_t commanded_velocity_deg_s;
+    int16_t commanded_acceleration_deg_s2;
+    uint8_t matched_target_age_frames;
+    int16_t matched_target_error;
+    bool stance;
 } ActuatorTrackingSample;
 
 typedef struct
@@ -74,6 +79,7 @@ typedef struct
     uint16_t lag_samples;
     uint8_t consecutive_lag_samples;
     ActuatorTrackingSample latest;
+    ActuatorTrackingSample peak_error_sample;
 } ActuatorJointDiagnostics;
 
 typedef struct

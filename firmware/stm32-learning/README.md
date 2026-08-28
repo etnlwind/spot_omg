@@ -1,11 +1,12 @@
 # Spot OMG STM32 Servo Firmware
 
-STM32F446RE가 URT-2 UART 헤더를 통해 STS3215 12개를 제어하는 시험
+STM32F446RE가 URT-2 UART 헤더를 통해 STS3215 8개(J1/J3)와
+STS3250 4개(J2)를 제어하는 시험
 펌웨어입니다. 부팅만으로 모터가 움직이지 않으며, USART2 콘솔 명령을 명시적으로
 입력해야 토크가 활성화됩니다.
 
 ```text
-Mac/Jetson → ST-LINK VCP/USART2 → STM32 → USART1 → URT-2 → STS3215 ×12
+Mac/Jetson → ST-LINK VCP/USART2 → STM32 → USART1 → URT-2 → STS3215 ×8 + STS3250 ×4
 ```
 
 ST-LINK VCP는 텍스트 명령 콘솔이며 Feetech raw serial bridge가 아닙니다.
@@ -79,9 +80,11 @@ Roll  -  : 로봇 왼쪽으로 기울어짐
 
 보정은 서로 다른 두 층으로 저장합니다.
 
-- `imucal device`: BNO055 내부의 accel/gyro/mag offset과 radius 22 bytes를 저장하고
-  다음 부팅의 CONFIG mode에서 복원합니다. `gyro/accel/mag`가 모두 3일 때 저장하며,
-  종합 fusion 지표인 `sys`가 3 미만이면 경고만 출력합니다.
+- BNO055는 모터 자석의 영향을 받는 magnetometer를 자세 제어에서 제외하기 위해
+  `IMUPLUS`(gyro+accel fusion) mode로 운용합니다.
+- `imucal device`: BNO055 내부의 offset/radius 22 bytes를 저장하고 다음 부팅의
+  CONFIG mode에서 복원합니다. IMUPLUS에 필요한 `gyro/accel`이 모두 3일 때 저장하며,
+  `sys`와 `mag`는 상태 확인용일 뿐 저장 조건이 아닙니다.
 - `imucal level`: 로봇을 물리적으로 수평·정지시킨 채 1초간 100 sample을 평균내어
   logic Roll/Pitch zero를 저장합니다. 내부 센서 보정값은 바꾸지 않습니다.
 
@@ -91,7 +94,7 @@ Roll  -  : 로봇 왼쪽으로 기울어짐
 
 ```text
 imucal status    내부 보정 0..3과 저장/복원 상태, logic zero 확인
-imucal device    내부 보정 profile 저장 (네 상태가 모두 3이어야 함)
+imucal device    내부 보정 profile 저장 (gyro/accel이 모두 3이어야 함)
 imucal level     현재 수평 자세를 robot Roll/Pitch 0으로 저장
 imucal clear     두 profile 삭제; 이후 보드 reset 필요
 ```
@@ -135,7 +138,7 @@ WAK 핀은 연결하지 않습니다. CubeMX의 `PB5/IMU_WAKE` High 출력은 �
 ### Game Rotation Vector를 쓰는 이유
 
 펌웨어는 Rotation Vector(`0x05`)가 아니라 **Game Rotation Vector(`0x08`)**를
-구독합니다. 전자는 지자기를 융합에 포함하는데, STS3215 12개의 영구자석이 IMU
+구독합니다. 전자는 지자기를 융합에 포함하는데, 12개 서보의 영구자석이 IMU
 몇 cm 옆에 있어 자기 방위는 없는 것만 못합니다. 균형 제어는 roll/pitch만
 사용하고 이 둘은 자이로/가속도 융합만으로 나옵니다.
 
@@ -273,9 +276,10 @@ stand11          네 다리를 곧게 폄 (J2=0°, J3=0°); 캘리브레이션 �
 trot [C [MS]]    공용 C sim-trot; 1..10회, 주기 600..5000ms (기본 1회/800ms)
 trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
 trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
-trot3 [C [MS]]   65% duty 중첩 trot + limiter/진단; 기본 1400ms, 진단 최대 1800ms
+trot3 [C [MS]]   65% duty 중첩 trot + limiter/진단; 기본 1400ms, 진단 최대 2400ms
 gaitdiag          마지막 보행의 tracking/전원/limiter/실제 timing 통계
 baldiag           최근 32 balance frame과 마지막 tilt-safety snapshot
+baltest           현재 자세의 정적 보정량 미리보기(서보 명령 없음)
 jump [C [MS]]    제자리 반복 점프; 0=계속, 1..20회, 주기 800..5000ms
 relax            전체 토크 해제
 safety           stall 검출기 상태와 래치된 fault 확인
@@ -398,13 +402,14 @@ ERROR: position limit; servo=3
 자체 `gait_forward_signs`를 씁니다. 이 궤적 부호는 뒷다리 기준인 네 다리 `+1`로
 통일했으며, 관절 `direction`은 앞뒤 동일·좌우 반대 규칙을 따릅니다.
 
-## STS3215 속도 계측과 `trot3`
+## STS3215/STS3250 속도 계측과 `trot3`
 
-`motor_capability.h`가 12V STS3215의 actuator 설정을 한곳에서 관리합니다.
-정격 최대 속도는 `270 deg/s`, 실기 command limit은 그 90%인 `243 deg/s`입니다.
-가속도는 세 개의 20ms frame에 command limit까지 도달하는 `4050 deg/s²`로
-제한합니다. 10% 여유는 체중 부하, 버스 지연과 12V 레일 전압 강하를 위한 것이며,
-정책에는 이 숫자가 들어가지 않습니다.
+`motor_capability.h`가 J1/J3의 12V STS3215 30kg과 J2의 12V STS3250 50kg
+설정을 한곳에서 관리합니다. 제조사 무부하 속도는 각각 약 `270 deg/s`와
+`451 deg/s`이며, 실기 command limit은 10% 여유를 둔 `243 deg/s`와
+`406 deg/s`입니다. 가속도는 세 개의 20ms frame에 각 command limit까지
+도달하도록 각각 `4050 deg/s²`, `6767 deg/s²`로 제한합니다. 이 여유는 체중 부하,
+버스 지연과 12V 레일 전압 강하를 위한 것이며 정책에는 이 숫자가 들어가지 않습니다.
 
 ```bash
 conda run -n spot_omg python -m tools.servo_tool.servo.gait_analysis
@@ -424,6 +429,8 @@ conda run -n spot_omg python -m tools.servo_tool.servo.gait_analysis
 보행은 부하가 있으므로 243°/s limiter를 거치는 `trot3`가 실험 경로입니다.
 
 `trot3`는 원형 발끝 형상은 유지하면서 duty를 `0.50`에서 `0.65`로 늘립니다.
+J3 STS3215 추종 지연 비교를 위해 trot2의 `J2=78°/J3=108°`는 유지하고,
+trot3만 시험 접힘을 `J2=78°/J3=96°`로 줄였습니다.
 사이클 시작과 중간에 각각 15%씩, 합계 30%의 네 발 stance를 두고 첫 명령부터
 대각 두 발을 들지 않습니다. 기존 `trot`/`trot2` canonical 출력은 변경하지
 않았습니다. IMU balance까지 끝난 canonical angle을 `actuator_control.c`가
@@ -456,7 +463,8 @@ speed/acceleration 값을 반복하고, STS3215 내부 position profile이 매 2
 대각 두 발만 지지하는 trot은 느리게 실행할수록 정적으로 안정해지는 보행이
 아닙니다. 2000ms 바닥 시험에서 오른쪽으로 전도된 실측과 MuJoCo 주기 sweep을
 반영해 `trot3` 기본값은 1400ms입니다. 1800ms는 원인 분리를 위한 비교 진단에만
-허용하며 정상 보행 권장값이 아닙니다. roll 또는 pitch가
+사용해 왔습니다. 2400ms 상한은 거치 상태에서 관절 추종 지연을 속도와 기구 문제로
+분리하기 위한 진단 범위이며 정상 바닥 보행 권장값이 아닙니다. roll 또는 pitch가
 12°를 2 frame 연속 넘으면 즉시 보행을 중단하고 stand 목표를 요청합니다.
 0.65 duty의 실제 swing 시작(phase 0.15/0.65)에 non-blocking step-sync monitor를
 맞춥니다.
@@ -477,6 +485,12 @@ speed/acceleration 값을 반복하고, STS3215 내부 position profile이 매 2
 - 같은 joint가 두 sample 연속 lag일 때의 향후 derate 권고 hook
 - nominal/실제 gait 시간, step-sync miss/오차, balance update 최대 공백
 - limiter의 관절별 각도 변형과 FK로 환산한 발끝 변형
+- 관절별 최대 추종 오차 순간의 stance/swing, 목표 위치·속도·가속도(`peak_ctx`)
+
+`baltest`는 현재 보정된 Roll/Pitch를 절대 수평 오차로 보고 실제 보행과 같은 balance
+계산 경로에서 네 다리의 J1 및 길이 보정량을 산출합니다. 모든 발을 지지 상태로
+가정하고 rate를 0으로 두는 정적 P-term 시험이며, `down`은 정규화된 다리 길이의
+1000배(`milli`)입니다. servo bus에는 명령을 보내지 않습니다.
 
 `baldiag`는 UART를 매 frame 출력하지 않고 RAM의 최근 32-frame ring buffer를
 보행 뒤에 덤프합니다. phase, support pair, raw/filtered Roll/Pitch와 rate, PD 출력,
@@ -496,7 +510,8 @@ bus fault 또는 사용자 중단은 기존 안전 stand 복귀 경로를 계속
 
 ## Stall 안전 보호
 
-서보 전원이 12V 80W PD(약 6.7A)이고 STS3215 하나의 stall 전류가 약 2.7A입니다.
+서보 전원이 12V 80W PD(약 6.7A)이고 제조사 stall 전류는 STS3215 약 2.7A,
+STS3250 약 4.2A입니다.
 다리가 걸리면 몇 백 ms 안에 레일 전체가 내려가고 **12축이 동시에 전원을 잃습니다.**
 한 관절이 고장 나는 것보다 나쁩니다 — 로봇이 무동력 상태로 그대로 주저앉습니다.
 그 전에 STM32가 스스로 토크를 끊는 것이 이 기능의 목적입니다.
@@ -815,7 +830,7 @@ trot3 1 1800
 비교할 값은 `balance=on/off`, Peak Roll/Pitch, joint별 peak/mean tracking error,
 step-sync miss/peak recent error, blocking wait(0ms), max balance gap,
 limited joint/foot distortion와 Tilt snapshot
-유무입니다. 1800ms 허용은 이 A/B 진단을 위한 것이며 반복 보행 승인이 아닙니다.
+유무입니다. 1800~2400ms 허용은 이 A/B 진단을 위한 것이며 반복 보행 승인이 아닙니다.
 
 ## 제자리 반복 점프
 
@@ -876,7 +891,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 - MuJoCo와 STM32가 함께 호출하는 Cartesian IK 기반 공용 C trot 정책 구현
 - 원형 스윙 발끝과 L2 접힘을 갖는 공용 C `trot2` 및 STM32 콘솔 명령 구현
 - 20ms 목표 갱신, 500ms 이하 진폭 ramp, non-blocking step-sync monitor 구현
-- BNO055 `0x28`, CHIP_ID `0xA0`, NDOF 초기화 확인 (2026-08-08 BNO086 SPI로 교체)
+- BNO055 `0x28/0x29`, CHIP_ID `0xA0`, IMUPLUS 초기화 및 영구 보정 확인
 - IMU 연속 로그 기본 OFF 및 `imu on|off|status` 추가
 - 콘솔 명령 종료를 `CR`, `LF`, `CRLF` 모두 지원
 - CubeMX 재생성으로 사라진 USART2 IRQ 복구

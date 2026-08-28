@@ -53,7 +53,7 @@ _TIMED_COMMANDS = {
     "trot": (1, 800),
     "trotplace": (1, 800),
     "trot2": (1, 800),
-    "trot3": (1, 1400),
+    "trot3": (1, 2200),
     "jump": (0, 1200),
 }
 
