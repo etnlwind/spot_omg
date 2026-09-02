@@ -26,11 +26,9 @@ struct WiFiCredential {
   const char* password;
 };
 
-static const WiFiCredential WIFI_NETWORKS[] = {
-  {"REMOVED", "REMOVED"},
-  // {"SSID2", "PASSWORD2"},
-  // {"SSID3", "PASSWORD3"},
-};
+#include "wifi_secrets.h"
+
+static const WiFiCredential WIFI_NETWORKS[] = {SPOT_WIFI_CREDENTIALS};
 
 static constexpr size_t MAX_WIFI_NETWORKS = 3;
 static constexpr size_t WIFI_NETWORK_COUNT =
