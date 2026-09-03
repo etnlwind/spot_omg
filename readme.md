@@ -55,6 +55,9 @@ spotctl --host 192.168.0.112 console
 
 # Explicit TCP port
 spotctl --host 192.168.0.112 --tcp-port 3333 trot3 1 1400
+
+# ESP32-WROOM-32D Bluetooth SPP bridge (replace COM8 as needed)
+spotctl --via stm32 --stm32-port COM8 targets
 ```
 
 어느 포트로 나갔는지는 실행할 때마다 첫 줄에 표시됩니다.

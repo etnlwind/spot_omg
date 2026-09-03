@@ -1,165 +1,130 @@
 /*
- * ESP32-C3 SuperMini Wi-Fi <-> STM32 UART Bridge
+ * ESP32-WROOM-32D Bluetooth SPP <-> STM32 UART Bridge
  *
  * Wiring:
- *   ESP32-C3 GPIO4 (TX)  -> STM32 PC11 (USART3_RX)
- *   ESP32-C3 GPIO5 (RX)  <- STM32 PC10 (USART3_TX)
- *   ESP32-C3 GND         -> STM32 GND
+ *   ESP32 GPIO4 (TX)  -> STM32 PC11 (USART3_RX)
+ *   ESP32 GPIO5 (RX)  <- STM32 PC10 (USART3_TX)
+ *   ESP32 GND         -> STM32 GND
  *
- * STM32 USART3:
- *   TX = PC10
- *   RX = PC11
- *   115200 / 8-N-1
- *
- * Arduino IDE:
- *   Board: ESP32C3 Dev Module
- *   USB CDC On Boot: Enabled
+ * USB serial is used only for firmware upload and diagnostics.
  */
 
-#include <WiFi.h>
-#include <cstring>
+#include <BluetoothSerial.h>
+#include <esp_gap_bt_api.h>
+#include <esp_idf_version.h>
+#include <esp_system.h>
 
 HardwareSerial STM32Serial(1);
+BluetoothSerial SerialBT;
 
-struct WiFiCredential {
-  const char* ssid;
-  const char* password;
-};
-
-static const WiFiCredential WIFI_NETWORKS[] = {
-  {"TP-Link_A9CF", "a@0128a@0128"},
-  // {"SSID2", "PASSWORD2"},
-  // {"SSID3", "PASSWORD3"},
-};
-
-static constexpr size_t MAX_WIFI_NETWORKS = 3;
-static constexpr size_t WIFI_NETWORK_COUNT =
-    sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]);
-static_assert(WIFI_NETWORK_COUNT > 0, "Register at least one Wi-Fi network");
-static_assert(WIFI_NETWORK_COUNT <= MAX_WIFI_NETWORKS,
-              "Up to three Wi-Fi networks can be registered");
-
-static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
-static constexpr uint32_t WIFI_RETRY_DELAY_MS = 3000;
-
-static constexpr uint16_t TCP_PORT = 3333;
-WiFiServer server(TCP_PORT);
-WiFiClient client;
-
+static constexpr const char* BLUETOOTH_DEVICE_NAME = "SpotOMG-Bridge";
 static constexpr uint32_t STM32_BAUD = 115200;
 static constexpr int STM32_RX = 5;  // GPIO5 <- STM32 PC10 TX
 static constexpr int STM32_TX = 4;  // GPIO4 -> STM32 PC11 RX
+static constexpr int PAIRING_RESET_BUTTON = 0;  // BOOT button
+static constexpr uint32_t PAIRING_RESET_HOLD_MS = 3000;
+static constexpr uint32_t DISCOVERABLE_REFRESH_MS = 5000;
 
-static void connectWiFi()
+static uint32_t pairingButtonPressedAt = 0;
+static uint32_t lastDiscoverableRefresh = 0;
+static bool pairingResetHandled = false;
+
+static bool makeBluetoothDiscoverable()
 {
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.setAutoReconnect(false);
+#ifdef ESP_IDF_VERSION_MAJOR
+  const esp_err_t result =
+      esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+#else
+  const esp_err_t result =
+      esp_bt_gap_set_scan_mode(ESP_BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE);
+#endif
+  if (result != ESP_OK) {
+    Serial.printf("Bluetooth discoverable mode failed: %s (%d)\n",
+                  esp_err_to_name(result), static_cast<int>(result));
+    return false;
+  }
+  return true;
+}
 
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.println();
-    Serial.println("Scanning WiFi...");
+static bool clearBluetoothBonds()
+{
+  int bondCount = esp_bt_gap_get_bond_device_num();
+  if (bondCount < 0) {
+    Serial.println("Bluetooth bond query failed");
+    return false;
+  }
+  if (bondCount == 0) {
+    Serial.println("No stored Bluetooth bonds");
+    return true;
+  }
 
-    WiFi.disconnect();
-    WiFi.scanDelete();
-    const int networkCount = WiFi.scanNetworks();
+  esp_bd_addr_t* devices = static_cast<esp_bd_addr_t*>(
+      malloc(sizeof(esp_bd_addr_t) * static_cast<size_t>(bondCount)));
+  if (devices == nullptr) {
+    Serial.println("Bluetooth bond reset failed: out of memory");
+    return false;
+  }
 
-    if (networkCount < 0) {
-      Serial.printf("WiFi scan failed (error=%d)\n", networkCount);
+  int listedCount = bondCount;
+  const esp_err_t listResult =
+      esp_bt_gap_get_bond_device_list(&listedCount, devices);
+  if (listResult != ESP_OK) {
+    Serial.printf("Bluetooth bond list failed: %s (%d)\n",
+                  esp_err_to_name(listResult), static_cast<int>(listResult));
+    free(devices);
+    return false;
+  }
+
+  int removed = 0;
+  for (int index = 0; index < listedCount; ++index) {
+    const esp_err_t removeResult =
+        esp_bt_gap_remove_bond_device(devices[index]);
+    if (removeResult == ESP_OK) {
+      ++removed;
     } else {
-      const WiFiCredential* selectedNetwork = nullptr;
-      int selectedScanIndex = -1;
-      int32_t selectedRssi = INT32_MIN;
-
-      Serial.println("Found:");
-
-      for (int scanIndex = 0; scanIndex < networkCount; ++scanIndex) {
-        for (size_t credentialIndex = 0;
-             credentialIndex < WIFI_NETWORK_COUNT;
-             ++credentialIndex) {
-          const WiFiCredential& credential = WIFI_NETWORKS[credentialIndex];
-
-          if (WiFi.SSID(scanIndex) != credential.ssid) {
-            continue;
-          }
-
-          const int32_t rssi = WiFi.RSSI(scanIndex);
-          Serial.printf("  %-24s RSSI=%ld dBm\n",
-                        credential.ssid,
-                        static_cast<long>(rssi));
-
-          if (selectedNetwork == nullptr || rssi > selectedRssi) {
-            selectedNetwork = &credential;
-            selectedScanIndex = scanIndex;
-            selectedRssi = rssi;
-          }
-          break;
-        }
-      }
-
-      if (selectedNetwork != nullptr) {
-        uint8_t selectedBssid[6];
-        std::memcpy(selectedBssid, WiFi.BSSID(selectedScanIndex),
-                    sizeof(selectedBssid));
-        const int32_t selectedChannel = WiFi.channel(selectedScanIndex);
-
-        Serial.println();
-        Serial.println("Selected:");
-        Serial.printf("  %s\n", selectedNetwork->ssid);
-        Serial.println();
-        Serial.print("Connecting");
-
-        WiFi.begin(selectedNetwork->ssid,
-                   selectedNetwork->password,
-                   selectedChannel,
-                   selectedBssid);
-
-        const uint32_t started = millis();
-        while (WiFi.status() != WL_CONNECTED &&
-               (millis() - started) < WIFI_CONNECT_TIMEOUT_MS) {
-          delay(500);
-          Serial.print(".");
-        }
-        Serial.println();
-
-        if (WiFi.status() == WL_CONNECTED) {
-          WiFi.scanDelete();
-          Serial.println("WiFi connected");
-          Serial.printf("SSID : %s\n", WiFi.SSID().c_str());
-          Serial.printf("RSSI : %ld dBm\n", static_cast<long>(WiFi.RSSI()));
-          Serial.print("IP   : ");
-          Serial.println(WiFi.localIP());
-          return;
-        }
-
-        Serial.printf("Connection failed (status=%d)\n", WiFi.status());
-      } else {
-        Serial.println("  No registered networks are in range");
-      }
+      Serial.printf("Bluetooth bond %d removal failed: %s (%d)\n",
+                    index + 1, esp_err_to_name(removeResult),
+                    static_cast<int>(removeResult));
     }
+  }
+  free(devices);
 
-    WiFi.disconnect();
-    WiFi.scanDelete();
-    Serial.printf("Retrying in %lu seconds...\n",
-                  static_cast<unsigned long>(WIFI_RETRY_DELAY_MS / 1000));
-    delay(WIFI_RETRY_DELAY_MS);
+  Serial.printf("Bluetooth bonds removed: %d/%d\n", removed, listedCount);
+  return removed == listedCount;
+}
+
+static void onBluetoothConfirmRequest(uint32_t numericValue)
+{
+  Serial.printf("Bluetooth pairing confirmation: %06lu\n",
+                static_cast<unsigned long>(numericValue));
+  SerialBT.confirmReply(true);
+}
+
+static void onBluetoothAuthComplete(bool success)
+{
+  Serial.println(success ? "Bluetooth pairing succeeded"
+                         : "Bluetooth pairing failed");
+  if (!success) {
+    // Keep the bridge visible so the user can retry or clear stale bonds.
+    makeBluetoothDiscoverable();
+    Serial.println("Retry pairing, or hold BOOT for 3 seconds to clear bonds");
   }
 }
 
 static void printStatus()
 {
   Serial.println();
-  Serial.println("====================================");
-  Serial.println("ESP32-C3 WiFi <-> STM32 UART Bridge");
-  Serial.println("====================================");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("TCP port  : ");
-  Serial.println(TCP_PORT);
+  Serial.println("==============================================");
+  Serial.println("ESP32-WROOM-32D Bluetooth <-> STM32 UART Bridge");
+  Serial.println("==============================================");
+  Serial.print("Bluetooth : ");
+  Serial.println(BLUETOOTH_DEVICE_NAME);
   Serial.println("STM32 UART: USART3 115200 8N1");
   Serial.println("ESP32 TX  : GPIO4 -> STM32 PC11 RX");
   Serial.println("ESP32 RX  : GPIO5 <- STM32 PC10 TX");
-  Serial.println("====================================");
+  Serial.println("USB serial: diagnostics only");
+  Serial.println("Pair reset: hold BOOT for 3 seconds after startup");
+  Serial.println("==============================================");
 }
 
 void setup()
@@ -171,75 +136,74 @@ void setup()
     delay(10);
   }
 
-  STM32Serial.begin(
-      STM32_BAUD,
-      SERIAL_8N1,
-      STM32_RX,
-      STM32_TX
-  );
+  Serial.printf("Reset reason: %d\n", static_cast<int>(esp_reset_reason()));
+  pinMode(PAIRING_RESET_BUTTON, INPUT_PULLUP);
 
-  delay(100);
+  STM32Serial.begin(STM32_BAUD, SERIAL_8N1, STM32_RX, STM32_TX);
 
-  connectWiFi();
+  SerialBT.enableSSP();
+  SerialBT.onConfirmRequest(onBluetoothConfirmRequest);
+  SerialBT.onAuthComplete(onBluetoothAuthComplete);
 
-  server.begin();
-  server.setNoDelay(true);
+  bool bluetoothStarted = false;
+  for (int attempt = 1; attempt <= 3 && !bluetoothStarted; ++attempt) {
+    bluetoothStarted = SerialBT.begin(BLUETOOTH_DEVICE_NAME);
+    if (!bluetoothStarted) {
+      Serial.printf("Bluetooth SPP startup failed (attempt %d/3)\n", attempt);
+      SerialBT.end();
+      delay(500);
+    }
+  }
+  if (bluetoothStarted) {
+    Serial.printf("Bluetooth SPP ready: %s\n", BLUETOOTH_DEVICE_NAME);
+    makeBluetoothDiscoverable();
+  } else {
+    Serial.println("Bluetooth unavailable; restarting ESP32 in 3 seconds");
+    delay(3000);
+    ESP.restart();
+  }
 
   printStatus();
-  Serial.println("TCP server ready");
 }
 
 void loop()
 {
-  if (WiFi.status() != WL_CONNECTED) {
-    if (client) {
-      client.stop();
+  const uint32_t now = millis();
+  const bool pairingButtonPressed = digitalRead(PAIRING_RESET_BUTTON) == LOW;
+  if (pairingButtonPressed) {
+    if (pairingButtonPressedAt == 0) {
+      pairingButtonPressedAt = now;
+    } else if (!pairingResetHandled &&
+               now - pairingButtonPressedAt >= PAIRING_RESET_HOLD_MS) {
+      pairingResetHandled = true;
+      Serial.println("BOOT held: clearing Bluetooth pairing information");
+      clearBluetoothBonds();
+      makeBluetoothDiscoverable();
+      Serial.println("Pairing reset complete; search for SpotOMG-Bridge again");
     }
-
-    Serial.println("WiFi disconnected - reconnecting...");
-    connectWiFi();
-    printStatus();
+  } else {
+    pairingButtonPressedAt = 0;
+    pairingResetHandled = false;
   }
 
-  if (!client || !client.connected()) {
-    WiFiClient incoming = server.accept();
-
-    if (incoming) {
-      if (client) {
-        client.stop();
-      }
-
-      client = incoming;
-      client.setNoDelay(true);
-
-      Serial.print("TCP client connected: ");
-      Serial.println(client.remoteIP());
-
-      client.println();
-      client.println("ESP32-C3 -> STM32 bridge connected");
-    }
+  if (!SerialBT.hasClient() &&
+      now - lastDiscoverableRefresh >= DISCOVERABLE_REFRESH_MS) {
+    lastDiscoverableRefresh = now;
+    makeBluetoothDiscoverable();
   }
 
-  // TCP -> STM32
-  if (client && client.connected()) {
-    while (client.available() > 0) {
-      STM32Serial.write((uint8_t)client.read());
-    }
+  // Bluetooth SPP -> STM32
+  while (SerialBT.available() > 0) {
+    STM32Serial.write(static_cast<uint8_t>(SerialBT.read()));
   }
 
-  // USB Serial Monitor -> STM32 (optional debug path)
-  while (Serial.available() > 0) {
-    STM32Serial.write((uint8_t)Serial.read());
-  }
-
-  // STM32 -> TCP + USB Serial Monitor
+  // STM32 -> Bluetooth SPP; mirror to USB for diagnostics only.
   while (STM32Serial.available() > 0) {
-    const uint8_t b = (uint8_t)STM32Serial.read();
+    const uint8_t byte = static_cast<uint8_t>(STM32Serial.read());
+    Serial.write(byte);
 
-    Serial.write(b);
-
-    if (client && client.connected()) {
-      client.write(b);
+    if (SerialBT.hasClient()) {
+      SerialBT.write(byte);
     }
   }
 

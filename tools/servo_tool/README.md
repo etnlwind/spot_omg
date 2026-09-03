@@ -1,5 +1,32 @@
 # Spot OMG Servo Tool
 
+## Bluetooth 중심 개발·테스트
+
+로봇에 장착된 ESP32의 `SpotOMG-Bridge` Bluetooth SPP가 기본 제어 링크다.
+페어링되어 있으면 `spotctl`은 포트를 지정하지 않아도 해당 Bluetooth COM을
+우선 선택한다. ESP32의 USB 케이블은 펌웨어 업로드와 로그 확인에만 사용하며
+STM32 제어 링크로 사용하지 않는다.
+
+| 범위 | 기본 명령 | 링크 |
+|---|---|---|
+| 일상 상태 확인 | `status`, `scan`, `targets`, `gaitdiag`, `baldiag` | Bluetooth → STM32 |
+| 자세·동작 | `stand`, `stand11`, `landing`, `hold`, `relax`, `trot*`, `jump` | Bluetooth → STM32 |
+| 설정·센서 | `profile`, `imu`, `balance`, `calibrate`, `capture-stand` | Bluetooth → STM32 |
+| 저수준 개발 | `console send/watch/shell/script` | Bluetooth → STM32 |
+| 서보 EEPROM 정비 | `diagnose`, `change-id`, `swap-ids`, `configure-*` | URT-2 직결 |
+| 호스트 궤적 실험 | `walk`, `pose`, `stand45`, `raw-center`, `contacts`, `save-pose` | URT-2 직결 |
+
+```powershell
+spotctl ports
+spotctl status
+spotctl stand
+spotctl trot3 1 1800
+spotctl console send safety
+```
+
+Bluetooth 장치를 Windows에서 제거한 뒤 재검색되지 않으면 ESP32가 정상 부팅된
+상태에서 BOOT 버튼을 3초간 눌러 본딩 정보를 삭제한 후 다시 페어링한다.
+
 STS3215 서보를 검색하고 설정하며 움직이기 위한 작은 Python 도구입니다.
 기본 통신 속도는 `1,000,000 bps`, 위치 범위는 `0..4095`입니다.
 

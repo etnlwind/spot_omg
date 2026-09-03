@@ -1794,6 +1794,21 @@ URT2 = PortInfo(
 BLUETOOTH = PortInfo(
     device="/dev/cu.Bluetooth-Incoming-Port", description="n/a"
 )
+ESP32_USB = PortInfo(
+    device="COM7",
+    description="Silicon Labs CP210x USB to UART Bridge",
+    vid=0x10C4,
+    pid=0xEA60,
+    hwid="USB VID:PID=10C4:EA60 SER=0001",
+)
+SPOT_BLUETOOTH = PortInfo(
+    device="COM8",
+    description="Standard Serial over Bluetooth link",
+    hwid=(
+        "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}"
+        "_LOCALMFG&0002\\7&TEST&0&38182B2F7C22_C00000000"
+    ),
+)
 
 
 class ConsolePortTest(unittest.TestCase):
@@ -1927,6 +1942,25 @@ class ConsolePortTest(unittest.TestCase):
                 ("urt2", URT2.device),
             )
 
+    def test_transport_prefers_spot_bluetooth_even_with_esp32_usb(self) -> None:
+        with patch(
+            "servo.cli.serial_ports",
+            return_value=[SPOT_BLUETOOTH, ESP32_USB],
+        ):
+            self.assertEqual(
+                resolve_transport(parse_args(["stand"])),
+                ("stm32", SPOT_BLUETOOTH.device),
+            )
+            self.assertEqual(
+                resolve_transport(parse_args(["status"])),
+                ("stm32", SPOT_BLUETOOTH.device),
+            )
+        with patch("servo.cli.serial_ports", return_value=[SPOT_BLUETOOTH]):
+            self.assertEqual(
+                resolve_transport(parse_args(["stand"])),
+                ("stm32", SPOT_BLUETOOTH.device),
+            )
+
     def test_transport_honours_an_explicit_port(self) -> None:
         args = parse_args(["--stm32-port", "/dev/ttyACM7", "stand"])
         self.assertEqual(resolve_transport(args), ("stm32", "/dev/ttyACM7"))
@@ -1966,6 +2000,14 @@ class ConsolePortTest(unittest.TestCase):
         self.assertEqual(console_line_for(parse_args(["stand11"])), "stand11")
         self.assertEqual(console_line_for(parse_args(["landing"])), "landing")
         self.assertEqual(console_line_for(parse_args(["scan"])), "scan")
+        self.assertEqual(console_line_for(parse_args(["status"])), "status")
+
+    def test_raw_console_prefers_spot_bluetooth(self) -> None:
+        with patch(
+            "servo.cli.serial_ports",
+            return_value=[SPOT_BLUETOOTH, ESP32_USB],
+        ):
+            self.assertEqual(resolve_console_port(None), SPOT_BLUETOOTH.device)
 
     def test_every_shared_command_name_reaches_the_firmware(self) -> None:
         """A command routes over the STM32 link only if two lists agree.

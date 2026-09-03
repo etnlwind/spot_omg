@@ -353,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
             "subcommand, for an interactive prompt, or for running a "
             "procedure file.  Ordinary commands such as 'spotctl stand' and "
             "'spotctl trot2 1 1600' already route to the STM32 on their own "
-            "when the ST-LINK is the attached device."
+            "over the paired SpotOMG Bluetooth bridge by default."
         ),
     )
     console_actions = console.add_subparsers(
@@ -394,6 +394,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 #: STMicroelectronics; the ST-LINK virtual COM port on every Nucleo board.
 ST_LINK_VENDOR_ID = 0x0483
 
+#: CP210x USB-UART used by the ESP32-WROOM-32D bridge in this robot.
+ESP32_USB_BRIDGE_IDS = {(0x10C4, 0xEA60)}
+
+#: Bluetooth Classic address of this robot's ESP32 SPP bridge. Override when
+#: moving the tool to another controller with SPOT_BLUETOOTH_ADDRESS.
+SPOT_BLUETOOTH_ADDRESS = os.environ.get(
+    "SPOT_BLUETOOTH_ADDRESS", "38182B2F7C22"
+).replace(":", "").replace("-", "").upper()
+
 #: Used only when the backend hides the USB numbers.
 ST_LINK_HINTS = ("stlink", "st-link", "st link", "stm32")
 
@@ -424,6 +433,7 @@ class PortInfo:
     manufacturer: str | None = None
     product: str | None = None
     serial_number: str | None = None
+    hwid: str | None = None
 
     @property
     def usb_id(self) -> str:
@@ -448,7 +458,27 @@ class PortInfo:
         return any(hint in text for hint in ST_LINK_HINTS)
 
     @property
+    def is_bluetooth(self) -> bool:
+        text = " ".join(
+            part.lower()
+            for part in (self.device, self.description, self.hwid)
+            if part
+        )
+        return "bluetooth" in text or "bthenum" in text
+
+    @property
+    def is_spot_bluetooth(self) -> bool:
+        compact_hwid = (self.hwid or "").replace(":", "").replace("-", "").upper()
+        return self.is_bluetooth and SPOT_BLUETOOTH_ADDRESS in compact_hwid
+
+    @property
+    def is_esp32_usb_bridge(self) -> bool:
+        return (self.vid, self.pid) in ESP32_USB_BRIDGE_IDS
+
+    @property
     def looks_like_usb_serial(self) -> bool:
+        if self.is_bluetooth:
+            return False
         if self.vid is not None:
             return True
         name = self.device.lower()
@@ -480,6 +510,7 @@ def serial_ports() -> list[PortInfo]:
                 manufacturer=item.manufacturer,
                 product=item.product,
                 serial_number=item.serial_number,
+                hwid=item.hwid,
             )
             for item in list_ports.comports()
         ),
@@ -510,7 +541,7 @@ def resolve_port(explicit_port: str | None) -> str:
 
 
 def resolve_console_port(explicit_port: str | None) -> str:
-    """Find the ST-LINK virtual COM port by its USB vendor ID.
+    """Find the SpotOMG Bluetooth SPP port, then an ST-LINK console.
 
     Rather than guess when the lookup is inconclusive, ask for an explicit
     port: sending console text to the URT-2, or Feetech packets to the
@@ -519,6 +550,14 @@ def resolve_console_port(explicit_port: str | None) -> str:
     if explicit_port:
         return explicit_port
     ports = serial_ports()
+    bluetooth = [port for port in ports if port.is_spot_bluetooth]
+    if len(bluetooth) == 1:
+        return bluetooth[0].device
+    if len(bluetooth) > 1:
+        raise RuntimeError(
+            "multiple SpotOMG Bluetooth ports found; select one with "
+            "--stm32-port: " + ", ".join(port.device for port in bluetooth)
+        )
     candidates = [port for port in ports if port.is_st_link]
     if len(candidates) == 1:
         return candidates[0].device
@@ -534,8 +573,8 @@ def resolve_console_port(explicit_port: str | None) -> str:
         )
     seen = ", ".join(f"{port.device} ({port.usb_id})" for port in ports)
     raise RuntimeError(
-        "no ST-LINK virtual COM port found (USB vendor "
-        f"{ST_LINK_VENDOR_ID:04x}); pass --stm32-port or set SPOT_STM32_PORT. "
+        "no SpotOMG Bluetooth or ST-LINK console port found; pair "
+        "SpotOMG-Bridge, or pass --stm32-port. "
         f"Ports seen: {seen or 'none'}"
     )
 
@@ -674,7 +713,7 @@ def run_console_script(
 #: Firmware console commands promoted to top-level spotctl subcommands.
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
-        "trot", "trotplace", "trot2", "trot3", "jump", "targets",
+        "trot", "trotplace", "trot2", "trot3", "jump", "targets", "status",
         "gaitdiag", "baldiag", "profile", "imu", "balance"
     }
 )
@@ -713,26 +752,43 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
         return "urt2", args.port
 
     ports = serial_ports()
-    st_link = [port for port in ports if port.is_st_link]
+    bluetooth_console = [port for port in ports if port.is_spot_bluetooth]
+    usb_console = [port for port in ports if port.is_st_link]
     urt2 = [
         port
         for port in ports
-        if port.looks_like_usb_serial and not port.is_st_link
+        if port.looks_like_usb_serial
+        and not port.is_st_link
+        and not port.is_esp32_usb_bridge
     ]
-    if st_link and urt2:
-        shared_bridge_commands = {"calibrate", "capture-stand", "save-stand"}
-        automatically_stm32 = (
-            CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS | shared_bridge_commands
-        )
-        if args.command in automatically_stm32:
-            return "stm32", resolve_console_port(None)
-        return "urt2", resolve_port(None)
-    if st_link:
-        return "stm32", resolve_console_port(None)
+    shared_bridge_commands = {"calibrate", "capture-stand", "save-stand"}
+    automatically_stm32 = (
+        CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS | shared_bridge_commands
+    )
+    # The installed robot bridge is Bluetooth-only for control.  Prefer its
+    # paired SPP port even while the ESP32 USB cable is attached for flashing
+    # or diagnostics. Explicit --stm32-port/--port/--via options still win.
+    if bluetooth_console and args.command in automatically_stm32:
+        if len(bluetooth_console) > 1:
+            raise RuntimeError(
+                "multiple SpotOMG Bluetooth ports found; select one with --stm32-port: "
+                + ", ".join(port.device for port in bluetooth_console)
+            )
+        return "stm32", bluetooth_console[0].device
+    if usb_console and args.command in automatically_stm32:
+        if len(usb_console) > 1:
+            raise RuntimeError(
+                "multiple USB console bridges found; select one with --stm32-port: "
+                + ", ".join(port.device for port in usb_console)
+            )
+        return "stm32", usb_console[0].device
     if urt2:
         return "urt2", resolve_port(None)
+    if usb_console:
+        return "stm32", usb_console[0].device
     raise RuntimeError(
-        "no STM32 console or URT-2 found; run 'spotctl ports'"
+        "no SpotOMG Bluetooth bridge, ST-LINK console, or URT-2 found; "
+        "run 'spotctl ports'"
     )
 
 
@@ -777,7 +833,7 @@ def console_line_for(args: argparse.Namespace) -> str:
                 "STM32 console always moves all twelve joints"
             )
         return command
-    if command in {"targets", "gaitdiag", "baldiag"}:
+    if command in {"targets", "status", "gaitdiag", "baldiag"}:
         return command
     if command == "profile":
         if args.speed is None and args.accel is None:

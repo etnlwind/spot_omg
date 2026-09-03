@@ -478,6 +478,19 @@ static void command_read(AppConsole *console, char *id_text)
     write_text(console, message);
 }
 
+static void command_status(AppConsole *console)
+{
+    write_text(console, "Servo status (12 configured IDs):\r\n");
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        char id_text[4];
+        (void)snprintf(id_text,
+                       sizeof(id_text),
+                       "%u",
+                       (unsigned int)g_robot_servo_ids[index]);
+        command_read(console, id_text);
+    }
+}
+
 static void command_move(AppConsole *console,
                          char *id_text,
                          char *position_text)
@@ -1744,6 +1757,8 @@ static void execute_line(AppConsole *console)
         command_linestate(console);
     } else if (strcmp(command, "read") == 0) {
         command_read(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "status") == 0) {
+        command_status(console);
     } else if (strcmp(command, "move") == 0) {
         char *id = strtok(NULL, " \t");
         char *position = strtok(NULL, " \t");
@@ -1930,6 +1945,7 @@ void app_console_print_help(AppConsole *console)
                "  read ID          read position/load/current/state\r\n"
                "  move ID RAW      safe single move, max delta 256 ticks\r\n"
                "  targets          print calibrated stand raw targets\r\n"
+               "  status           read health state from all 12 servos\r\n"
                "  profile [S A]   show/set speed 1..3400, acceleration 0..254\r\n"
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"
