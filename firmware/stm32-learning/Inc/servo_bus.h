@@ -26,6 +26,9 @@ typedef struct
     UART_HandleTypeDef *uart;
     uint32_t timeout_ms;
     uint8_t last_servo_error;
+    uint32_t read_retry_attempts;
+    uint32_t read_retry_recoveries;
+    uint32_t read_retry_failures;
 } ServoBus;
 
 void servo_bus_init(ServoBus *bus,
@@ -62,6 +65,8 @@ ServoBusResult servo_bus_sync_write(ServoBus *bus,
                                     const uint8_t *servo_ids,
                                     const uint8_t *items,
                                     size_t servo_count);
+
+void servo_bus_clear_retry_diagnostics(ServoBus *bus);
 
 const char *servo_bus_result_string(ServoBusResult result);
 

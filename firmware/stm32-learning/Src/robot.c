@@ -1231,6 +1231,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     robot->gait_balance_was_enabled = robot->balance_enabled;
     balance_trace_reset(robot);
     actuator_diagnostics_reset(&robot->gait_diagnostics);
+    servo_bus_clear_retry_diagnostics(robot->bus);
     robot->gait_diagnostics_active = true;
     actuator_rate_limiter_init(&robot->trot3_limiter);
     robot->trot3_limited_frames = 0U;

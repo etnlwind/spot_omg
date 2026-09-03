@@ -154,8 +154,22 @@ static void command_ping(AppConsole *console, char *id_text)
     print_bus_result(console, (uint8_t)id, result);
 }
 
+static void print_bus_retry_diagnostics(AppConsole *console)
+{
+    const ServoBus *bus = console->robot->bus;
+    char message[112];
+    (void)snprintf(message,
+                   sizeof(message),
+                   "Bus read retries: attempts=%lu recovered=%lu failed=%lu\r\n",
+                   (unsigned long)bus->read_retry_attempts,
+                   (unsigned long)bus->read_retry_recoveries,
+                   (unsigned long)bus->read_retry_failures);
+    write_text(console, message);
+}
+
 static void command_scan(AppConsole *console)
 {
+    servo_bus_clear_retry_diagnostics(console->robot->bus);
     write_text(console, "Scanning configured IDs 1..12\r\n");
     for (uint8_t id = 1U; id <= ROBOT_JOINT_COUNT; ++id) {
         ServoBusResult result = sts3215_ping(console->robot->bus, id);
@@ -170,6 +184,7 @@ static void command_scan(AppConsole *console)
             print_bus_result(console, id, result);
         }
     }
+    print_bus_retry_diagnostics(console);
 }
 
 static void command_uarttest(AppConsole *console)
@@ -480,6 +495,7 @@ static void command_read(AppConsole *console, char *id_text)
 
 static void command_status(AppConsole *console)
 {
+    servo_bus_clear_retry_diagnostics(console->robot->bus);
     write_text(console, "Servo status (12 configured IDs):\r\n");
     for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
         char id_text[4];
@@ -489,6 +505,7 @@ static void command_status(AppConsole *console)
                        (unsigned int)g_robot_servo_ids[index]);
         command_read(console, id_text);
     }
+    print_bus_retry_diagnostics(console);
 }
 
 static void command_move(AppConsole *console,
@@ -737,6 +754,8 @@ static void command_safety(AppConsole *console)
         (unsigned int)safety->implausible_samples);
     write_text(console, message);
 
+    print_bus_retry_diagnostics(console);
+
     (void)snprintf(
         message,
         sizeof(message),
@@ -763,6 +782,7 @@ static void command_gait_diagnostics(AppConsole *console)
 
     if (diagnostics == NULL || diagnostics->total_samples == 0U) {
         write_text(console, "Gait diagnostics: no samples yet\r\n");
+        print_bus_retry_diagnostics(console);
         return;
     }
 
@@ -781,6 +801,7 @@ static void command_gait_diagnostics(AppConsole *console)
         (unsigned int)console->robot->balance_late_frames,
         (unsigned long)console->robot->trot3_limited_frames);
     write_text(console, message);
+    print_bus_retry_diagnostics(console);
 
     (void)snprintf(
         message,

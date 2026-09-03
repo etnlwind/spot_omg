@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 import os
@@ -343,6 +344,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     balance.add_argument(
         "mode", nargs="?", choices=("full", "normal", "on", "off", "status")
+    )
+
+    firmware = commands.add_parser(
+        "firmware", help="update bridge firmware over Bluetooth"
+    )
+    firmware_targets = firmware.add_subparsers(
+        dest="firmware_target", required=True
+    )
+    esp32_firmware = firmware_targets.add_parser(
+        "esp32", help="send an ESP32 .bin image to the paired bridge"
+    )
+    esp32_firmware.add_argument("image", type=Path)
+    esp32_firmware.add_argument(
+        "--chunk-size", type=int, default=256,
+        help="acknowledged Bluetooth block size in bytes (default: 256)",
     )
 
     console = commands.add_parser(
@@ -1959,6 +1975,127 @@ def run_walk(
         )
 
 
+OTA_RESPONSE_PREFIX = b"$SPOTOTA "
+
+
+def resolve_bluetooth_update_port(explicit_port: str | None) -> str:
+    """Select only the paired SpotOMG SPP port for an ESP32 update."""
+    if explicit_port:
+        return explicit_port
+    paired = [port for port in serial_ports() if port.is_spot_bluetooth]
+    if len(paired) == 1:
+        return paired[0].device
+    if not paired:
+        bluetooth = [port for port in serial_ports() if port.is_bluetooth]
+        detail = (
+            "; Bluetooth ports found: "
+            + ", ".join(port.device for port in bluetooth)
+            if bluetooth else ""
+        )
+        raise RuntimeError(
+            "paired SpotOMG Bluetooth port not found; pair SpotOMG-Bridge "
+            "in Windows, run 'spotctl ports', or select it with --port" + detail
+        )
+    raise RuntimeError(
+        "multiple SpotOMG Bluetooth ports found; select one with --port: "
+        + ", ".join(port.device for port in paired)
+    )
+
+
+def _read_ota_response(serial_port, timeout: float) -> str:
+    deadline = time.monotonic() + timeout
+    buffered = bytearray()
+    while time.monotonic() < deadline:
+        value = serial_port.read(1)
+        if not value:
+            continue
+        if value == b"\n":
+            line = bytes(buffered).strip()
+            buffered.clear()
+            if line.startswith(OTA_RESPONSE_PREFIX):
+                return line.decode("ascii", errors="replace")
+        elif len(buffered) < 512:
+            buffered.extend(value)
+        else:
+            buffered.clear()
+    raise RuntimeError("Bluetooth firmware update response timed out")
+
+
+def update_esp32_firmware(args: argparse.Namespace) -> int:
+    """Atomically send one PlatformIO ESP32 application image over SPP."""
+    image = args.image.expanduser().resolve()
+    if not image.is_file():
+        raise ValueError(f"firmware image not found: {image}")
+    if image.suffix.lower() != ".bin":
+        raise ValueError("ESP32 firmware image must be a .bin file")
+    if args.chunk_size != 256:
+        raise ValueError("chunk-size must be 256 for this OTA protocol version")
+    image_size = image.stat().st_size
+    if image_size <= 0:
+        raise ValueError("firmware image is empty")
+
+    digest = hashlib.md5()
+    with image.open("rb") as source:
+        for chunk in iter(lambda: source.read(64 * 1024), b""):
+            digest.update(chunk)
+    md5 = digest.hexdigest()
+    port = resolve_bluetooth_update_port(args.port)
+    print(f"ports:[{port}] link=bluetooth-ota")
+    print(f"ESP32 image: {image} ({image_size} bytes, md5={md5})")
+
+    try:
+        import serial
+    except ImportError as exc:
+        raise ImportError(
+            "pyserial is required; run: pip install -r requirements.txt"
+        ) from exc
+
+    with serial.Serial(
+        port, CONSOLE_BAUDRATE, timeout=0.2, write_timeout=10.0
+    ) as connection:
+        connection.reset_input_buffer()
+        header = f"$SPOTOTA ESP32 {image_size} {md5}\n".encode("ascii")
+        connection.write(header)
+        connection.flush()
+        # Erasing the inactive OTA partition can take several seconds on
+        # inexpensive flash chips, especially while powered in the robot.
+        response = _read_ota_response(connection, 30.0)
+        if response != "$SPOTOTA READY":
+            raise RuntimeError(response.removeprefix("$SPOTOTA "))
+
+        sent = 0
+        next_report = 10
+        with image.open("rb") as source:
+            while True:
+                chunk = source.read(args.chunk_size)
+                if not chunk:
+                    break
+                written = connection.write(chunk)
+                if written != len(chunk):
+                    raise RuntimeError(
+                        f"Bluetooth short write: {written}/{len(chunk)} bytes"
+                    )
+                sent += written
+                connection.flush()
+                acknowledgement = _read_ota_response(connection, 15.0)
+                expected_acknowledgement = f"$SPOTOTA ACK {sent}"
+                if acknowledgement != expected_acknowledgement:
+                    raise RuntimeError(
+                        "unexpected firmware acknowledgement: "
+                        + acknowledgement
+                    )
+                progress = sent * 100 // image_size
+                if progress >= next_report:
+                    print(f"Uploading: {progress}%")
+                    next_report = progress + 10
+        response = _read_ota_response(connection, 30.0)
+        if response != "$SPOTOTA OK":
+            raise RuntimeError(response.removeprefix("$SPOTOTA "))
+
+    print("ESP32 firmware verified; bridge is restarting")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -1980,6 +2117,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "console":
             return run_console(args)
+
+        if args.command == "firmware":
+            return update_esp32_firmware(args)
 
         transport, port = resolve_transport(args)
         announced = f"{port}:{args.tcp_port}" if transport == "tcp" else port

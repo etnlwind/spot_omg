@@ -6,6 +6,8 @@
 #include <string.h>
 
 #define SERVO_BUS_INTER_REQUEST_MS 1U
+#define SERVO_BUS_READ_RETRY_COUNT 1U
+#define SERVO_BUS_RETRY_DELAY_MS   1U
 
 static bool timeout_elapsed(uint32_t started_at, uint32_t timeout_ms)
 {
@@ -113,6 +115,26 @@ void servo_bus_init(ServoBus *bus,
     bus->uart = uart;
     bus->timeout_ms = timeout_ms;
     bus->last_servo_error = 0U;
+    bus->read_retry_attempts = 0U;
+    bus->read_retry_recoveries = 0U;
+    bus->read_retry_failures = 0U;
+}
+
+static bool retryable_read_result(ServoBusResult result)
+{
+    return result == SERVO_BUS_TIMEOUT ||
+           result == SERVO_BUS_HAL_ERROR ||
+           result == SERVO_BUS_PROTOCOL_ERROR;
+}
+
+void servo_bus_clear_retry_diagnostics(ServoBus *bus)
+{
+    if (bus == NULL) {
+        return;
+    }
+    bus->read_retry_attempts = 0U;
+    bus->read_retry_recoveries = 0U;
+    bus->read_retry_failures = 0U;
 }
 
 ServoBusResult servo_bus_request(ServoBus *bus,
@@ -238,15 +260,28 @@ ServoBusResult servo_bus_request(ServoBus *bus,
 
 ServoBusResult servo_bus_ping(ServoBus *bus, uint8_t servo_id)
 {
-    return servo_bus_request(bus,
-                             servo_id,
-                             FEETECH_INST_PING,
-                             NULL,
-                             0U,
-                             NULL,
-                             0U,
-                             NULL,
-                             true);
+    ServoBusResult result = SERVO_BUS_INVALID_ARGUMENT;
+    for (uint32_t attempt = 0U; attempt <= SERVO_BUS_READ_RETRY_COUNT;
+         ++attempt) {
+        result = servo_bus_request(bus, servo_id, FEETECH_INST_PING,
+                                   NULL, 0U, NULL, 0U, NULL, true);
+        if (result == SERVO_BUS_OK) {
+            if (attempt != 0U) {
+                ++bus->read_retry_recoveries;
+            }
+            return result;
+        }
+        if (!retryable_read_result(result) ||
+            attempt == SERVO_BUS_READ_RETRY_COUNT) {
+            break;
+        }
+        ++bus->read_retry_attempts;
+        HAL_Delay(SERVO_BUS_RETRY_DELAY_MS);
+    }
+    if (bus != NULL && retryable_read_result(result)) {
+        ++bus->read_retry_failures;
+    }
+    return result;
 }
 
 ServoBusResult servo_bus_read(ServoBus *bus,
@@ -264,21 +299,33 @@ ServoBusResult servo_bus_read(ServoBus *bus,
 
     parameters[0] = address;
     parameters[1] = (uint8_t)data_size;
-    ServoBusResult result = servo_bus_request(bus,
-                                              servo_id,
-                                              FEETECH_INST_READ,
-                                              parameters,
-                                              sizeof(parameters),
-                                              data,
-                                              data_size,
-                                              &response_count,
-                                              true);
-    if (result != SERVO_BUS_OK) {
-        return result;
+    ServoBusResult result = SERVO_BUS_INVALID_ARGUMENT;
+    for (uint32_t attempt = 0U; attempt <= SERVO_BUS_READ_RETRY_COUNT;
+         ++attempt) {
+        response_count = 0U;
+        result = servo_bus_request(bus, servo_id, FEETECH_INST_READ,
+                                   parameters, sizeof(parameters), data,
+                                   data_size, &response_count, true);
+        if (result == SERVO_BUS_OK && response_count == data_size) {
+            if (attempt != 0U) {
+                ++bus->read_retry_recoveries;
+            }
+            return SERVO_BUS_OK;
+        }
+        if (result == SERVO_BUS_OK) {
+            result = SERVO_BUS_PROTOCOL_ERROR;
+        }
+        if (!retryable_read_result(result) ||
+            attempt == SERVO_BUS_READ_RETRY_COUNT) {
+            break;
+        }
+        ++bus->read_retry_attempts;
+        HAL_Delay(SERVO_BUS_RETRY_DELAY_MS);
     }
-
-    return response_count == data_size ? SERVO_BUS_OK
-                                       : SERVO_BUS_PROTOCOL_ERROR;
+    if (bus != NULL && retryable_read_result(result)) {
+        ++bus->read_retry_failures;
+    }
+    return result;
 }
 
 ServoBusResult servo_bus_write(ServoBus *bus,
