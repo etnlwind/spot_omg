@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .bus import ServoBus
 from .console import CONSOLE_BAUDRATE, ConsoleError, Stm32Console
-from .transport import TcpTransport
+from .transport import BleTransport, TcpTransport
 from .contact import LEGS, LoadContactEstimator
 from .load_profile import DynamicLoadBaseline
 from .spot import GaitParameters, SpotConfig, SpotRobot
@@ -25,6 +25,7 @@ from .sts3215 import STS3215
 DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config" / "joints.json"
 DEFAULT_PROFILE_DIR = Path(__file__).resolve().parents[1] / "logs"
 DEFAULT_TCP_PORT = 3333
+DEFAULT_BLE_NAME = "SpotOMG-Bridge"
 STM32_SAFE_MOVE_DELTA = 256
 STM32_CALIBRATION_TOLERANCE = 4
 STM32_CALIBRATION_POLL_SECONDS = 0.05
@@ -91,12 +92,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument(
         "--via",
-        choices=("auto", "urt2", "stm32", "tcp"),
+        choices=("auto", "urt2", "stm32", "ble", "tcp"),
         default=os.environ.get("SPOT_TRANSPORT", "auto"),
         help=(
             "which link to use; auto picks it from the attached USB device "
             "(default: auto, or SPOT_TRANSPORT)"
         ),
+    )
+    parser.add_argument(
+        "--ble-name",
+        default=os.environ.get("SPOT_BLE_NAME", DEFAULT_BLE_NAME),
+        help=f"BLE bridge name (default: {DEFAULT_BLE_NAME})",
     )
     parser.add_argument(
         "--stm32-port",
@@ -484,6 +490,12 @@ class PortInfo:
 
     @property
     def is_spot_bluetooth(self) -> bool:
+        # Recent pyserial releases on macOS may expose paired RFCOMM ports
+        # without Bluetooth metadata (description/hwid are both ``n/a``).
+        # The SPP service name is still preserved in the device path.
+        device_name = self.device.rsplit("/", 1)[-1].lower()
+        if "spotomg-bridge" in device_name:
+            return True
         compact_hwid = (self.hwid or "").replace(":", "").replace("-", "").upper()
         return self.is_bluetooth and SPOT_BLUETOOTH_ADDRESS in compact_hwid
 
@@ -754,6 +766,8 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
         return "tcp", args.host
     if args.via == "tcp":
         raise RuntimeError("--via tcp requires --host HOST")
+    if args.via == "ble":
+        return "ble", args.ble_name
     if args.via == "stm32":
         return "stm32", resolve_console_port(args.stm32_port)
     if args.via == "urt2":
@@ -781,16 +795,6 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
     automatically_stm32 = (
         CONSOLE_ONLY_COMMANDS | DUAL_COMMANDS | shared_bridge_commands
     )
-    # The installed robot bridge is Bluetooth-only for control.  Prefer its
-    # paired SPP port even while the ESP32 USB cable is attached for flashing
-    # or diagnostics. Explicit --stm32-port/--port/--via options still win.
-    if bluetooth_console and args.command in automatically_stm32:
-        if len(bluetooth_console) > 1:
-            raise RuntimeError(
-                "multiple SpotOMG Bluetooth ports found; select one with --stm32-port: "
-                + ", ".join(port.device for port in bluetooth_console)
-            )
-        return "stm32", bluetooth_console[0].device
     if usb_console and args.command in automatically_stm32:
         if len(usb_console) > 1:
             raise RuntimeError(
@@ -798,10 +802,16 @@ def resolve_transport(args: argparse.Namespace) -> tuple[str, str]:
                 + ", ".join(port.device for port in usb_console)
             )
         return "stm32", usb_console[0].device
+    # A legacy paired SPP device may leave a /dev/cu entry behind.  Use the
+    # new GATT service instead of attempting that stale virtual serial port.
+    if bluetooth_console and args.command in automatically_stm32:
+        return "ble", args.ble_name
     if urt2:
         return "urt2", resolve_port(None)
     if usb_console:
         return "stm32", usb_console[0].device
+    if args.command in automatically_stm32:
+        return "ble", args.ble_name
     raise RuntimeError(
         "no SpotOMG Bluetooth bridge, ST-LINK console, or URT-2 found; "
         "run 'spotctl ports'"
@@ -824,6 +834,8 @@ def open_console(args: argparse.Namespace, kind: str, endpoint: str) -> Stm32Con
         return Stm32Console(
             f"{endpoint}:{args.tcp_port}", transport=transport
         )
+    if kind == "ble":
+        return Stm32Console(endpoint, transport=BleTransport(endpoint))
     return Stm32Console(endpoint, args.console_baudrate)
 
 
@@ -903,6 +915,10 @@ def run_console(args: argparse.Namespace) -> int:
     """Open the STM32 console and dispatch the requested console action."""
     if args.host:
         kind, port = "tcp", args.host
+    elif args.via == "ble" or (
+        args.via == "auto" and args.stm32_port is None
+    ):
+        kind, port = "ble", args.ble_name
     else:
         if args.via == "tcp":
             raise RuntimeError("--via tcp requires --host HOST")
@@ -2124,7 +2140,7 @@ def main(argv: list[str] | None = None) -> int:
         transport, port = resolve_transport(args)
         announced = f"{port}:{args.tcp_port}" if transport == "tcp" else port
         announce_port(transport, announced)
-        if transport in {"stm32", "tcp"}:
+        if transport in {"stm32", "ble", "tcp"}:
             if args.command == "calibrate":
                 return run_stm32_calibration_command(args, port, transport)
             if args.command in {"capture-stand", "save-stand"}:

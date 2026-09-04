@@ -1925,6 +1925,27 @@ void app_console_on_rx_complete(AppConsole *console,
     (void)HAL_UART_Receive_IT(console->uart, &console->rx_byte, 1U);
 }
 
+void app_console_on_uart_error(AppConsole *console,
+                               UART_HandleTypeDef *uart)
+{
+    if (console == NULL || uart == NULL || uart != console->uart) {
+        return;
+    }
+
+    /*
+     * HAL aborts interrupt reception after an overrun.  This is easy to hit
+     * when an ESP32 SPP client disconnects while bytes are still in flight;
+     * without rearming reception the console stays silent until STM32 reset.
+     * Drop a possible partial command and make the one-byte receiver live
+     * again for the next Bluetooth session.
+     */
+    console->line_length = 0U;
+    console->line_ready = false;
+    console->overflow = false;
+    __HAL_UART_CLEAR_OREFLAG(uart);
+    (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
+}
+
 void app_console_poll(AppConsole *console)
 {
     if (console == NULL || !console->line_ready) {

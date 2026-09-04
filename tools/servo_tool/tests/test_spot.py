@@ -1810,6 +1810,12 @@ SPOT_BLUETOOTH = PortInfo(
     ),
 )
 
+MACOS_SPOT_BLUETOOTH = PortInfo(
+    device="/dev/cu.SpotOMG-Bridge",
+    description="n/a",
+    hwid="n/a",
+)
+
 
 class ConsolePortTest(unittest.TestCase):
     def test_usb_numbers_parse_from_ints_and_hex_strings(self) -> None:
@@ -1942,23 +1948,32 @@ class ConsolePortTest(unittest.TestCase):
                 ("urt2", URT2.device),
             )
 
-    def test_transport_prefers_spot_bluetooth_even_with_esp32_usb(self) -> None:
+    def test_transport_replaces_legacy_spot_spp_with_ble(self) -> None:
         with patch(
             "servo.cli.serial_ports",
             return_value=[SPOT_BLUETOOTH, ESP32_USB],
         ):
             self.assertEqual(
                 resolve_transport(parse_args(["stand"])),
-                ("stm32", SPOT_BLUETOOTH.device),
+                ("ble", "SpotOMG-Bridge"),
             )
             self.assertEqual(
                 resolve_transport(parse_args(["status"])),
-                ("stm32", SPOT_BLUETOOTH.device),
+                ("ble", "SpotOMG-Bridge"),
             )
         with patch("servo.cli.serial_ports", return_value=[SPOT_BLUETOOTH]):
             self.assertEqual(
                 resolve_transport(parse_args(["stand"])),
-                ("stm32", SPOT_BLUETOOTH.device),
+                ("ble", "SpotOMG-Bridge"),
+            )
+
+    def test_transport_detects_macos_spot_bluetooth_by_device_name(self) -> None:
+        with patch(
+            "servo.cli.serial_ports", return_value=[MACOS_SPOT_BLUETOOTH]
+        ):
+            self.assertEqual(
+                resolve_transport(parse_args(["targets"])),
+                ("ble", "SpotOMG-Bridge"),
             )
 
     def test_transport_honours_an_explicit_port(self) -> None:

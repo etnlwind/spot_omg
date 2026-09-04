@@ -235,13 +235,23 @@ class Stm32Console:
         """Drop any boot banner and leave the console at a known prompt.
 
         Sends ``echo off`` because a bare newline is discarded by the
-        firmware and would never produce a prompt to synchronize on.
+        firmware and would never produce a prompt to synchronize on.  A
+        newly opened Bluetooth SPP port can accept a write before its RFCOMM
+        link is ready, so retry the harmless command while synchronizing.
         """
         self._ensure_open()
         with self._lock:
             self._serial.reset_input_buffer()
-            self._write_line("echo off")
-            self._read_until_prompt(time.monotonic() + timeout)
+            deadline = time.monotonic() + timeout
+            while True:
+                self._write_line("echo off")
+                attempt_deadline = min(deadline, time.monotonic() + 1.0)
+                try:
+                    self._read_until_prompt(attempt_deadline)
+                    return
+                except ConsoleError:
+                    if time.monotonic() >= deadline:
+                        raise
 
     def watch(self, on_line) -> None:
         """Relay lines the firmware emits on its own until interrupted.

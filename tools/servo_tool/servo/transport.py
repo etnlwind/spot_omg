@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 import socket
+import threading
+import time
 from types import TracebackType
 from typing import Protocol, runtime_checkable
 
@@ -88,6 +92,142 @@ class SerialTransport:
             self._serial.close()
 
     def __enter__(self) -> "SerialTransport":
+        return self.open()
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+
+class BleTransport:
+    """Synchronous byte stream over the SpotOMG Nordic UART BLE service."""
+
+    SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+    RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+    TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+
+    def __init__(self, name: str = "SpotOMG-Bridge", timeout: float = 0.2) -> None:
+        self.name = name
+        self.timeout = timeout
+        self._loop = asyncio.new_event_loop()
+        self._thread: threading.Thread | None = None
+        self._client = None
+        self._buffer = bytearray()
+        self._condition = threading.Condition()
+
+    @property
+    def is_open(self) -> bool:
+        return self._client is not None and self._client.is_connected
+
+    @property
+    def in_waiting(self) -> int:
+        with self._condition:
+            return len(self._buffer)
+
+    def _run_loop(self) -> None:
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    def _submit(self, coroutine, timeout: float = 15.0):
+        future = asyncio.run_coroutine_threadsafe(coroutine, self._loop)
+        return future.result(timeout=timeout)
+
+    async def _connect(self) -> None:
+        try:
+            from bleak import BleakClient, BleakScanner
+        except ImportError as exc:
+            raise ImportError("BLE support requires: pip install bleak") from exc
+        device = await BleakScanner.find_device_by_filter(
+            lambda device, advertisement: (
+                device.name == self.name or advertisement.local_name == self.name
+                or self.SERVICE_UUID in [u.lower() for u in advertisement.service_uuids]
+            ),
+            timeout=10.0,
+        )
+        if device is None:
+            raise ConnectionError(f"BLE device {self.name!r} not found")
+        self._client = BleakClient(device)
+        await self._client.connect()
+        await self._client.start_notify(self.TX_UUID, self._on_notification)
+
+    def _on_notification(self, _sender, data: bytearray) -> None:
+        with self._condition:
+            self._buffer.extend(data)
+            self._condition.notify_all()
+
+    def open(self) -> "BleTransport":
+        if self.is_open:
+            return self
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+        try:
+            self._submit(self._connect(), timeout=15.0)
+        except Exception:
+            self.close()
+            raise
+        return self
+
+    def write(self, data: bytes) -> int:
+        if not self.is_open:
+            raise ConnectionError("BLE transport is not connected")
+        for offset in range(0, len(data), 180):
+            self._submit(
+                self._client.write_gatt_char(
+                    self.RX_UUID, data[offset:offset + 180], response=False
+                )
+            )
+        return len(data)
+
+    def read(self, size: int = 1) -> bytes:
+        if size <= 0:
+            return b""
+        deadline = time.monotonic() + self.timeout
+        with self._condition:
+            while not self._buffer:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return b""
+                self._condition.wait(remaining)
+            data = bytes(self._buffer[:size])
+            del self._buffer[:size]
+            return data
+
+    def readline(self, size: int = -1) -> bytes:
+        deadline = time.monotonic() + self.timeout
+        result = bytearray()
+        while size < 0 or len(result) < size:
+            chunk = self.read(1)
+            if not chunk or chunk == b"\n":
+                result.extend(chunk)
+                break
+            result.extend(chunk)
+            if time.monotonic() >= deadline:
+                break
+        return bytes(result)
+
+    def flush(self) -> None:
+        return None
+
+    def reset_input_buffer(self) -> None:
+        with self._condition:
+            self._buffer.clear()
+
+    async def _disconnect(self) -> None:
+        if self._client is not None:
+            if self._client.is_connected:
+                await self._client.disconnect()
+            self._client = None
+
+    def close(self) -> None:
+        if self._thread is None:
+            return
+        try:
+            self._submit(self._disconnect(), timeout=5.0)
+        finally:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._thread.join(timeout=2.0)
+            self._thread = None
+
+    def __enter__(self) -> "BleTransport":
         return self.open()
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:

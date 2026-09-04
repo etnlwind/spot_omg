@@ -40,6 +40,8 @@ void app_console_init(AppConsole *console,
 
 void app_console_on_rx_complete(AppConsole *console,
                                 UART_HandleTypeDef *uart);
+void app_console_on_uart_error(AppConsole *console,
+                               UART_HandleTypeDef *uart);
 
 void app_console_poll(AppConsole *console);
 void app_console_print_help(AppConsole *console);

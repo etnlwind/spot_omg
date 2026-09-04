@@ -674,6 +674,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   app_console_on_rx_complete(&wifi_console, huart);
 }
 
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  app_console_on_uart_error(&console, huart);
+  app_console_on_uart_error(&wifi_console, huart);
+}
+
 static void uart_print(const char *text)
 {
   HAL_UART_Transmit(
