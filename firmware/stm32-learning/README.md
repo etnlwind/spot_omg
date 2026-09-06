@@ -282,8 +282,44 @@ trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
 trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
 trot3 [C [MS]]   65% duty 중첩 trot + limiter/진단; 기본 1400ms, 진단 최대 2400ms
 trot4 [C [MS]]   자세 완화 trot; 60% duty, 70% 경로, smootherstep; 기본 1600ms
+crab [left|right [C [MS]]] 3발 이상 지지 crawl 게걸음; 기본 left, 1회, 4000ms
 
-`trot3`/`trot4` limiter는 혼합 모터 구성을 사용합니다. J1/J3 STS3215는
+### Trot4 실기 보정과 crab crawl v2
+
+현재 제어 revision은 `crab-crawl-v2-t4fr2-v5`입니다. 기구적으로 대칭인
+`stand11` 자세를 기준으로 확인했을 때 trot4에서만 FR 다리가 안쪽으로 모이는 현상이
+있어, trot4의 ID4(FR J1)에 바깥 방향 2° bias를 추가했습니다. 이 bias는 trot4
+정책에만 적용되며 `stand`, `stand11`, 다른 보행 및 캘리브레이션 중심값은 바꾸지
+않습니다. 보행 amplitude가 줄어들면 bias도 함께 비례하여 줄어듭니다.
+
+초기 crab v1은 좌우 이동을 대각선 두 발 지지 trot로 구현했습니다. 실기에서
+`crab left 1 2400`을 실행했을 때 횡방향 하중 전달 중 자세를 잃었고 tilt safety가
+stand 복귀를 요청했습니다. 당시 진단은 최저 전압 10.4 V, lag 5회(모두 voltage
+droop 동반), RL J3 최대 오차 190 tick(16.7°), RR J3 최대 오차 258 tick(22.7°),
+roll/pitch 약 14.8°/-7.5°였습니다. 이는 단순히 발을 더 높이 드는 문제가 아니라,
+대각선 두 지지점만으로 몸체의 횡방향 모멘트를 버티게 만든 지지 패턴 자체의
+문제였습니다. tilt safety에 의한 중단은 의도한 보호 동작입니다.
+
+crab v2는 다음과 같이 보수적인 four-beat crawl로 다시 설계했습니다.
+
+- 스윙 순서: FL -> RR -> FR -> RL
+- 한 번에 한 다리만 스윙하여 항상 3개 이상의 접지 다리를 유지
+- 각 20% 스윙 사이에 5%의 네 발 접지 overlap 배치
+- duty 80%, J1 횡방향 진폭 2°, 발 리프트 0.14 link
+- smootherstep 보간으로 stance/swing 경계의 속도 불연속 완화
+- 기본 주기 4000 ms, 허용 범위 3000..5000 ms; API와 CLI 양쪽에서 검증
+- left/right는 J1 횡방향 성분만 반전하고 J2/J3 리프트 궤적은 동일하게 유지
+- J1/J3 STS3215와 J2 STS3250의 서로 다른 속도·가속도 제한을 actuator limiter에 적용
+- 기존 step-sync, tracking/voltage/lag 진단, tilt safety와 stand 복귀 경로를 그대로 사용
+
+실기 검증은 로봇을 바로 잡을 수 있도록 지지한 상태에서 가장 느린 명령부터
+시작합니다. 첫 시험은 `spotctl crab left 1 5000`이며, 성공하면 right 방향을 같은
+조건으로 확인한 뒤에만 주기를 줄입니다. v1에서 사용한 2400 ms는 v2에서 거부됩니다.
+정지나 휘청임이 있으면 반복 실행하지 말고 `spotctl gaitdiag`와
+`spotctl baldiag` 결과에서 최저 전압, J3 peak error, lag+droop 및 tilt snapshot을
+먼저 확인합니다.
+
+`trot3`/`trot4`/`crab` limiter는 혼합 모터 구성을 사용합니다. J1/J3 STS3215는
 243°/s·4050°/s², J2 STS3250은 406°/s·6767°/s²로 제한합니다. 추종 지연도
 STS3215는 96 tick이 2회, STS3250은 144 tick이 3회 연속일 때 derate를 권고하며,
 `gaitdiag`의 `lag_rule=ticks/samples`에서 적용된 기준을 확인할 수 있습니다.

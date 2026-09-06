@@ -102,7 +102,7 @@ def test_trot4_has_reduced_path_and_four_foot_overlap() -> None:
     assert support_during_swing == {"FL", "RR"}
     assert support_at_overlap == set(LEGS)
     assert abs(swing[("FR", 3)] - 90.0) < abs(trot3_swing[("FR", 3)] - 90.0)
-    assert start[("FL", 1)] != start[("FR", 1)]
+    assert overlap[("FL", 1)] != overlap[("FR", 1)]
 
 
 def test_trot4_zero_amplitude_is_the_calibrated_stand_geometry() -> None:
@@ -114,6 +114,38 @@ def test_trot4_zero_amplitude_is_the_calibrated_stand_geometry() -> None:
             assert stopped[(leg, 1)] == pytest.approx(0.0)
             assert stopped[(leg, 2)] == pytest.approx(45.0)
             assert stopped[(leg, 3)] == pytest.approx(90.0)
+
+
+def test_trot4_biases_only_fr_j1_outward_by_two_degrees() -> None:
+    policy = SharedGaitPolicy()
+    targets, _ = policy.trot4_targets(0.25, 1.0)
+
+    # Physical linkage testing established that negative FR J1 is outward.
+    # FR and RL otherwise share the same diagonal-transfer target here.
+    assert targets[("FR", 1)] == pytest.approx(targets[("RL", 1)] - 2.0)
+    assert targets[("FL", 1)] == pytest.approx(targets[("RR", 1)])
+
+
+def test_crab_has_overlap_vertical_clearance_and_mirrored_directions() -> None:
+    policy = SharedGaitPolicy()
+    left, support = policy.crab_targets(0.35, 1.0, 1)
+    right, _ = policy.crab_targets(0.35, 1.0, -1)
+    stopped, stopped_support = policy.crab_targets(0.35, 0.0, 1)
+
+    assert support == {"FL", "FR", "RL"}
+    assert stopped_support == support
+    for leg in LEGS:
+        assert right[(leg, 1)] == pytest.approx(-left[(leg, 1)])
+        assert right[(leg, 2)] == pytest.approx(left[(leg, 2)])
+        assert right[(leg, 3)] == pytest.approx(left[(leg, 3)])
+        assert stopped[(leg, 1)] == pytest.approx(0.0)
+        assert stopped[(leg, 2)] == pytest.approx(45.0)
+        assert stopped[(leg, 3)] == pytest.approx(90.0)
+
+    # RR alone is in swing at this phase and must clear every stance foot.
+    assert left[("RR", 3)] > left[("FL", 3)]
+    assert left[("RR", 3)] > left[("FR", 3)]
+    assert left[("RR", 3)] > left[("RL", 3)]
 
 
 def test_trot4_phase_boundaries_have_small_acceleration_jump() -> None:

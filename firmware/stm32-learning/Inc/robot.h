@@ -67,7 +67,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "t4-j1-neutral-v2"
+#define ROBOT_CONTROL_REV "crab-crawl-v2-t4fr2-v5"
 
 typedef struct
 {
@@ -253,6 +253,10 @@ RobotResult robot_trot3(RobotController *robot,
 RobotResult robot_trot4(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms);
+RobotResult robot_crab(RobotController *robot,
+                       int8_t direction,
+                       uint8_t cycles,
+                       uint16_t period_ms);
 RobotResult robot_jump(RobotController *robot,
                        uint8_t cycles,
                        uint16_t period_ms);

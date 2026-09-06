@@ -1737,7 +1737,7 @@ static void command_trot4(AppConsole *console,
         sizeof(message),
         "Starting posture-smooth trot4: cycles=%lu period=%lums "
         "duty=60%% path=70%% fold=J2:%u/J3:%u shift=1.0deg "
-        "balance=%s/%s rev=%s\r\n",
+        "FR-J1=-2.0deg balance=%s/%s rev=%s\r\n",
         (unsigned long)cycles,
         (unsigned long)period_ms,
         (unsigned int)GAIT_POLICY_TROT4_FOLD_J2_DEG,
@@ -1749,6 +1749,60 @@ static void command_trot4(AppConsole *console,
     const RobotResult result = robot_trot4(console->robot,
                                            (uint8_t)cycles,
                                            (uint16_t)period_ms);
+    print_robot_result(console, result);
+    command_gait_diagnostics(console);
+    if (result == ROBOT_TILT_LIMIT) {
+        command_balance_diagnostics(console);
+    }
+}
+
+static void command_crab(AppConsole *console,
+                         char *direction_text,
+                         char *cycles_text,
+                         char *period_text)
+{
+    int8_t direction = 0;
+    uint32_t cycles = 1U;
+    uint32_t period_ms = GAIT_POLICY_CRAB_PERIOD_MS;
+    if (direction_text == NULL || strcmp(direction_text, "left") == 0) {
+        direction = 1;
+    } else if (direction_text != NULL && strcmp(direction_text, "right") == 0) {
+        direction = -1;
+    }
+    if (direction == 0 ||
+        (cycles_text != NULL && !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text,
+                    GAIT_POLICY_CRAB_MIN_PERIOD_MS,
+                    GAIT_POLICY_CRAB_MAX_PERIOD_MS,
+                    &period_ms))) {
+        write_text(console,
+                   "usage: crab [left|right [CYCLES [PERIOD_MS]]]; "
+                   "cycles=1..10 period=3000..5000 (default 4000)\r\n");
+        return;
+    }
+    if (!actuator_profile_supports_limited_gait(
+            console->robot->profile_speed,
+            console->robot->profile_acceleration)) {
+        write_text(console,
+                   "ERROR: crab requires profile 3400 254; no motion started\r\n");
+        return;
+    }
+    char message[208];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Starting crab crawl: direction=%s cycles=%lu period=%lums "
+        "duty=80%% support=3+ J1=2.0deg lift=0.14link balance=%s/%s rev=%s\r\n",
+        direction > 0 ? "left" : "right",
+        (unsigned long)cycles,
+        (unsigned long)period_ms,
+        console->robot->balance_enabled ? "on" : "off",
+        robot_balance_mode_string(console->robot->balance_mode),
+        ROBOT_CONTROL_REV);
+    write_text(console, message);
+    const RobotResult result = robot_crab(
+        console->robot, direction, (uint8_t)cycles, (uint16_t)period_ms);
     print_robot_result(console, result);
     command_gait_diagnostics(console);
     if (result == ROBOT_TILT_LIMIT) {
@@ -1887,6 +1941,11 @@ static void execute_line(AppConsole *console)
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
         command_trot4(console, cycles, period);
+    } else if (strcmp(command, "crab") == 0) {
+        char *direction = strtok(NULL, " \t");
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_crab(console, direction, cycles, period);
     } else if (strcmp(command, "fwupdate") == 0) {
         command_firmware_update(console);
     } else if (strcmp(command, "jump") == 0) {
@@ -2077,6 +2136,7 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)\r\n"
                "  trot4 [C [MS]]   posture-smooth reduced-path trot (default 1600ms)\r\n"
+               "  crab [left|right [C [MS]]] four-beat crawl (default left, 4000ms)\r\n"
                "  fwupdate         torque off and reboot into BLE update bootloader\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"

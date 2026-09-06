@@ -64,6 +64,14 @@ class SharedGaitPolicy:
             ctypes.POINTER(ctypes.c_uint8),
         )
         self._library.spot_gait_trot4_targets.restype = ctypes.c_int
+        self._library.spot_gait_crab_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_int,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_crab_targets.restype = ctypes.c_int
         self._library.spot_gait_jump_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
@@ -258,6 +266,29 @@ class SharedGaitPolicy:
         )
         if not ok:
             raise ValueError("shared C trot4 policy rejected the requested frame")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
+    def crab_targets(
+        self,
+        phase: float,
+        amplitude_scale: float,
+        direction: int,
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return the sideways diagonal gait for direction +1 left/-1 right."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_crab_targets(
+            phase,
+            amplitude_scale,
+            direction,
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C crab policy rejected the requested frame")
         support = {
             leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
         }

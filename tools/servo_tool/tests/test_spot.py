@@ -1750,6 +1750,8 @@ class ConsoleProtocolTest(unittest.TestCase):
         self.assertAlmostEqual(estimate_timeout("trot3 1 1600"), 21.6)
         self.assertAlmostEqual(estimate_timeout("trot3"), 22.2)
         self.assertAlmostEqual(estimate_timeout("trot4"), 21.6)
+        self.assertAlmostEqual(estimate_timeout("crab left"), 24.0)
+        self.assertAlmostEqual(estimate_timeout("crab right 3 4000"), 32.0)
         self.assertAlmostEqual(estimate_timeout("jump 3 1500"), 24.5)
         # Documented defaults apply when the arguments are omitted.
         self.assertAlmostEqual(estimate_timeout("trotplace"), 20.8)
@@ -2072,6 +2074,16 @@ class ConsolePortTest(unittest.TestCase):
             console_line_for(parse_args(["trot4", "1", "1600"])),
             "trot4 1 1600",
         )
+        self.assertEqual(
+            console_line_for(parse_args(["crab", "left", "1", "4000"])),
+            "crab left 1 4000",
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["crab", "right"])),
+            "crab right",
+        )
+        with self.assertRaisesRegex(ValueError, "3000..5000"):
+            console_line_for(parse_args(["crab", "left", "1", "1000"]))
         with self.assertRaisesRegex(ValueError, "600..2400"):
             console_line_for(parse_args(["trot3", "1", "2401"]))
         self.assertEqual(console_line_for(parse_args(["baldiag"])), "baldiag")

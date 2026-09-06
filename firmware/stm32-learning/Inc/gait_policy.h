@@ -59,6 +59,14 @@ extern "C" {
 #define GAIT_POLICY_TROT4_WEIGHT_SHIFT_DEG 1.0f
 #define GAIT_POLICY_TROT4_FOLD_J2_DEG 70.0f
 #define GAIT_POLICY_TROT4_FOLD_J3_DEG 95.0f
+#define GAIT_POLICY_TROT4_FR_J1_BIAS_DEG (-2.0f)
+
+#define GAIT_POLICY_CRAB_PERIOD_MS 4000U
+#define GAIT_POLICY_CRAB_MIN_PERIOD_MS 3000U
+#define GAIT_POLICY_CRAB_MAX_PERIOD_MS 5000U
+#define GAIT_POLICY_CRAB_DUTY 0.80f
+#define GAIT_POLICY_CRAB_J1_AMPLITUDE_DEG 2.0f
+#define GAIT_POLICY_CRAB_LIFT_HEIGHT 0.14f
 
 #define GAIT_POLICY_JUMP_PERIOD_MS 1200U
 #define GAIT_POLICY_JUMP_CONTROL_HZ 50U
@@ -561,9 +569,81 @@ static inline bool gait_policy_trot4_targets(
          * mechanisms in visibly different directions, even at zero path
          * amplitude.  Trot4 starts from the calibrated straight J1 pose and
          * adds only its deliberately small diagonal load transfer. */
-        targets[leg].j1_deg =
+        const float fr_outward_bias = leg == 1U ?
+            GAIT_POLICY_TROT4_FR_J1_BIAS_DEG * amplitude_scale : 0.0f;
+        targets[leg].j1_deg = fr_outward_bias +
             (float)diagonal_signs[leg] *
             GAIT_POLICY_TROT4_WEIGHT_SHIFT_DEG * transfer * amplitude_scale;
+    }
+    return true;
+}
+
+/*
+ * Sideways four-beat crawl. direction=+1 moves the body left and -1 right.
+ * The end signs map canonical J1 angles to a common world-sideways foot
+ * direction on the mirrored physical hip mechanisms.  The offsets order the
+ * swing legs FL, RR, FR, RL with a four-foot overlap between them, so three
+ * legs always support the body.  During stance all feet travel opposite the
+ * requested body direction; the single swing leg lifts vertically and
+ * returns without adding fore/aft motion.
+ */
+static inline bool gait_policy_crab_targets(
+    float global_phase,
+    float amplitude_scale,
+    int8_t direction,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    static const float phase_offsets[GAIT_POLICY_LEG_COUNT] = {
+        0.80f, 0.30f, 0.05f, 0.55f
+    };
+    static const int8_t lateral_signs[GAIT_POLICY_LEG_COUNT] = {
+        1, 1, -1, -1
+    };
+    float base_forward = 0.0f;
+    float base_down = 0.0f;
+
+    if (targets == NULL || !isfinite(global_phase) ||
+        !isfinite(amplitude_scale) || amplitude_scale < 0.0f ||
+        amplitude_scale > 1.0f || (direction != -1 && direction != 1)) {
+        return false;
+    }
+    gait_policy_leg_forward_kinematics(
+        GAIT_POLICY_SIM_TROT_STANCE_J2_DEG,
+        GAIT_POLICY_SIM_TROT_STANCE_J3_DEG,
+        &base_forward,
+        &base_down);
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        const float local_phase = gait_policy_wrap_phase(
+            global_phase + phase_offsets[leg]);
+        const bool stance = local_phase < GAIT_POLICY_CRAB_DUTY;
+        const float progress = stance ?
+            local_phase / GAIT_POLICY_CRAB_DUTY :
+            (local_phase - GAIT_POLICY_CRAB_DUTY) /
+                (1.0f - GAIT_POLICY_CRAB_DUTY);
+        const float lateral_wave = stance ?
+            1.0f - 2.0f * gait_policy_smootherstep(progress) :
+            -1.0f + 2.0f * gait_policy_smootherstep(progress);
+        float lift_wave = 0.0f;
+        if (!stance) {
+            lift_wave = progress < 0.5f ?
+                gait_policy_smootherstep(progress * 2.0f) :
+                gait_policy_smootherstep((1.0f - progress) * 2.0f);
+        }
+        const float foot_down = base_down - amplitude_scale *
+            GAIT_POLICY_CRAB_LIFT_HEIGHT * lift_wave;
+        if (!gait_policy_leg_inverse_kinematics(
+                base_forward,
+                foot_down,
+                &targets[leg].j2_deg,
+                &targets[leg].j3_deg)) {
+            return false;
+        }
+        targets[leg].j1_deg =
+            (float)(direction * lateral_signs[leg]) *
+            GAIT_POLICY_CRAB_J1_AMPLITUDE_DEG * lateral_wave *
+            amplitude_scale;
+        targets[leg].stance = stance;
     }
     return true;
 }

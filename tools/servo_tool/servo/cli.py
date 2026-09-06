@@ -330,6 +330,13 @@ def build_parser() -> argparse.ArgumentParser:
         motion.add_argument("cycles", type=int, nargs="?")
         motion.add_argument("period_ms", type=int, nargs="?")
 
+    crab = commands.add_parser("crab", help="sideways diagonal gait on the STM32")
+    crab.add_argument(
+        "direction", choices=("left", "right"), nargs="?", default="left"
+    )
+    crab.add_argument("cycles", type=int, nargs="?")
+    crab.add_argument("period_ms", type=int, nargs="?")
+
     commands.add_parser(
         "targets", help="print the STM32 calibrated stand raw targets"
     )
@@ -750,7 +757,7 @@ def run_console_script(
 #: Firmware console commands promoted to top-level spotctl subcommands.
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
-        "trot", "trotplace", "trot2", "trot3", "trot4", "jump", "targets", "status",
+        "trot", "trotplace", "trot2", "trot3", "trot4", "crab", "jump", "targets", "status",
         "gaitdiag", "baldiag", "profile", "imu", "balance"
     }
 )
@@ -890,6 +897,17 @@ def console_line_for(args: argparse.Namespace) -> str:
                 f"{command} PERIOD_MS must be 600..2400"
             )
         parts = [command]
+        if args.cycles is not None:
+            parts.append(str(args.cycles))
+        if args.period_ms is not None:
+            parts.append(str(args.period_ms))
+        return " ".join(parts)
+    if command == "crab":
+        if args.cycles is None and args.period_ms is not None:
+            raise ValueError("PERIOD_MS requires CYCLES")
+        if args.period_ms is not None and not 3000 <= args.period_ms <= 5000:
+            raise ValueError("crab PERIOD_MS must be 3000..5000")
+        parts = ["crab", args.direction]
         if args.cycles is not None:
             parts.append(str(args.cycles))
         if args.period_ms is not None:

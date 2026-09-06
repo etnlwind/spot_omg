@@ -143,6 +143,8 @@ spotctl trot2 1 1600
 spotctl profile 3400 254
 spotctl trot3 1 1400
 spotctl trot4 1 1600  # reduced path and smoother stance/swing boundaries
+spotctl crab left 1 4000   # cautious four-beat sideways crawl
+spotctl crab right 1 4000
 spotctl gaitdiag
 spotctl baldiag
 spotctl jump 3 1500
@@ -150,6 +152,12 @@ spotctl balance status
 spotctl targets
 spotctl scan
 ```
+
+`crab`은 STM32의 3점 이상 지지 four-beat crawl 정책을 호출합니다. 최초 실기
+시험에서는 로봇을 지지하고 `spotctl crab left 1 5000`부터 실행하십시오. 허용 주기는
+3000..5000 ms이며, 과거의 대각선 2점 지지 crab v1에 사용한 2400 ms 명령은 안전상
+거부됩니다. 자세 안전 중단이 발생하면 재실행하기 전에 `spotctl gaitdiag`와
+`spotctl baldiag`를 수집합니다.
 
 STM32 OTA 부트로더를 최초 1회 SWD로 설치한 뒤에는 재배치된 raw 이미지를 BLE로
 업데이트할 수 있습니다. ESP32가 전체 이미지를 SPIFFS에 저장하고 SHA-256을 확인한
@@ -178,7 +186,7 @@ spotctl firmware esp32 .pio/build/esp32dev/firmware.bin
 초기 설치와 전원 차단 복구 절차는
 `firmware/stm32-ota-bootloader/README.md`를 따릅니다.
 
-STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `trot4`, `jump`, `targets`,
+STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `trot4`, `crab`, `jump`, `targets`,
 `gaitdiag`, `baldiag`, `profile`, `imu`, `balance`입니다. `scan`, `stand`, `stand11`,
 `landing`, `relax`, `hold`는 양쪽 모두
 지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `calibrate`와 `capture-stand`도

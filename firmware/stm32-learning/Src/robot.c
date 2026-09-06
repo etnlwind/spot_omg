@@ -1109,7 +1109,8 @@ typedef enum
     ROBOT_TROT_POLICY_LINEAR = 0,
     ROBOT_TROT_POLICY_CIRCULAR,
     ROBOT_TROT_POLICY_CIRCULAR_OVERLAP,
-    ROBOT_TROT_POLICY_POSTURE_SMOOTH
+    ROBOT_TROT_POLICY_POSTURE_SMOOTH,
+    ROBOT_TROT_POLICY_CRAB
 } RobotTrotPolicy;
 
 static bool robot_trot_policy_targets(
@@ -1119,6 +1120,10 @@ static bool robot_trot_policy_targets(
     float travel_scale,
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
+    if (policy == ROBOT_TROT_POLICY_CRAB) {
+        return gait_policy_crab_targets(
+            phase, amplitude_scale, travel_scale < 0.0f ? -1 : 1, targets);
+    }
     if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH) {
         return gait_policy_trot4_targets(phase, amplitude_scale, targets);
     }
@@ -1176,8 +1181,9 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         return ROBOT_ACTUATOR_PROFILE_ERROR;
     }
     const uint16_t actuator_max_period =
-        policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH ?
-            GAIT_POLICY_TROT4_MAX_PERIOD_MS : GAIT_POLICY_TROT3_MAX_PERIOD_MS;
+        policy == ROBOT_TROT_POLICY_CRAB ? GAIT_POLICY_CRAB_MAX_PERIOD_MS :
+        (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH ?
+            GAIT_POLICY_TROT4_MAX_PERIOD_MS : GAIT_POLICY_TROT3_MAX_PERIOD_MS);
     if (actuator_limited && period_ms > actuator_max_period) {
         return ROBOT_TROT3_PERIOD_ERROR;
     }
@@ -1614,12 +1620,23 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             } else if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH) {
                 duty_phase =
                     (uint16_t)(GAIT_POLICY_TROT4_DUTY * 1000.0f + 0.5f);
+            } else if (policy == ROBOT_TROT_POLICY_CRAB) {
+                duty_phase =
+                    (uint16_t)(GAIT_POLICY_CRAB_DUTY * 1000.0f + 0.5f);
             }
-            const bool step_starts =
-                phase_starts_swing(
+            const bool step_starts = policy == ROBOT_TROT_POLICY_CRAB ?
+                (phase_starts_swing(
+                    global_phase, next_global_phase, 800U, duty_phase) ||
+                 phase_starts_swing(
+                    global_phase, next_global_phase, 300U, duty_phase) ||
+                 phase_starts_swing(
+                    global_phase, next_global_phase, 50U, duty_phase) ||
+                 phase_starts_swing(
+                    global_phase, next_global_phase, 550U, duty_phase)) :
+                (phase_starts_swing(
                     global_phase, next_global_phase, 0U, duty_phase) ||
-                phase_starts_swing(
-                    global_phase, next_global_phase, 500U, duty_phase);
+                 phase_starts_swing(
+                    global_phase, next_global_phase, 500U, duty_phase));
             if (step_starts) {
                 observe_step_sync(robot, targets);
             }
@@ -1687,6 +1704,25 @@ RobotResult robot_trot4(RobotController *robot,
         period_ms,
         1.0f,
         ROBOT_TROT_POLICY_POSTURE_SMOOTH,
+        true);
+}
+
+RobotResult robot_crab(RobotController *robot,
+                       int8_t direction,
+                       uint8_t cycles,
+                       uint16_t period_ms)
+{
+    if ((direction != -1 && direction != 1) ||
+        period_ms < GAIT_POLICY_CRAB_MIN_PERIOD_MS ||
+        period_ms > GAIT_POLICY_CRAB_MAX_PERIOD_MS) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+    return robot_trot_scaled(
+        robot,
+        cycles,
+        period_ms,
+        (float)direction,
+        ROBOT_TROT_POLICY_CRAB,
         true);
 }
 

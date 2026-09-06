@@ -55,6 +55,7 @@ _TIMED_COMMANDS = {
     "trot2": (1, 800),
     "trot3": (1, 2200),
     "trot4": (1, 1600),
+    "crab": (1, 4000),
     "jump": (0, 1200),
 }
 
@@ -128,9 +129,16 @@ def estimate_timeout(command: str) -> float | None:
         return DEFAULT_TIMEOUT_SECONDS
 
     default_cycles, default_period_ms = _TIMED_COMMANDS[name]
+    argument_offset = 2 if name == "crab" else 1
     try:
-        cycles = int(tokens[1]) if len(tokens) > 1 else default_cycles
-        period_ms = int(tokens[2]) if len(tokens) > 2 else default_period_ms
+        cycles = (
+            int(tokens[argument_offset])
+            if len(tokens) > argument_offset else default_cycles
+        )
+        period_ms = (
+            int(tokens[argument_offset + 1])
+            if len(tokens) > argument_offset + 1 else default_period_ms
+        )
     except ValueError:
         # Let the firmware reject the arguments and print its usage line.
         return DEFAULT_TIMEOUT_SECONDS
