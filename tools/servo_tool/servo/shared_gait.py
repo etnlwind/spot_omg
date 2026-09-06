@@ -57,6 +57,13 @@ class SharedGaitPolicy:
             ctypes.POINTER(ctypes.c_uint8),
         )
         self._library.spot_gait_trot3_targets.restype = ctypes.c_int
+        self._library.spot_gait_trot4_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_trot4_targets.restype = ctypes.c_int
         self._library.spot_gait_jump_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
@@ -230,6 +237,27 @@ class SharedGaitPolicy:
         )
         if not ok:
             raise ValueError("shared C trot3 policy rejected the requested frame")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
+    def trot4_targets(
+        self,
+        phase: float,
+        amplitude_scale: float,
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return the reduced-path, acceleration-smooth physical gait."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_trot4_targets(
+            phase,
+            amplitude_scale,
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C trot4 policy rejected the requested frame")
         support = {
             leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
         }

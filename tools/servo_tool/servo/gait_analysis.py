@@ -102,10 +102,10 @@ def analyze_gait_velocity(
     policy: SharedGaitPolicy | None = None,
 ) -> GaitVelocityReport:
     """Finite-difference one full 50 Hz cycle, including its wrap frame."""
-    if gait not in {"trot", "trot2", "trot3"}:
-        raise ValueError("gait must be 'trot', 'trot2' or 'trot3'")
+    if gait not in {"trot", "trot2", "trot3", "trot4"}:
+        raise ValueError("gait must be 'trot', 'trot2', 'trot3' or 'trot4'")
     if period_ms is None:
-        period_ms = 1400 if gait == "trot3" else 800
+        period_ms = 1600 if gait == "trot4" else (1400 if gait == "trot3" else 800)
     frames_per_cycle = round((period_ms / 1000.0) / CONTROL_PERIOD_SECONDS)
     if frames_per_cycle < 2:
         raise ValueError("gait period is too short for 50 Hz analysis")
@@ -117,6 +117,8 @@ def analyze_gait_velocity(
             return shared.trot_targets(phase, 1.0, 1.0)[0]
         if gait == "trot3":
             return shared.trot3_targets(phase, 1.0, 78.0, 108.0)[0]
+        if gait == "trot4":
+            return shared.trot4_targets(phase, 1.0)[0]
         return shared.trot2_targets(phase, 1.0, 78.0, 108.0)[0]
 
     frames = [targets(frame / frames_per_cycle)
@@ -179,7 +181,7 @@ def format_velocity_report(report: GaitVelocityReport) -> str:
 
 
 def main() -> int:
-    for gait in ("trot", "trot2", "trot3"):
+    for gait in ("trot", "trot2", "trot3", "trot4"):
         print(format_velocity_report(analyze_gait_velocity(gait)))
     return 0
 

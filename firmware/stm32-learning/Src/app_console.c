@@ -799,7 +799,7 @@ static void command_gait_diagnostics(AppConsole *console)
         diagnostics->derate_recommended ? "recommended" : "no",
         console->robot->tilt_snapshot.valid ? "tilt" : "no",
         (unsigned int)console->robot->balance_late_frames,
-        (unsigned long)console->robot->trot3_limited_frames);
+        (unsigned long)console->robot->gait_limited_frames);
     write_text(console, message);
     print_bus_retry_diagnostics(console);
 
@@ -843,7 +843,8 @@ static void command_gait_diagnostics(AppConsole *console)
             "  ID%u %s J%u phase=%u cmd=%u pos=%u err=%d speed_raw=%d "
             "current=%d load=%d voltage=%umV peak_err=%u(%lu.%ludeg)@%u "
             "mean_err=%lu(%lu.%ludeg) "
-            "peak_current=%u peak_load=%u min_v=%umV lag=%u samples=%lu\r\n",
+            "peak_current=%u peak_load=%u min_v=%umV lag=%u "
+            "lag_rule=%u/%u samples=%lu\r\n",
             (unsigned int)sample->servo_id,
             leg_name(sample->leg_index),
             (unsigned int)sample->joint_index,
@@ -868,6 +869,8 @@ static void command_gait_diagnostics(AppConsole *console)
             (unsigned int)joint->peak_load_magnitude,
             (unsigned int)joint->minimum_voltage_mv,
             (unsigned int)joint->lag_samples,
+            (unsigned int)joint->lag_threshold_ticks,
+            (unsigned int)joint->derate_sample_threshold,
             (unsigned long)joint->sample_count);
         write_text(console, message);
         (void)snprintf(
@@ -1665,7 +1668,7 @@ static void command_trot3(AppConsole *console,
                    "cycles=1..10 period=600..2400 (default 2200)\r\n");
         return;
     }
-    if (!actuator_profile_supports_trot3(
+    if (!actuator_profile_supports_limited_gait(
             console->robot->profile_speed,
             console->robot->profile_acceleration)) {
         write_text(console,
@@ -1699,6 +1702,75 @@ static void command_trot3(AppConsole *console,
     if (result == ROBOT_TILT_LIMIT) {
         command_balance_diagnostics(console);
     }
+}
+
+static void command_trot4(AppConsole *console,
+                          char *cycles_text,
+                          char *period_text)
+{
+    uint32_t cycles = 1U;
+    uint32_t period_ms = GAIT_POLICY_TROT4_PERIOD_MS;
+
+    if ((cycles_text != NULL &&
+         !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text,
+                    600U,
+                    GAIT_POLICY_TROT4_MAX_PERIOD_MS,
+                    &period_ms))) {
+        write_text(console,
+                   "usage: trot4 [CYCLES [PERIOD_MS]]; "
+                   "cycles=1..10 period=600..2400 (default 1600)\r\n");
+        return;
+    }
+    if (!actuator_profile_supports_limited_gait(
+            console->robot->profile_speed,
+            console->robot->profile_acceleration)) {
+        write_text(console,
+                   "ERROR: trot4 requires profile 3400 254; no motion started\r\n");
+        return;
+    }
+
+    char message[208];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Starting posture-smooth trot4: cycles=%lu period=%lums "
+        "duty=60%% path=70%% fold=J2:%u/J3:%u shift=1.0deg "
+        "balance=%s/%s rev=%s\r\n",
+        (unsigned long)cycles,
+        (unsigned long)period_ms,
+        (unsigned int)GAIT_POLICY_TROT4_FOLD_J2_DEG,
+        (unsigned int)GAIT_POLICY_TROT4_FOLD_J3_DEG,
+        console->robot->balance_enabled ? "on" : "off",
+        robot_balance_mode_string(console->robot->balance_mode),
+        ROBOT_CONTROL_REV);
+    write_text(console, message);
+    const RobotResult result = robot_trot4(console->robot,
+                                           (uint8_t)cycles,
+                                           (uint16_t)period_ms);
+    print_robot_result(console, result);
+    command_gait_diagnostics(console);
+    if (result == ROBOT_TILT_LIMIT) {
+        command_balance_diagnostics(console);
+    }
+}
+
+#define SPOT_BOOT_REQUEST_ADDRESS 0x2001FFF0UL
+#define SPOT_BOOT_REQUEST_MAGIC   0x53504F54UL
+
+static void command_firmware_update(AppConsole *console)
+{
+    /* Try every servo, but do not make recovery firmware depend on a healthy
+     * servo rail. robot_relax() already visits all twelve before returning. */
+    (void)robot_relax(console->robot);
+    write_text(console,
+               "FWUPDATE: torque off; rebooting into immutable bootloader\r\n");
+    HAL_Delay(100U);
+    *(volatile uint32_t *)SPOT_BOOT_REQUEST_ADDRESS = SPOT_BOOT_REQUEST_MAGIC;
+    __DSB();
+    __ISB();
+    NVIC_SystemReset();
 }
 
 static void command_jump(AppConsole *console,
@@ -1811,6 +1883,12 @@ static void execute_line(AppConsole *console)
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
         command_trot3(console, cycles, period);
+    } else if (strcmp(command, "trot4") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_trot4(console, cycles, period);
+    } else if (strcmp(command, "fwupdate") == 0) {
+        command_firmware_update(console);
     } else if (strcmp(command, "jump") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
@@ -1998,6 +2076,8 @@ void app_console_print_help(AppConsole *console)
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)\r\n"
+               "  trot4 [C [MS]]   posture-smooth reduced-path trot (default 1600ms)\r\n"
+               "  fwupdate         torque off and reboot into BLE update bootloader\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"

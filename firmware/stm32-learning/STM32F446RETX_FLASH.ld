@@ -44,9 +44,11 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Memories definition */
 MEMORY
 {
-  RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 128K
-  /* Sector 7 (0x08060000..0x0807FFFF) stores persistent IMU calibration. */
-  FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 384K
+  /* Final 16 bytes are a reset-persistent app -> bootloader mailbox. */
+  RAM    (xrw)    : ORIGIN = 0x20000000,   LENGTH = 0x1FFF0
+  /* Sectors 0..2: immutable bootloader; sector 3: image metadata.
+   * Sector 7 (0x08060000..0x0807FFFF) keeps persistent IMU calibration. */
+  FLASH    (rx)    : ORIGIN = 0x08010000,  LENGTH = 320K
 }
 
 /* Sections */

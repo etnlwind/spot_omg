@@ -30,8 +30,8 @@ typedef struct
 
 void actuator_rate_limiter_init(ActuatorRateLimiter *limiter);
 
-bool actuator_profile_supports_trot3(uint16_t profile_speed,
-                                     uint8_t profile_acceleration);
+bool actuator_profile_supports_limited_gait(uint16_t profile_speed,
+                                            uint8_t profile_acceleration);
 
 bool actuator_rate_limiter_reset(
     ActuatorRateLimiter *limiter,
@@ -78,6 +78,8 @@ typedef struct
     uint16_t minimum_voltage_mv;
     uint16_t lag_samples;
     uint8_t consecutive_lag_samples;
+    uint16_t lag_threshold_ticks;
+    uint8_t derate_sample_threshold;
     ActuatorTrackingSample latest;
     ActuatorTrackingSample peak_error_sample;
 } ActuatorJointDiagnostics;

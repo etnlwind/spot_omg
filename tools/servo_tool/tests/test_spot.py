@@ -1,4 +1,5 @@
 from contextlib import redirect_stderr, redirect_stdout
+import hashlib
 import io
 import json
 import math
@@ -28,6 +29,7 @@ from servo.cli import (
     CONSOLE_ONLY_COMMANDS,
     DUAL_COMMANDS,
     PortInfo,
+    _validate_esp32_application,
     _usb_number,
     announce_port,
     apply_pose,
@@ -48,6 +50,7 @@ from servo.cli import (
     save_captured_stand,
     Stm32CalibrationLink,
     swap_servo_ids_on_bus,
+    update_esp32_firmware,
 )
 
 
@@ -251,14 +254,14 @@ class SpotConfigTest(unittest.TestCase):
         self.assertEqual(self.config.pose("stand45")[12], 1522)
         generated = self.config.stand45_targets()
         expected = {
-            2: 1723,
-            3: 3084,
-            5: 2511,
-            6: 953,
-            8: 1630,
-            9: 3020,
-            11: 2552,
-            12: 1023,
+            2: 1565,
+            3: 2989,
+            5: 2434,
+            6: 1057,
+            8: 1430,
+            9: 2988,
+            11: 2767,
+            12: 1022,
         }
         for servo_id, position in expected.items():
             self.assertEqual(generated[servo_id], position)
@@ -1186,6 +1189,75 @@ class SpotConfigTest(unittest.TestCase):
 
 
 class CommandLineTest(unittest.TestCase):
+    def test_esp32_firmware_update_defaults_to_one_ble_packet(self) -> None:
+        args = parse_args(["firmware", "esp32", "firmware.bin"])
+        self.assertEqual(args.firmware_target, "esp32")
+        self.assertEqual(args.chunk_size, 180)
+        self.assertEqual(args.ble_name, "SpotOMG-Bridge")
+
+    def test_esp32_firmware_update_rejects_non_application_image(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "bootloader.bin"
+            image.write_bytes(bytes([0xE9]) + bytes(63))
+            with self.assertRaisesRegex(ValueError, "not an ESP32 application"):
+                _validate_esp32_application(image, image.stat().st_size)
+
+    def test_esp32_firmware_update_uses_acknowledged_ble_protocol(self) -> None:
+        payload = bytearray(400)
+        payload[0] = 0xE9
+        payload[32:36] = (0xABCD5432).to_bytes(4, "little")
+
+        class FakeBleTransport:
+            instance = None
+
+            def __init__(self, name: str, timeout: float) -> None:
+                self.name = name
+                self.timeout = timeout
+                self.writes = []
+                self.responses = []
+                self.received = 0
+                FakeBleTransport.instance = self
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args) -> None:
+                return None
+
+            def reset_input_buffer(self) -> None:
+                return None
+
+            def write(self, data: bytes) -> int:
+                self.writes.append(bytes(data))
+                if data.startswith(b"$ESPOTA BEGIN "):
+                    self.responses.append(b"$ESPOTA READY\n")
+                else:
+                    self.received += len(data)
+                    response = (
+                        b"$ESPOTA OK\n"
+                        if self.received == len(payload)
+                        else f"$ESPOTA ACK {self.received}\n".encode("ascii")
+                    )
+                    self.responses.append(response)
+                return len(data)
+
+            def readline(self) -> bytes:
+                return self.responses.pop(0) if self.responses else b""
+
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "firmware.bin"
+            image.write_bytes(payload)
+            args = parse_args(["firmware", "esp32", str(image)])
+            with patch("servo.cli.BleTransport", FakeBleTransport):
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(update_esp32_firmware(args), 0)
+
+        transport = FakeBleTransport.instance
+        self.assertIsNotNone(transport)
+        self.assertEqual(transport.name, "SpotOMG-Bridge")
+        self.assertIn(hashlib.sha256(payload).hexdigest().encode(), transport.writes[0])
+        self.assertEqual(b"".join(transport.writes[1:]), payload)
+
     def test_status_command_uses_explicit_port(self) -> None:
         args = parse_args(["--port", "/dev/test-urt2", "status"])
         self.assertEqual(args.command, "status")
@@ -1677,6 +1749,7 @@ class ConsoleProtocolTest(unittest.TestCase):
         self.assertAlmostEqual(estimate_timeout("trot2 1 1600"), 21.6)
         self.assertAlmostEqual(estimate_timeout("trot3 1 1600"), 21.6)
         self.assertAlmostEqual(estimate_timeout("trot3"), 22.2)
+        self.assertAlmostEqual(estimate_timeout("trot4"), 21.6)
         self.assertAlmostEqual(estimate_timeout("jump 3 1500"), 24.5)
         # Documented defaults apply when the arguments are omitted.
         self.assertAlmostEqual(estimate_timeout("trotplace"), 20.8)
@@ -1994,6 +2067,10 @@ class ConsolePortTest(unittest.TestCase):
         self.assertEqual(
             console_line_for(parse_args(["trot3", "1", "2400"])),
             "trot3 1 2400",
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["trot4", "1", "1600"])),
+            "trot4 1 1600",
         )
         with self.assertRaisesRegex(ValueError, "600..2400"):
             console_line_for(parse_args(["trot3", "1", "2401"]))

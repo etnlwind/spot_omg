@@ -682,11 +682,9 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
 static void uart_print(const char *text)
 {
-  HAL_UART_Transmit(
-      &huart2,
-      (uint8_t *)text,
-      strlen(text),
-      HAL_MAX_DELAY);
+  const uint16_t length = (uint16_t)strlen(text);
+  HAL_UART_Transmit(&huart2, (uint8_t *)text, length, HAL_MAX_DELAY);
+  HAL_UART_Transmit(&huart3, (uint8_t *)text, length, HAL_MAX_DELAY);
 }
 
 static void IMU_PrintEuler(void)

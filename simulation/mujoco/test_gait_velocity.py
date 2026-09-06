@@ -91,6 +91,44 @@ def test_trot3_preloads_the_scheduled_support_diagonal() -> None:
     assert second[("RL", 1)] > second[("RR", 1)]
 
 
+def test_trot4_has_reduced_path_and_four_foot_overlap() -> None:
+    policy = SharedGaitPolicy()
+    start, support_at_start = policy.trot4_targets(0.0, 1.0)
+    swing, support_during_swing = policy.trot4_targets(0.20, 1.0)
+    overlap, support_at_overlap = policy.trot4_targets(0.50, 1.0)
+    trot3_swing, _ = policy.trot3_targets(0.20, 1.0, 78.0, 100.0)
+
+    assert support_at_start == set(LEGS)
+    assert support_during_swing == {"FL", "RR"}
+    assert support_at_overlap == set(LEGS)
+    assert abs(swing[("FR", 3)] - 90.0) < abs(trot3_swing[("FR", 3)] - 90.0)
+    assert start[("FL", 1)] != start[("FR", 1)]
+
+
+def test_trot4_zero_amplitude_is_the_calibrated_stand_geometry() -> None:
+    policy = SharedGaitPolicy()
+
+    for phase in (0.0, 0.25, 0.5, 0.75, 1.0):
+        stopped, _ = policy.trot4_targets(phase, 0.0)
+        for leg in LEGS:
+            assert stopped[(leg, 1)] == pytest.approx(0.0)
+            assert stopped[(leg, 2)] == pytest.approx(45.0)
+            assert stopped[(leg, 3)] == pytest.approx(90.0)
+
+
+def test_trot4_phase_boundaries_have_small_acceleration_jump() -> None:
+    policy = SharedGaitPolicy()
+    step = 1.0e-3
+    before, _ = policy.trot4_targets(0.60 - step, 1.0)
+    boundary, _ = policy.trot4_targets(0.60, 1.0)
+    after, _ = policy.trot4_targets(0.60 + step, 1.0)
+    for joint in (2, 3):
+        left_velocity = (boundary[("FL", joint)] - before[("FL", joint)]) / step
+        right_velocity = (after[("FL", joint)] - boundary[("FL", joint)]) / step
+        assert abs(left_velocity) < 0.1
+        assert abs(right_velocity) < 0.1
+
+
 def test_trot3_velocity_analysis_uses_the_motor_capability() -> None:
     report = analyze_gait_velocity("trot3")
     assert len(report.joints) == 12
@@ -105,7 +143,17 @@ def test_trot3_velocity_analysis_uses_the_motor_capability() -> None:
     )
 
 
-@pytest.mark.parametrize("gait", ("trot", "trot2", "trot3"))
+def test_trot4_reduces_the_j3_velocity_demand() -> None:
+    trot3 = analyze_gait_velocity("trot3")
+    trot4 = analyze_gait_velocity("trot4")
+    assert trot4.period_ms == 1600
+    assert trot4.status == "within-nominal"
+    assert trot4.bottleneck.maximum_velocity_deg_s < (
+        trot3.bottleneck.maximum_velocity_deg_s
+    )
+
+
+@pytest.mark.parametrize("gait", ("trot", "trot2", "trot3", "trot4"))
 def test_velocity_report_contains_every_leg_and_joint(gait: str) -> None:
     report = analyze_gait_velocity(gait)
     assert {(item.leg, item.joint) for item in report.joints} == {

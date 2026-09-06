@@ -67,7 +67,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "t3-roll-endhold-v3"
+#define ROBOT_CONTROL_REV "t4-j1-neutral-v2"
 
 typedef struct
 {
@@ -184,9 +184,9 @@ typedef struct
     ActuatorDiagnostics gait_diagnostics;
     bool gait_diagnostics_active;
 
-    /* Trot3 is trot2 canonical geometry plus this motor-side feasibility. */
-    ActuatorRateLimiter trot3_limiter;
-    ActuatorCommandFrame trot3_last_command;
+    /* Shared mixed-motor feasibility state for trot3 and trot4. */
+    ActuatorRateLimiter gait_limiter;
+    ActuatorCommandFrame gait_last_command;
     float gait_previous_command_velocity_deg_s[ROBOT_JOINT_COUNT];
     int16_t gait_command_velocity_deg_s[ROBOT_JOINT_COUNT];
     int16_t gait_command_acceleration_deg_s2[ROBOT_JOINT_COUNT];
@@ -195,7 +195,7 @@ typedef struct
     uint8_t gait_target_history_write_index;
     uint8_t gait_target_history_count;
     uint8_t gait_support_mask;
-    uint32_t trot3_limited_frames;
+    uint32_t gait_limited_frames;
     RobotLimiterDiagnostics limiter_diagnostics;
 } RobotController;
 
@@ -248,6 +248,9 @@ RobotResult robot_trot2(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms);
 RobotResult robot_trot3(RobotController *robot,
+                        uint8_t cycles,
+                        uint16_t period_ms);
+RobotResult robot_trot4(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms);
 RobotResult robot_jump(RobotController *robot,

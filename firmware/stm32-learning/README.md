@@ -277,6 +277,12 @@ trot [C [MS]]    공용 C sim-trot; 1..10회, 주기 600..5000ms (기본 1회/80
 trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
 trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
 trot3 [C [MS]]   65% duty 중첩 trot + limiter/진단; 기본 1400ms, 진단 최대 2400ms
+trot4 [C [MS]]   자세 완화 trot; 60% duty, 70% 경로, smootherstep; 기본 1600ms
+
+`trot3`/`trot4` limiter는 혼합 모터 구성을 사용합니다. J1/J3 STS3215는
+243°/s·4050°/s², J2 STS3250은 406°/s·6767°/s²로 제한합니다. 추종 지연도
+STS3215는 96 tick이 2회, STS3250은 144 tick이 3회 연속일 때 derate를 권고하며,
+`gaitdiag`의 `lag_rule=ticks/samples`에서 적용된 기준을 확인할 수 있습니다.
 gaitdiag          마지막 보행의 tracking/전원/limiter/실제 timing 통계
 baldiag           최근 32 balance frame과 마지막 tilt-safety snapshot
 baltest           현재 자세의 정적 보정량 미리보기(서보 명령 없음)

@@ -47,6 +47,19 @@ extern "C" {
 #define GAIT_POLICY_TROT3_FOLD_J2_DEG 78.0f
 #define GAIT_POLICY_TROT3_FOLD_J3_DEG 100.0f
 
+/*
+ * Trot4 is the conservative posture experiment derived from loaded trot3
+ * diagnostics.  It trades some four-foot overlap for a longer swing, uses a
+ * smaller circular toe path, and gives the phase boundary zero acceleration.
+ */
+#define GAIT_POLICY_TROT4_PERIOD_MS 1600U
+#define GAIT_POLICY_TROT4_MAX_PERIOD_MS 2400U
+#define GAIT_POLICY_TROT4_DUTY 0.60f
+#define GAIT_POLICY_TROT4_PATH_SCALE 0.70f
+#define GAIT_POLICY_TROT4_WEIGHT_SHIFT_DEG 1.0f
+#define GAIT_POLICY_TROT4_FOLD_J2_DEG 70.0f
+#define GAIT_POLICY_TROT4_FOLD_J3_DEG 95.0f
+
 #define GAIT_POLICY_JUMP_PERIOD_MS 1200U
 #define GAIT_POLICY_JUMP_CONTROL_HZ 50U
 #define GAIT_POLICY_JUMP_J1_DEG 4.0f
@@ -368,6 +381,86 @@ static inline bool gait_policy_circular_trot_targets(
     return true;
 }
 
+/* Trot4 variant: smootherstep makes velocity and acceleration both meet the
+ * neighbouring segment at zero, unlike the cosine-shaped phase used by the
+ * original circular gait. */
+static inline bool gait_policy_smooth_circular_trot_targets(
+    float global_phase,
+    float amplitude_scale,
+    float fold_j2_deg,
+    float fold_j3_deg,
+    float duty_factor,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    static const float phase_offsets[GAIT_POLICY_LEG_COUNT] = {
+        0.0f, 0.5f, 0.5f, 0.0f
+    };
+    float base_forward = 0.0f;
+    float ground_down = 0.0f;
+    float folded_forward = 0.0f;
+    float folded_down = 0.0f;
+
+    if (targets == NULL ||
+        !isfinite(global_phase) || !isfinite(amplitude_scale) ||
+        !isfinite(fold_j2_deg) || !isfinite(fold_j3_deg) ||
+        !isfinite(duty_factor) ||
+        amplitude_scale < 0.0f || amplitude_scale > 1.0f ||
+        fold_j2_deg < 60.0f || fold_j2_deg > 95.0f ||
+        fold_j3_deg < 80.0f || fold_j3_deg > 145.0f ||
+        duty_factor < 0.50f || duty_factor > 0.80f) {
+        return false;
+    }
+
+    gait_policy_leg_forward_kinematics(
+        GAIT_POLICY_SIM_TROT_STANCE_J2_DEG,
+        GAIT_POLICY_SIM_TROT_STANCE_J3_DEG,
+        &base_forward,
+        &ground_down);
+    gait_policy_leg_forward_kinematics(
+        fold_j2_deg, fold_j3_deg, &folded_forward, &folded_down);
+    const float radius = ground_down - folded_down;
+    if (!isfinite(radius) || radius <= 0.0f) {
+        return false;
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        const float local_phase = gait_policy_wrap_phase(
+            global_phase + phase_offsets[leg]);
+        const bool stance = local_phase < duty_factor;
+        const float progress = stance ?
+            local_phase / duty_factor :
+            (local_phase - duty_factor) / (1.0f - duty_factor);
+        const float angle = GAIT_POLICY_PI * gait_policy_smootherstep(progress);
+        const float direction = GAIT_POLICY_STANCE_TRAVEL;
+        const float circle_center =
+            (folded_forward - base_forward) / direction;
+        float travel = circle_center;
+        float curve_down = ground_down;
+        if (stance) {
+            travel += radius * cosf(angle);
+        } else {
+            travel -= radius * cosf(angle);
+            curve_down -= radius * sinf(angle);
+        }
+
+        const float curve_forward = base_forward + direction * travel;
+        const float foot_forward = base_forward + amplitude_scale *
+            (curve_forward - base_forward);
+        const float foot_down = ground_down + amplitude_scale *
+            (curve_down - ground_down);
+        if (!gait_policy_leg_inverse_kinematics(
+                foot_forward,
+                foot_down,
+                &targets[leg].j2_deg,
+                &targets[leg].j3_deg)) {
+            return false;
+        }
+        targets[leg].j1_deg = GAIT_POLICY_SIM_TROT_STANCE_J1_DEG;
+        targets[leg].stance = stance;
+    }
+    return true;
+}
+
 static inline bool gait_policy_trot2_targets(
     float global_phase,
     float amplitude_scale,
@@ -428,6 +521,49 @@ static inline bool gait_policy_trot3_targets(
         targets[leg].j1_deg +=
             (float)diagonal_signs[leg] *
             GAIT_POLICY_TROT3_WEIGHT_SHIFT_DEG * transfer * amplitude_scale;
+    }
+    return true;
+}
+
+static inline bool gait_policy_trot4_targets(
+    float global_phase,
+    float amplitude_scale,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    if (!gait_policy_smooth_circular_trot_targets(
+            global_phase,
+            amplitude_scale * GAIT_POLICY_TROT4_PATH_SCALE,
+            GAIT_POLICY_TROT4_FOLD_J2_DEG,
+            GAIT_POLICY_TROT4_FOLD_J3_DEG,
+            GAIT_POLICY_TROT4_DUTY,
+            targets)) {
+        return false;
+    }
+
+    static const int8_t diagonal_signs[GAIT_POLICY_LEG_COUNT] = {
+        1, -1, -1, 1
+    };
+    const float phase = gait_policy_wrap_phase(global_phase);
+    const float overlap = GAIT_POLICY_TROT4_DUTY - 0.5f;
+    float transfer = -1.0f;
+    if (phase < overlap) {
+        transfer = -1.0f + 2.0f * gait_policy_smootherstep(phase / overlap);
+    } else if (phase < 0.5f) {
+        transfer = 1.0f;
+    } else if (phase < 0.5f + overlap) {
+        transfer = 1.0f - 2.0f * gait_policy_smootherstep(
+            (phase - 0.5f) / overlap);
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        /* The circular helper's 4-degree J1 stance belongs to the simulator
+         * gait.  On the physical robot it rotates the front and rear hip
+         * mechanisms in visibly different directions, even at zero path
+         * amplitude.  Trot4 starts from the calibrated straight J1 pose and
+         * adds only its deliberately small diagonal load transfer. */
+        targets[leg].j1_deg =
+            (float)diagonal_signs[leg] *
+            GAIT_POLICY_TROT4_WEIGHT_SHIFT_DEG * transfer * amplitude_scale;
     }
     return true;
 }

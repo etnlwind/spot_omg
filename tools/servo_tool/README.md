@@ -142,6 +142,7 @@ spotctl landing        # 양쪽 모두 canonical J2=40°, J3=130° 착지 자세
 spotctl trot2 1 1600
 spotctl profile 3400 254
 spotctl trot3 1 1400
+spotctl trot4 1 1600  # reduced path and smoother stance/swing boundaries
 spotctl gaitdiag
 spotctl baldiag
 spotctl jump 3 1500
@@ -150,7 +151,31 @@ spotctl targets
 spotctl scan
 ```
 
-STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `jump`, `targets`,
+STM32 OTA 부트로더를 최초 1회 SWD로 설치한 뒤에는 재배치된 raw 이미지를 BLE로
+업데이트할 수 있습니다. ESP32가 전체 이미지를 SPIFFS에 저장하고 SHA-256을 확인한
+후에만 STM32 Flash 기록을 시작합니다.
+
+```bash
+spotctl firmware stm32 firmware/stm32-learning/Debug/stm32-learning.bin
+```
+
+ESP32 브리지도 BLE 자가 업데이트를 지원합니다. 새 이미지는 비활성 OTA 파티션에
+기록되고 SHA-256 및 ESP32 application header 검증을 모두 통과한 뒤에만 부팅
+파티션이 전환됩니다. 이 기능이 포함된 펌웨어를 최초 1회 USB로 설치한 이후부터
+사용할 수 있습니다.
+
+```bash
+pio run -e esp32dev
+spotctl firmware esp32 .pio/build/esp32dev/firmware.bin
+```
+
+업데이트 중에는 로봇을 정지시켜 두고 전원을 끄지 마십시오. 전송이 끊기거나 검증에
+실패하면 현재 실행 중인 OTA 파티션은 그대로 유지됩니다.
+
+초기 설치와 전원 차단 복구 절차는
+`firmware/stm32-ota-bootloader/README.md`를 따릅니다.
+
+STM32에서만 되는 명령은 `trot`, `trotplace`, `trot2`, `trot3`, `trot4`, `jump`, `targets`,
 `gaitdiag`, `baldiag`, `profile`, `imu`, `balance`입니다. `scan`, `stand`, `stand11`,
 `landing`, `relax`, `hold`는 양쪽 모두
 지원하며 붙어 있는 장치에 따라 자동으로 갈립니다. `calibrate`와 `capture-stand`도

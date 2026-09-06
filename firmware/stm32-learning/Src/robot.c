@@ -101,8 +101,8 @@ void robot_init(RobotController *robot, ServoBus *bus)
     safety_init(&robot->safety, NULL);
     actuator_diagnostics_reset(&robot->gait_diagnostics);
     robot->gait_diagnostics_active = false;
-    actuator_rate_limiter_init(&robot->trot3_limiter);
-    robot->trot3_limited_frames = 0U;
+    actuator_rate_limiter_init(&robot->gait_limiter);
+    robot->gait_limited_frames = 0U;
     memset(&robot->limiter_diagnostics,
            0,
            sizeof(robot->limiter_diagnostics));
@@ -1108,7 +1108,8 @@ typedef enum
 {
     ROBOT_TROT_POLICY_LINEAR = 0,
     ROBOT_TROT_POLICY_CIRCULAR,
-    ROBOT_TROT_POLICY_CIRCULAR_OVERLAP
+    ROBOT_TROT_POLICY_CIRCULAR_OVERLAP,
+    ROBOT_TROT_POLICY_POSTURE_SMOOTH
 } RobotTrotPolicy;
 
 static bool robot_trot_policy_targets(
@@ -1118,6 +1119,9 @@ static bool robot_trot_policy_targets(
     float travel_scale,
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
+    if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH) {
+        return gait_policy_trot4_targets(phase, amplitude_scale, targets);
+    }
     if (policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP) {
         return gait_policy_trot3_targets(
             phase,
@@ -1167,11 +1171,14 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         return ROBOT_INVALID_ARGUMENT;
     }
     if (actuator_limited &&
-        !actuator_profile_supports_trot3(
+        !actuator_profile_supports_limited_gait(
             robot->profile_speed, robot->profile_acceleration)) {
         return ROBOT_ACTUATOR_PROFILE_ERROR;
     }
-    if (actuator_limited && period_ms > GAIT_POLICY_TROT3_MAX_PERIOD_MS) {
+    const uint16_t actuator_max_period =
+        policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH ?
+            GAIT_POLICY_TROT4_MAX_PERIOD_MS : GAIT_POLICY_TROT3_MAX_PERIOD_MS;
+    if (actuator_limited && period_ms > actuator_max_period) {
         return ROBOT_TROT3_PERIOD_ERROR;
     }
     if (robot->balance_required &&
@@ -1233,8 +1240,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     actuator_diagnostics_reset(&robot->gait_diagnostics);
     servo_bus_clear_retry_diagnostics(robot->bus);
     robot->gait_diagnostics_active = true;
-    actuator_rate_limiter_init(&robot->trot3_limiter);
-    robot->trot3_limited_frames = 0U;
+    actuator_rate_limiter_init(&robot->gait_limiter);
+    robot->gait_limited_frames = 0U;
     memset(robot->gait_previous_command_velocity_deg_s,
            0,
            sizeof(robot->gait_previous_command_velocity_deg_s));
@@ -1506,7 +1513,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         if (tilt_limit_pending) {
             trace_frame.saturation_flags |= ROBOT_BALANCE_SATURATION_TILT;
             trace_frame.limited_joint_mask =
-                robot->trot3_last_command.limited_joint_mask;
+                robot->gait_last_command.limited_joint_mask;
             trace_frame.tracking_lag_samples =
                 robot->gait_diagnostics.lag_samples;
             balance_trace_push(robot, &trace_frame);
@@ -1521,24 +1528,24 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             if (!gait_policy_to_canonical_angles(
                     leg_targets, canonical_angles) ||
                 !actuator_rate_limiter_apply(
-                    &robot->trot3_limiter,
+                    &robot->gait_limiter,
                     canonical_angles,
                     (float)period_ms /
                         ((float)frames_per_cycle * 1000.0f),
-                    &robot->trot3_last_command) ||
+                    &robot->gait_last_command) ||
                 !canonical_angles_to_servo_targets(
-                    robot->trot3_last_command.position_deg, targets)) {
+                    robot->gait_last_command.position_deg, targets)) {
                 robot->gait_diagnostics_active = false;
                 return_to_stand_best_effort(robot);
                 return ROBOT_CONFIG_ERROR;
             }
             limiter_diagnostics_update(
-                robot, canonical_angles, &robot->trot3_last_command);
+                robot, canonical_angles, &robot->gait_last_command);
             const float dt_seconds = (float)period_ms /
                 ((float)frames_per_cycle * 1000.0f);
             for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
                 const float velocity =
-                    robot->trot3_last_command.velocity_deg_s[index];
+                    robot->gait_last_command.velocity_deg_s[index];
                 robot->gait_command_velocity_deg_s[index] =
                     float_to_i16_scaled(velocity, 1.0f);
                 robot->gait_command_acceleration_deg_s2[index] =
@@ -1549,9 +1556,9 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                         1.0f);
                 robot->gait_previous_command_velocity_deg_s[index] = velocity;
             }
-            if (robot->trot3_last_command.limited_joint_mask != 0U &&
-                robot->trot3_limited_frames < UINT32_MAX) {
-                ++robot->trot3_limited_frames;
+            if (robot->gait_last_command.limited_joint_mask != 0U &&
+                robot->gait_limited_frames < UINT32_MAX) {
+                ++robot->gait_limited_frames;
             }
         } else if (!gait_policy_to_servo_targets(leg_targets, targets)) {
             robot->gait_diagnostics_active = false;
@@ -1582,7 +1589,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             return result;
         }
         trace_frame.limited_joint_mask = actuator_limited ?
-            robot->trot3_last_command.limited_joint_mask : 0U;
+            robot->gait_last_command.limited_joint_mask : 0U;
         trace_frame.tracking_lag_samples =
             robot->gait_diagnostics.lag_samples;
         balance_trace_push(robot, &trace_frame);
@@ -1600,10 +1607,14 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             const uint16_t next_global_phase = (uint16_t)(
                 ((((frame + 1U) % frames_per_cycle) * 1000U) /
                  frames_per_cycle));
-            const uint16_t duty_phase =
-                policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP ?
-                    (uint16_t)(GAIT_POLICY_TROT3_DUTY * 1000.0f + 0.5f) :
-                    500U;
+            uint16_t duty_phase = 500U;
+            if (policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP) {
+                duty_phase =
+                    (uint16_t)(GAIT_POLICY_TROT3_DUTY * 1000.0f + 0.5f);
+            } else if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH) {
+                duty_phase =
+                    (uint16_t)(GAIT_POLICY_TROT4_DUTY * 1000.0f + 0.5f);
+            }
             const bool step_starts =
                 phase_starts_swing(
                     global_phase, next_global_phase, 0U, duty_phase) ||
@@ -1663,6 +1674,19 @@ RobotResult robot_trot3(RobotController *robot,
         period_ms,
         1.0f,
         ROBOT_TROT_POLICY_CIRCULAR_OVERLAP,
+        true);
+}
+
+RobotResult robot_trot4(RobotController *robot,
+                        uint8_t cycles,
+                        uint16_t period_ms)
+{
+    return robot_trot_scaled(
+        robot,
+        cycles,
+        period_ms,
+        1.0f,
+        ROBOT_TROT_POLICY_POSTURE_SMOOTH,
         true);
 }
 

@@ -47,8 +47,8 @@ void actuator_rate_limiter_init(ActuatorRateLimiter *limiter)
     }
 }
 
-bool actuator_profile_supports_trot3(uint16_t profile_speed,
-                                     uint8_t profile_acceleration)
+bool actuator_profile_supports_limited_gait(uint16_t profile_speed,
+                                            uint8_t profile_acceleration)
 {
     return profile_speed >= MOTOR_STS3215_TROT3_REQUIRED_PROFILE_SPEED &&
            profile_acceleration >=
@@ -195,18 +195,29 @@ bool actuator_diagnostics_update(ActuatorDiagnostics *diagnostics,
         diagnostics->minimum_voltage_mv = sample->voltage_mv;
     }
 
-    if (error >= MOTOR_STS3215_TRACKING_LAG_THRESHOLD_TICKS) {
+    const bool sts3250 = joint_uses_sts3250(joint_array_index);
+    const uint16_t lag_threshold = sts3250 ?
+        MOTOR_STS3250_TRACKING_LAG_THRESHOLD_TICKS :
+        MOTOR_STS3215_TRACKING_LAG_THRESHOLD_TICKS;
+    const uint8_t derate_samples = sts3250 ?
+        MOTOR_STS3250_TRACKING_LAG_SAMPLES_FOR_DERATE :
+        MOTOR_STS3215_TRACKING_LAG_SAMPLES_FOR_DERATE;
+    const uint16_t droop_threshold = sts3250 ?
+        MOTOR_STS3250_VOLTAGE_DROOP_THRESHOLD_MV :
+        MOTOR_STS3215_VOLTAGE_DROOP_THRESHOLD_MV;
+    joint->lag_threshold_ticks = lag_threshold;
+    joint->derate_sample_threshold = derate_samples;
+
+    if (error >= lag_threshold) {
         ++joint->lag_samples;
         ++diagnostics->lag_samples;
         if (joint->consecutive_lag_samples < UINT8_MAX) {
             ++joint->consecutive_lag_samples;
         }
-        if (sample->voltage_mv <=
-            MOTOR_STS3215_VOLTAGE_DROOP_THRESHOLD_MV) {
+        if (sample->voltage_mv <= droop_threshold) {
             ++diagnostics->lag_with_voltage_droop_samples;
         }
-        if (joint->consecutive_lag_samples >=
-            MOTOR_STS3215_TRACKING_LAG_SAMPLES_FOR_DERATE) {
+        if (joint->consecutive_lag_samples >= derate_samples) {
             diagnostics->derate_recommended = true;
         }
     } else {

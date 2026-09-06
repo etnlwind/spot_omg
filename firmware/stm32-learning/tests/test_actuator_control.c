@@ -45,10 +45,10 @@ static void test_rate_limiter_contract(void)
 
 static void test_trot3_rejects_an_inner_profile_below_its_outer_limit(void)
 {
-    assert(!actuator_profile_supports_trot3(800U, 80U));
-    assert(!actuator_profile_supports_trot3(3399U, 254U));
-    assert(!actuator_profile_supports_trot3(3400U, 253U));
-    assert(actuator_profile_supports_trot3(3400U, 254U));
+    assert(!actuator_profile_supports_limited_gait(800U, 80U));
+    assert(!actuator_profile_supports_limited_gait(3399U, 254U));
+    assert(!actuator_profile_supports_limited_gait(3400U, 253U));
+    assert(actuator_profile_supports_limited_gait(3400U, 254U));
 }
 
 static void test_landing_targets_use_the_canonical_pose(void)
@@ -109,6 +109,40 @@ static void test_tracking_and_power_diagnostics(void)
     assert(diagnostics.joints[2].absolute_error_sum_ticks == 310U);
     assert(diagnostics.minimum_voltage_mv == 10800U);
     assert(diagnostics.lag_with_voltage_droop_samples == 2U);
+}
+
+static void test_mixed_motor_tracking_thresholds(void)
+{
+    ActuatorDiagnostics diagnostics;
+    actuator_diagnostics_reset(&diagnostics);
+
+    /* Array index 1 is J2/STS3250: 120 ticks is tolerated there. */
+    ActuatorTrackingSample j2 = tracking_sample(2200U, 2080U, 12000U);
+    j2.servo_id = 2U;
+    j2.joint_index = 2U;
+    assert(actuator_diagnostics_update(&diagnostics, 1U, &j2));
+    assert(diagnostics.joints[1].lag_samples == 0U);
+    assert(diagnostics.joints[1].lag_threshold_ticks == 144U);
+    assert(diagnostics.joints[1].derate_sample_threshold == 3U);
+
+    /* The same error is lag on J3/STS3215 and derates after two samples. */
+    ActuatorTrackingSample j3 = tracking_sample(2200U, 2080U, 12000U);
+    assert(actuator_diagnostics_update(&diagnostics, 2U, &j3));
+    assert(!actuator_diagnostics_derate_recommended(&diagnostics));
+    assert(actuator_diagnostics_update(&diagnostics, 2U, &j3));
+    assert(actuator_diagnostics_derate_recommended(&diagnostics));
+    assert(diagnostics.joints[2].lag_threshold_ticks == 96U);
+    assert(diagnostics.joints[2].derate_sample_threshold == 2U);
+
+    actuator_diagnostics_reset(&diagnostics);
+    j2 = tracking_sample(2200U, 2050U, 12000U);
+    j2.servo_id = 2U;
+    j2.joint_index = 2U;
+    assert(actuator_diagnostics_update(&diagnostics, 1U, &j2));
+    assert(actuator_diagnostics_update(&diagnostics, 1U, &j2));
+    assert(!actuator_diagnostics_derate_recommended(&diagnostics));
+    assert(actuator_diagnostics_update(&diagnostics, 1U, &j2));
+    assert(actuator_diagnostics_derate_recommended(&diagnostics));
 }
 
 static int16_t degrees_to_tenths(float degrees)
@@ -254,6 +288,7 @@ int main(void)
     test_trot3_rejects_an_inner_profile_below_its_outer_limit();
     test_landing_targets_use_the_canonical_pose();
     test_tracking_and_power_diagnostics();
+    test_mixed_motor_tracking_thresholds();
     test_open_loop_trot3_does_not_need_limiting(1400U);
     test_open_loop_trot3_does_not_need_limiting(1800U);
     test_trot3_pipeline_stays_feasible_and_inside_joint_limits();

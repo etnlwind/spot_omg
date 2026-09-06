@@ -323,6 +323,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("trotplace", "in-place diagonal trot on the STM32"),
         ("trot2", "circular-foot diagonal trot on the STM32"),
         ("trot3", "overlap trot with actuator limiting and diagnostics"),
+        ("trot4", "posture-smooth reduced-path trot with diagnostics"),
         ("jump", "repeating in-place jump on the STM32; 0 cycles repeats"),
     ):
         motion = commands.add_parser(name, help=help_text)
@@ -363,8 +364,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     esp32_firmware.add_argument("image", type=Path)
     esp32_firmware.add_argument(
-        "--chunk-size", type=int, default=256,
-        help="acknowledged Bluetooth block size in bytes (default: 256)",
+        "--chunk-size", type=int, default=180,
+        help="acknowledged BLE block size in bytes (default: 180)",
+    )
+    stm32_firmware = firmware_targets.add_parser(
+        "stm32", help="stage and flash a relocated STM32 application over BLE"
+    )
+    stm32_firmware.add_argument("image", type=Path)
+    stm32_firmware.add_argument(
+        "--chunk-size", type=int, default=180,
+        help="acknowledged BLE block size in bytes (default: 180)",
     )
 
     console = commands.add_parser(
@@ -741,7 +750,7 @@ def run_console_script(
 #: Firmware console commands promoted to top-level spotctl subcommands.
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
-        "trot", "trotplace", "trot2", "trot3", "jump", "targets", "status",
+        "trot", "trotplace", "trot2", "trot3", "trot4", "jump", "targets", "status",
         "gaitdiag", "baldiag", "profile", "imu", "balance"
     }
 )
@@ -871,14 +880,14 @@ def console_line_for(args: argparse.Namespace) -> str:
         return f"profile {args.speed} {args.accel}"
     if command in {"imu", "balance"}:
         return command if args.mode is None else f"{command} {args.mode}"
-    if command in {"trot", "trotplace", "trot2", "trot3", "jump"}:
+    if command in {"trot", "trotplace", "trot2", "trot3", "trot4", "jump"}:
         if args.cycles is None and args.period_ms is not None:
             raise ValueError("PERIOD_MS requires CYCLES")
-        if command == "trot3" and (
+        if command in {"trot3", "trot4"} and (
             args.period_ms is not None and not 600 <= args.period_ms <= 2400
         ):
             raise ValueError(
-                "trot3 PERIOD_MS must be 600..2400"
+                f"{command} PERIOD_MS must be 600..2400"
             )
         parts = [command]
         if args.cycles is not None:
@@ -1991,93 +2000,63 @@ def run_walk(
         )
 
 
-OTA_RESPONSE_PREFIX = b"$SPOTOTA "
+ESP32_OTA_PREFIX = "$ESPOTA "
+ESP32_OTA_PARTITION_SIZE = 1280 * 1024
+ESP32_IMAGE_MAGIC = 0xE9
+ESP32_APP_DESCRIPTOR_MAGIC = 0xABCD5432
 
 
-def resolve_bluetooth_update_port(explicit_port: str | None) -> str:
-    """Select only the paired SpotOMG SPP port for an ESP32 update."""
-    if explicit_port:
-        return explicit_port
-    paired = [port for port in serial_ports() if port.is_spot_bluetooth]
-    if len(paired) == 1:
-        return paired[0].device
-    if not paired:
-        bluetooth = [port for port in serial_ports() if port.is_bluetooth]
-        detail = (
-            "; Bluetooth ports found: "
-            + ", ".join(port.device for port in bluetooth)
-            if bluetooth else ""
-        )
-        raise RuntimeError(
-            "paired SpotOMG Bluetooth port not found; pair SpotOMG-Bridge "
-            "in Windows, run 'spotctl ports', or select it with --port" + detail
-        )
-    raise RuntimeError(
-        "multiple SpotOMG Bluetooth ports found; select one with --port: "
-        + ", ".join(port.device for port in paired)
-    )
-
-
-def _read_ota_response(serial_port, timeout: float) -> str:
+def _read_esp32_ota_response(
+    transport: BleTransport, timeout: float
+) -> str:
     deadline = time.monotonic() + timeout
-    buffered = bytearray()
     while time.monotonic() < deadline:
-        value = serial_port.read(1)
-        if not value:
-            continue
-        if value == b"\n":
-            line = bytes(buffered).strip()
-            buffered.clear()
-            if line.startswith(OTA_RESPONSE_PREFIX):
-                return line.decode("ascii", errors="replace")
-        elif len(buffered) < 512:
-            buffered.extend(value)
-        else:
-            buffered.clear()
-    raise RuntimeError("Bluetooth firmware update response timed out")
+        line = transport.readline().decode("ascii", errors="replace").strip()
+        if line.startswith(ESP32_OTA_PREFIX):
+            return line.removeprefix(ESP32_OTA_PREFIX)
+    raise RuntimeError("ESP32 BLE update response timed out")
+
+
+def _validate_esp32_application(image: Path, size: int) -> None:
+    if size < 36 or size > ESP32_OTA_PARTITION_SIZE:
+        raise ValueError("ESP32 image must be between 36 bytes and 1280 KiB")
+    with image.open("rb") as source:
+        header = source.read(36)
+    if header[0] != ESP32_IMAGE_MAGIC:
+        raise ValueError("invalid ESP32 image magic; select firmware.bin")
+    descriptor_magic = int.from_bytes(header[32:36], "little")
+    if descriptor_magic != ESP32_APP_DESCRIPTOR_MAGIC:
+        raise ValueError(
+            "image is not an ESP32 application; select PlatformIO firmware.bin"
+        )
 
 
 def update_esp32_firmware(args: argparse.Namespace) -> int:
-    """Atomically send one PlatformIO ESP32 application image over SPP."""
+    """Atomically send one PlatformIO ESP32 application image over BLE."""
     image = args.image.expanduser().resolve()
     if not image.is_file():
         raise ValueError(f"firmware image not found: {image}")
     if image.suffix.lower() != ".bin":
         raise ValueError("ESP32 firmware image must be a .bin file")
-    if args.chunk_size != 256:
-        raise ValueError("chunk-size must be 256 for this OTA protocol version")
+    if not 36 <= args.chunk_size <= 180:
+        raise ValueError("ESP32 BLE chunk-size must be between 36 and 180")
     image_size = image.stat().st_size
-    if image_size <= 0:
-        raise ValueError("firmware image is empty")
-
-    digest = hashlib.md5()
+    _validate_esp32_application(image, image_size)
+    digest = hashlib.sha256()
     with image.open("rb") as source:
         for chunk in iter(lambda: source.read(64 * 1024), b""):
             digest.update(chunk)
-    md5 = digest.hexdigest()
-    port = resolve_bluetooth_update_port(args.port)
-    print(f"ports:[{port}] link=bluetooth-ota")
-    print(f"ESP32 image: {image} ({image_size} bytes, md5={md5})")
+    sha256 = digest.hexdigest()
+    print(f"ports:[{args.ble_name}] link=ble-esp32-ota")
+    print(f"ESP32 image: {image} ({image_size} bytes, sha256={sha256})")
 
-    try:
-        import serial
-    except ImportError as exc:
-        raise ImportError(
-            "pyserial is required; run: pip install -r requirements.txt"
-        ) from exc
-
-    with serial.Serial(
-        port, CONSOLE_BAUDRATE, timeout=0.2, write_timeout=10.0
-    ) as connection:
-        connection.reset_input_buffer()
-        header = f"$SPOTOTA ESP32 {image_size} {md5}\n".encode("ascii")
-        connection.write(header)
-        connection.flush()
-        # Erasing the inactive OTA partition can take several seconds on
-        # inexpensive flash chips, especially while powered in the robot.
-        response = _read_ota_response(connection, 30.0)
-        if response != "$SPOTOTA READY":
-            raise RuntimeError(response.removeprefix("$SPOTOTA "))
+    with BleTransport(args.ble_name, timeout=0.5) as transport:
+        transport.reset_input_buffer()
+        header = f"$ESPOTA BEGIN {image_size} {sha256}\n".encode("ascii")
+        transport.write(header)
+        response = _read_esp32_ota_response(transport, 15.0)
+        if response != "READY":
+            raise RuntimeError(response)
 
         sent = 0
         next_report = 10
@@ -2086,30 +2065,125 @@ def update_esp32_firmware(args: argparse.Namespace) -> int:
                 chunk = source.read(args.chunk_size)
                 if not chunk:
                     break
-                written = connection.write(chunk)
+                written = transport.write(chunk)
                 if written != len(chunk):
                     raise RuntimeError(
-                        f"Bluetooth short write: {written}/{len(chunk)} bytes"
+                        f"BLE short write: {written}/{len(chunk)} bytes"
                     )
                 sent += written
-                connection.flush()
-                acknowledgement = _read_ota_response(connection, 15.0)
-                expected_acknowledgement = f"$SPOTOTA ACK {sent}"
-                if acknowledgement != expected_acknowledgement:
+                response = _read_esp32_ota_response(transport, 15.0)
+                expected = "OK" if sent == image_size else f"ACK {sent}"
+                if response != expected:
                     raise RuntimeError(
-                        "unexpected firmware acknowledgement: "
-                        + acknowledgement
+                        f"unexpected ESP32 OTA acknowledgement: {response!r}; "
+                        f"expected {expected!r}"
                     )
                 progress = sent * 100 // image_size
                 if progress >= next_report:
                     print(f"Uploading: {progress}%")
                     next_report = progress + 10
-        response = _read_ota_response(connection, 30.0)
-        if response != "$SPOTOTA OK":
-            raise RuntimeError(response.removeprefix("$SPOTOTA "))
 
     print("ESP32 firmware verified; bridge is restarting")
     return 0
+
+
+STM32_OTA_PREFIX = "$STM32OTA "
+STM32_APP_ADDRESS = 0x08010000
+STM32_APP_LIMIT = 0x08060000
+STM32_SRAM_START = 0x20000000
+STM32_SRAM_END = 0x20020000
+
+
+def _read_stm32_ota_response(
+    transport: BleTransport, timeout: float
+) -> str:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        line = transport.readline().decode("ascii", errors="replace").strip()
+        if line.startswith(STM32_OTA_PREFIX):
+            return line.removeprefix(STM32_OTA_PREFIX)
+    raise RuntimeError("STM32 BLE update response timed out")
+
+
+def _validate_stm32_application(image: Path, size: int) -> None:
+    if size < 8 or size > STM32_APP_LIMIT - STM32_APP_ADDRESS:
+        raise ValueError("STM32 image must be between 8 bytes and 320 KiB")
+    with image.open("rb") as source:
+        vector = source.read(8)
+    stack = int.from_bytes(vector[:4], "little")
+    reset = int.from_bytes(vector[4:], "little")
+    if not STM32_SRAM_START <= stack <= STM32_SRAM_END:
+        raise ValueError(f"invalid STM32 initial stack pointer: 0x{stack:08x}")
+    if not (reset & 1) or not STM32_APP_ADDRESS <= reset < STM32_APP_LIMIT:
+        raise ValueError(
+            "image is not linked for the OTA app address 0x08010000 "
+            f"(reset vector 0x{reset:08x})"
+        )
+
+
+def update_stm32_firmware(args: argparse.Namespace) -> int:
+    """Stage a complete image on ESP32, then let its fixed bootloader flash it."""
+    image = args.image.expanduser().resolve()
+    if not image.is_file():
+        raise ValueError(f"firmware image not found: {image}")
+    if image.suffix.lower() != ".bin":
+        raise ValueError("STM32 firmware image must be a raw .bin file")
+    if not 1 <= args.chunk_size <= 180:
+        raise ValueError("STM32 BLE chunk-size must be between 1 and 180")
+    image_size = image.stat().st_size
+    _validate_stm32_application(image, image_size)
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    print(f"ports:[{args.ble_name}] link=ble-stm32-ota")
+    print(f"STM32 image: {image} ({image_size} bytes, sha256={digest})")
+
+    with BleTransport(args.ble_name, timeout=0.5) as transport:
+        transport.reset_input_buffer()
+        header = f"$STM32OTA BEGIN {image_size} {digest}\n".encode("ascii")
+        transport.write(header)
+        response = _read_stm32_ota_response(transport, 15.0)
+        if response != "READY":
+            raise RuntimeError(response)
+
+        sent = 0
+        next_report = 10
+        with image.open("rb") as source:
+            while True:
+                chunk = source.read(args.chunk_size)
+                if not chunk:
+                    break
+                transport.write(chunk)
+                sent += len(chunk)
+                response = _read_stm32_ota_response(transport, 10.0)
+                expected = "STORED" if sent == image_size else f"ACK {sent}"
+                if response != expected:
+                    raise RuntimeError(
+                        f"unexpected staging acknowledgement: {response!r}; "
+                        f"expected {expected!r}"
+                    )
+                progress = sent * 100 // image_size
+                if progress >= next_report:
+                    print(f"Staging on ESP32: {progress}%")
+                    next_report = progress + 10
+
+        print("ESP32 image verified; STM32 bootloader is programming flash")
+        deadline = time.monotonic() + 180.0
+        last_percent = -1
+        while time.monotonic() < deadline:
+            response = _read_stm32_ota_response(
+                transport, max(0.5, deadline - time.monotonic())
+            )
+            if response == "OK":
+                print("STM32 firmware verified and rebooted")
+                return 0
+            if response.startswith("ERROR "):
+                raise RuntimeError(response)
+            if response.startswith("FLASH "):
+                flashed = int(response.split()[1])
+                percent = flashed * 100 // image_size
+                if percent != last_percent:
+                    print(f"Flashing STM32: {percent}%")
+                    last_percent = percent
+        raise RuntimeError("STM32 flash operation timed out")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2135,6 +2209,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_console(args)
 
         if args.command == "firmware":
+            if args.firmware_target == "stm32":
+                return update_stm32_firmware(args)
             return update_esp32_firmware(args)
 
         transport, port = resolve_transport(args)

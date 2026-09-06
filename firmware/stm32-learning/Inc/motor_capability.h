@@ -53,7 +53,17 @@
 #define MOTOR_STS3215_TRACKING_LAG_THRESHOLD_TICKS 96U
 #define MOTOR_STS3215_TRACKING_LAG_SAMPLES_FOR_DERATE 2U
 
+/*
+ * J2's STS3250 is both faster and higher torque than the J1/J3 STS3215.  Its
+ * normal transient following error is therefore judged against a separate
+ * 12.7 degree window and must persist for one extra round-robin sample before
+ * recommending a gait derate.  J1/J3 intentionally retain the stricter rule.
+ */
+#define MOTOR_STS3250_TRACKING_LAG_THRESHOLD_TICKS 144U
+#define MOTOR_STS3250_TRACKING_LAG_SAMPLES_FOR_DERATE 3U
+
 /* A sampled rail at or below 11 V is considered a meaningful 12 V droop. */
 #define MOTOR_STS3215_VOLTAGE_DROOP_THRESHOLD_MV 11000U
+#define MOTOR_STS3250_VOLTAGE_DROOP_THRESHOLD_MV 11000U
 
 #endif

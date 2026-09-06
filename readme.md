@@ -137,6 +137,9 @@ conda env update -f environment.yml --prune
 [`tools/servo_tool`](./tools/servo_tool/README.md),
 [`simulation/mujoco`](./simulation/mujoco/README.md),
 [`firmware/stm32-learning`](./firmware/stm32-learning/README.md) 문서를 참고하세요.
+ESP32–STM32 연결, 부팅, flash partition과 두 BLE OTA 경로의 전체 구조는
+[`firmware/FIRMWARE_ARCHITECTURE.md`](./firmware/FIRMWARE_ARCHITECTURE.md)에
+정리되어 있습니다.
 
 ---
 

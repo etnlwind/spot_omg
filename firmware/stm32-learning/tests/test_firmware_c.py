@@ -200,7 +200,8 @@ def test_bno055_calibration_separates_device_profile_and_logic_zero() -> None:
     assert "const int16_t mapped_pitch = sensor_roll" in driver
     assert "bno055_save_level_calibration" in header
     assert 'strcmp(command, "imucal")' in console
-    assert "LENGTH = 384K" in linker
+    assert "ORIGIN = 0x08010000" in linker
+    assert "LENGTH = 320K" in linker
 
 
 def test_baltest_reuses_balance_policy_without_servo_io() -> None:

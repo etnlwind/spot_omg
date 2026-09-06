@@ -54,6 +54,7 @@ _TIMED_COMMANDS = {
     "trotplace": (1, 800),
     "trot2": (1, 800),
     "trot3": (1, 2200),
+    "trot4": (1, 1600),
     "jump": (0, 1200),
 }
 
