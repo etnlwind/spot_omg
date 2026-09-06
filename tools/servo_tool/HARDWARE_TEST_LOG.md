@@ -2294,3 +2294,194 @@ leg-length correction을 한 packet에 제거하고, loop 직후 raw stand를 �
 중복 raw stand packet을 보내지 않도록 수정했으며 revision을
 `t3-roll-endhold-v3`로 올렸습니다. 다음 시험은 먼저 거치대 ON/1400에서 phase 0
 limiter spike가 사라지는지 확인합니다.
+
+## 2026-09-06 BLE OTA, 콜드 부팅, trot4 및 crab 보행 작업
+
+### 작업 범위와 현재 결론
+
+오늘은 ESP32-WROOM BLE bridge와 STM32의 전원 투입 순서를 안정화하고, ESP32 및
+STM32를 각각 BLE로 업데이트할 수 있는 경로를 완성했습니다. 동시에 혼합 서보
+구성을 반영한 trot4를 실기 검증하고, 횡방향 crab gait를 새로 구현했습니다.
+
+현재 확인된 상태는 다음과 같습니다.
+
+- ESP32는 과거 C3가 아니라 ESP32-WROOM 계열이며 PlatformIO `esp32dev` 타깃을 사용
+- STM32 D4/PB5와 ESP32 EN을 연결한 뒤 전원 재투입 시 버튼 없이 BLE 광고 확인
+- ESP32 application self OTA와 ESP32 임시 저장 후 STM32 bootloader에 기록하는
+  dual BLE OTA 구현 및 실기 검증
+- J2 STS3250과 J1/J3 STS3215의 서로 다른 구동 한계를 gait limiter와 lag 진단에 반영
+- trot4 한 cycle 실기 성공; 기존 trot3보다 J3 추종 오차와 자세 급변이 크게 감소
+- trot4에서만 FR J1(ID4)을 바깥쪽 2° 보정
+- crab v1의 2점 지지 방식은 실기에서 tilt safety를 발생시켜 폐기
+- crab v2는 항상 3개 이상 발을 지지하는 four-beat crawl로 교체하고 STM32에 BLE OTA 완료
+
+### 최초 servo bus timeout 판단
+
+`spotctl trot2 4 1200` 실행 중 ID8에서 다음 오류가 한 번 발생했습니다.
+
+```text
+ERROR: servo bus error; servo=8, bus=timeout, servo_error=0x00
+```
+
+직후 `spotctl scan`에서는 ID 1..12가 모두 응답했고 retry 실패가 없었으며, ID8 단독
+read도 위치 1433, 12.5V, 27°C, hardware error `0x00`으로 정상이었습니다. 따라서
+ID8의 영구 고장이나 ID 충돌로 보지 않고, 보행 중 부하·버스 타이밍·전원 변동에
+의한 일시적인 응답 누락으로 판단했습니다. 로봇 무게가 직접 UART timeout을 만드는
+것은 아니지만, 부하 증가가 전압 강하와 추종 지연을 만들고 그 결과 통신 여유를
+줄이는 간접 원인은 될 수 있습니다.
+
+### trot3 실기 진단과 자세 문제 판단
+
+`trot3 1 1400`은 명령 자체는 `OK`였지만 `derate=recommended`, lag 7회,
+step-sync miss 1회가 기록됐습니다. 특히 J3의 최대 추종 오차가 컸습니다.
+
+| Servo | Joint | Peak error | 비고 |
+|---|---|---:|---|
+| ID3 FL | J3 | 226 tick, 19.9° | swing |
+| ID9 RL | J3 | 202 tick, 17.8° | stance |
+| ID12 RR | J3 | 171 tick, 15.0° | swing |
+| ID11 RR | J2 | 78 tick, 6.9° | peak current 97, min 12.2V |
+
+버스 retry는 없고 최저 전압도 12.2V였으므로 이 실행은 통신 단독 문제가 아니라,
+대각선 전환과 큰 J3 가속도가 실제 actuator가 따라가기 어려운 보행 궤적 문제로
+판단했습니다. J1/J3는 STS3215, J2는 더 강한 STS3250이므로 모든 관절에 같은
+속도·가속도 한계를 적용하지 않도록 했습니다.
+
+### trot4 posture-smooth 결과와 FR 보정
+
+trot4는 duty 60%, 축소된 발끝 경로, smootherstep 경계와 관절 종류별 limiter를
+사용하도록 만들었습니다. `trot4 1 1800` 실기 결과는 `OK`, `fall=no`, lag 0,
+lag+droop 0, late frame 0이었고 step-sync 최근 최대 오차는 52 tick이었습니다.
+최대 관절 추종 오차도 ID12 J3 49 tick(4.3°), ID9 J3 44 tick(3.9°), ID5 J2
+38 tick(3.3°) 수준으로 trot3보다 크게 줄었습니다.
+
+기구적으로 대칭인 `stand11`에서는 네 다리가 대칭이었지만 trot4 동작 중 FL-FR
+간격이 RL-RR보다 좁고 ID4가 안쪽으로 기울어 보였습니다. 따라서 캘리브레이션이나
+stand 기준을 바꾸지 않고 trot4 정책의 ID4(FR J1)에만 바깥 방향 2° bias를
+추가했습니다. amplitude를 낮출 때 bias도 같은 비율로 감소합니다.
+
+### ESP32 수동 reset 필요 현상과 전원 시퀀스
+
+ESP32 전원을 STM32 쪽에서 공급하는 구성에서 cold boot 후 `SpotOMG-Bridge`가
+광고되지 않고, ESP32 EN/reset 버튼을 누른 뒤에만 BLE 연결되는 현상이 반복됐습니다.
+소프트웨어 내부의 단순 지연은 CPU가 이미 reset에서 풀려 정상 실행된 뒤에만
+효과가 있으므로, 공유 전원의 상승 타이밍 문제를 해결하지 못합니다.
+
+STM32 D4/PB5를 ESP32 EN에 연결하고 다음 hardware-assisted reset 순서를
+구현했습니다.
+
+1. STM32 시작 시 PB5 open-drain을 LOW로 구동하여 ESP32 EN을 유지
+2. 공유 전원 rail 안정화를 위해 1초 대기
+3. PB5를 high-impedance로 해제하여 ESP32 보드의 EN pull-up으로 부팅
+4. ESP32가 UART/SPIFFS/BLE GATT를 초기화하고 광고 시작
+5. 광고 시작 실패 시 재시도하고 반복 실패 시 software reset
+
+배선 후 전원을 껐다 켠 cold boot 시험에서 버튼을 누르지 않고 `spotctl targets`가
+BLE로 연결되는 것을 확인했습니다. PB5는 BNO086 WAK 신호와 겸용하지 않고 ESP32
+EN 전용입니다. 전원 입력이 실제로 NUCLEO 5V/VIN인지 3V3인지에는 아직 현장 확인이
+필요합니다.
+
+### dual BLE OTA 구현과 검증
+
+ESP32 flash를 application A/B slot과 STM32 staging용 SPIFFS로 나눴습니다. ESP32
+self OTA는 실행 중이지 않은 application slot에 기록하고, STM32 OTA는 전체 STM32
+image를 먼저 ESP32 SPIFFS에 저장합니다. 두 경로 모두 host와 device에서 image
+형식·크기·SHA-256을 검사하며 chunk별 ACK를 사용합니다.
+
+STM32 쪽에는 flash 시작 부분의 고정 bootloader와 `0x08010000`에서 시작하는 robot
+application을 분리했습니다. ESP32가 staging image를 검증한 뒤 STM32 bootloader를
+진입시켜 application 영역만 erase/program/verify하고 재부팅합니다. 최초 bootloader
+설치와 self OTA 기능이 없는 구형 ESP32 image의 갱신에는 각각 SWD/USB가 한 번
+필요하지만, 이후 application 갱신은 BLE만으로 가능합니다.
+
+오늘 crab v2 STM32 image 118,364 bytes를 BLE로 전송하여 ESP32 staging 100%, STM32
+flash 100%, firmware verify와 reboot까지 완료했습니다. 해당 image SHA-256은 다음과
+같습니다.
+
+```text
+800532369a79004e48f347499f4bf1987bdd0c706810adf54e19d899cc2b1569
+```
+
+전체 flash 구조와 복구 절차는 `firmware/FIRMWARE_ARCHITECTURE.md` 및
+`firmware/stm32-ota-bootloader/README.md`를 기준으로 합니다.
+
+### console prompt timeout의 의미와 남은 문제
+
+긴 보행 진단 뒤 아래 host 오류가 발생한 적이 있습니다.
+
+```text
+error: timed out waiting for the STM32 console prompt; received 43 line(s)
+```
+
+이 경우 gait 본체는 이미 `OK`로 끝났으며 STM32가 출력한 마지막 진단 몇 줄과 `# `
+prompt가 BLE notification 끝부분에서 유실된 것으로 확인했습니다. 일반 STM32
+console bridge는 UART 출력에 대해 end-to-end ACK나 pacing 없이 notification을
+연속 전송하지만, OTA는 chunk별 ACK를 사용하므로 같은 문제가 발생하지 않습니다.
+따라서 이 timeout을 곧바로 servo bus timeout이나 보행 실패로 해석하면 안 됩니다.
+독립 `spotctl gaitdiag`/`spotctl baldiag`로 결과를 다시 읽을 수 있습니다.
+
+남은 개선 과제는 일반 UART→BLE 출력에도 queue 여유 확인, pacing 또는 명시적 ACK를
+추가하여 긴 diagnostics의 마지막 줄과 prompt가 유실되지 않게 하는 것입니다.
+
+### crab v1 실패 분석
+
+초기 crab v1은 좌우 이동을 대각선 두 발 지지 trot 형태로 만들었습니다.
+`crab left 1 2400` 실기에서 로봇이 횡방향 하중 전달 중 크게 휘청였고 tilt safety가
+stand 목표를 요청했습니다.
+
+```text
+result=motion tilt safety limit reached
+min_voltage=10.4V lag=5 lag+droop=5 fall=tilt
+RL J3 peak_error=190tick (16.7deg)
+RR J3 peak_error=258tick (22.7deg)
+raw roll/pitch=14.8deg/-7.5deg
+filtered roll/pitch=10.7deg/-6.1deg
+```
+
+전압 강하와 J3 지연이 함께 있었지만 핵심 원인은 대각선 두 접지점만으로 몸체를
+옆으로 밀게 한 지지 다각형입니다. 리프트 높이나 period만 조정해서 반복하기에는
+전도 위험이 있어 v1은 폐기했습니다. tilt safety의 stand 복귀는 정상 보호
+동작이었습니다.
+
+### crab crawl v2 설계와 현재 검증 수준
+
+v2는 FL → RR → FR → RL 순서로 한 다리씩 이동하는 four-beat crawl입니다. swing은
+각 다리의 20% 구간이며, 다음 다리가 들리기 전에 5% 동안 네 발이 모두 닿습니다.
+따라서 정상 궤적에서는 항상 최소 세 발이 지면을 지지합니다.
+
+- duty: 80%
+- J1 횡방향 진폭: 2° (v1의 4°에서 축소)
+- lift: 0.14 normalized link (v1의 0.22에서 축소)
+- 기본 period: 4000ms
+- 허용 period: 3000..5000ms; firmware API와 `spotctl` 모두 검사
+- left/right: J1 횡방향 성분만 반전하며 J2/J3 lift 궤적은 동일
+- step-sync, actuator limiter, voltage/lag diagnostics와 tilt safety 유지
+
+공용 C/Python gait 정책, STM32 console, `spotctl` parser/timeout 산정 및 테스트를 함께
+갱신했습니다. 회귀 시험은 Python 152개와 C subtest 23개가 모두 통과했고 STM32
+build와 BLE OTA도 성공했습니다. 움직이지 않는 `crab sideways` 명령으로 새 firmware의
+usage가 `period=3000..5000`을 표시하는 것까지 확인했습니다.
+
+다만 v2의 실제 지면 보행은 아직 합격 판정을 내리지 않았습니다. 첫 시험은 몸체를
+즉시 잡을 수 있도록 지지한 상태에서 아래처럼 가장 느리게 한 cycle만 수행합니다.
+
+```bash
+spotctl crab left 1 5000
+```
+
+left가 `fall=no`, 심한 voltage droop 없음, J3 peak error 허용 범위로 끝난 뒤에만
+`right 1 5000`을 시험합니다. 두 방향이 안정된 후에 4000ms, 마지막으로 3000ms
+순으로 낮춥니다. v1의 2400ms는 재시험하지 않습니다.
+
+### 오늘 반영한 커밋
+
+| Commit | 내용 |
+|---|---|
+| `44fc160` | actuator-aware trot4, ESP32/STM32 dual BLE OTA, flash architecture |
+| `09cdb72` | STM32 PB5→ESP32 EN cold-boot reset sequence |
+| `a8b6bc9` | trot4 FR J1 2° 보정과 안정형 four-beat crab v2 |
+
+현재 control revision은 `crab-crawl-v2-t4fr2-v5`입니다. 위 세 커밋은 `develop`
+브랜치에 반영되었으며, 개인 IDE 설정인
+`firmware/stm32-learning/.settings/language.settings.xml`과 `.vscode/`는 작업
+커밋에서 제외했습니다.

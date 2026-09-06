@@ -40,8 +40,10 @@ spotctl trot2 1 1600  # STM32 전용
 spotctl walk          # URT-2 직결 전용
 ```
 
-ESP32-C3 Wi-Fi bridge를 통한 STM32 콘솔 연결도 지원합니다. 주소는 장치 환경에
-맞게 지정하며 기본 TCP 포트는 `3333`입니다.
+현재 기체는 ESP32-WROOM BLE GATT bridge를 사용합니다. 과거 ESP32-C3용으로 만든
+디렉터리 이름이 일부 남아 있지만 현재 PlatformIO build target은 `esp32dev`입니다.
+TCP transport는 별도 호환 bridge용으로 도구에 남아 있으며 현재 WROOM firmware는
+BLE를 기본 경로로 사용합니다.
 
 ```bash
 # 기존 USB/Serial
@@ -92,9 +94,12 @@ spot_omg/
 - [x] USART2 인터럽트 콘솔과 실행 중 `Ctrl+C` 정지
 - [x] BNO086 IMU(SPI)와 J1/J2/J3 자세 보정
 - [x] `stand`, `trot`, `trotplace`, 원형 발끝 `trot2`, 반복 `jump`
+- [x] 혼합 서보 한계를 반영한 `trot3`/`trot4`와 3점 지지 `crab` crawl
 - [x] STM32/MuJoCo 공용 C 보행·점프 정책
 - [x] 서보 보정·진단용 `spotctl`
 - [x] 연결된 장치에 따라 STM32/URT-2로 자동 분기하는 `spotctl`
+- [x] ESP32 self OTA와 ESP32 staging 기반 STM32 BLE OTA
+- [x] STM32 PB5→ESP32 EN을 이용한 공유 전원 cold-boot reset
 - [ ] Jetson 명령/telemetry 프로토콜
 - [ ] ROS2 hardware interface
 - [ ] Isaac Lab RL 정책 배포
@@ -140,6 +145,9 @@ conda env update -f environment.yml --prune
 ESP32–STM32 연결, 부팅, flash partition과 두 BLE OTA 경로의 전체 구조는
 [`firmware/FIRMWARE_ARCHITECTURE.md`](./firmware/FIRMWARE_ARCHITECTURE.md)에
 정리되어 있습니다.
+2026-09-06 실기 진단, trot4/crab 변경 근거와 남은 과제는
+[`tools/servo_tool/HARDWARE_TEST_LOG.md`](./tools/servo_tool/HARDWARE_TEST_LOG.md)의
+해당 날짜 기록을 참고하세요.
 
 ---
 
