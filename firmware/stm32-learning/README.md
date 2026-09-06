@@ -30,7 +30,8 @@ python simulation/mujoco/walk.py --dynamic --balance \
 | USART1 | PA9 TX, PA10 RX | URT-2 UART header | 1 Mbps, 8-N-1 |
 | USART2 | PA2 TX, PA3 RX | ST-LINK VCP debug console | 115200, 8-N-1 |
 | SPI1 | PA5 SCK, PA6 MISO, PA7 MOSI | BNO086 | 1 MHz, mode 3 |
-| GPIO | PB6 CS, PA8 INT, PB2 RST, PB5 WAKE | BNO086 제어선 | 모두 active low |
+| GPIO | PB6 CS, PA8 INT, PB2 RST | BNO086 제어선 | 모두 active low |
+| GPIO | D4/PB5 | ESP32 EN 자동 reset | open-drain, active low |
 | I2C1 | PB8 SCL, PB9 SDA | BNO055 | 100 kHz |
 
 NUCLEO-F446RE Arduino 헤더 기준 `D8/PA9 → URT-2 RX`, `D2/PA10 → URT-2 TX`로
@@ -115,7 +116,8 @@ BNO086 SI   → D11 / PA7  / SPI1_MOSI
 BNO086 CS   → D10 / PB6  / GPIO
 BNO086 INT  → D7  / PA8  / GPIO
 BNO086 RST  → PB2 / GPIO
-BNO086 WAK  → 연결하지 않음 (PB5는 High 출력으로만 예약)
+BNO086 WAK  → 연결하지 않음
+ESP32 EN    → NUCLEO D4 / PB5 (권장: 1kΩ 직렬 저항)
 ```
 
 **`D2`는 비워 둡니다.** `D2`는 `PA10`이고 이 핀은 URT-2에서 돌아오는
@@ -132,8 +134,10 @@ BNO086 WAK  → 연결하지 않음 (PB5는 High 출력으로만 예약)
 
 현재 보드는 후면 `PS0`, `PS1` 점퍼를 모두 납땜해 두 핀이 약 3.2V HIGH이며 SPI
 모드로 부팅합니다. 이 구성에서는 `WAK`를 호스트가 구동하지 않으므로 BNO086의
-WAK 핀은 연결하지 않습니다. CubeMX의 `PB5/IMU_WAKE` High 출력은 예약 상태일
-뿐 실제 보드와 배선되지 않습니다.
+WAK 핀은 연결하지 않습니다. `D4/PB5`는 `ESP32_EN` open-drain 출력으로 사용합니다.
+STM32 application은 부팅 중 EN을 LOW로 유지하고 전원 안정화 1초 후 해제합니다.
+ESP32 보드 자체의 EN pull-up이 HIGH를 만들므로 PB5가 ESP32에 전압을 공급하지
+않습니다. PB5와 EN 사이에는 1kΩ 직렬 저항을 권장합니다.
 
 ### Game Rotation Vector를 쓰는 이유
 

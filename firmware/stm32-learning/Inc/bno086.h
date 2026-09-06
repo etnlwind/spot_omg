@@ -35,7 +35,8 @@ extern "C" {
  *   CS   D10 PB6   IMU_CS      output, active low
  *   INT  D7  PA8   IMU_INT     input, active low
  *   RST      PB2   IMU_RST     output, active low
- *   WAK  D4  PB5   IMU_WAKE    output, active low (PS0 in SPI mode)
+ *   WAK            not connected (PS0 is strapped for SPI mode)
+ *   EN   D4  PB5   ESP32_EN    open-drain reset for the BLE bridge
  *
  * D2/PA10 must stay clear: it is USART1_RX from the URT-2.
  */

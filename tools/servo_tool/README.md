@@ -159,6 +159,9 @@ STM32 OTA 부트로더를 최초 1회 SWD로 설치한 뒤에는 재배치된 ra
 spotctl firmware stm32 firmware/stm32-learning/Debug/stm32-learning.bin
 ```
 
+STM32 image staging은 BLE 안정성을 위해 기본 120바이트 acknowledged chunk를
+사용합니다. 연결 환경이 불안정하면 `--chunk-size`를 더 낮춰 재시도할 수 있습니다.
+
 ESP32 브리지도 BLE 자가 업데이트를 지원합니다. 새 이미지는 비활성 OTA 파티션에
 기록되고 SHA-256 및 ESP32 application header 검증을 모두 통과한 뒤에만 부팅
 파티션이 전환됩니다. 이 기능이 포함된 펌웨어를 최초 1회 USB로 설치한 이후부터

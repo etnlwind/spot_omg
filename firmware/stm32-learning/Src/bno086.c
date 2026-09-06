@@ -27,8 +27,8 @@
 /*
  * Set when the breakout selects SPI with a soldered PS0 jumper rather than
  * leaving the pin for the host.  PS0 doubles as WAKE, so a strapped board has
- * no wake line: the firmware must not drive IMU_WAKE, and the D4 wire should
- * be removed so nothing sits across the strap.
+ * no wake line.  D4/PB5 is therefore free and is used as the ESP32 EN reset
+ * output; it must not be connected to the BNO086 WAK/PS0 pad.
  */
 #define BNO086_PS0_STRAPPED      1
 

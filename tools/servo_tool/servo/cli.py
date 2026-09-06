@@ -372,8 +372,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     stm32_firmware.add_argument("image", type=Path)
     stm32_firmware.add_argument(
-        "--chunk-size", type=int, default=180,
-        help="acknowledged BLE block size in bytes (default: 180)",
+        "--chunk-size", type=int, default=120,
+        help="acknowledged BLE block size in bytes (default: 120)",
     )
 
     console = commands.add_parser(

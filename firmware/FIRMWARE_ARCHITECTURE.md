@@ -43,6 +43,7 @@ ESP32-WROOM bridge
        │ UART 115200 8-N-1
        │ ESP TX17 ───────> STM32 PC11 / USART3_RX
        │ ESP RX16 <─────── STM32 PC10 / USART3_TX
+       │ ESP EN  <──────── STM32 D4 / PB5 (open-drain reset, 1kΩ 권장)
        ▼
 STM32F446RE
   immutable OTA bootloader @ 0x08000000
@@ -94,20 +95,23 @@ GND를 공통으로 하는 것이다. NUCLEO 3V3 regulator의 여유 전류가 �
 ESP32 3V3에 직접 공급하면 BLE 송신 순간 brownout이 날 수 있다. GPIO 핀으로 ESP32
 전원을 공급하면 안 된다.
 
-현재 ESP32 firmware의 콜드 부팅 순서는 다음과 같다.
+현재 STM32와 ESP32 firmware의 콜드 부팅 순서는 다음과 같다.
 
-1. CPU reset 후 USB serial을 115200으로 초기화한다.
-2. 전원 rail이 안정될 시간을 주기 위해 2초 기다린다.
-3. reset reason을 `power-on`, `brownout`, `watchdog` 등으로 출력한다.
-4. STM32 UART와 SPIFFS를 초기화한다.
-5. BLE GATT service를 만들고 광고를 시작한다.
-6. 광고 시작 성공 이벤트가 오지 않으면 5초 간격으로 재시도한다.
-7. 6회 연속으로 광고를 복구하지 못하면 ESP32를 software reset한다.
-8. BLE 연결이 끊기면 500ms 뒤 광고를 다시 시작한다.
+1. STM32 application이 `D4/PB5` open-drain 출력을 LOW로 만들어 ESP32 EN을 잡는다.
+2. 공유 전원 rail이 안정될 시간을 주기 위해 1초 기다린다.
+3. STM32가 PB5를 high-impedance로 해제하면 ESP32 보드의 EN pull-up이 부팅을 시작한다.
+4. ESP32 CPU reset 후 USB serial을 115200으로 초기화하고 추가로 2초 기다린다.
+5. reset reason을 `power-on`, `brownout`, `watchdog` 등으로 출력한다.
+6. STM32 UART와 SPIFFS를 초기화한다.
+7. BLE GATT service를 만들고 광고를 시작한다.
+8. 광고 시작 성공 이벤트가 오지 않으면 5초 간격으로 재시도한다.
+9. 6회 연속으로 광고를 복구하지 못하면 ESP32를 software reset한다.
+10. BLE 연결이 끊기면 500ms 뒤 광고를 다시 시작한다.
 
-2초 대기는 CPU가 정상적으로 실행을 시작한 경우에만 효과가 있다. 전압 상승이 너무
-느려 EN/reset 회로가 정상 threshold를 만들지 못하거나 brownout loop에 빠지면 코드가
-실행되지 않으므로 bulk capacitor 또는 ESP32 EN RC delay 같은 하드웨어 보완이 필요하다.
+ESP32 내부의 2초 대기는 CPU가 정상적으로 실행을 시작한 경우에만 효과가 있다.
+실기에서 콜드 부팅 실패 후 EN 버튼을 누르면 즉시 정상화되는 것을 확인했으므로,
+STM32가 전원 안정 후 EN reset pulse를 자동으로 만드는 배선을 추가했다. PB5는 BNO086
+WAK에 연결하지 않으며 ESP32 EN에만 연결한다.
 
 ## 5. BLE GATT 인터페이스
 
@@ -408,6 +412,10 @@ STM32_Programmer_CLI -c port=SWD mode=UR \
 spotctl firmware stm32 \
   firmware/stm32-learning/Debug/stm32-learning.bin
 ```
+
+STM32 staging의 host 기본 청크는 실기에서 안정적으로 완주한 120바이트다. 180바이트
+전송이 중간 ACK timeout을 낸 환경에서도 120바이트 전송은 staging과 flash를 모두
+완료했다.
 
 ## 12. 운영 점검 절차
 

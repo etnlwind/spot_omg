@@ -61,8 +61,8 @@ void Error_Handler(void);
 #define IMU_RST_GPIO_Port GPIOB
 #define IMU_INT_Pin GPIO_PIN_8
 #define IMU_INT_GPIO_Port GPIOA
-#define IMU_WAKE_Pin GPIO_PIN_5
-#define IMU_WAKE_GPIO_Port GPIOB
+#define ESP32_EN_Pin GPIO_PIN_5
+#define ESP32_EN_GPIO_Port GPIOB
 #define IMU_CS_Pin GPIO_PIN_6
 #define IMU_CS_GPIO_Port GPIOB
 

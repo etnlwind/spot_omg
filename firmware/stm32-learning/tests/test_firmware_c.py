@@ -184,6 +184,22 @@ def test_bno086_bringup_keeps_cubemx_and_transport_in_sync() -> None:
     assert "HAL_GPIO_ReadPin(IMU_RST_GPIO_Port, IMU_RST_Pin)" in driver
 
 
+def test_esp32_en_is_held_low_then_released_open_drain() -> None:
+    ioc = (PROJECT / "stm32-learning.ioc").read_text()
+    main = (PROJECT / "Src/main.c").read_text()
+    header = (PROJECT / "Inc/main.h").read_text()
+
+    assert "PB5.GPIO_Label=ESP32_EN" in ioc
+    assert "PB5.GPIO_Mode=GPIO_MODE_OUTPUT_OD" in ioc
+    assert "PB5.PinState=GPIO_PIN_RESET" in ioc
+    assert "#define ESP32_EN_Pin GPIO_PIN_5" in header
+    assert "#define ESP32_RESET_HOLD_MS 1000U" in main
+    assert "HAL_GPIO_WritePin(ESP32_EN_GPIO_Port, ESP32_EN_Pin, GPIO_PIN_RESET)" in main
+    assert "GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD" in main
+    assert "HAL_Delay(ESP32_RESET_HOLD_MS)" in main
+    assert "HAL_GPIO_WritePin(ESP32_EN_GPIO_Port, ESP32_EN_Pin, GPIO_PIN_SET)" in main
+
+
 def test_bno055_calibration_separates_device_profile_and_logic_zero() -> None:
     driver = (PROJECT / "Src/bno055.c").read_text()
     header = (PROJECT / "Inc/bno055.h").read_text()

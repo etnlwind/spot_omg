@@ -39,7 +39,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define ESP32_RESET_HOLD_MS 1000U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -234,7 +234,15 @@ int main(void)
   app_console_init(&wifi_console, &huart3, &robot, &imu055, &imu086, &imu_log_enabled);
 
   uart_print("\r\nPROGRAM START\r\n");
-  HAL_Delay(700);
+  /*
+   * PB5 is wired open-drain to ESP32 EN.  MX_GPIO_Init() asserts it before
+   * the peripheral setup above, so this delay lets the shared power rail
+   * settle before releasing EN.  GPIO_PIN_SET on an open-drain output means
+   * high-impedance; the ESP32 board's own pull-up then starts the module.
+   */
+  HAL_Delay(ESP32_RESET_HOLD_MS);
+  HAL_GPIO_WritePin(ESP32_EN_GPIO_Port, ESP32_EN_Pin, GPIO_PIN_SET);
+  uart_print("ESP32 EN released after power stabilization\r\n");
 
   /*
    * Try the BNO055 first. Its probe is a couple of short I2C transfers, while
@@ -623,7 +631,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, IMU_RST_Pin|IMU_WAKE_Pin|IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, IMU_RST_Pin|IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(ESP32_EN_GPIO_Port, ESP32_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -631,12 +640,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : IMU_RST_Pin IMU_WAKE_Pin */
-  GPIO_InitStruct.Pin = IMU_RST_Pin|IMU_WAKE_Pin;
+  /*Configure GPIO pin : IMU_RST_Pin */
+  GPIO_InitStruct.Pin = IMU_RST_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : ESP32_EN_Pin */
+  GPIO_InitStruct.Pin = ESP32_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(ESP32_EN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : IMU_INT_Pin */
   GPIO_InitStruct.Pin = IMU_INT_Pin;
