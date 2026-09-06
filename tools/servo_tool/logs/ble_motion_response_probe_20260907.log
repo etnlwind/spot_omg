@@ -1,0 +1,40 @@
+BEGIN landing 1839625.641
+RX 1839627.906 b'Console echo: off\r\n# '
+RX 1839627.963 b'Starting direct synchronized landing move\r\n'
+RX 1839628.561 b'OK\r\n# '
+RESULT landing ok elapsed=0.656s ('Starting direct synchronized landing move', 'OK')
+BEGIN stand 1839628.564
+RX 1839629.881 b'Console echo: off\r\n# '
+RX 1839629.941 b'Starting direct synchronized stand move\r\n'
+FAIL stand elapsed=15.141s timed out waiting for the STM32 console prompt; received 1 line(s)
+BEGIN targets 1839648.082
+RX 1839649.277 b'Console echo: off\r\n# '
+RX 1839649.337 b'ID 1 target=1929\r\nID 2 target=1565\r\n'
+RX 1839649.369 b'ID 3 target=2989\r\nID 4 target=2089\r\n'
+RX 1839649.369 b'ID 5 target=2434\r\nID 6 target=1057\r\nID 7 target=2104\r\nID 8 target=1430\r\nID 9 target=2988\r\n'
+RX 1839649.397 b'ID 10 target=1951\r\nID 11 target=2767\r\n'
+RX 1839649.399 b'ID 12 target=1022\r\n# '
+RESULT targets info elapsed=0.122s ('ID 1 target=1929', 'ID 2 target=1565', 'ID 3 target=2989', 'ID 4 target=2089', 'ID 5 target=2434', 'ID 6 target=1057', 'ID 7 target=2104', 'ID 8 target=1430', 'ID 9 target=2988', 'ID 10 target=1951', 'ID 11 target=2767', 'ID 12 target=1022')
+BEGIN status 1839649.401
+RX 1839650.822 b'Console echo: off\r\n# '
+RX 1839650.882 b'Servo status (12 configured IDs):\r\n'
+RX 1839650.884 b'ID 1 pos=1935 speed=0 load=56 voltage=10500mV temp=29C current=1 moving=0 hw=0x00\r\n'
+RX 1839650.914 b'ID 2 pos=1566 speed=0 load=8 voltage=10600mV temp=27C current=1 moving=0 hw=0x00\r\n'
+RX 1839650.943 b'ID 3 pos=3000 speed=0 load=96 voltage=10700mV temp=32C current=8 moving=0 hw=0x00\r\n'
+RX 1839650.973 b'ID 4 pos=2083 speed=0 load=-56 voltage=10700mV temp=30C current=1 moving=0 hw=0x00\r\n'
+RX 1839651.003 b'ID 5 pos=2432 speed=0 load=-16 voltage=10600mV temp=26C current=0 moving=0 hw=0x00\r\n'
+RX 1839651.033 b'ID 6 pos=1036 speed=0 load=-176 voltage=10700mV temp=32C current=15 moving=0 hw=0x00\r\n'
+RX 1839651.063 b'ID 7 pos=2095 speed=0 load=-80 voltage=10600mV temp=31C current=3 moving=0 hw=0x00\r\n'
+RX 1839651.093 b'ID 8 pos=1434 speed=0 load=32 voltage=10600mV temp=25C current=2 moving=0 hw=0x00\r\n'
+RX 1839651.123 b'ID 9 pos=3009 speed=0 load=176 voltage=10500mV temp=33C current=12 moving=0 hw=0x00\r\n'
+RX 1839651.153 b'ID 10 pos=1960 speed=0 load=80 voltage=10600mV temp=30C current=3 moving=0 hw=0x00\r\n'
+RX 1839651.183 b'ID 11 pos=2764 speed=0 load=-24 voltage=10600mV temp=27C current=0 moving=0 hw=0x00\r\n'
+RX 1839651.213 b'ID 12 pos=1009 speed=0 load=-112 voltage=10600mV temp=31C current=4 moving=0 hw=0x00\r\n'
+RX 1839651.243 b'Bus read retries: attempts=0 recovered=0 failed=0\r\n# '
+RESULT status info elapsed=0.420s ('Servo status (12 configured IDs):', 'ID 1 pos=1935 speed=0 load=56 voltage=10500mV temp=29C current=1 moving=0 hw=0x00', 'ID 2 pos=1566 speed=0 load=8 voltage=10600mV temp=27C current=1 moving=0 hw=0x00', 'ID 3 pos=3000 speed=0 load=96 voltage=10700mV temp=32C current=8 moving=0 hw=0x00', 'ID 4 pos=2083 speed=0 load=-56 voltage=10700mV temp=30C current=1 moving=0 hw=0x00', 'ID 5 pos=2432 speed=0 load=-16 voltage=10600mV temp=26C current=0 moving=0 hw=0x00', 'ID 6 pos=1036 speed=0 load=-176 voltage=10700mV temp=32C current=15 moving=0 hw=0x00', 'ID 7 pos=2095 speed=0 load=-80 voltage=10600mV temp=31C current=3 moving=0 hw=0x00', 'ID 8 pos=1434 speed=0 load=32 voltage=10600mV temp=25C current=2 moving=0 hw=0x00', 'ID 9 pos=3009 speed=0 load=176 voltage=10500mV temp=33C current=12 moving=0 hw=0x00', 'ID 10 pos=1960 speed=0 load=80 voltage=10600mV temp=30C current=3 moving=0 hw=0x00', 'ID 11 pos=2764 speed=0 load=-24 voltage=10600mV temp=27C current=0 moving=0 hw=0x00', 'ID 12 pos=1009 speed=0 load=-112 voltage=10600mV temp=31C current=4 moving=0 hw=0x00', 'Bus read retries: attempts=0 recovered=0 failed=0')
+BEGIN balance status 1839651.245
+RX 1839652.502 b'Console echo: off\r\n# '
+RX 1839652.562 b'Control revision: crab-crawl-v2-t4fr2-v5\r\n'
+RX 1839652.563 b'Balance: on, mode: full, target: level, IMU: available, policy: required\r\n'
+RX 1839652.594 b'Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks blocking_wait=0ms max_balance_gap=0ms\r\n# '
+RESULT balance status info elapsed=0.092s ('Control revision: crab-crawl-v2-t4fr2-v5', 'Balance: on, mode: full, target: level, IMU: available, policy: required', 'Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks blocking_wait=0ms max_balance_gap=0ms')

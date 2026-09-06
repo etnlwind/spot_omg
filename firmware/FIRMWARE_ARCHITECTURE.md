@@ -466,6 +466,36 @@ motion 완료 시간과 `OK`가 이미 출력됐다면 servo bus timeout이 아�
 notification queue에서 마지막 diagnostics/prompt가 유실된 것일 수 있다. 현재 일반
 console stream에는 OTA와 같은 ACK flow control이 없다는 점을 구분해서 진단한다.
 
+### BLE 완료 응답 유실 진단 (`rxdiag-v1`)
+
+2026-09-07 `landing`은 0.656초에 `OK\r\n# `를 받았으나, 재연결 후
+`stand`는 시작 메시지만 받은 채 15.141초에 timeout이 발생했다. 추가 3초에도
+응답이 없었고 이후 조회한 관절은 모두 stand 허용 범위 안에 있었다.
+별도 시험에서 이미 서 있는 자세의 `stand`는 0.150초에 정상 완료했다.
+따라서 완료 응답 누락은 재현됐지만 UART와 BLE 중 유실 구간은 아직 미확정이다.
+
+이를 구분하기 위해 준비한 ESP32 진단 빌드는 다음 GATT read를 제공한다.
+이 빌드는 로컬 빌드 검증만 완료했으며, 현재 기기 적용은 아직 하지 않았다.
+
+- TX UUID `6e400003-b5a3-f393-e0a9-e50e24dcca9e`: 기존 notify에 read 추가.
+  마지막 `setValue()` 패킷을 읽는다. 전체 응답 이력은 아니므로 timeout 뒤
+  다른 콘솔 명령을 보내기 **전에** 읽어야 한다.
+- 진단 UUID `6e400004-b5a3-f393-e0a9-e50e24dcca9e`: read 전용.
+  `bridge=rxdiag-v1`, 부팅 후 ms(`uptime`), reset reason 숫자(`reset`),
+  일반 콘솔 UART에서 소비한 누적 bytes(`rx`)와 마지막 수신 시각(`rx_at`),
+  notify stack 수락/실패 수(`accepted`/`failed`), 마지막 callback
+  status/code를 반환한다. UART OTA 전송은 `rx`에 포함하지 않는다.
+- `accepted`는 BLE stack의 전송 수락이며 호스트 수신 확인을 뜻하지 않는다.
+  notify 카운터에는 OTA 응답도 포함되므로 시험 전후 차이를 비교한다.
+
+timeout 직후 TX 값에 `OK\r\n# `가 남아 있으면 완료 응답이 ESP32까지 도착한
+것이다. 이때 실패 카운터와 호스트 notify 원문을 비교해 BLE 전송 경로를
+조사한다. TX 값에 완료 응답이 없다는 사실만으로 STM32 미송신을 확정하면 안 된다.
+UART 수신 오류 또는 뒤따른 다른 출력도 확인해야 한다. TX read로 얻은 값을
+`spotctl`의 정상 완료 응답으로 자동 간주하거나 동작을 자동 재실행하지 않는다.
+
+실기 수신 기록은 `tools/servo_tool/logs/ble_*_probe_20260907.log`에 있다.
+
 ## 14. 보안과 향후 개선
 
 현재 구현은 SHA-256/CRC32로 **전송 무결성**을 확인하지만 **image 제작자 신뢰성**은

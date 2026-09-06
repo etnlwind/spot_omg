@@ -15,6 +15,7 @@ static constexpr const char* DEVICE_NAME = "SpotOMG-Bridge";
 static constexpr const char* SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 static constexpr const char* RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 static constexpr const char* TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+static constexpr const char* DIAG_UUID = "6e400004-b5a3-f393-e0a9-e50e24dcca9e";
 static constexpr uint32_t STM32_BAUD = 115200;
 static constexpr int STM32_RX = 16;
 static constexpr int STM32_TX = 17;
@@ -26,6 +27,54 @@ static constexpr uint8_t BLE_ADVERTISING_MAX_ATTEMPTS = 6U;
 static constexpr uint32_t ESP32_OTA_IDLE_TIMEOUT_MS = 15000U;
 static constexpr uint32_t ESP32_OTA_RESTART_DELAY_MS = 1500U;
 static BLECharacteristic* txCharacteristic = nullptr;
+static portMUX_TYPE diagnosticMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t consoleRxBytes = 0;
+static uint32_t consoleRxAt = 0;
+static uint32_t notifyAccepted = 0;
+static uint32_t notifyFailed = 0;
+static int lastNotifyStatus = -1;
+static uint32_t lastNotifyCode = 0;
+
+// SUCCESS_NOTIFY means accepted by the BLE stack, not acknowledged by the host.
+class TxCallbacks final : public BLECharacteristicCallbacks {
+ public:
+  void onStatus(BLECharacteristic*, Status status, uint32_t code) override {
+    portENTER_CRITICAL(&diagnosticMux);
+    lastNotifyStatus = static_cast<int>(status);
+    lastNotifyCode = code;
+    if (status == SUCCESS_NOTIFY) ++notifyAccepted;
+    else ++notifyFailed;
+    portEXIT_CRITICAL(&diagnosticMux);
+  }
+};
+
+class DiagnosticCallbacks final : public BLECharacteristicCallbacks {
+ public:
+  void onRead(BLECharacteristic* characteristic) override {
+    uint32_t bytes, receivedAt, accepted, failed, code;
+    int status;
+    portENTER_CRITICAL(&diagnosticMux);
+    bytes = consoleRxBytes;
+    receivedAt = consoleRxAt;
+    accepted = notifyAccepted;
+    failed = notifyFailed;
+    status = lastNotifyStatus;
+    code = lastNotifyCode;
+    portEXIT_CRITICAL(&diagnosticMux);
+    char text[180];
+    snprintf(text, sizeof(text),
+             "bridge=rxdiag-v1 uptime=%lu reset=%d rx=%lu rx_at=%lu "
+             "accepted=%lu failed=%lu status=%d code=%lu",
+             static_cast<unsigned long>(millis()),
+             static_cast<int>(esp_reset_reason()),
+             static_cast<unsigned long>(bytes),
+             static_cast<unsigned long>(receivedAt),
+             static_cast<unsigned long>(accepted),
+             static_cast<unsigned long>(failed), status,
+             static_cast<unsigned long>(code));
+    characteristic->setValue(text);
+  }
+};
 static volatile bool clientConnected = false;
 static volatile bool advertisingActive = false;
 static volatile bool advertisingRestartPending = false;
@@ -356,8 +405,12 @@ void setup() {
   server->setCallbacks(new ServerCallbacks());
   BLEService* service = server->createService(SERVICE_UUID);
   txCharacteristic = service->createCharacteristic(
-      TX_UUID, BLECharacteristic::PROPERTY_NOTIFY);
+      TX_UUID, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
+  txCharacteristic->setCallbacks(new TxCallbacks());
   txCharacteristic->addDescriptor(new BLE2902());
+  BLECharacteristic* diagnostic = service->createCharacteristic(
+      DIAG_UUID, BLECharacteristic::PROPERTY_READ);
+  diagnostic->setCallbacks(new DiagnosticCallbacks());
   BLECharacteristic* rxCharacteristic = service->createCharacteristic(
       RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   rxCharacteristic->setCallbacks(new RxCallbacks());
@@ -525,6 +578,10 @@ void loop() {
     if (value >= 0) buffer[count++] = static_cast<uint8_t>(value);
   }
   if (count > 0) {
+    portENTER_CRITICAL(&diagnosticMux);
+    consoleRxBytes += count;
+    consoleRxAt = millis();
+    portEXIT_CRITICAL(&diagnosticMux);
     txCharacteristic->setValue(buffer, count);
     txCharacteristic->notify();
   }
