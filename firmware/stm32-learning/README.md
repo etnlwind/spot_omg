@@ -262,6 +262,7 @@ CubeMX에서 열면 이 드라이버는 자동으로 관리됩니다.
 ```text
 ping ID          한 서보 응답 확인
 scan             설정된 ID 1..12 확인
+syncstate        앱용 실제 자세/토크/safety/balance 단일-line snapshot
 uarttest         USART1 loopback 확인 (URT-2 분리, PA9-PA10 직결)
 busprobe ID      Ping 후 USART1 원시 수신 바이트 출력
 linestate        PA9/PA10을 풀다운으로 눌러 구동/개방 판별; 계측기 불필요
@@ -286,7 +287,7 @@ crab [left|right [C [MS]]] 3발 이상 지지 crawl 게걸음; 기본 left, 1회
 
 ### Trot4 실기 보정과 crab crawl v2
 
-현재 제어 revision은 `crab-crawl-v2-t4fr2-v5`입니다. 기구적으로 대칭인
+현재 제어 revision은 `ios-sync-v6`입니다. 기구적으로 대칭인
 `stand11` 자세를 기준으로 확인했을 때 trot4에서만 FR 다리가 안쪽으로 모이는 현상이
 있어, trot4의 ID4(FR J1)에 바깥 방향 2° bias를 추가했습니다. 이 bias는 trot4
 정책에만 적용되며 `stand`, `stand11`, 다른 보행 및 캘리브레이션 중심값은 바꾸지

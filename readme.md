@@ -78,6 +78,7 @@ ID로 구분합니다. ST-LINK는 `0483:374b`이고, 나머지 USB 시리얼 장
 
 ```text
 spot_omg/
+├── apps/ios/SpotOMGController/ # SwiftUI/CoreBluetooth iPhone controller
 ├── firmware/stm32-learning/  # STM32F446RE 로봇 제어 펌웨어
 ├── hardware/urdf/            # 12-DOF URDF와 실측 파라미터
 ├── simulation/mujoco/        # 자세·보행·점프 시뮬레이션

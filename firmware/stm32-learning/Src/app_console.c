@@ -508,6 +508,81 @@ static void command_status(AppConsole *console)
     print_bus_retry_diagnostics(console);
 }
 
+static uint16_t pose_max_error(const uint16_t positions[ROBOT_JOINT_COUNT],
+                               const uint16_t targets[ROBOT_JOINT_COUNT])
+{
+    uint16_t maximum = 0U;
+    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
+        int32_t error = (int32_t)positions[index] - (int32_t)targets[index];
+        if (error < 0) {
+            error = -error;
+        }
+        if ((uint32_t)error > maximum) {
+            maximum = (uint16_t)error;
+        }
+    }
+    return maximum;
+}
+
+/* Compact, machine-readable snapshot used by mobile controllers. */
+static void command_sync_state(AppConsole *console)
+{
+    uint16_t positions[ROBOT_JOINT_COUNT];
+    uint16_t stand[ROBOT_JOINT_COUNT];
+    uint16_t landing[ROBOT_JOINT_COUNT];
+    uint16_t straight[ROBOT_JOINT_COUNT];
+    const char *pose = "unknown";
+    const char *torque = "unknown";
+    uint16_t pose_error = 0U;
+    uint8_t torque_raw = 0U;
+
+    const RobotResult position_result =
+        robot_read_positions(console->robot, positions);
+    if (position_result == ROBOT_OK &&
+        robot_stand_targets(stand) &&
+        robot_landing_targets(landing) &&
+        robot_straight_targets(straight)) {
+        const uint16_t stand_error = pose_max_error(positions, stand);
+        const uint16_t landing_error = pose_max_error(positions, landing);
+        const uint16_t straight_error = pose_max_error(positions, straight);
+        pose_error = stand_error;
+        pose = "stand";
+        if (landing_error < pose_error) {
+            pose_error = landing_error;
+            pose = "landing";
+        }
+        if (straight_error < pose_error) {
+            pose_error = straight_error;
+            pose = "stand11";
+        }
+        if (pose_error > 80U) {
+            pose = "custom";
+        }
+    }
+
+    if (servo_bus_read(console->robot->bus,
+                       g_robot_servo_ids[0],
+                       STS3215_ADDR_TORQUE_ENABLE,
+                       &torque_raw,
+                       1U) == SERVO_BUS_OK) {
+        torque = torque_raw == 0U ? "off" : "on";
+    }
+
+    char message[192];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s\r\n",
+        pose,
+        (unsigned int)pose_error,
+        torque,
+        safety_is_faulted(&console->robot->safety) ? "fault" : "ok",
+        console->robot->balance_enabled ?
+            robot_balance_mode_string(console->robot->balance_mode) : "off",
+        ROBOT_CONTROL_REV);
+    write_text(console, message);
+}
+
 static void command_move(AppConsole *console,
                          char *id_text,
                          char *position_text)
@@ -1906,6 +1981,8 @@ static void execute_line(AppConsole *console)
         command_read(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "status") == 0) {
         command_status(console);
+    } else if (strcmp(command, "syncstate") == 0) {
+        command_sync_state(console);
     } else if (strcmp(command, "move") == 0) {
         char *id = strtok(NULL, " \t");
         char *position = strtok(NULL, " \t");
@@ -2125,6 +2202,7 @@ void app_console_print_help(AppConsole *console)
                "  move ID RAW      safe single move, max delta 256 ticks\r\n"
                "  targets          print calibrated stand raw targets\r\n"
                "  status           read health state from all 12 servos\r\n"
+               "  syncstate        compact mobile-app state snapshot\r\n"
                "  profile [S A]   show/set speed 1..3400, acceleration 0..254\r\n"
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"

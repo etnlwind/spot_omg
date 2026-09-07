@@ -67,7 +67,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "crab-crawl-v2-t4fr2-v5"
+#define ROBOT_CONTROL_REV "ios-sync-v6"
 
 typedef struct
 {
