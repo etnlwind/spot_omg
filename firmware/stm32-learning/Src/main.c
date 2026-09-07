@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "flight_log.h"
 #include "app_console.h"
 #include "bno055.h"
 #include "bno086.h"
@@ -230,6 +231,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   servo_bus_init(&servo_bus, &huart1, 25U);
   robot_init(&robot, &servo_bus);
+  flight_log_init(ROBOT_CONTROL_REV);
   app_console_init(&console, &huart2, &robot, &imu055, &imu086, &imu_log_enabled);
   app_console_init(&wifi_console, &huart3, &robot, &imu055, &imu086, &imu_log_enabled);
 

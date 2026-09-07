@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "tools/servo_tool"))
 
 from servo.gait_analysis import analyze_gait_velocity
 from servo.shared_gait import SharedGaitPolicy
+from servo.spot import SpotConfig
 
 
 LEGS = ("FL", "FR", "RL", "RR")
@@ -126,6 +127,31 @@ def test_trot4_biases_only_fr_j1_outward_by_two_degrees() -> None:
     assert targets[("FL", 1)] == pytest.approx(targets[("RR", 1)])
 
 
+def test_backward_trot4_mirrors_fore_aft_path_and_preserves_support() -> None:
+    policy = SharedGaitPolicy()
+    forward, forward_support = policy.trot4_direction_targets(0.25, 1.0, 1)
+    backward, backward_support = policy.trot4_direction_targets(0.25, 1.0, -1)
+
+    assert backward_support == forward_support
+    for leg in LEGS:
+        forward_x, forward_down = policy_leg_fk(
+            forward[(leg, 2)], forward[(leg, 3)])
+        backward_x, backward_down = policy_leg_fk(
+            backward[(leg, 2)], backward[(leg, 3)])
+        assert backward_x == pytest.approx(-forward_x, abs=1.0e-5)
+        assert backward_down == pytest.approx(forward_down, abs=1.0e-5)
+        assert backward[(leg, 1)] == pytest.approx(forward[(leg, 1)])
+
+
+def test_backward_trot4_stays_inside_calibrated_servo_limits() -> None:
+    policy = SharedGaitPolicy()
+    config = SpotConfig.load(ROOT / "tools/servo_tool/config/joints.json")
+
+    for frame in range(101):
+        targets, _ = policy.trot4_direction_targets(frame / 100.0, 1.0, -1)
+        config.angles_to_targets(targets)
+
+
 def test_crab_has_overlap_vertical_clearance_and_mirrored_directions() -> None:
     policy = SharedGaitPolicy()
     left, support = policy.crab_targets(0.35, 1.0, 1)
@@ -146,6 +172,62 @@ def test_crab_has_overlap_vertical_clearance_and_mirrored_directions() -> None:
     assert left[("RR", 3)] > left[("FL", 3)]
     assert left[("RR", 3)] > left[("FR", 3)]
     assert left[("RR", 3)] > left[("RL", 3)]
+
+
+def test_turn_reverses_fore_aft_path_between_robot_sides() -> None:
+    policy = SharedGaitPolicy()
+    left_turn, support = policy.turn_targets(0.25, 1.0, 1)
+    right_turn, right_support = policy.turn_targets(0.25, 1.0, -1)
+    stopped, _ = policy.turn_targets(0.25, 0.0, 1)
+
+    assert support == right_support
+    for leg in LEGS:
+        assert stopped[(leg, 2)] == pytest.approx(45.0)
+        assert stopped[(leg, 3)] == pytest.approx(90.0)
+
+    # Reversing turn direction swaps each side's longitudinal foot path.
+    for leg in LEGS:
+        forward_left, down_left = policy_leg_fk(
+            left_turn[(leg, 2)], left_turn[(leg, 3)])
+        forward_right, down_right = policy_leg_fk(
+            right_turn[(leg, 2)], right_turn[(leg, 3)])
+        assert forward_left == pytest.approx(-forward_right, abs=1.0e-5)
+        assert down_left == pytest.approx(down_right, abs=1.0e-5)
+
+
+def test_continuous_drive_axes_match_the_established_gaits() -> None:
+    policy = SharedGaitPolicy()
+    for phase in (0.0, 0.17, 0.49, 0.73):
+        forward, support = policy.drive_targets(phase, 1.0, 1.0, 0.0)
+        trot4, trot_support = policy.trot4_direction_targets(phase, 1.0, 1)
+        left, left_support = policy.drive_targets(phase, 1.0, 0.0, -1.0)
+        turn, turn_support = policy.turn_targets(phase, 1.0, 1)
+        assert support == trot_support
+        assert left_support == turn_support
+        for key in forward:
+            assert forward[key] == pytest.approx(trot4[key], abs=1.0e-5)
+            assert left[key] == pytest.approx(turn[key], abs=1.0e-5)
+
+
+def test_continuous_drive_blends_without_changing_support_schedule() -> None:
+    policy = SharedGaitPolicy()
+    config = SpotConfig.load(ROOT / "tools/servo_tool/config/joints.json")
+    for frame in range(101):
+        targets, support = policy.drive_targets(
+            frame / 100.0, 1.0, 0.55, -0.45)
+        base, base_support = policy.trot4_targets(frame / 100.0, 0.0)
+        assert support == base_support
+        assert support
+        config.angles_to_targets(targets)
+        assert all(abs(targets[key] - base[key]) < 90.0 for key in targets)
+
+
+def policy_leg_fk(upper_degrees: float, knee_degrees: float) -> tuple[float, float]:
+    import math
+
+    upper = math.radians(upper_degrees)
+    lower = math.radians(upper_degrees - knee_degrees)
+    return math.sin(upper) + math.sin(lower), math.cos(upper) + math.cos(lower)
 
 
 def test_trot4_phase_boundaries_have_small_acceleration_jump() -> None:

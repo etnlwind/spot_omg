@@ -61,6 +61,10 @@ extern "C" {
 #define GAIT_POLICY_TROT4_FOLD_J3_DEG 95.0f
 #define GAIT_POLICY_TROT4_FR_J1_BIAS_DEG (-2.0f)
 
+#define GAIT_POLICY_TURN_PERIOD_MS 2200U
+#define GAIT_POLICY_TURN_MIN_PERIOD_MS 1800U
+#define GAIT_POLICY_TURN_MAX_PERIOD_MS 2400U
+
 #define GAIT_POLICY_CRAB_PERIOD_MS 4000U
 #define GAIT_POLICY_CRAB_MIN_PERIOD_MS 3000U
 #define GAIT_POLICY_CRAB_MAX_PERIOD_MS 5000U
@@ -578,6 +582,167 @@ static inline bool gait_policy_trot4_targets(
     return true;
 }
 
+/* Apply the same actuator-feasible trot4 path in either longitudinal
+ * direction. Forward is the established trajectory; backward reflects every
+ * sagittal foot target around the calibrated stand point while preserving
+ * lift, support timing, J1 load transfer and the FR mounting correction. */
+static inline bool gait_policy_trot4_direction_targets(
+    float global_phase,
+    float amplitude_scale,
+    int8_t direction,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    float base_forward = 0.0f;
+
+    if ((direction != -1 && direction != 1) ||
+        !gait_policy_trot4_targets(global_phase, amplitude_scale, targets)) {
+        return false;
+    }
+    if (direction > 0) {
+        return true;
+    }
+
+    gait_policy_leg_forward_kinematics(
+        GAIT_POLICY_SIM_TROT_STANCE_J2_DEG,
+        GAIT_POLICY_SIM_TROT_STANCE_J3_DEG,
+        &base_forward,
+        NULL);
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        float foot_forward = 0.0f;
+        float foot_down = 0.0f;
+        gait_policy_leg_forward_kinematics(
+            targets[leg].j2_deg,
+            targets[leg].j3_deg,
+            &foot_forward,
+            &foot_down);
+        foot_forward = 2.0f * base_forward - foot_forward;
+        if (!gait_policy_leg_inverse_kinematics(
+                foot_forward,
+                foot_down,
+                &targets[leg].j2_deg,
+                &targets[leg].j3_deg)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*
+ * Differential trot turn. direction=+1 turns left and -1 turns right.
+ * The side on the outside of the turn keeps the trot4 fore/aft trajectory;
+ * the inside side mirrors it around the calibrated stance point. Opposite
+ * longitudinal ground reactions then create yaw without using the J1 lateral
+ * sweep that belongs to the experimental crab gait.
+ */
+static inline bool gait_policy_turn_targets(
+    float global_phase,
+    float amplitude_scale,
+    int8_t direction,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    float base_forward = 0.0f;
+
+    if ((direction != -1 && direction != 1) ||
+        !gait_policy_trot4_targets(global_phase, amplitude_scale, targets)) {
+        return false;
+    }
+    gait_policy_leg_forward_kinematics(
+        GAIT_POLICY_SIM_TROT_STANCE_J2_DEG,
+        GAIT_POLICY_SIM_TROT_STANCE_J3_DEG,
+        &base_forward,
+        NULL);
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        float foot_forward = 0.0f;
+        float foot_down = 0.0f;
+        gait_policy_leg_forward_kinematics(
+            targets[leg].j2_deg,
+            targets[leg].j3_deg,
+            &foot_forward,
+            &foot_down);
+        const bool left_side = leg == 0U || leg == 2U;
+        const float side_direction = left_side ?
+            -(float)direction : (float)direction;
+        foot_forward = base_forward +
+            side_direction * (foot_forward - base_forward);
+        if (!gait_policy_leg_inverse_kinematics(
+                foot_forward,
+                foot_down,
+                &targets[leg].j2_deg,
+                &targets[leg].j3_deg)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/*
+ * Continuous remote-control gait.  Longitudinal and yaw inputs are normalized
+ * to [-1, 1] and share one motion budget, so a diagonal joystick command
+ * cannot ask the actuators for two full-amplitude trajectories at once.
+ *
+ * Both component trajectories use trot4's phase and support schedule.  Their
+ * offsets from the calibrated standing pose can therefore be blended without
+ * changing support legs or resetting phase when the joystick crosses from a
+ * straight walk into a turn.
+ */
+static inline bool gait_policy_drive_targets(
+    float global_phase,
+    float startup_scale,
+    float linear,
+    float yaw,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    GaitPolicyLegTarget base[GAIT_POLICY_LEG_COUNT];
+    GaitPolicyLegTarget linear_targets[GAIT_POLICY_LEG_COUNT];
+    GaitPolicyLegTarget yaw_targets[GAIT_POLICY_LEG_COUNT];
+
+    if (targets == NULL || !isfinite(global_phase) ||
+        !isfinite(startup_scale) || !isfinite(linear) || !isfinite(yaw) ||
+        startup_scale < 0.0f || startup_scale > 1.0f ||
+        linear < -1.0f || linear > 1.0f || yaw < -1.0f || yaw > 1.0f) {
+        return false;
+    }
+
+    float linear_weight = fabsf(linear);
+    float yaw_weight = fabsf(yaw);
+    const float requested = linear_weight + yaw_weight;
+    if (requested > 1.0f) {
+        linear_weight /= requested;
+        yaw_weight /= requested;
+    }
+    linear_weight *= startup_scale;
+    yaw_weight *= startup_scale;
+
+    if (!gait_policy_trot4_targets(global_phase, 0.0f, base) ||
+        !gait_policy_trot4_direction_targets(
+            global_phase,
+            linear_weight,
+            linear < 0.0f ? -1 : 1,
+            linear_targets) ||
+        !gait_policy_turn_targets(
+            global_phase,
+            yaw_weight,
+            yaw < 0.0f ? 1 : -1,
+            yaw_targets)) {
+        return false;
+    }
+
+    for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        targets[leg].j1_deg = base[leg].j1_deg +
+            (linear_targets[leg].j1_deg - base[leg].j1_deg) +
+            (yaw_targets[leg].j1_deg - base[leg].j1_deg);
+        targets[leg].j2_deg = base[leg].j2_deg +
+            (linear_targets[leg].j2_deg - base[leg].j2_deg) +
+            (yaw_targets[leg].j2_deg - base[leg].j2_deg);
+        targets[leg].j3_deg = base[leg].j3_deg +
+            (linear_targets[leg].j3_deg - base[leg].j3_deg) +
+            (yaw_targets[leg].j3_deg - base[leg].j3_deg);
+        targets[leg].stance = base[leg].stance;
+    }
+    return true;
+}
+
 /*
  * Sideways four-beat crawl. direction=+1 moves the body left and -1 right.
  * The end signs map canonical J1 angles to a common world-sideways foot
@@ -803,8 +968,11 @@ static inline bool gait_policy_balance_preview(
                     config->foot_placement_gain * preview->pitch_control,
                     -config->foot_placement_limit,
                     config->foot_placement_limit);
-                forward_correction =
-                    GAIT_POLICY_STANCE_TRAVEL * placement;
+                /* Positive pitch means the nose is low. Place the swing foot
+                 * farther forward in body coordinates to catch that fall.
+                 * This correction is body-relative and therefore has the
+                 * same sign during forward and backward travel. */
+                forward_correction = placement;
             }
         }
 

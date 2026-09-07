@@ -1,6 +1,7 @@
 #include "app_console.h"
 
 #include "feetech_protocol.h"
+#include "flight_log.h"
 #include "gait_policy.h"
 #include "robot_config.h"
 #include "safety.h"
@@ -66,6 +67,40 @@ static bool parse_u32(const char *text,
     return true;
 }
 
+static bool parse_i32(const char *text,
+                      int32_t minimum,
+                      int32_t maximum,
+                      int32_t *value)
+{
+    char *end = NULL;
+    if (text == NULL || value == NULL || text[0] == '\0') {
+        return false;
+    }
+    const long parsed = strtol(text, &end, 10);
+    if (end == text || *end != '\0' || parsed < minimum || parsed > maximum) {
+        return false;
+    }
+    *value = (int32_t)parsed;
+    return true;
+}
+
+static bool parse_u64(const char *text,
+                      uint64_t minimum,
+                      uint64_t maximum,
+                      uint64_t *value)
+{
+    char *end = NULL;
+    if (text == NULL || value == NULL || text[0] == '\0' || text[0] == '-') {
+        return false;
+    }
+    const unsigned long long parsed = strtoull(text, &end, 10);
+    if (end == text || *end != '\0' || parsed < minimum || parsed > maximum) {
+        return false;
+    }
+    *value = (uint64_t)parsed;
+    return true;
+}
+
 /* Defined below with the other safety helpers; used by print_robot_result. */
 static void print_safety_fault(AppConsole *console);
 
@@ -88,6 +123,12 @@ static void print_bus_result(AppConsole *console,
 static void print_robot_result(AppConsole *console, RobotResult result)
 {
     char message[128];
+
+    (void)flight_log_appendf("RESULT result=%s servo=%u bus=%s error=0x%02X",
+                             robot_result_string(result),
+                             (unsigned int)console->robot->last_failed_servo_id,
+                             servo_bus_result_string(console->robot->last_bus_result),
+                             (unsigned int)console->robot->bus->last_servo_error);
 
     if (result == ROBOT_OK) {
         write_text(console, "OK\r\n");
@@ -876,6 +917,47 @@ static void command_gait_diagnostics(AppConsole *console)
         (unsigned int)console->robot->balance_late_frames,
         (unsigned long)console->robot->gait_limited_frames);
     write_text(console, message);
+    (void)flight_log_appendf(
+        "GAIT n=%lu v=%u lag=%u droop=%u derate=%u fall=%u late=%u limit=%lu",
+        (unsigned long)diagnostics->total_samples,
+        (unsigned int)diagnostics->minimum_voltage_mv,
+        (unsigned int)diagnostics->lag_samples,
+        (unsigned int)diagnostics->lag_with_voltage_droop_samples,
+        diagnostics->derate_recommended ? 1U : 0U,
+        console->robot->tilt_snapshot.valid ? 1U : 0U,
+        (unsigned int)console->robot->balance_late_frames,
+        (unsigned long)console->robot->gait_limited_frames);
+    uint8_t logged_joint[3] = {UINT8_MAX, UINT8_MAX, UINT8_MAX};
+    for (size_t rank = 0U; rank < 3U; ++rank) {
+        uint8_t best = UINT8_MAX;
+        for (uint8_t candidate = 0U; candidate < ROBOT_JOINT_COUNT; ++candidate) {
+            bool already_logged = false;
+            for (size_t prior = 0U; prior < rank; ++prior) {
+                already_logged = already_logged || logged_joint[prior] == candidate;
+            }
+            const ActuatorJointDiagnostics *joint = &diagnostics->joints[candidate];
+            if (!already_logged && joint->sample_count > 0U &&
+                (best == UINT8_MAX || joint->peak_position_error >
+                                      diagnostics->joints[best].peak_position_error)) {
+                best = candidate;
+            }
+        }
+        if (best == UINT8_MAX) {
+            break;
+        }
+        logged_joint[rank] = best;
+        const ActuatorJointDiagnostics *joint = &diagnostics->joints[best];
+        const ActuatorTrackingSample *peak = &joint->peak_error_sample;
+        (void)flight_log_appendf(
+            "JOINT id=%u peak=%u phase=%u current=%u load=%u min_v=%u lag=%u",
+            (unsigned int)peak->servo_id,
+            (unsigned int)joint->peak_position_error,
+            (unsigned int)joint->peak_error_phase,
+            (unsigned int)joint->peak_current_magnitude,
+            (unsigned int)joint->peak_load_magnitude,
+            (unsigned int)joint->minimum_voltage_mv,
+            (unsigned int)joint->lag_samples);
+    }
     print_bus_retry_diagnostics(console);
 
     (void)snprintf(
@@ -1781,7 +1863,8 @@ static void command_trot3(AppConsole *console,
 
 static void command_trot4(AppConsole *console,
                           char *cycles_text,
-                          char *period_text)
+                          char *period_text,
+                          int8_t direction)
 {
     uint32_t cycles = 1U;
     uint32_t period_ms = GAIT_POLICY_TROT4_PERIOD_MS;
@@ -1810,20 +1893,26 @@ static void command_trot4(AppConsole *console,
     (void)snprintf(
         message,
         sizeof(message),
-        "Starting posture-smooth trot4: cycles=%lu period=%lums "
+        "Starting posture-smooth trot4: direction=%s cycles=%lu period=%lums "
         "duty=60%% path=70%% fold=J2:%u/J3:%u shift=1.0deg "
-        "FR-J1=-2.0deg balance=%s/%s rev=%s\r\n",
+        "FR-J1=-2.0deg imu-placement=%s balance=%s/%s rev=%s\r\n",
+        direction > 0 ? "forward" : "backward",
         (unsigned long)cycles,
         (unsigned long)period_ms,
         (unsigned int)GAIT_POLICY_TROT4_FOLD_J2_DEG,
         (unsigned int)GAIT_POLICY_TROT4_FOLD_J3_DEG,
+        console->robot->balance_mode == ROBOT_BALANCE_FULL ? "0.35" : "0.20",
         console->robot->balance_enabled ? "on" : "off",
         robot_balance_mode_string(console->robot->balance_mode),
         ROBOT_CONTROL_REV);
     write_text(console, message);
-    const RobotResult result = robot_trot4(console->robot,
-                                           (uint8_t)cycles,
-                                           (uint16_t)period_ms);
+    const RobotResult result = direction > 0 ?
+        robot_trot4(console->robot,
+                    (uint8_t)cycles,
+                    (uint16_t)period_ms) :
+        robot_trot4_backward(console->robot,
+                             (uint8_t)cycles,
+                             (uint16_t)period_ms);
     print_robot_result(console, result);
     command_gait_diagnostics(console);
     if (result == ROBOT_TILT_LIMIT) {
@@ -1878,6 +1967,120 @@ static void command_crab(AppConsole *console,
     write_text(console, message);
     const RobotResult result = robot_crab(
         console->robot, direction, (uint8_t)cycles, (uint16_t)period_ms);
+    print_robot_result(console, result);
+    command_gait_diagnostics(console);
+    if (result == ROBOT_TILT_LIMIT) {
+        command_balance_diagnostics(console);
+    }
+}
+
+static void command_turn(AppConsole *console,
+                         char *direction_text,
+                         char *cycles_text,
+                         char *period_text)
+{
+    int8_t direction = 0;
+    uint32_t cycles = 1U;
+    uint32_t period_ms = GAIT_POLICY_TURN_PERIOD_MS;
+    if (direction_text != NULL && strcmp(direction_text, "left") == 0) {
+        direction = 1;
+    } else if (direction_text != NULL && strcmp(direction_text, "right") == 0) {
+        direction = -1;
+    }
+    if (direction == 0 ||
+        (cycles_text != NULL && !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL &&
+         !parse_u32(period_text,
+                    GAIT_POLICY_TURN_MIN_PERIOD_MS,
+                    GAIT_POLICY_TURN_MAX_PERIOD_MS,
+                    &period_ms))) {
+        write_text(console,
+                   "usage: turn left|right [CYCLES [PERIOD_MS]]; "
+                   "cycles=1..10 period=1800..2400 (default 2200)\r\n");
+        return;
+    }
+    if (!actuator_profile_supports_limited_gait(
+            console->robot->profile_speed,
+            console->robot->profile_acceleration)) {
+        write_text(console,
+                   "ERROR: turn requires profile 3400 254; no motion started\r\n");
+        return;
+    }
+    char message[208];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "Starting differential turn: direction=%s cycles=%lu period=%lums "
+        "duty=60%% path=70%% balance=%s/%s rev=%s\r\n",
+        direction > 0 ? "left" : "right",
+        (unsigned long)cycles,
+        (unsigned long)period_ms,
+        console->robot->balance_enabled ? "on" : "off",
+        robot_balance_mode_string(console->robot->balance_mode),
+        ROBOT_CONTROL_REV);
+    write_text(console, message);
+    const RobotResult result = robot_turn(
+        console->robot, direction, (uint8_t)cycles, (uint16_t)period_ms);
+    print_robot_result(console, result);
+    command_gait_diagnostics(console);
+    if (result == ROBOT_TILT_LIMIT) {
+        command_balance_diagnostics(console);
+    }
+}
+
+static void command_drive(AppConsole *console,
+                          char *linear_text,
+                          char *yaw_text,
+                          char *sequence_text)
+{
+    int32_t linear = 0;
+    int32_t yaw = 0;
+    uint32_t sequence = 0U;
+    if (!parse_i32(linear_text,
+                   -ROBOT_DRIVE_INPUT_LIMIT,
+                   ROBOT_DRIVE_INPUT_LIMIT,
+                   &linear) ||
+        !parse_i32(yaw_text,
+                   -ROBOT_DRIVE_INPUT_LIMIT,
+                   ROBOT_DRIVE_INPUT_LIMIT,
+                   &yaw) ||
+        !parse_u32(sequence_text, 0U, UINT32_MAX, &sequence) ||
+        (linear == 0 && yaw == 0)) {
+        write_text(console,
+                   "usage: drive LINEAR YAW SEQ; axes=-1000..1000 and not "
+                   "both zero\r\n");
+        return;
+    }
+    if (!actuator_profile_supports_limited_gait(
+            console->robot->profile_speed,
+            console->robot->profile_acceleration)) {
+        write_text(console,
+                   "ERROR: drive requires profile 3400 254; no motion "
+                   "started\r\n");
+        return;
+    }
+
+    char message[192];
+    (void)snprintf(
+        message,
+        sizeof(message),
+        "$SPOTDRIVE started seq=%lu linear=%ld yaw=%ld watchdog=%lums "
+        "rev=%s\r\n",
+        (unsigned long)sequence,
+        (long)linear,
+        (long)yaw,
+        (unsigned long)ROBOT_DRIVE_WATCHDOG_MS,
+        ROBOT_CONTROL_REV);
+    write_text(console, message);
+
+    const RobotResult result = robot_drive(
+        console->robot, (int16_t)linear, (int16_t)yaw, sequence);
+    (void)snprintf(message,
+                   sizeof(message),
+                   "$SPOTDRIVE stopped reason=%s elapsed=%lums\r\n",
+                   robot_result_string(result),
+                   (unsigned long)console->robot->gait_elapsed_ms);
+    write_text(console, message);
     print_robot_result(console, result);
     command_gait_diagnostics(console);
     if (result == ROBOT_TILT_LIMIT) {
@@ -1958,8 +2161,111 @@ static void command_echo(AppConsole *console, char *mode)
     }
 }
 
+static void command_log(AppConsole *console, char *action, char *argument)
+{
+    char message[232];
+    if (action == NULL || strcmp(action, "status") == 0) {
+        (void)snprintf(message,
+                       sizeof(message),
+                       "$SPOTLOG STATUS records=%lu capacity=1016 boot=%lu time=%s\r\n",
+                       (unsigned long)flight_log_count(),
+                       (unsigned long)flight_log_boot_id(),
+                       flight_log_time_is_synchronized() ? "synced" : "uptime-only");
+        write_text(console, message);
+        return;
+    }
+
+    if (strcmp(action, "time") == 0) {
+        uint64_t epoch_ms = 0U;
+        if (!parse_u64(argument,
+                       UINT64_C(1577836800000),
+                       UINT64_C(4294967295999),
+                       &epoch_ms)) {
+            write_text(console, "usage: log time UNIX_EPOCH_MS\r\n");
+            return;
+        }
+        if (!flight_log_set_epoch_ms(epoch_ms)) {
+            write_text(console, "ERROR: log time synchronization failed\r\n");
+            return;
+        }
+        (void)snprintf(message,
+                       sizeof(message),
+                       "$SPOTLOG TIME epoch_ms=%lu%03u uptime_ms=%lu\r\n",
+                       (unsigned long)(epoch_ms / 1000U),
+                       (unsigned int)(epoch_ms % 1000U),
+                       (unsigned long)HAL_GetTick());
+        write_text(console, message);
+        return;
+    }
+
+    if (strcmp(action, "clear") == 0) {
+        if (!flight_log_clear()) {
+            write_text(console, "ERROR: persistent log erase failed\r\n");
+            return;
+        }
+        write_text(console, "$SPOTLOG CLEARED\r\n");
+        return;
+    }
+
+    if (strcmp(action, "show") == 0) {
+        uint32_t requested = 64U;
+        if (argument != NULL && !parse_u32(argument, 1U, 512U, &requested)) {
+            write_text(console, "usage: log show [1..512]\r\n");
+            return;
+        }
+        const size_t total = flight_log_count();
+        const size_t returned = total < requested ? total : requested;
+        const size_t first = total - returned;
+        (void)snprintf(message,
+                       sizeof(message),
+                       "$SPOTLOG BEGIN total=%lu returned=%lu time=%s\r\n",
+                       (unsigned long)total,
+                       (unsigned long)returned,
+                       flight_log_time_is_synchronized() ? "synced" : "uptime-only");
+        write_text(console, message);
+        for (size_t index = first; index < total; ++index) {
+            FlightLogEntry entry;
+            if (!flight_log_get(index, &entry)) {
+                continue;
+            }
+            const uint64_t epoch_ms = flight_log_resolve_epoch_ms(&entry);
+            const uint32_t epoch_seconds = (uint32_t)(epoch_ms / 1000U);
+            const uint16_t epoch_millis = (uint16_t)(epoch_ms % 1000U);
+            (void)snprintf(
+                message,
+                sizeof(message),
+                "$SPOTLOG seq=%lu boot=%lu uptime_ms=%lu epoch_ms=%lu%03u text=%s\r\n",
+                (unsigned long)entry.sequence,
+                (unsigned long)entry.boot_id,
+                (unsigned long)entry.uptime_ms,
+                (unsigned long)epoch_seconds,
+                (unsigned int)epoch_millis,
+                entry.text);
+            write_text(console, message);
+            /* The ESP32 bridge has no notification ACK/flow control. Pacing
+             * prevents a stored-log burst from overflowing its BLE queue. */
+            HAL_Delay(15U);
+        }
+        write_text(console, "$SPOTLOG END\r\n");
+        return;
+    }
+
+    write_text(console, "usage: log status|time UNIX_EPOCH_MS|show [COUNT]|clear\r\n");
+}
+
 static void execute_line(AppConsole *console)
 {
+    if (strncmp(console->line, "log ", 4U) != 0 &&
+        strcmp(console->line, "log") != 0 &&
+        strncmp(console->line, "echo ", 5U) != 0 &&
+        strcmp(console->line, "syncstate") != 0) {
+        (void)flight_log_appendf("CMD link=%s %s",
+                                 console->uart != NULL &&
+                                         console->uart->Instance == USART3
+                                     ? "ble"
+                                     : "usb",
+                                 console->line);
+    }
     char *command = strtok(console->line, " \t");
     if (command == NULL) {
         return;
@@ -2017,7 +2323,21 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "trot4") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
-        command_trot4(console, cycles, period);
+        command_trot4(console, cycles, period, 1);
+    } else if (strcmp(command, "trot4back") == 0) {
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_trot4(console, cycles, period, -1);
+    } else if (strcmp(command, "turn") == 0) {
+        char *direction = strtok(NULL, " \t");
+        char *cycles = strtok(NULL, " \t");
+        char *period = strtok(NULL, " \t");
+        command_turn(console, direction, cycles, period);
+    } else if (strcmp(command, "drive") == 0) {
+        char *linear = strtok(NULL, " \t");
+        char *yaw = strtok(NULL, " \t");
+        char *sequence = strtok(NULL, " \t");
+        command_drive(console, linear, yaw, sequence);
     } else if (strcmp(command, "crab") == 0) {
         char *direction = strtok(NULL, " \t");
         char *cycles = strtok(NULL, " \t");
@@ -2063,8 +2383,111 @@ static void execute_line(AppConsole *console)
         command_imucal(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "balance") == 0) {
         command_balance(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "log") == 0) {
+        char *action = strtok(NULL, " \t");
+        char *argument = strtok(NULL, " \t");
+        command_log(console, action, argument);
     } else {
         write_text(console, "unknown command; type help\r\n");
+    }
+}
+
+/* The @D/@S control lane is parsed from the USART ISR while robot_drive() owns
+ * the foreground. Keep this parser bounded, allocation-free and independent
+ * of strtok(), which the foreground command parser may currently be using. */
+static bool realtime_next_i32(const char **cursor, int32_t *value)
+{
+    const char *text = *cursor;
+    int32_t sign = 1;
+    int32_t parsed = 0;
+    bool has_digit = false;
+    while (*text == ' ') {
+        ++text;
+    }
+    if (*text == '-') {
+        sign = -1;
+        ++text;
+    }
+    while (*text >= '0' && *text <= '9') {
+        has_digit = true;
+        if (parsed > (INT32_MAX - (*text - '0')) / 10) {
+            return false;
+        }
+        parsed = parsed * 10 + (*text - '0');
+        ++text;
+    }
+    if (!has_digit || (*text != ' ' && *text != '\0')) {
+        return false;
+    }
+    *value = parsed * sign;
+    *cursor = text;
+    return true;
+}
+
+static bool realtime_next_u32(const char **cursor, uint32_t *value)
+{
+    const char *text = *cursor;
+    uint32_t parsed = 0U;
+    bool has_digit = false;
+    while (*text == ' ') {
+        ++text;
+    }
+    while (*text >= '0' && *text <= '9') {
+        const uint32_t digit = (uint32_t)(*text - '0');
+        has_digit = true;
+        if (parsed > (UINT32_MAX - digit) / 10U) {
+            return false;
+        }
+        parsed = parsed * 10U + digit;
+        ++text;
+    }
+    if (!has_digit || (*text != ' ' && *text != '\0')) {
+        return false;
+    }
+    *value = parsed;
+    *cursor = text;
+    return true;
+}
+
+static bool realtime_at_end(const char *cursor)
+{
+    while (*cursor == ' ') {
+        ++cursor;
+    }
+    return *cursor == '\0';
+}
+
+static void process_realtime_line(AppConsole *console)
+{
+    const char *cursor = console->realtime_line + 2U;
+    uint32_t sequence = 0U;
+    if (console->realtime_overflow || console->realtime_length < 3U) {
+        return;
+    }
+    if (console->realtime_line[0] == '@' &&
+        console->realtime_line[1] == 'D') {
+        int32_t linear = 0;
+        int32_t yaw = 0;
+        if (realtime_next_u32(&cursor, &sequence) &&
+            realtime_next_i32(&cursor, &linear) &&
+            realtime_next_i32(&cursor, &yaw) && realtime_at_end(cursor) &&
+            linear >= -ROBOT_DRIVE_INPUT_LIMIT &&
+            linear <= ROBOT_DRIVE_INPUT_LIMIT &&
+            yaw >= -ROBOT_DRIVE_INPUT_LIMIT &&
+            yaw <= ROBOT_DRIVE_INPUT_LIMIT) {
+            (void)robot_drive_update_realtime(
+                console->robot,
+                sequence,
+                (int16_t)linear,
+                (int16_t)yaw,
+                HAL_GetTick());
+        }
+    } else if (console->realtime_line[0] == '@' &&
+               console->realtime_line[1] == 'S' &&
+               realtime_next_u32(&cursor, &sequence) &&
+               realtime_at_end(cursor)) {
+        (void)robot_drive_stop_realtime(
+            console->robot, sequence, HAL_GetTick());
     }
 }
 
@@ -2090,6 +2513,9 @@ void app_console_init(AppConsole *console,
     console->line_ready = false;
     console->overflow = false;
     console->echo_enabled = false;
+    console->realtime_line[0] = '\0';
+    console->realtime_length = 0U;
+    console->realtime_overflow = false;
 
     if (uart != NULL) {
         (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
@@ -2106,6 +2532,20 @@ void app_console_on_rx_complete(AppConsole *console,
     const uint8_t byte = console->rx_byte;
     if (byte == 0x03U) {
         robot_request_motion_abort(console->robot);
+    } else if (console->realtime_length != 0U ||
+               (byte == '@' &&
+                (console->line_length == 0U || console->line_ready))) {
+        if (byte == '\r' || byte == '\n') {
+            console->realtime_line[console->realtime_length] = '\0';
+            process_realtime_line(console);
+            console->realtime_length = 0U;
+            console->realtime_overflow = false;
+        } else if (console->realtime_length <
+                   APP_CONSOLE_REALTIME_CAPACITY - 1U) {
+            console->realtime_line[console->realtime_length++] = (char)byte;
+        } else {
+            console->realtime_overflow = true;
+        }
     } else if (!console->line_ready) {
         if (byte == '\r' || byte == '\n') {
             /*
@@ -2156,6 +2596,8 @@ void app_console_on_uart_error(AppConsole *console,
     console->line_length = 0U;
     console->line_ready = false;
     console->overflow = false;
+    console->realtime_length = 0U;
+    console->realtime_overflow = false;
     __HAL_UART_CLEAR_OREFLAG(uart);
     (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
 }
@@ -2214,6 +2656,9 @@ void app_console_print_help(AppConsole *console)
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)\r\n"
                "  trot4 [C [MS]]   posture-smooth reduced-path trot (default 1600ms)\r\n"
+               "  trot4back [C [MS]] reverse trot4 with IMU pitch placement\r\n"
+               "  turn left|right [C [MS]] differential trot turn (default 2200ms)\r\n"
+               "  drive LINEAR YAW SEQ continuous 50Hz remote drive; @D update, @S stop\r\n"
                "  crab [left|right [C [MS]]] four-beat crawl (default left, 4000ms)\r\n"
                "  fwupdate         torque off and reboot into BLE update bootloader\r\n"
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
@@ -2230,6 +2675,7 @@ void app_console_print_help(AppConsole *console)
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  imucal status|device|level|clear BNO055 persistent calibration\r\n"
                "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
+               "  log status|time MS|show [N]|clear persistent flight recorder\r\n"
                "  help             show this help\r\n\r\n");
     write_text(console,
                console->echo_enabled ? "Console echo: on\r\n"

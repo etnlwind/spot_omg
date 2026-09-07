@@ -12,7 +12,14 @@ enum RobotCommand: Equatable {
     case scan
     case gaitDiagnostics
     case balanceDiagnostics
+    case synchronizeTime(epochMilliseconds: Int64)
+    case storedLogs(count: Int)
+    case clearStoredLogs
     case trot4(cycles: Int, periodMilliseconds: Int)
+    case trot4Backward(cycles: Int, periodMilliseconds: Int)
+    case turnLeft(cycles: Int, periodMilliseconds: Int)
+    case turnRight(cycles: Int, periodMilliseconds: Int)
+    case drive(linearPerMille: Int, yawPerMille: Int, sequence: UInt32)
     case crabLeft(cycles: Int, periodMilliseconds: Int)
     case crabRight(cycles: Int, periodMilliseconds: Int)
     case raw(String)
@@ -30,7 +37,15 @@ enum RobotCommand: Equatable {
         case .scan: return "scan"
         case .gaitDiagnostics: return "gaitdiag"
         case .balanceDiagnostics: return "baldiag"
+        case .synchronizeTime(let epoch): return "log time \(epoch)"
+        case .storedLogs(let count): return "log show \(count)"
+        case .clearStoredLogs: return "log clear"
         case .trot4(let cycles, let period): return "trot4 \(cycles) \(period)"
+        case .trot4Backward(let cycles, let period): return "trot4back \(cycles) \(period)"
+        case .turnLeft(let cycles, let period): return "turn left \(cycles) \(period)"
+        case .turnRight(let cycles, let period): return "turn right \(cycles) \(period)"
+        case .drive(let linear, let yaw, let sequence):
+            return "drive \(linear) \(yaw) \(sequence)"
         case .crabLeft(let cycles, let period): return "crab left \(cycles) \(period)"
         case .crabRight(let cycles, let period): return "crab right \(cycles) \(period)"
         case .raw(let line): return line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -47,10 +62,59 @@ enum RobotCommand: Equatable {
         case .stand, .stand11, .landing, .hold, .recover: return 4
         case .relax: return 1
         case .trot4(let cycles, let period),
+             .trot4Backward(let cycles, let period),
+             .turnLeft(let cycles, let period),
+             .turnRight(let cycles, let period),
              .crabLeft(let cycles, let period),
              .crabRight(let cycles, let period):
             return Double(cycles * period) / 1000.0 + 4
         default: return nil
         }
+    }
+}
+
+struct RobotDriveVector: Equatable {
+    static let deadZone = 0.15
+    static let minimumMotion = 0.30
+
+    let linearPerMille: Int
+    let yawPerMille: Int
+    let speedFraction: Double
+
+    static func make(x: Double, y: Double) -> Self? {
+        let magnitude = min(1.0, hypot(x, y))
+        guard magnitude >= deadZone else { return nil }
+        let speed = min(1.0, max(0.0,
+            (magnitude - deadZone) / (1.0 - deadZone)))
+        let motion = minimumMotion + (1.0 - minimumMotion) * speed
+        let axisScale = motion * 1000.0 / max(magnitude, 0.0001)
+        return Self(
+            linearPerMille: Int((y * axisScale).rounded()),
+            yawPerMille: Int((x * axisScale).rounded()),
+            speedFraction: speed)
+    }
+
+    var statusTitle: String {
+        let longitudinal = linearPerMille > 80 ? "전진" :
+            (linearPerMille < -80 ? "후진" : "")
+        let turning = yawPerMille > 80 ? "우회전" :
+            (yawPerMille < -80 ? "좌회전" : "")
+        return [longitudinal, turning].filter { !$0.isEmpty }.joined(separator: " + ")
+    }
+}
+
+enum RobotDriveRealtimePacket: Equatable {
+    case update(sequence: UInt32, linearPerMille: Int, yawPerMille: Int)
+    case stop(sequence: UInt32)
+
+    var encoded: Data {
+        let line: String
+        switch self {
+        case .update(let sequence, let linear, let yaw):
+            line = "@D \(sequence) \(linear) \(yaw)\n"
+        case .stop(let sequence):
+            line = "@S \(sequence)\n"
+        }
+        return Data(line.utf8)
     }
 }

@@ -27,6 +27,7 @@ typedef enum
     ROBOT_TROT3_PERIOD_ERROR,
     ROBOT_IMU_ERROR,
     ROBOT_MOTION_ABORTED,
+    ROBOT_DRIVE_WATCHDOG,
     ROBOT_TILT_LIMIT,
     ROBOT_SAFETY_FAULT,      /* stall detector cut torque; latched */
     ROBOT_SERVO_POWER_LOST   /* nothing on the bus answers a ping */
@@ -67,7 +68,9 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "ios-sync-v6"
+#define ROBOT_CONTROL_REV "continuous-drive-v10"
+#define ROBOT_DRIVE_INPUT_LIMIT 1000
+#define ROBOT_DRIVE_WATCHDOG_MS 800U
 
 typedef struct
 {
@@ -169,6 +172,19 @@ typedef struct
     volatile bool motion_abort_requested;
 
     /*
+     * Low-latency remote-drive mailbox. USART interrupt handlers publish a
+     * complete packet by writing sequence last; the 50 Hz gait loop consumes
+     * the newest snapshot without waiting for the command console or BLE
+     * prompt. Values are normalized per mille in [-1000, 1000].
+     */
+    volatile bool drive_active;
+    volatile bool drive_stop_requested;
+    volatile int16_t drive_target_linear;
+    volatile int16_t drive_target_yaw;
+    volatile uint32_t drive_updated_at_ms;
+    volatile uint32_t drive_sequence;
+
+    /*
      * Stall detection.  The fault latches here rather than in the monitor's
      * caller so every motion entry point can refuse to start while it is set,
      * and only robot_recover() clears it.
@@ -213,6 +229,15 @@ bool robot_set_balance_mode(RobotController *robot, RobotBalanceMode mode);
 const char *robot_balance_mode_string(RobotBalanceMode mode);
 bool robot_balance_preview(RobotController *robot, RobotBalancePreview *preview);
 void robot_request_motion_abort(RobotController *robot);
+bool robot_drive_update_realtime(RobotController *robot,
+                                 uint32_t sequence,
+                                 int16_t linear,
+                                 int16_t yaw,
+                                 uint32_t received_at_ms);
+bool robot_drive_stop_realtime(RobotController *robot,
+                               uint32_t sequence,
+                               uint32_t received_at_ms);
+bool robot_drive_is_active(const RobotController *robot);
 
 RobotResult robot_require_all(RobotController *robot);
 
@@ -253,6 +278,17 @@ RobotResult robot_trot3(RobotController *robot,
 RobotResult robot_trot4(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms);
+RobotResult robot_trot4_backward(RobotController *robot,
+                                 uint8_t cycles,
+                                 uint16_t period_ms);
+RobotResult robot_turn(RobotController *robot,
+                       int8_t direction,
+                       uint8_t cycles,
+                       uint16_t period_ms);
+RobotResult robot_drive(RobotController *robot,
+                        int16_t initial_linear,
+                        int16_t initial_yaw,
+                        uint32_t sequence);
 RobotResult robot_crab(RobotController *robot,
                        int8_t direction,
                        uint8_t cycles,

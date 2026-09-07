@@ -11,7 +11,7 @@ APP = ROOT / "firmware" / "stm32-learning"
 BOOT = ROOT / "firmware" / "stm32-ota-bootloader"
 
 
-def test_application_is_relocated_and_reserves_calibration_sector() -> None:
+def test_application_is_relocated_and_reserves_persistent_storage_sector() -> None:
     linker = (APP / "STM32F446RETX_FLASH.ld").read_text()
     system = (APP / "Src" / "system_stm32f4xx.c").read_text()
     assert "ORIGIN = 0x08010000" in linker
@@ -19,6 +19,18 @@ def test_application_is_relocated_and_reserves_calibration_sector() -> None:
     assert "LENGTH = 0x1FFF0" in linker
     assert "#define USER_VECT_TAB_ADDRESS" in system
     assert "#define VECT_TAB_OFFSET         0x00010000U" in system
+
+
+def test_flight_log_shares_sector_7_without_overwriting_calibration() -> None:
+    logger = (APP / "Src" / "flight_log.c").read_text()
+    calibration = (APP / "Src" / "bno055.c").read_text()
+    assert "FLIGHT_LOG_SECTOR_ADDRESS       0x08060000UL" in logger
+    assert "FLIGHT_LOG_FLASH_ADDRESS        0x08060400UL" in logger
+    assert "FLIGHT_LOG_FLASH_END            0x08080000UL" in logger
+    assert "FLIGHT_LOG_PRESERVED_WORDS      256U" in logger
+    assert "sizeof(FlightLogRecord) == 128U" in logger
+    assert "BNO055_CAL_FLASH_ADDRESS   0x08060000UL" in calibration
+    assert "flight_log_on_sector_reformatted();" in calibration
 
 
 def test_bootloader_never_erases_its_own_or_calibration_sectors() -> None:
@@ -57,7 +69,7 @@ def test_spotctl_exposes_the_stm32_firmware_target() -> None:
 
     args = parse_args(["firmware", "stm32", "firmware.bin"])
     assert args.firmware_target == "stm32"
-    assert args.chunk_size == 180
+    assert args.chunk_size == 120
 
 
 def test_factory_image_commits_the_relocated_application() -> None:

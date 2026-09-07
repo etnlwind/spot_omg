@@ -31,6 +31,10 @@
 #define ROBOT_TROT_TILT_LIMIT         120
 #define ROBOT_TROT_TILT_FRAMES          2U
 #define ROBOT_TROT_STEP_SYNC_TOLERANCE 48U
+#define ROBOT_DRIVE_SLOW_PERIOD_MS    2400U
+#define ROBOT_DRIVE_FAST_PERIOD_MS    1800U
+#define ROBOT_DRIVE_SLEW_PER_FRAME      40
+#define ROBOT_DRIVE_STOP_EPSILON          8
 #define ROBOT_JUMP_FRAME_MS             (1000U / GAIT_POLICY_JUMP_CONTROL_HZ)
 #define ROBOT_JUMP_TILT_LIMIT           300
 #define ROBOT_JUMP_IMU_FAILURES           3U
@@ -97,6 +101,12 @@ void robot_init(RobotController *robot, ServoBus *bus)
     memset(&robot->balance_trace, 0, sizeof(robot->balance_trace));
     memset(&robot->tilt_snapshot, 0, sizeof(robot->tilt_snapshot));
     robot->motion_abort_requested = false;
+    robot->drive_active = false;
+    robot->drive_stop_requested = false;
+    robot->drive_target_linear = 0;
+    robot->drive_target_yaw = 0;
+    robot->drive_updated_at_ms = 0U;
+    robot->drive_sequence = 0U;
     robot->safety_scan_index = 0U;
     safety_init(&robot->safety, NULL);
     actuator_diagnostics_reset(&robot->gait_diagnostics);
@@ -178,6 +188,57 @@ void robot_request_motion_abort(RobotController *robot)
     if (robot != NULL) {
         robot->motion_abort_requested = true;
     }
+}
+
+static bool drive_sequence_is_newer(uint32_t candidate, uint32_t current)
+{
+    return (int32_t)(candidate - current) > 0;
+}
+
+bool robot_drive_update_realtime(RobotController *robot,
+                                 uint32_t sequence,
+                                 int16_t linear,
+                                 int16_t yaw,
+                                 uint32_t received_at_ms)
+{
+    if (robot == NULL || !robot->drive_active ||
+        linear < -ROBOT_DRIVE_INPUT_LIMIT ||
+        linear > ROBOT_DRIVE_INPUT_LIMIT ||
+        yaw < -ROBOT_DRIVE_INPUT_LIMIT || yaw > ROBOT_DRIVE_INPUT_LIMIT ||
+        !drive_sequence_is_newer(sequence, robot->drive_sequence)) {
+        return false;
+    }
+
+    robot->drive_target_linear = linear;
+    robot->drive_target_yaw = yaw;
+    robot->drive_stop_requested = false;
+    robot->drive_updated_at_ms = received_at_ms;
+    /* Publish sequence last so the foreground loop never accepts a partially
+     * written packet as a new command. */
+    robot->drive_sequence = sequence;
+    return true;
+}
+
+bool robot_drive_stop_realtime(RobotController *robot,
+                               uint32_t sequence,
+                               uint32_t received_at_ms)
+{
+    if (robot == NULL || !robot->drive_active ||
+        !drive_sequence_is_newer(sequence, robot->drive_sequence)) {
+        return false;
+    }
+
+    robot->drive_target_linear = 0;
+    robot->drive_target_yaw = 0;
+    robot->drive_updated_at_ms = received_at_ms;
+    robot->drive_stop_requested = true;
+    robot->drive_sequence = sequence;
+    return true;
+}
+
+bool robot_drive_is_active(const RobotController *robot)
+{
+    return robot != NULL && robot->drive_active;
 }
 
 RobotResult robot_require_all(RobotController *robot)
@@ -584,7 +645,7 @@ static GaitPolicyBalanceConfig shared_balance_config(RobotBalanceMode mode)
         full ? 0.08f : 0.10f,
         full ? 15.0f : 5.0f,
         5.0f,
-        0.0f,
+        full ? 0.35f : 0.20f,
         0.08f,
         true
     };
@@ -1110,6 +1171,7 @@ typedef enum
     ROBOT_TROT_POLICY_CIRCULAR,
     ROBOT_TROT_POLICY_CIRCULAR_OVERLAP,
     ROBOT_TROT_POLICY_POSTURE_SMOOTH,
+    ROBOT_TROT_POLICY_TURN,
     ROBOT_TROT_POLICY_CRAB
 } RobotTrotPolicy;
 
@@ -1124,8 +1186,13 @@ static bool robot_trot_policy_targets(
         return gait_policy_crab_targets(
             phase, amplitude_scale, travel_scale < 0.0f ? -1 : 1, targets);
     }
+    if (policy == ROBOT_TROT_POLICY_TURN) {
+        return gait_policy_turn_targets(
+            phase, amplitude_scale, travel_scale < 0.0f ? -1 : 1, targets);
+    }
     if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH) {
-        return gait_policy_trot4_targets(phase, amplitude_scale, targets);
+        return gait_policy_trot4_direction_targets(
+            phase, amplitude_scale, travel_scale < 0.0f ? -1 : 1, targets);
     }
     if (policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP) {
         return gait_policy_trot3_targets(
@@ -1150,12 +1217,61 @@ static bool robot_trot_policy_targets(
         targets);
 }
 
+static int16_t drive_slew(int16_t current, int16_t target)
+{
+    const int32_t difference = (int32_t)target - current;
+    if (difference > ROBOT_DRIVE_SLEW_PER_FRAME) {
+        return (int16_t)(current + ROBOT_DRIVE_SLEW_PER_FRAME);
+    }
+    if (difference < -ROBOT_DRIVE_SLEW_PER_FRAME) {
+        return (int16_t)(current - ROBOT_DRIVE_SLEW_PER_FRAME);
+    }
+    return target;
+}
+
+static uint16_t drive_period_ms(int16_t linear, int16_t yaw)
+{
+    uint32_t magnitude = (uint32_t)absolute_i16(linear) +
+        (uint32_t)absolute_i16(yaw);
+    if (magnitude > ROBOT_DRIVE_INPUT_LIMIT) {
+        magnitude = ROBOT_DRIVE_INPUT_LIMIT;
+    }
+    return (uint16_t)(ROBOT_DRIVE_SLOW_PERIOD_MS -
+        ((ROBOT_DRIVE_SLOW_PERIOD_MS - ROBOT_DRIVE_FAST_PERIOD_MS) *
+         magnitude) / ROBOT_DRIVE_INPUT_LIMIT);
+}
+
+typedef struct
+{
+    int16_t linear;
+    int16_t yaw;
+    uint32_t updated_at_ms;
+    bool stop_requested;
+} RobotDriveSnapshot;
+
+static RobotDriveSnapshot drive_snapshot(const RobotController *robot)
+{
+    RobotDriveSnapshot snapshot;
+    uint32_t before;
+    uint32_t after;
+    do {
+        before = robot->drive_sequence;
+        snapshot.linear = robot->drive_target_linear;
+        snapshot.yaw = robot->drive_target_yaw;
+        snapshot.updated_at_ms = robot->drive_updated_at_ms;
+        snapshot.stop_requested = robot->drive_stop_requested;
+        after = robot->drive_sequence;
+    } while (before != after);
+    return snapshot;
+}
+
 static RobotResult robot_trot_scaled(RobotController *robot,
                                      uint8_t cycles,
                                      uint16_t period_ms,
                                      float travel_scale,
                                      RobotTrotPolicy policy,
-                                     bool actuator_limited)
+                                     bool actuator_limited,
+                                     bool continuous_drive)
 {
     uint16_t targets[ROBOT_JOINT_COUNT];
     float canonical_angles[ROBOT_JOINT_COUNT];
@@ -1167,9 +1283,14 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     int16_t previous_pitch_error = 0;
     uint8_t consecutive_imu_failures = 0U;
     uint8_t consecutive_tilt_frames = 0U;
+    int16_t drive_linear = 0;
+    int16_t drive_yaw = 0;
+    uint32_t drive_phase_q16 = 0U;
+    bool drive_watchdog_expired = false;
     GaitPolicyLegTarget leg_targets[GAIT_POLICY_LEG_COUNT];
 
-    if (robot == NULL || robot->bus == NULL || cycles == 0U || cycles > 10U ||
+    if (robot == NULL || robot->bus == NULL ||
+        ((!continuous_drive && cycles == 0U) || cycles > 10U) ||
         period_ms < 600U || period_ms > 5000U ||
         !isfinite(travel_scale) ||
         travel_scale < -1.0f || travel_scale > 1.0f) {
@@ -1182,7 +1303,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     }
     const uint16_t actuator_max_period =
         policy == ROBOT_TROT_POLICY_CRAB ? GAIT_POLICY_CRAB_MAX_PERIOD_MS :
-        (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH ?
+        ((policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH ||
+          policy == ROBOT_TROT_POLICY_TURN) ?
             GAIT_POLICY_TROT4_MAX_PERIOD_MS : GAIT_POLICY_TROT3_MAX_PERIOD_MS);
     if (actuator_limited && period_ms > actuator_max_period) {
         return ROBOT_TROT3_PERIOD_ERROR;
@@ -1239,7 +1361,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     robot->trot_step_sync_max_wait_ms = 0U;
     robot->trot_step_sync_peak_error_ticks = 0U;
     robot->balance_max_update_gap_ms = 0U;
-    robot->gait_nominal_duration_ms = (uint32_t)period_ms * cycles;
+    robot->gait_nominal_duration_ms = continuous_drive ? 0U :
+        (uint32_t)period_ms * cycles;
     robot->gait_elapsed_ms = 0U;
     robot->gait_balance_was_enabled = robot->balance_enabled;
     balance_trace_reset(robot);
@@ -1301,26 +1424,66 @@ static RobotResult robot_trot_scaled(RobotController *robot,
     const GaitPolicyBalanceConfig balance_config =
         shared_balance_config(robot->balance_mode);
 
-    for (uint32_t frame = 0U; frame <= total_frames; ++frame) {
+    for (uint32_t frame = 0U;
+         continuous_drive || frame <= total_frames;
+         ++frame) {
         if (robot->motion_abort_requested) {
             robot->gait_diagnostics_active = false;
             return_to_stand_best_effort(robot);
             return ROBOT_MOTION_ABORTED;
         }
-        const uint16_t global_phase = (uint16_t)(
+        uint16_t active_period_ms = period_ms;
+        uint16_t global_phase = (uint16_t)(
             ((frame % frames_per_cycle) * 1000U) / frames_per_cycle);
-        const uint16_t amplitude_scale = trot_amplitude_scale(
+        uint16_t amplitude_scale = trot_amplitude_scale(
             frame,
             total_frames,
             actuator_limited ? ROBOT_TROT3_RAMP_MS : ROBOT_TROT_RAMP_MS);
+        if (continuous_drive) {
+            const uint32_t now = HAL_GetTick();
+            const RobotDriveSnapshot snapshot = drive_snapshot(robot);
+            int16_t target_linear = snapshot.linear;
+            int16_t target_yaw = snapshot.yaw;
+            if ((uint32_t)(now - snapshot.updated_at_ms) >
+                ROBOT_DRIVE_WATCHDOG_MS) {
+                target_linear = 0;
+                target_yaw = 0;
+                robot->drive_stop_requested = true;
+                drive_watchdog_expired = true;
+            } else if (!snapshot.stop_requested) {
+                drive_watchdog_expired = false;
+            }
+            drive_linear = drive_slew(drive_linear, target_linear);
+            drive_yaw = drive_slew(drive_yaw, target_yaw);
+            if ((snapshot.stop_requested || drive_watchdog_expired) &&
+                absolute_i16(drive_linear) <= ROBOT_DRIVE_STOP_EPSILON &&
+                absolute_i16(drive_yaw) <= ROBOT_DRIVE_STOP_EPSILON) {
+                break;
+            }
+            active_period_ms = drive_period_ms(drive_linear, drive_yaw);
+            global_phase = (uint16_t)((drive_phase_q16 >> 16U) % 1000U);
+            const uint32_t ramp_frames = ROBOT_TROT3_RAMP_MS /
+                ROBOT_TROT_FRAME_MS;
+            amplitude_scale = frame >= ramp_frames ? 1000U :
+                smootherstep_per_mille(
+                    (uint16_t)((frame * 1000U) / ramp_frames));
+        }
         bool tilt_limit_pending = false;
 
-        if (!robot_trot_policy_targets(
+        const bool targets_valid = continuous_drive ?
+            gait_policy_drive_targets(
+                (float)global_phase / 1000.0f,
+                (float)amplitude_scale / 1000.0f,
+                (float)drive_linear / ROBOT_DRIVE_INPUT_LIMIT,
+                (float)drive_yaw / ROBOT_DRIVE_INPUT_LIMIT,
+                leg_targets) :
+            robot_trot_policy_targets(
                 policy,
                 (float)global_phase / 1000.0f,
                 (float)amplitude_scale / 1000.0f,
                 travel_scale,
-                leg_targets)) {
+                leg_targets);
+        if (!targets_valid) {
             robot->gait_diagnostics_active = false;
             return_to_stand_best_effort(robot);
             return ROBOT_CONFIG_ERROR;
@@ -1536,8 +1699,10 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                 !actuator_rate_limiter_apply(
                     &robot->gait_limiter,
                     canonical_angles,
-                    (float)period_ms /
-                        ((float)frames_per_cycle * 1000.0f),
+                    continuous_drive ?
+                        (float)ROBOT_TROT_FRAME_MS / 1000.0f :
+                        (float)period_ms /
+                            ((float)frames_per_cycle * 1000.0f),
                     &robot->gait_last_command) ||
                 !canonical_angles_to_servo_targets(
                     robot->gait_last_command.position_deg, targets)) {
@@ -1547,8 +1712,9 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             }
             limiter_diagnostics_update(
                 robot, canonical_angles, &robot->gait_last_command);
-            const float dt_seconds = (float)period_ms /
-                ((float)frames_per_cycle * 1000.0f);
+            const float dt_seconds = continuous_drive ?
+                (float)ROBOT_TROT_FRAME_MS / 1000.0f :
+                (float)period_ms / ((float)frames_per_cycle * 1000.0f);
             for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
                 const float velocity =
                     robot->gait_last_command.velocity_deg_s[index];
@@ -1600,9 +1766,10 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             robot->gait_diagnostics.lag_samples;
         balance_trace_push(robot, &trace_frame);
 
-        if (frame < total_frames) {
-            const uint32_t deadline = started_at +
-                ((frame + 1U) * period_ms) / frames_per_cycle;
+        if (continuous_drive || frame < total_frames) {
+            const uint32_t deadline = continuous_drive ?
+                started_at + ((frame + 1U) * ROBOT_TROT_FRAME_MS) :
+                started_at + ((frame + 1U) * period_ms) / frames_per_cycle;
             const uint32_t now = HAL_GetTick();
             if ((int32_t)(deadline - now) > 0) {
                 HAL_Delay(deadline - now);
@@ -1610,14 +1777,19 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                 ++robot->balance_late_frames;
             }
 
-            const uint16_t next_global_phase = (uint16_t)(
-                ((((frame + 1U) % frames_per_cycle) * 1000U) /
-                 frames_per_cycle));
+            const uint32_t next_drive_phase_q16 = drive_phase_q16 +
+                (uint32_t)(((uint64_t)1000U << 16U) *
+                    ROBOT_TROT_FRAME_MS / active_period_ms);
+            const uint16_t next_global_phase = continuous_drive ?
+                (uint16_t)((next_drive_phase_q16 >> 16U) % 1000U) :
+                (uint16_t)((((frame + 1U) % frames_per_cycle) * 1000U) /
+                    frames_per_cycle);
             uint16_t duty_phase = 500U;
             if (policy == ROBOT_TROT_POLICY_CIRCULAR_OVERLAP) {
                 duty_phase =
                     (uint16_t)(GAIT_POLICY_TROT3_DUTY * 1000.0f + 0.5f);
-            } else if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH) {
+            } else if (policy == ROBOT_TROT_POLICY_POSTURE_SMOOTH ||
+                       policy == ROBOT_TROT_POLICY_TURN) {
                 duty_phase =
                     (uint16_t)(GAIT_POLICY_TROT4_DUTY * 1000.0f + 0.5f);
             } else if (policy == ROBOT_TROT_POLICY_CRAB) {
@@ -1640,6 +1812,9 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             if (step_starts) {
                 observe_step_sync(robot, targets);
             }
+            if (continuous_drive) {
+                drive_phase_q16 = next_drive_phase_q16 % (1000U << 16U);
+            }
         }
     }
 
@@ -1649,6 +1824,10 @@ static RobotResult robot_trot_scaled(RobotController *robot,
      * stand geometry. Keep its last balance/limiter output instead of issuing
      * an unbalanced raw stand command that removes up to 0.08 leg-length
      * correction in one packet while the body is still rolling. */
+    if (continuous_drive) {
+        return_to_stand_best_effort(robot);
+        return drive_watchdog_expired ? ROBOT_DRIVE_WATCHDOG : ROBOT_OK;
+    }
     return ROBOT_OK;
 }
 
@@ -1657,7 +1836,7 @@ RobotResult robot_trot(RobotController *robot,
                        uint16_t period_ms)
 {
     return robot_trot_scaled(
-        robot, cycles, period_ms, 1.0f, ROBOT_TROT_POLICY_LINEAR, false);
+        robot, cycles, period_ms, 1.0f, ROBOT_TROT_POLICY_LINEAR, false, false);
 }
 
 RobotResult robot_trot_in_place(RobotController *robot,
@@ -1670,6 +1849,7 @@ RobotResult robot_trot_in_place(RobotController *robot,
         period_ms,
         ROBOT_TROT_IN_PLACE_TRAVEL_SCALE,
         ROBOT_TROT_POLICY_LINEAR,
+        false,
         false);
 }
 
@@ -1678,7 +1858,7 @@ RobotResult robot_trot2(RobotController *robot,
                         uint16_t period_ms)
 {
     return robot_trot_scaled(
-        robot, cycles, period_ms, 1.0f, ROBOT_TROT_POLICY_CIRCULAR, false);
+        robot, cycles, period_ms, 1.0f, ROBOT_TROT_POLICY_CIRCULAR, false, false);
 }
 
 RobotResult robot_trot3(RobotController *robot,
@@ -1691,7 +1871,8 @@ RobotResult robot_trot3(RobotController *robot,
         period_ms,
         1.0f,
         ROBOT_TROT_POLICY_CIRCULAR_OVERLAP,
-        true);
+        true,
+        false);
 }
 
 RobotResult robot_trot4(RobotController *robot,
@@ -1704,7 +1885,79 @@ RobotResult robot_trot4(RobotController *robot,
         period_ms,
         1.0f,
         ROBOT_TROT_POLICY_POSTURE_SMOOTH,
+        true,
+        false);
+}
+
+RobotResult robot_trot4_backward(RobotController *robot,
+                                 uint8_t cycles,
+                                 uint16_t period_ms)
+{
+    return robot_trot_scaled(
+        robot,
+        cycles,
+        period_ms,
+        -1.0f,
+        ROBOT_TROT_POLICY_POSTURE_SMOOTH,
+        true,
+        false);
+}
+
+RobotResult robot_turn(RobotController *robot,
+                       int8_t direction,
+                       uint8_t cycles,
+                       uint16_t period_ms)
+{
+    if ((direction != -1 && direction != 1) ||
+        period_ms < GAIT_POLICY_TURN_MIN_PERIOD_MS ||
+        period_ms > GAIT_POLICY_TURN_MAX_PERIOD_MS) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+    return robot_trot_scaled(
+        robot,
+        cycles,
+        period_ms,
+        (float)direction,
+        ROBOT_TROT_POLICY_TURN,
+        true,
+        false);
+}
+
+RobotResult robot_drive(RobotController *robot,
+                        int16_t initial_linear,
+                        int16_t initial_yaw,
+                        uint32_t sequence)
+{
+    if (robot == NULL ||
+        initial_linear < -ROBOT_DRIVE_INPUT_LIMIT ||
+        initial_linear > ROBOT_DRIVE_INPUT_LIMIT ||
+        initial_yaw < -ROBOT_DRIVE_INPUT_LIMIT ||
+        initial_yaw > ROBOT_DRIVE_INPUT_LIMIT ||
+        (initial_linear == 0 && initial_yaw == 0) ||
+        robot->drive_active) {
+        return ROBOT_INVALID_ARGUMENT;
+    }
+
+    robot->drive_target_linear = initial_linear;
+    robot->drive_target_yaw = initial_yaw;
+    robot->drive_stop_requested = false;
+    robot->drive_updated_at_ms = HAL_GetTick();
+    robot->drive_sequence = sequence;
+    robot->drive_active = true;
+
+    const RobotResult result = robot_trot_scaled(
+        robot,
+        0U,
+        ROBOT_DRIVE_SLOW_PERIOD_MS,
+        1.0f,
+        ROBOT_TROT_POLICY_POSTURE_SMOOTH,
+        true,
         true);
+    robot->drive_active = false;
+    robot->drive_stop_requested = false;
+    robot->drive_target_linear = 0;
+    robot->drive_target_yaw = 0;
+    return result;
 }
 
 RobotResult robot_crab(RobotController *robot,
@@ -1723,7 +1976,8 @@ RobotResult robot_crab(RobotController *robot,
         period_ms,
         (float)direction,
         ROBOT_TROT_POLICY_CRAB,
-        true);
+        true,
+        false);
 }
 
 const ActuatorDiagnostics *robot_gait_diagnostics(
@@ -1987,6 +2241,8 @@ const char *robot_result_string(RobotResult result)
         return "IMU balance error";
     case ROBOT_MOTION_ABORTED:
         return "motion aborted";
+    case ROBOT_DRIVE_WATCHDOG:
+        return "drive watchdog expired";
     case ROBOT_SAFETY_FAULT:
         return "safety fault; torque off, run recover";
     case ROBOT_SERVO_POWER_LOST:

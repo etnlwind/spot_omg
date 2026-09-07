@@ -129,6 +129,61 @@ SPOT_GAIT_EXPORT int spot_gait_trot4_targets(
     return 1;
 }
 
+SPOT_GAIT_EXPORT int spot_gait_trot4_direction_targets(
+    float phase,
+    float amplitude_scale,
+    int direction,
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_trot4_direction_targets(
+            phase, amplitude_scale, (int8_t)direction, targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_gait_turn_targets(
+    float phase,
+    float amplitude_scale,
+    int direction,
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_turn_targets(
+            phase, amplitude_scale, (int8_t)direction, targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_gait_drive_targets(
+    float phase,
+    float startup_scale,
+    float linear,
+    float yaw,
+    float values[12],
+    uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_drive_targets(
+            phase, startup_scale, linear, yaw, targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
 SPOT_GAIT_EXPORT int spot_gait_crab_targets(
     float phase,
     float amplitude_scale,

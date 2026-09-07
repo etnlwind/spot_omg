@@ -114,6 +114,38 @@ def test_rebalanced_full_mode_moves_authority_from_knee_to_j1() -> None:
     assert knee == pytest.approx(7.257, abs=0.05)
 
 
+def test_positive_pitch_places_swing_feet_forward() -> None:
+    policy = SharedGaitPolicy()
+    nominal, support = policy.trot4_targets(0.20, 1.0)
+    corrected = policy.balance_targets(
+        nominal,
+        sample=ImuSample(0.0, math.radians(5.0), 0.0, 0.0),
+        support_legs=support,
+        kp=1.0,
+        kd=0.04,
+        leg_length_limit=0.08,
+        mode="contact-aware",
+        j1_gain=15.0,
+        j1_limit=5.0,
+        foot_placement_gain=0.35,
+        foot_placement_limit=0.08,
+    )
+
+    for leg in LEGS:
+        nominal_x, _ = policy_leg_fk(nominal[(leg, 2)], nominal[(leg, 3)])
+        corrected_x, _ = policy_leg_fk(corrected[(leg, 2)], corrected[(leg, 3)])
+        if leg in support:
+            assert corrected_x == pytest.approx(nominal_x, abs=1.0e-5)
+        else:
+            assert corrected_x > nominal_x
+
+
+def policy_leg_fk(upper_degrees: float, knee_degrees: float) -> tuple[float, float]:
+    upper = math.radians(upper_degrees)
+    lower = math.radians(upper_degrees - knee_degrees)
+    return math.sin(upper) + math.sin(lower), math.cos(upper) + math.cos(lower)
+
+
 def _roll_after_j1_impulse(direction: int) -> float:
     config = SpotConfig.load(CONFIG)
     base = stance_targets(config, SIM_PRESETS["trot3"])

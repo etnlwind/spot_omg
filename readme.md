@@ -101,6 +101,9 @@ spot_omg/
 - [x] 연결된 장치에 따라 STM32/URT-2로 자동 분기하는 `spotctl`
 - [x] ESP32 self OTA와 ESP32 staging 기반 STM32 BLE OTA
 - [x] STM32 PB5→ESP32 EN을 이용한 공유 전원 cold-boot reset
+- [x] iPhone BLE 상태 동기화, 고정 콘솔, 앱 아이콘과 연속 조이스틱 UI
+- [x] sequence/heartbeat 기반 STM32 50Hz 연속 전진·후진·회전 제어
+- [x] STM32 Flash sector 7 persistent flight log와 host/iPhone 시간 동기화
 - [ ] Jetson 명령/telemetry 프로토콜
 - [ ] ROS2 hardware interface
 - [ ] Isaac Lab RL 정책 배포
@@ -149,6 +152,91 @@ ESP32–STM32 연결, 부팅, flash partition과 두 BLE OTA 경로의 전체 �
 2026-09-06 실기 진단, trot4/crab 변경 근거와 남은 과제는
 [`tools/servo_tool/HARDWARE_TEST_LOG.md`](./tools/servo_tool/HARDWARE_TEST_LOG.md)의
 해당 날짜 기록을 참고하세요.
+
+## 이번 작업 내역
+
+이번 변경은 단발성 보행 명령을 iPhone에서 반복 호출하던 구조를 실제 원격 조종에
+적합한 연속 제어 구조로 바꾸고, 연결되지 않은 동안의 로봇 사건도 나중에 확인할 수
+있도록 STM32 persistent log를 추가한 작업입니다.
+
+### 보행·자세 보정
+
+- `stand11`을 기구 대칭 기준으로 유지하고, trot4에서만 안쪽으로 모이던 FR 다리는
+  ID4 J1에 바깥 방향 2° bias를 적용했습니다. 보정 중심값이나 다른 자세에는 영향을
+  주지 않습니다.
+- J1/J3 STS3215와 J2 STS3250의 서로 다른 속도·가속도·추종 지연 한계를 기존 mixed
+  actuator limiter에 유지했습니다.
+- `trot4back`과 differential `turn left|right` 궤적을 추가하고, 전진·후진·회전을 한
+  support phase에서 혼합할 수 있는 공용 drive target을 STM32와 host simulation에
+  추가했습니다.
+- crab은 빠른 횡이동이 아니라 안정성을 우선하는 four-beat crawl 시험 명령으로
+  유지했습니다. 실제 좌우 조향은 crab이 아니라 differential turn을 사용합니다.
+- IMU roll/pitch 보정, tilt/stall safety, step-sync 및 gait diagnostics를 연속 drive에도
+  그대로 적용합니다.
+
+### 연속 원격 조종
+
+기존 `trot4 CYCLES PERIOD_MS`는 재현 가능한 실기 시험용으로 남겨 두었습니다. 실제
+조이스틱은 아래 별도 lane을 사용하므로 cycle 종료, 긴 diagnostics와 console prompt를
+기다리지 않습니다.
+
+```text
+drive LINEAR YAW SEQ    연속 gait 시작; LINEAR/YAW는 -1000..1000
+@D SEQ LINEAR YAW      실행 중 목표와 heartbeat 갱신
+@S SEQ                 입력 해제 및 감속 정지
+```
+
+- STM32가 20ms 주기의 gait phase, servo 명령, IMU와 안전 판정을 소유합니다.
+- iPhone은 스틱 벡터만 갱신하며, 드래그 중 200ms마다 heartbeat를 보냅니다.
+- sequence가 오래된 BLE packet은 버리고 마지막 유효 packet이 800ms 동안 없으면 STM32가
+  앱이나 BLE 상태와 무관하게 자동 정지합니다.
+- 입력은 frame마다 slew 제한되고 크기에 따라 보행 주기가 2400..1800ms로 변합니다.
+- 전진·후진과 좌우 회전은 동시에 혼합되지만 전체 motion budget은 100%로 정규화합니다.
+- 앱에서 손을 떼면 조이스틱이 중앙으로 복귀하며 `@S`를 보내고, background 전환에는
+  Ctrl+C와 Stand를 추가로 요청합니다.
+
+### STM32 persistent flight log
+
+- STM32F446 sector 7의 첫 1KiB는 기존 IMU calibration에 남겨 두고 나머지 127KiB에
+  128-byte append-only 레코드를 최대 1,016개 저장합니다.
+- boot, console command/result, gait 전압·lag·tilt 요약과 peak error 상위 관절을 동작
+  경계에서만 기록합니다. 50Hz motion frame 안에서는 Flash를 쓰지 않습니다.
+- 각 레코드는 sequence, boot ID, uptime, Unix epoch, event text와 checksum을 포함합니다.
+  전원 차단으로 마지막 레코드가 불완전해도 유효 checksum까지만 복구합니다.
+- 로그가 차거나 삭제될 때 IMU calibration prefix를 보존하며 sector를 회전합니다.
+- Mac의 `spotctl`과 iPhone은 연결 직후 `log time <UNIX_EPOCH_MS>`를 best-effort로 보내
+  STM32 uptime을 절대 시각과 연결합니다.
+- `spotctl logs [--count N] [--output FILE]`, `--status`, `--clear`로 BLE 또는 USB에서
+  조회·저장·삭제할 수 있습니다. ESP32는 로그를 따로 보관하지 않고 요청 시 UART/BLE로
+  중계합니다.
+
+### iPhone 앱
+
+- CoreBluetooth로 `SpotOMG-Bridge`를 검색·재연결하고 `syncstate` 응답으로 자세, torque,
+  safety와 balance 상태를 UI에 반영합니다.
+- 화면 위쪽에는 검은 배경·녹색 고정폭 글꼴의 console을 고정하고, 명령 입력과 키보드
+  `완료` 버튼을 제공합니다. 아래 조작 영역은 `연결 → 조이스틱 → 안전 자세 → 단일 보행
+  → 진단` 순서입니다.
+- 조이스틱 변위에 비례해 저속부터 최대 속도까지 연속 제어하며 전진·후진과 좌·우 회전을
+  혼합합니다. 터치 추적 중에도 heartbeat가 멈추지 않도록 main run loop common mode를
+  사용합니다.
+- Landing, Stand, Stand11, Hold, Recover, 확인 절차가 있는 Relax, trot4/crab 단일 시험,
+  targets/scan/gaitdiag/baldiag, 저장 로그 조회와 시간 재동기화 버튼을 제공합니다.
+- 제공된 `spot_omg_remote.png`를 iOS AppIcon asset으로 등록했습니다.
+
+### 문서와 검증 상태
+
+- 세부 제어 흐름과 Flash/OTA 배치는
+  [`firmware/FIRMWARE_ARCHITECTURE.md`](./firmware/FIRMWARE_ARCHITECTURE.md), STM32 명령은
+  [`firmware/stm32-learning/README.md`](./firmware/stm32-learning/README.md), 앱 프로토콜은
+  [`apps/ios/SpotOMGController/README.md`](./apps/ios/SpotOMGController/README.md)에 각각
+  기록했습니다.
+- 프로젝트 Conda 환경에서 Python 시험 175개와 C 정책 subtest 25개가 모두
+  통과했습니다.
+- iOS Swift compile 단계는 통과했지만 현재 Mac의 CoreSimulator runtime service 문제로
+  asset catalog를 포함한 simulator 최종 build는 완료하지 못했습니다. 실제 iPhone BLE와
+  새 `continuous-drive-v10` STM32 firmware의 연속 보행은 flash 후 거치대에서 먼저
+  end-to-end 검증해야 합니다.
 
 ---
 

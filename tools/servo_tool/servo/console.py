@@ -55,6 +55,8 @@ _TIMED_COMMANDS = {
     "trot2": (1, 800),
     "trot3": (1, 2200),
     "trot4": (1, 1600),
+    "trot4back": (1, 1600),
+    "turn": (1, 2200),
     "crab": (1, 4000),
     "jump": (0, 1200),
 }
@@ -129,7 +131,7 @@ def estimate_timeout(command: str) -> float | None:
         return DEFAULT_TIMEOUT_SECONDS
 
     default_cycles, default_period_ms = _TIMED_COMMANDS[name]
-    argument_offset = 2 if name == "crab" else 1
+    argument_offset = 2 if name in {"crab", "turn"} else 1
     try:
         cycles = (
             int(tokens[argument_offset])

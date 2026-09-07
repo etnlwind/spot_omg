@@ -64,6 +64,31 @@ class SharedGaitPolicy:
             ctypes.POINTER(ctypes.c_uint8),
         )
         self._library.spot_gait_trot4_targets.restype = ctypes.c_int
+        self._library.spot_gait_trot4_direction_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_int,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_trot4_direction_targets.restype = ctypes.c_int
+        self._library.spot_gait_turn_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_int,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_turn_targets.restype = ctypes.c_int
+        self._library.spot_gait_drive_targets.argtypes = (
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_float,
+            ctypes.c_float,
+            float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_drive_targets.restype = ctypes.c_int
         self._library.spot_gait_crab_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
@@ -289,6 +314,77 @@ class SharedGaitPolicy:
         )
         if not ok:
             raise ValueError("shared C crab policy rejected the requested frame")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
+    def trot4_direction_targets(
+        self,
+        phase: float,
+        amplitude_scale: float,
+        direction: int,
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return trot4 in direction +1 forward/-1 backward."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_trot4_direction_targets(
+            phase,
+            amplitude_scale,
+            direction,
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C directional trot4 rejected the frame")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
+    def turn_targets(
+        self,
+        phase: float,
+        amplitude_scale: float,
+        direction: int,
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Return a differential trot turn for +1 left/-1 right."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_turn_targets(
+            phase,
+            amplitude_scale,
+            direction,
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C turn policy rejected the requested frame")
+        support = {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+        return self._unpack(values), support
+
+    def drive_targets(
+        self,
+        phase: float,
+        startup_scale: float,
+        linear: float,
+        yaw: float,
+    ) -> tuple[dict[tuple[str, int], float], set[str]]:
+        """Blend continuous longitudinal and yaw control without a phase reset."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        ok = self._library.spot_gait_drive_targets(
+            phase,
+            startup_scale,
+            linear,
+            yaw,
+            values,
+            ctypes.byref(mask),
+        )
+        if not ok:
+            raise ValueError("shared C drive policy rejected the requested frame")
         support = {
             leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
         }

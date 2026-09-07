@@ -254,6 +254,51 @@ def test_step_sync_monitor_cannot_pause_gait_or_add_bus_reads() -> None:
     assert "robot->gait_elapsed_ms = HAL_GetTick() - started_at" in gait_body
 
 
+def test_continuous_drive_uses_realtime_mailbox_and_watchdog() -> None:
+    robot = (PROJECT / "Src/robot.c").read_text()
+    header = (PROJECT / "Inc/robot.h").read_text()
+    console = (PROJECT / "Src/app_console.c").read_text()
+
+    assert "#define ROBOT_DRIVE_WATCHDOG_MS 800U" in header
+    assert "robot_drive_update_realtime" in robot
+    assert "robot_drive_stop_realtime" in robot
+    assert "drive_sequence_is_newer" in robot
+    assert "ROBOT_DRIVE_SLEW_PER_FRAME" in robot
+    assert "gait_policy_drive_targets" in robot
+    assert "drive_phase_q16" in robot
+    assert "ROBOT_DRIVE_WATCHDOG" in robot
+
+    # These packets must bypass the blocked foreground console while drive()
+    # owns it; normal command parsing and printf are forbidden in the ISR lane.
+    rx_start = console.index("void app_console_on_rx_complete(")
+    rx_end = console.index("void app_console_on_uart_error(", rx_start)
+    rx_body = console[rx_start:rx_end]
+    assert "process_realtime_line(console)" in rx_body
+    assert "console->line_ready" in rx_body
+    realtime_start = console.index("static void process_realtime_line(")
+    realtime_end = console.index("void app_console_init(", realtime_start)
+    realtime_body = console[realtime_start:realtime_end]
+    assert "robot_drive_update_realtime" in realtime_body
+    assert "robot_drive_stop_realtime" in realtime_body
+    assert "strtok" not in realtime_body
+    assert "write_text" not in realtime_body
+
+
+def test_continuous_drive_does_not_replace_bounded_trot_commands() -> None:
+    source = (PROJECT / "Src/robot.c").read_text()
+    gait_start = source.index("static RobotResult robot_trot_scaled(")
+    gait_end = source.index("RobotResult robot_trot(", gait_start)
+    gait_body = source[gait_start:gait_end]
+    assert "continuous_drive || frame <= total_frames" in gait_body
+    assert "continuous_drive ?" in gait_body
+    assert "((frame + 1U) * period_ms) / frames_per_cycle" in gait_body
+
+    console = (PROJECT / "Src/app_console.c").read_text()
+    assert 'strcmp(command, "drive")' in console
+    assert 'strcmp(command, "trot4")' in console
+    assert 'strcmp(command, "turn")' in console
+
+
 
 @pytest.mark.parametrize("name,sources", CASES, ids=[case[0] for case in CASES])
 def test_firmware_unit(name: str, sources: list[str]) -> None:

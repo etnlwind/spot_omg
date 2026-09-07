@@ -143,6 +143,57 @@ diagnostics를 한 번에 출력하면 BLE notification queue가 넘쳐 마지�
 prompt가 유실될 수 있고, 이때 동작은 끝났어도 `spotctl`이 timeout으로 표시할 수 있다.
 두 OTA 경로는 각 chunk마다 ACK를 기다리므로 이 문제를 피한다.
 
+### 5.1 연속 원격 조종 경로
+
+`trot4 CYCLES PERIOD_MS`와 `turn`은 횟수와 속도를 고정해 재현성 있는 실기 시험 및
+진단을 수행하는 명령이다. 이것을 iPhone이 한 cycle씩 반복하면 매번 command 종료,
+수십 줄의 gait diagnostics, BLE notification, `# ` prompt 왕복을 거쳐야 하므로
+cycle 사이에 정지 구간이 생긴다. prompt가 유실되면 다음 cycle이 영구히 시작되지도
+않는다. 따라서 실제 조종은 별도의 연속 `drive` 경로를 사용한다.
+
+```text
+iPhone                         ESP32                  STM32
+  drive 600 0 101\n ─────────── byte bridge ───────> 연속 gait 시작
+  @D 102 700 -120\n ───────────────────────────────> ISR mailbox 갱신
+  @D 103 700 -120\n ───────────────────────────────> heartbeat
+  @S 104\n ───────────────────────────────> slew-down 후 stand
+```
+
+축의 의미와 범위는 다음과 같다.
+
+| 값 | 범위 | 의미 |
+|---|---:|---|
+| `LINEAR` | `-1000..1000` | 양수 전진, 음수 후진 |
+| `YAW` | `-1000..1000` | 양수 우회전, 음수 좌회전 |
+| `SEQ` | `uint32` | 늦게 도착한 이전 packet을 버리는 단조 증가 번호 |
+
+최초의 `drive LINEAR YAW SEQ`는 일반 console command로 50Hz 연속 gait에 진입한다.
+그 뒤의 `@D`와 `@S`는 일반 command buffer와 별도의 48-byte realtime parser가 USART
+RX interrupt 안에서 해석한다. 이 parser는 메모리 할당, `strtok`, UART 출력과 servo
+I/O를 수행하지 않고 `RobotController`의 volatile mailbox만 갱신한다. 따라서 foreground
+console이 `drive()` 안에 머무르는 동안에도 다음 control frame이 최신 입력을 읽는다.
+
+STM32가 담당하는 실시간 동작은 다음과 같다.
+
+- gait phase를 한 번만 시작하고, 속도가 변해도 phase를 초기화하지 않는다.
+- 전진/후진 trot4와 differential yaw trajectory를 같은 support schedule에서 혼합한다.
+- 합성 입력을 1.0 motion budget으로 정규화해 두 full-amplitude 궤적이 겹치지 않게 한다.
+- 명령 축을 frame당 40/1000씩 slew해 갑작스러운 방향 반전과 관절 충격을 줄인다.
+- 입력 크기에 따라 주기를 2400ms에서 1800ms까지 연속 변경한다.
+- 기존 mixed-motor actuator limiter와 IMU balance/tilt/safety monitor를 매 20ms frame에
+  그대로 적용한다.
+- 마지막 유효 packet 후 800ms가 지나면 BLE 또는 앱이 끊어진 것으로 보고 목표를 0으로
+  낮춘 뒤 stand로 복귀한다.
+
+iOS 앱은 손가락 위치의 radial dead zone을 제거한 뒤 최소 30%에서 최대 100% motion
+벡터로 바꾸며, 드래그 중 200ms마다 `@D` heartbeat를 보낸다. 손을 놓으면 즉시 `@S`를
+보낸다. 앱 background 전환은 더 강한 Ctrl+C/Stand 경로를 사용한다. ESP32는 이 packet을
+해석하지 않고 UART로 전달하므로 bridge firmware나 GATT UUID 변경은 필요 없다.
+
+STM32 출력의 `$SPOTDRIVE started ...`와 `$SPOTDRIVE stopped reason=...`은 UI 상태 확인용일
+뿐 다음 제어 packet 전송을 여는 ACK가 아니다. 조종 루프는 console diagnostics나 prompt
+수신에 의존하지 않는다.
+
 ## 6. ESP32 플래시 배치
 
 현재 `esp32dev` 기본 4MiB partition table은 다음과 같다.
@@ -245,7 +296,7 @@ STM32F446RE의 512KiB flash는 다음처럼 사용한다.
 | 4 | `0x08010000..0x0801FFFF` | 64KiB | relocated application |
 | 5 | `0x08020000..0x0803FFFF` | 128KiB | relocated application |
 | 6 | `0x08040000..0x0805FFFF` | 128KiB | relocated application |
-| 7 | `0x08060000..0x0807FFFF` | 128KiB | IMU calibration record |
+| 7 | `0x08060000..0x0807FFFF` | 128KiB | IMU calibration + persistent flight log |
 
 application 최대 크기는 sector 4–6의 320KiB이다. application linker origin은
 `0x08010000`, VTOR은 `FLASH_BASE + 0x00010000`이어야 한다.
@@ -261,7 +312,47 @@ offset +0x0C: version  = 1
 
 metadata magic은 image와 CRC 검증이 모두 끝난 뒤 **마지막으로** 기록한다. 따라서
 erase/program 중 전원이 꺼지면 bootloader는 application을 유효하다고 보지 않는다.
-sector 7은 bootloader가 지우지 않으므로 IMU calibration이 firmware update와 분리된다.
+sector 7은 bootloader가 지우지 않으므로 IMU calibration과 비행 로그가 firmware
+update와 분리된다. 세부 배치는 다음과 같다.
+
+| Address range | Size | Purpose |
+|---|---:|---|
+| `0x08060000..0x080603FF` | 1KiB | BNO055 device/level calibration, 향후 persistent metadata reserve |
+| `0x08060400..0x0807FFFF` | 127KiB | 128-byte append-only flight-log records, 최대 1,016개 |
+
+각 로그 레코드는 magic/version/size, sequence, boot ID, uptime ms, Unix epoch
+seconds/milliseconds, 최대 95자의 이벤트 text와 FNV-1a checksum을 가진다. 부팅 시
+checksum이 맞는 연속 레코드만 복구한다. 기록 도중 전원이 끊겨 마지막 slot이 부분
+program된 경우에는 0→1 재기록이 불가능하므로 보정 prefix를 RAM에 복사하고 sector를
+새 generation으로 초기화한다.
+
+Flash 기록은 50Hz 보행 frame 안에서 하지 않는다. 콘솔 명령 수신 직후, 동작 완료
+결과, gait 요약, peak error 상위 관절 3개와 boot/time-sync 같은 저빈도 사건만
+저장한다. sector가 차면 IMU
+보정 1KiB를 보존한 채 자동 회전한다. `imucal device|level|clear`는 sector erase가
+필요하므로 기존 로그를 지우고 새 로그 generation을 시작한다.
+
+STM32에는 전원 차단을 견디는 실시간 시계가 없으므로 모든 레코드는 `boot + uptime`
+을 항상 기록한다. iPhone 또는 Mac이 BLE로 연결되면 다음 명령으로 Unix 시간을
+동기화한다.
+
+```text
+log time <UNIX_EPOCH_MS>
+```
+
+같은 boot에서 동기화 전에 쓴 레코드도 현재 uptime과의 차이를 이용해 조회 시 epoch를
+역산한다. 이전 boot에서 epoch가 0인 레코드는 절대 시각을 알 수 없지만 boot ID와
+uptime으로 순서가 유지된다.
+
+```text
+log status             사용량, boot ID와 시간 동기화 상태
+log show [1..512]      최근 레코드를 $SPOTLOG BEGIN/END frame으로 출력
+log clear              IMU 보정을 보존하고 로그만 삭제
+```
+
+ESP32는 로그를 중복 저장하지 않는다. 평소와 똑같이 이 명령을 USART3으로 전달하고
+STM32의 `$SPOTLOG` 출력을 BLE TX notification으로 중계한다. `log show`는 일반 console
+stream에 ACK가 없는 점을 고려해 레코드 사이를 15ms로 pacing한다.
 
 ## 9. STM32 BLE OTA
 
@@ -333,7 +424,7 @@ application 첫 `HAL_Delay()`에서 영구 정지한다.
 | SHA 불일치 | STM32 flash 미변경 | 올바른 image 재전송 |
 | sector erase/program 중 | metadata invalid, bootloader 대기 | 같은 명령 재실행 |
 | metadata magic 기록 후 | 새 image committed | 다음 전원/reset에서 새 app boot |
-| sector 7 calibration | OTA가 접근하지 않음 | 보정값 유지 |
+| sector 7 calibration/log | OTA가 접근하지 않음 | 보정값과 기록 유지 |
 
 STM32가 이미 bootloader 대기 상태여도 ESP32가 먼저 보내는 `fwupdate\n`은 잘못된
 header로 처리되고 bootloader가 banner를 다시 출력한다. 이후 정상 `SPOTFW` header를
@@ -521,6 +612,7 @@ UART 수신 오류 또는 뒤따른 다른 출력도 확인해야 한다. TX rea
 | `firmware/stm32-ota-bootloader/make_factory_image.py` | factory image와 metadata 생성 |
 | `firmware/stm32-learning/STM32F446RETX_FLASH.ld` | relocated application 320KiB 배치 |
 | `firmware/stm32-learning/Src/system_stm32f4xx.c` | application VTOR offset `0x10000` |
-| `firmware/stm32-learning/Src/app_console.c` | `fwupdate`, torque-off와 boot request/reset |
+| `firmware/stm32-learning/Src/app_console.c` | console 명령, `fwupdate`, persistent log 조회/시간 동기화 |
+| `firmware/stm32-learning/Src/flight_log.c` | sector 7 flight recorder, checksum/회전/시간 기준 |
 | `firmware/stm32-learning/Src/main.c` | USART1/2/3, IMU와 console 초기화 |
 | `tools/servo_tool/tests/test_spot.py` | ESP32 OTA header/validation/ACK host tests |

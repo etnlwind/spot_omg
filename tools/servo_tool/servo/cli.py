@@ -324,6 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("trot2", "circular-foot diagonal trot on the STM32"),
         ("trot3", "overlap trot with actuator limiting and diagnostics"),
         ("trot4", "posture-smooth reduced-path trot with diagnostics"),
+        ("trot4back", "reverse trot4 with IMU pitch placement"),
         ("jump", "repeating in-place jump on the STM32; 0 cycles repeats"),
     ):
         motion = commands.add_parser(name, help=help_text)
@@ -337,6 +338,13 @@ def build_parser() -> argparse.ArgumentParser:
     crab.add_argument("cycles", type=int, nargs="?")
     crab.add_argument("period_ms", type=int, nargs="?")
 
+    turn = commands.add_parser("turn", help="differential trot turn on the STM32")
+    turn.add_argument(
+        "direction", choices=("left", "right"), nargs="?", default="left"
+    )
+    turn.add_argument("cycles", type=int, nargs="?")
+    turn.add_argument("period_ms", type=int, nargs="?")
+
     commands.add_parser(
         "targets", help="print the STM32 calibrated stand raw targets"
     )
@@ -345,6 +353,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands.add_parser(
         "baldiag", help="print recent STM32 balance frames and tilt snapshot"
+    )
+    logs = commands.add_parser(
+        "logs", help="download the persistent STM32 flight recorder over BLE"
+    )
+    logs.add_argument(
+        "--count", type=int, default=64,
+        help="number of newest records to fetch, 1..512 (default: 64)",
+    )
+    logs.add_argument(
+        "--status", action="store_true", help="show recorder usage only"
+    )
+    logs.add_argument(
+        "--clear", action="store_true", help="erase records but preserve IMU calibration"
+    )
+    logs.add_argument(
+        "--output", type=Path, help="also save downloaded records as UTF-8 text"
     )
     profile = commands.add_parser(
         "profile", help="show or set the STM32 servo speed and acceleration"
@@ -757,8 +781,8 @@ def run_console_script(
 #: Firmware console commands promoted to top-level spotctl subcommands.
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
-        "trot", "trotplace", "trot2", "trot3", "trot4", "crab", "jump", "targets", "status",
-        "gaitdiag", "baldiag", "profile", "imu", "balance"
+        "trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "turn", "crab", "jump", "targets", "status",
+        "gaitdiag", "baldiag", "profile", "imu", "balance", "logs"
     }
 )
 
@@ -879,6 +903,18 @@ def console_line_for(args: argparse.Namespace) -> str:
         return command
     if command in {"targets", "status", "gaitdiag", "baldiag"}:
         return command
+    if command == "logs":
+        if not 1 <= args.count <= 512:
+            raise ValueError("logs --count must be 1..512")
+        if args.status and args.clear:
+            raise ValueError("logs --status and --clear cannot be combined")
+        if args.output is not None and (args.status or args.clear):
+            raise ValueError("logs --output is only valid when downloading records")
+        if args.clear:
+            return "log clear"
+        if args.status:
+            return "log status"
+        return f"log show {args.count}"
     if command == "profile":
         if args.speed is None and args.accel is None:
             return "profile"
@@ -887,10 +923,10 @@ def console_line_for(args: argparse.Namespace) -> str:
         return f"profile {args.speed} {args.accel}"
     if command in {"imu", "balance"}:
         return command if args.mode is None else f"{command} {args.mode}"
-    if command in {"trot", "trotplace", "trot2", "trot3", "trot4", "jump"}:
+    if command in {"trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "jump"}:
         if args.cycles is None and args.period_ms is not None:
             raise ValueError("PERIOD_MS requires CYCLES")
-        if command in {"trot3", "trot4"} and (
+        if command in {"trot3", "trot4", "trot4back"} and (
             args.period_ms is not None and not 600 <= args.period_ms <= 2400
         ):
             raise ValueError(
@@ -913,6 +949,17 @@ def console_line_for(args: argparse.Namespace) -> str:
         if args.period_ms is not None:
             parts.append(str(args.period_ms))
         return " ".join(parts)
+    if command == "turn":
+        if args.cycles is None and args.period_ms is not None:
+            raise ValueError("PERIOD_MS requires CYCLES")
+        if args.period_ms is not None and not 1800 <= args.period_ms <= 2400:
+            raise ValueError("turn PERIOD_MS must be 1800..2400")
+        parts = ["turn", args.direction]
+        if args.cycles is not None:
+            parts.append(str(args.cycles))
+        if args.period_ms is not None:
+            parts.append(str(args.period_ms))
+        return " ".join(parts)
     raise ValueError(f"'{command}' has no STM32 console equivalent")
 
 
@@ -930,6 +977,27 @@ def run_routed_console_command(
             log_file.write(f"\n=== {started} {port} ===\n")
         with open_console(args, kind, port) as console:
             console.sync()
+            _synchronize_console_clock(console)
+            if args.command == "logs":
+                output_file = None
+                try:
+                    if args.output is not None:
+                        args.output.parent.mkdir(parents=True, exist_ok=True)
+                        output_file = args.output.open("w", encoding="utf-8")
+
+                    def emit_stored_log(output_line: str) -> None:
+                        print(output_line)
+                        if output_file is not None:
+                            output_file.write(output_line + "\n")
+
+                    timeout = max(15.0, args.count * 0.030 + 5.0)
+                    response = console.send(
+                        line, timeout=timeout, on_line=emit_stored_log
+                    )
+                    return console_exit_code(response.status)
+                finally:
+                    if output_file is not None:
+                        output_file.close()
             return run_console_command(
                 console, line, timeout=args.console_timeout, log=log_file
             )
@@ -962,6 +1030,7 @@ def run_console(args: argparse.Namespace) -> int:
 
         with open_console(args, kind, port) as console:
             console.sync()
+            _synchronize_console_clock(console)
             if args.console_command == "send":
                 return run_console_command(
                     console,
@@ -984,6 +1053,16 @@ def run_console(args: argparse.Namespace) -> int:
     finally:
         if log_file is not None:
             log_file.close()
+
+
+def _synchronize_console_clock(console: Stm32Console) -> None:
+    """Best-effort wall-clock sync; old firmware may not implement it yet."""
+    epoch_ms = time.time_ns() // 1_000_000
+    try:
+        console.send(f"log time {epoch_ms}", timeout=5.0)
+    except ConsoleError:
+        # Time sync is metadata, never a reason to block a robot command.
+        pass
 
 
 def resolve_gait(args: argparse.Namespace) -> GaitParameters:

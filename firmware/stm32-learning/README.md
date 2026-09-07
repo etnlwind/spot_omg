@@ -89,9 +89,11 @@ Roll  -  : 로봇 왼쪽으로 기울어짐
 - `imucal level`: 로봇을 물리적으로 수평·정지시킨 채 1초간 100 sample을 평균내어
   logic Roll/Pitch zero를 저장합니다. 내부 센서 보정값은 바꾸지 않습니다.
 
-두 profile은 STM32F446 Flash sector 7에 validity flag와 checksum을 붙여 저장합니다.
-링커는 마지막 128 KiB를 firmware image에서 제외하므로 코드 업데이트가 보정 영역을
-덮지 않습니다. Flash erase는 `imucal device|level|clear` 때만 발생합니다.
+두 profile은 STM32F446 Flash sector 7의 첫 1KiB에 validity flag와 checksum을 붙여
+저장합니다. 나머지 127KiB는 명령·동작 결과·보행 요약을 최대 1,016개 보존하는
+persistent flight log입니다. 링커는 마지막 128KiB 전체를 firmware image에서
+제외하므로 OTA가 보정값과 로그를 덮지 않습니다. 보정 저장은 sector erase가 필요해
+기존 flight log를 비우며, 로그 자동 회전/수동 삭제는 보정 prefix를 보존합니다.
 
 ```text
 imucal status    내부 보정 0..3과 저장/복원 상태, logic zero 확인
@@ -101,6 +103,28 @@ imucal clear     두 profile 삭제; 이후 보드 reset 필요
 ```
 
 `imu on`의 출력은 `spotctl console watch`로 봅니다.
+
+## Persistent flight log와 시간 동기화
+
+STM32는 보행 중 매 frame을 Flash에 쓰지 않습니다. 콘솔 명령, 결과, gait의 전압·lag·
+tilt 요약과 peak error가 큰 관절 3개, boot와 시간 동기화 사건만 동작 경계에서
+128-byte checksum 레코드로
+기록합니다. 덕분에 BLE가 연결되지 않은 상태의 사건도 전원을 껐다 켠 뒤 조회할 수
+있고, Flash 쓰기가 50Hz 제어 deadline을 흔들지 않습니다.
+
+```bash
+spotctl logs                    # 최근 64개 조회
+spotctl logs --count 200        # 최근 200개 조회
+spotctl logs --output robot.log # 화면 출력과 동시에 파일 저장
+spotctl logs --status           # 사용량만 확인
+spotctl logs --clear            # IMU 보정은 유지하고 로그 삭제
+```
+
+`spotctl`의 STM32 console 세션과 iOS 앱은 연결 직후 `log time <Unix epoch ms>`를
+자동 전송합니다. 절대 시각이 아직
+동기화되지 않은 레코드는 `epoch_ms=0`으로 표시되지만 `boot`와 `uptime_ms`는 항상
+유효합니다. 같은 부팅 세션 안에서 나중에 시간을 동기화하면 이전 레코드의 epoch도
+조회 시 역산됩니다.
 
 ## BNO086 배선과 장착 좌표계
 
@@ -283,11 +307,36 @@ trotplace [C [MS]] 제자리 대각 트롯; 1..10회, 주기 600..5000ms
 trot2 [C [MS]]   원형 발끝 대각 트롯; 1..10회, 주기 600..5000ms
 trot3 [C [MS]]   65% duty 중첩 trot + limiter/진단; 기본 1400ms, 진단 최대 2400ms
 trot4 [C [MS]]   자세 완화 trot; 60% duty, 70% 경로, smootherstep; 기본 1600ms
+turn left|right [C [MS]] 시험용 고정 횟수 differential turn
+drive LINEAR YAW SEQ 실제 원격 조종용 연속 보행; 축 -1000..1000
 crab [left|right [C [MS]]] 3발 이상 지지 crawl 게걸음; 기본 left, 1회, 4000ms
+```
+
+### 연속 조이스틱 보행
+
+`trot4`와 `turn`은 지정한 횟수를 실행하고 전체 진단을 출력하는 시험 명령입니다.
+iPhone 조이스틱은 이 명령을 한 번씩 반복하지 않고 `drive` 세션을 한 번 시작합니다.
+
+```text
+drive 600 0 100       # 전진 60%로 연속 제어 시작
+@D 101 700 -150       # 전진 70% + 좌회전 15%, heartbeat 겸용
+@S 102                # 목표를 0으로 slew한 뒤 stand
+```
+
+`@D`/`@S`는 보행 함수가 foreground console을 점유한 상태에서도 USART RX ISR의 전용
+parser가 즉시 처리합니다. STM32는 20ms마다 최신 mailbox를 읽으므로 속도 변경에 gait
+재시작, 진단 출력, BLE prompt 왕복이 없습니다. sequence가 현재 값보다 오래된 packet은
+무시하며 마지막 갱신 후 800ms가 지나면 연결 단절로 판단해 자동 정지합니다.
+
+전진/후진과 회전은 동일한 trot4 support phase를 공유하고 최대 합성 motion을 100%로
+제한합니다. 명령 변화는 frame당 40/1000으로 제한하며, 입력 크기에 따라 gait period를
+2400..1800ms로 바꿉니다. 기존 J1/J3 STS3215와 J2 STS3250별 actuator limiter, IMU
+balance, tilt 및 stall safety는 연속 모드에도 그대로 적용됩니다. `$SPOTDRIVE started`와
+`$SPOTDRIVE stopped` 출력은 상태 표시용이며 조종 지속을 위한 ACK가 아닙니다.
 
 ### Trot4 실기 보정과 crab crawl v2
 
-현재 제어 revision은 `ios-sync-v6`입니다. 기구적으로 대칭인
+현재 제어 revision은 `continuous-drive-v10`입니다. 기구적으로 대칭인
 `stand11` 자세를 기준으로 확인했을 때 trot4에서만 FR 다리가 안쪽으로 모이는 현상이
 있어, trot4의 ID4(FR J1)에 바깥 방향 2° bias를 추가했습니다. 이 bias는 trot4
 정책에만 적용되며 `stand`, `stand11`, 다른 보행 및 캘리브레이션 중심값은 바꾸지
@@ -324,6 +373,8 @@ crab v2는 다음과 같이 보수적인 four-beat crawl로 다시 설계했습�
 243°/s·4050°/s², J2 STS3250은 406°/s·6767°/s²로 제한합니다. 추종 지연도
 STS3215는 96 tick이 2회, STS3250은 144 tick이 3회 연속일 때 derate를 권고하며,
 `gaitdiag`의 `lag_rule=ticks/samples`에서 적용된 기준을 확인할 수 있습니다.
+
+```text
 gaitdiag          마지막 보행의 tracking/전원/limiter/실제 timing 통계
 baldiag           최근 32 balance frame과 마지막 tilt-safety snapshot
 baltest           현재 자세의 정적 보정량 미리보기(서보 명령 없음)

@@ -1,4 +1,5 @@
 #include "bno055.h"
+#include "flight_log.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -147,6 +148,11 @@ static bool save_record(const Bno055 *imu)
                                word) == HAL_OK;
     }
     HAL_FLASH_Lock();
+    if (ok) {
+        /* Sector 7 is shared with the flight log. Calibration changes are
+         * rare and deliberately begin a fresh log after the sector erase. */
+        flight_log_on_sector_reformatted();
+    }
     return ok;
 }
 

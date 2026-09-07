@@ -13,6 +13,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     @Published private(set) var signalStrength: Int?
     @Published private(set) var runtimeState = RobotRuntimeState()
     @Published private(set) var lastStateSync: Date?
+    @Published private(set) var driveStatus = "중립"
 
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -21,6 +22,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var reconnectRequested = true
     private var stateLineBuffer = ""
     private var stateRefreshWorkItem: DispatchWorkItem?
+    private var driveHeartbeat: Timer?
+    private var driveVector: RobotDriveVector?
+    private var driveSequence: UInt32 = 0
+    private var driveSessionActive = false
+    private var lastDrivePacketAt = Date.distantPast
+    private var pendingCommandAfterDrive: RobotCommand?
+    private var consolePromptTail = ""
 
     override init() {
         super.init()
@@ -42,6 +50,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func send(_ command: RobotCommand) {
+        if driveSessionActive {
+            if case .drive = command {
+                sendCommandNow(command)
+            } else {
+                pendingCommandAfterDrive = command
+                stopDrive()
+            }
+            return
+        }
+        sendCommandNow(command)
+    }
+
+    private func sendCommandNow(_ command: RobotCommand) {
         guard state.isReady,
               let peripheral,
               let characteristic = receiveCharacteristic,
@@ -65,7 +86,50 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func requestSafeStand() {
         guard state.isReady else { return }
-        send(.stand)
+        if driveSessionActive {
+            pendingCommandAfterDrive = .stand
+            sendMotionInterrupt()
+            driveHeartbeat?.invalidate()
+            driveHeartbeat = nil
+            driveVector = nil
+            driveStatus = "안전 정지 요청"
+        } else {
+            send(.stand)
+        }
+    }
+
+    func updateDrive(x: Double, y: Double) {
+        guard state.isReady, let vector = RobotDriveVector.make(x: x, y: y) else {
+            stopDrive()
+            return
+        }
+        driveVector = vector
+        driveStatus = "\(vector.statusTitle) · 속도 \(Int((vector.speedFraction * 100).rounded()))%"
+        if !driveSessionActive {
+            driveSessionActive = true
+            let sequence = nextDriveSequence()
+            sendCommandNow(.drive(linearPerMille: vector.linearPerMille,
+                                  yawPerMille: vector.yawPerMille,
+                                  sequence: sequence))
+            startDriveHeartbeat()
+        } else if driveHeartbeat == nil {
+            startDriveHeartbeat()
+            sendDriveUpdate()
+        } else if Date().timeIntervalSince(lastDrivePacketAt) >= 0.08 {
+            sendDriveUpdate()
+        }
+    }
+
+    func stopDrive() {
+        guard driveSessionActive, driveVector != nil else {
+            if !driveSessionActive { driveStatus = "중립" }
+            return
+        }
+        driveVector = nil
+        driveHeartbeat?.invalidate()
+        driveHeartbeat = nil
+        sendDrivePacket(.stop(sequence: nextDriveSequence()))
+        driveStatus = "중립 · 감속 정지"
     }
 
     func clearConsole() {
@@ -74,6 +138,11 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func synchronizeState() {
         send(.syncState)
+    }
+
+    func synchronizeClock() {
+        let epochMilliseconds = Int64((Date().timeIntervalSince1970 * 1000).rounded())
+        send(.synchronizeTime(epochMilliseconds: epochMilliseconds))
     }
 
     private func startScanning() {
@@ -92,6 +161,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         signalStrength = nil
         stateRefreshWorkItem?.cancel()
         stateRefreshWorkItem = nil
+        driveHeartbeat?.invalidate()
+        driveHeartbeat = nil
+        driveVector = nil
+        driveSessionActive = false
+        pendingCommandAfterDrive = nil
+        consolePromptTail = ""
+        driveStatus = "중립"
         runtimeState = RobotRuntimeState()
         lastStateSync = nil
         if !keepingState { state = .disconnected }
@@ -111,12 +187,90 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
+    private func nextDriveSequence() -> UInt32 {
+        driveSequence &+= 1
+        return driveSequence
+    }
+
+    private func startDriveHeartbeat() {
+        driveHeartbeat?.invalidate()
+        let timer = Timer(timeInterval: 0.20, repeats: true) { [weak self] _ in
+            self?.sendDriveUpdate()
+        }
+        timer.tolerance = 0.03
+        driveHeartbeat = timer
+        /* Default-mode timers can pause while a finger is tracking a SwiftUI
+         * drag. Common mode keeps the safety heartbeat alive for the entire
+         * joystick hold. */
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func sendDriveUpdate() {
+        guard let vector = driveVector, driveSessionActive else { return }
+        sendDrivePacket(.update(sequence: nextDriveSequence(),
+                                linearPerMille: vector.linearPerMille,
+                                yawPerMille: vector.yawPerMille))
+    }
+
+    private func sendDrivePacket(_ packet: RobotDriveRealtimePacket) {
+        guard state.isReady,
+              let peripheral,
+              let characteristic = receiveCharacteristic else { return }
+        let type: CBCharacteristicWriteType =
+            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        let data = packet.encoded
+        let maximum = peripheral.maximumWriteValueLength(for: type)
+        var offset = 0
+        while offset < data.count {
+            let end = min(offset + maximum, data.count)
+            peripheral.writeValue(data.subdata(in: offset..<end),
+                                  for: characteristic, type: type)
+            offset = end
+        }
+        lastDrivePacketAt = Date()
+    }
+
+    private func sendMotionInterrupt() {
+        guard state.isReady,
+              let peripheral,
+              let characteristic = receiveCharacteristic else { return }
+        let type: CBCharacteristicWriteType =
+            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        peripheral.writeValue(Data([0x03]), for: characteristic, type: type)
+        appendConsole("^C\n")
+    }
+
+    private func processConsolePrompt(_ text: String) {
+        let probe = consolePromptTail + text
+        consolePromptTail = String(probe.suffix(1))
+        guard probe.contains("# "), !driveSessionActive,
+              let pending = pendingCommandAfterDrive else { return }
+        pendingCommandAfterDrive = nil
+        sendCommandNow(pending)
+    }
+
     private func processStateData(_ text: String) {
         stateLineBuffer.append(text)
         while let newline = stateLineBuffer.firstIndex(of: "\n") {
             let line = String(stateLineBuffer[..<newline])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             stateLineBuffer.removeSubrange(...newline)
+            if line.hasPrefix("$SPOTDRIVE started ") {
+                driveSessionActive = true
+                continue
+            }
+            if line.hasPrefix("$SPOTDRIVE stopped ") {
+                driveHeartbeat?.invalidate()
+                driveHeartbeat = nil
+                driveVector = nil
+                driveSessionActive = false
+                driveStatus = line.contains("watchdog") ?
+                    "통신 지연으로 자동 정지" : "중립"
+                if pendingCommandAfterDrive == nil {
+                    scheduleStateRefresh(after: 0.8)
+                }
+                continue
+            }
             guard line.hasPrefix("$SPOTSTATE ") else { continue }
             var values: [String: String] = [:]
             for field in line.dropFirst("$SPOTSTATE ".count).split(separator: " ") {
@@ -227,7 +381,8 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
         if characteristic.uuid == Self.transmitUUID, characteristic.isNotifying {
             state = .ready
             lastError = nil
-            send(.syncState)
+            synchronizeClock()
+            scheduleStateRefresh(after: 0.5)
         }
     }
 
@@ -239,6 +394,7 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
         let text = String(decoding: data, as: UTF8.self)
         appendConsole(text)
         processStateData(text)
+        processConsolePrompt(text)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {

@@ -40,3 +40,19 @@ struct RobotRuntimeState: Equatable {
         }
     }
 }
+
+enum RobotDriveDirection: String {
+    case forward
+    case backward
+    case left
+    case right
+
+    var title: String {
+        switch self {
+        case .forward: return "전진"
+        case .backward: return "후진"
+        case .left: return "좌회전"
+        case .right: return "우회전"
+        }
+    }
+}

@@ -147,6 +147,8 @@ spotctl crab left 1 4000   # cautious four-beat sideways crawl
 spotctl crab right 1 4000
 spotctl gaitdiag
 spotctl baldiag
+spotctl logs --count 64
+spotctl logs --output robot-flight.log
 spotctl jump 3 1500
 spotctl balance status
 spotctl targets

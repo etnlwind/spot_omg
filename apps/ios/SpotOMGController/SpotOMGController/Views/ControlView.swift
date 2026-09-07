@@ -34,22 +34,41 @@ struct ControlView: View {
             .background(Color(uiColor: .systemBackground))
 
             List {
-            Section("연결") {
-                HStack {
-                    Circle()
-                        .fill(bluetooth.state.isReady ? .green : .orange)
-                        .frame(width: 10, height: 10)
-                    Text(bluetooth.state.title)
-                    Spacer()
-                    if let rssi = bluetooth.signalStrength { Text("\(rssi) dBm").foregroundStyle(.secondary) }
+                Section("연결") {
+                    HStack {
+                        Circle()
+                            .fill(bluetooth.state.isReady ? .green : .orange)
+                            .frame(width: 10, height: 10)
+                        Text(bluetooth.state.title)
+                        Spacer()
+                        if let rssi = bluetooth.signalStrength { Text("\(rssi) dBm").foregroundStyle(.secondary) }
+                    }
+                    Button(bluetooth.state.isReady ? "연결 해제" : "다시 검색") {
+                        bluetooth.state.isReady ? bluetooth.disconnect() : bluetooth.connect()
+                    }
+                    if bluetooth.state.isReady {
+                        Button("현재 상태 동기화") { bluetooth.synchronizeState() }
+                    }
                 }
-                Button(bluetooth.state.isReady ? "연결 해제" : "다시 검색") {
-                    bluetooth.state.isReady ? bluetooth.disconnect() : bluetooth.connect()
+
+                Section("조이스틱") {
+                    HStack {
+                        Spacer()
+                        VirtualJoystick(enabled: bluetooth.state.isReady) { x, y in
+                            bluetooth.updateDrive(x: x, y: y)
+                        } onRelease: {
+                            bluetooth.stopDrive()
+                        }
+                        .frame(width: 190, height: 190)
+                        Spacer()
+                    }
+                    Text(bluetooth.driveStatus)
+                        .font(.system(.subheadline, design: .monospaced).bold())
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Text("위·아래는 IMU 보정 전진·후진, 좌우는 회전입니다. 중심에서 멀수록 빨라지고 손을 떼면 스틱이 중앙으로 복귀하며 즉시 정지를 요청합니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                if bluetooth.state.isReady {
-                    Button("현재 상태 동기화") { bluetooth.synchronizeState() }
-                }
-            }
 
             Section("안전 자세") {
                 postureButton("Landing", pose: "landing", command: .landing)
@@ -85,6 +104,10 @@ struct ControlView: View {
                 Button("Servo Scan") { bluetooth.send(.scan) }
                 Button("Gait Diagnostics") { bluetooth.send(.gaitDiagnostics) }
                 Button("Balance Diagnostics") { bluetooth.send(.balanceDiagnostics) }
+                Button("저장 로그 64개 가져오기") {
+                    bluetooth.send(.storedLogs(count: 64))
+                }
+                Button("로봇 시간 다시 동기화") { bluetooth.synchronizeClock() }
             }
             .disabled(!bluetooth.state.isReady)
             }

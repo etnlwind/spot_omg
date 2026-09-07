@@ -1750,6 +1750,9 @@ class ConsoleProtocolTest(unittest.TestCase):
         self.assertAlmostEqual(estimate_timeout("trot3 1 1600"), 21.6)
         self.assertAlmostEqual(estimate_timeout("trot3"), 22.2)
         self.assertAlmostEqual(estimate_timeout("trot4"), 21.6)
+        self.assertAlmostEqual(estimate_timeout("trot4back 2 2000"), 24.0)
+        self.assertAlmostEqual(estimate_timeout("turn left"), 22.2)
+        self.assertAlmostEqual(estimate_timeout("turn right 3 2000"), 26.0)
         self.assertAlmostEqual(estimate_timeout("crab left"), 24.0)
         self.assertAlmostEqual(estimate_timeout("crab right 3 4000"), 32.0)
         self.assertAlmostEqual(estimate_timeout("jump 3 1500"), 24.5)
@@ -2075,6 +2078,20 @@ class ConsolePortTest(unittest.TestCase):
             "trot4 1 1600",
         )
         self.assertEqual(
+            console_line_for(parse_args(["trot4back", "1", "2400"])),
+            "trot4back 1 2400",
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["turn", "left", "1", "2400"])),
+            "turn left 1 2400",
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["turn", "right"])),
+            "turn right",
+        )
+        with self.assertRaisesRegex(ValueError, "1800..2400"):
+            console_line_for(parse_args(["turn", "left", "1", "1700"]))
+        self.assertEqual(
             console_line_for(parse_args(["crab", "left", "1", "4000"])),
             "crab left 1 4000",
         )
@@ -2105,6 +2122,21 @@ class ConsolePortTest(unittest.TestCase):
         self.assertEqual(console_line_for(parse_args(["landing"])), "landing")
         self.assertEqual(console_line_for(parse_args(["scan"])), "scan")
         self.assertEqual(console_line_for(parse_args(["status"])), "status")
+        self.assertEqual(
+            console_line_for(parse_args(["logs"])), "log show 64"
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["logs", "--count", "12"])),
+            "log show 12",
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["logs", "--status"])), "log status"
+        )
+        self.assertEqual(
+            console_line_for(parse_args(["logs", "--clear"])), "log clear"
+        )
+        with self.assertRaisesRegex(ValueError, "1..512"):
+            console_line_for(parse_args(["logs", "--count", "0"]))
 
     def test_raw_console_prefers_spot_bluetooth(self) -> None:
         with patch(
