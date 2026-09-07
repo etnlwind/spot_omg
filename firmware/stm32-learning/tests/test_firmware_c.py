@@ -323,3 +323,22 @@ def test_firmware_unit(name: str, sources: list[str]) -> None:
         assert run.returncode == 0, (
             f"{name} failed:\n{run.stdout}\n{run.stderr}"
         )
+
+
+def test_forward_pose_runtime() -> None:
+    """Run the real firmware routine against a bus/clock fake, without motion."""
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("no host C compiler available")
+    sources = ["Src/forward_pose.c", "Src/robot_config.c", "Src/safety.c",
+               "tests/test_forward_pose.c"]
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / "forward_pose"
+        build = subprocess.run(
+            [compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"),
+             *[str(PROJECT / src) for src in sources], "-o", str(binary), "-lm"],
+            capture_output=True, text=True,
+        )
+        assert build.returncode == 0, build.stderr
+        run = subprocess.run([str(binary)], capture_output=True, text=True)
+        assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"

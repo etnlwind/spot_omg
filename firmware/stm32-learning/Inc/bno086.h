@@ -226,6 +226,10 @@ void bno086_loopback_test(Bno086 *imu, Bno086Loopback *result);
 bool bno086_read_attitude(void *context,
                           int16_t *roll_tenths,
                           int16_t *pitch_tenths);
+/* As above, but refuses cached attitude older than 500 ms. */
+bool bno086_read_fresh_attitude(void *context,
+                                int16_t *roll_tenths,
+                                int16_t *pitch_tenths);
 
 const char *bno086_result_string(Bno086Result result);
 

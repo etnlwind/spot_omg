@@ -2298,6 +2298,20 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "stand11") == 0) {
         write_text(console, "Straightening all four legs\r\n");
         print_robot_result(console, robot_stand_straight(console->robot));
+    } else if (strcmp(command, "forward11") == 0) {
+        if (strtok(NULL, " \t") != NULL) {
+            write_text(console, "usage: forward11 (from stand, 24s nominal)\r\n");
+        } else {
+            write_text(console, "Starting synchronized forward extension: "
+                                "J2=-90 J3=0 over 24s; tilt/interrupt holds position\r\n");
+            const RobotAttitudeReader saved_reader = console->robot->attitude_reader;
+            if (saved_reader == bno086_read_attitude) {
+                console->robot->attitude_reader = bno086_read_fresh_attitude;
+            }
+            const RobotResult result = robot_forward_straight(console->robot);
+            console->robot->attitude_reader = saved_reader;
+            print_robot_result(console, result);
+        }
     } else if (strcmp(command, "stand") == 0) {
         write_text(console, "Starting direct synchronized stand move\r\n");
         print_robot_result(console, robot_stand(console->robot));
@@ -2650,6 +2664,7 @@ void app_console_print_help(AppConsole *console)
                "  hold             torque on at all current positions\r\n"
                "  stand            direct synchronized stand move\r\n"
                "  stand11          straighten every leg (J2=0, J3=0)\r\n"
+               "  forward11        from stand: J2=-90/J3=0 together, 24s\r\n"
                "  landing          calibrated landing pose (J2=40, J3=130)\r\n"
                "  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n"
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"

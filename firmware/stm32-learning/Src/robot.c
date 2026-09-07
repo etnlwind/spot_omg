@@ -2215,6 +2215,8 @@ RobotResult robot_move_single_safe(RobotController *robot,
 const char *robot_result_string(RobotResult result)
 {
     switch (result) {
+    case ROBOT_STAND_REQUIRED:
+        return "forward11 requires stand; run stand first";
     case ROBOT_OK:
         return "ok";
     case ROBOT_INVALID_ARGUMENT:

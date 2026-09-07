@@ -740,6 +740,17 @@ bool bno086_read_attitude(void *context,
     return true;
 }
 
+bool bno086_read_fresh_attitude(void *context,
+                                int16_t *roll_tenths,
+                                int16_t *pitch_tenths)
+{
+    if (!bno086_read_attitude(context, roll_tenths, pitch_tenths)) {
+        return false;
+    }
+    const Bno086 *imu = (const Bno086 *)context;
+    return (uint32_t)(HAL_GetTick() - imu->last_report_tick) <= 500U;
+}
+
 const char *bno086_result_string(Bno086Result result)
 {
     switch (result) {

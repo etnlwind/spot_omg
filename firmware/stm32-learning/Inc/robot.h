@@ -30,7 +30,8 @@ typedef enum
     ROBOT_DRIVE_WATCHDOG,
     ROBOT_TILT_LIMIT,
     ROBOT_SAFETY_FAULT,      /* stall detector cut torque; latched */
-    ROBOT_SERVO_POWER_LOST   /* nothing on the bus answers a ping */
+    ROBOT_SERVO_POWER_LOST,  /* nothing on the bus answers a ping */
+    ROBOT_STAND_REQUIRED
 } RobotResult;
 
 typedef bool (*RobotAttitudeReader)(void *context,
@@ -68,7 +69,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "continuous-drive-v10"
+#define ROBOT_CONTROL_REV "forward11-v12"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -263,6 +264,9 @@ RobotResult robot_relax_servo(RobotController *robot, uint8_t servo_id);
 RobotResult robot_stand(RobotController *robot);
 RobotResult robot_landing(RobotController *robot);
 RobotResult robot_stand_straight(RobotController *robot);
+/* From stand only: synchronized J2=-90/J3=0 transition (24 s).
+ * Requires a fresh attitude reader; tilt/abort holds the current position. */
+RobotResult robot_forward_straight(RobotController *robot);
 RobotResult robot_trot(RobotController *robot,
                        uint8_t cycles,
                        uint16_t period_ms);
