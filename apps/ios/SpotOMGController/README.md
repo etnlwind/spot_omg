@@ -1,5 +1,8 @@
 # SpotOMGController for iOS
 
+새 컴퓨터에서 작업을 재개할 때는
+[작업 인수인계](../../../docs/HANDOFF-2026-09-07.md)를 먼저 참고하세요.
+
 SwiftUI와 CoreBluetooth로 `SpotOMG-Bridge`에 직접 연결하는 iPhone 앱입니다.
 자세·진단 버튼은 기존 STM32 text console을 사용하고, 조이스틱은 console prompt와
 분리된 sequence/heartbeat realtime 제어 lane을 사용합니다.
@@ -42,3 +45,84 @@ STM32가 gait phase와 50Hz actuator/IMU 루프를 소유합니다. 앱은 드�
 
 앱이 background로 전환될 때는 Ctrl+C와 Stand를 요청합니다. BLE가 그 전에 끊기더라도
 STM32 watchdog이 최종 정지를 보장합니다.
+
+## 연속 조종 정지·재시작 수정
+
+연속 보행 중 자동 `syncstate`가 일반 명령 경로를 거쳐 `stopDrive()`를 호출할 수
+있었던 문제를 수정했습니다. 보행 시작 시 예약된 조회를 취소하고, 실행 중 상태
+조회는 정지 명령을 보내지 않고 보행 완료 후 snapshot으로 대신합니다.
+
+STM32의 `# ` prompt는 줄바꿈이 없습니다. 뒤따르는 `$SPOTDRIVE` 또는 `$SPOTSTATE`와
+붙거나 BLE notification 경계에서 분할되어도 prompt와 응답을 수신 순서대로 분리해
+처리합니다. Swift에서 CRLF는 하나의 Character이므로 LF 문자만 찾던 코드도
+`isNewline` 기반으로 수정했습니다. 이전 line parser에서는 CRLF 응답과
+`# $SPOTDRIVE stopped ...`를 놓쳐 앱만 계속
+보행 중이라고 판단하고 다음 터치에 시작 명령 대신 `@D`를 보내는 문제가 있었습니다.
+
+손을 떼거나 자세 명령을 누르면 `@S`를 한 번 보내고 heartbeat를 중단합니다.
+STM32 종료 응답과 diagnostics 뒤 prompt를 확인하기 전에는 같은 세션을 `@D`로
+되살리지 않습니다. 완료 후 새 터치 입력이 오면 새 `drive`를 시작합니다.
+정지를 요청했거나 STM32가 종료를 알린 뒤 종료 확인이 5초 동안 오지 않으면
+Ctrl+C를 요청하고 연결을 해제해
+무기한 대기를 방지합니다. 이후 사용자가 다시 연결하며, 이전 보행 입력을 자동으로
+재생하지 않습니다. 제스처 취소도 손을 뗀 경우처럼 중앙 복귀·정지 처리합니다.
+
+회귀 시험은 BLE 전송을 대체한 실제 manager에서 예약 조회, heartbeat 유지,
+정지 후 재시작, 안전 자세 명령, 응답 유실을 확인하고, parser는 모든 packet
+분할 경계와 1문자씩의 수신을 검사합니다. 로봇은 시험 중 움직이지 않습니다.
+
+실기 로그의 `RESULT result=ok`, `lag=0`, `fall=0`는 정상 종료를 나타내지만 정지
+입력의 UI 발생 원인까지 기록하지는 않습니다. v10의 `@D/@S`는 ISR에서 처리되어
+persistent command log에 남지 않으므로 해당 기록의 부재를 heartbeat 유실의
+증거로 해석하면 안 됩니다. 이 수정은 iOS 앱 업데이트이며 STM32 v10 재플래시는
+필요하지 않습니다.
+
+검증: iOS 26.4/iPhone 17 Pro simulator에서 XCTest 15개 통과, CR/LF 사이를
+포함한 byte 경계 확장 시험도 통과했습니다. iPhone용 서명 빌드도 성공했습니다.
+앞서 CoreSimulator runtime을 찾지 못했던 오류는 샌드박스 밖에서 정상 접근해
+해결했으며, 실제 BLE 보행의 지속·정지·재시작은 기기에서 확인해야 합니다.
+
+### 시작 알림 유실에 따른 앱의 강제 연결 해제 수정
+
+종료 확인용 5초 제한을 보행 시작 시에도 등록한 첫 수정에는 회귀가 있었습니다.
+`$SPOTDRIVE started` notification이 유실되면 조이스틱 heartbeat가 전송되는
+중에도 앱이 5초 뒤 Ctrl+C와 연결 해제를 실행했습니다. 시작 알림을 생략한
+회귀 시험에서 이 현상을 재현했습니다.
+
+시작 시 timeout 등록을 제거하고, timeout은 명시적 정지 요청 또는 STM32 종료
+응답 뒤에만 동작하도록 제한했습니다. BLE 연결 상실 시의 STM32 800ms watchdog,
+손을 뗄 때의 `@S`, 앱 비활성화 시 Ctrl+C는 유지합니다. 시작 알림의 수신 여부는
+지속 보행의 조건이 아닙니다. 앱 터미널에는 정지 요청 sequence를 기록하고 timeout
+문구는 '보행 종료 확인 시간 초과'로 구분합니다.
+
+### 전송 순서와 실기 연결 추적
+
+- 보행 phase는 `idle → controlling → stopping → draining → idle`로 관리합니다.
+  오류 응답으로 시작이 거부된 경우에도 heartbeat를 중단하고 prompt에서 세션을
+  닫습니다. 재연결 시 이전 입력과 전송 대기열을 초기화합니다.
+- GATT `withResponse` 전송은 `didWriteValueFor`가 확인된 뒤 다음 chunk를 보냅니다.
+  한 명령의 UART 줄이 끝나기 전에 다른 명령의 chunk를 끼워 넣지 않습니다.
+- 아직 전송하지 않은 `@D`는 최신 목표 하나만 유지합니다. 정지/interrupt 요청은
+  대기 중인 입력을 제거합니다. 일반 명령 대기열은 최대 16개이며 쓰기 ACK가 2초
+  동안 오지 않거나 오류가 발생하면 연결을 정리합니다. 이는 console notification
+  유실과 구분되는 전송 실패입니다.
+- iPhone의 `Library/Caches/RobotConnection/current.jsonl`에 시각·uptime과
+  enqueue/write/ACK/RX, 제스처 정지 원인, 앱 비활성화, phase, 연결 해제 원인을
+  비동기로 기록합니다. 512KiB 파일 두 개만 유지하고 앱이 외부에 자동 전송하지
+  않습니다. iOS가 cache를 삭제할 수 있으므로 장기 flight log는 STM32 기록을
+  사용합니다.
+
+검증 결과: 시작 알림을 누락시키면 기존 구현이 `disconnected`가 되는 실패를
+재현한 뒤 수정했으며, 전송 순서·coalescing·명령 거부·정지·재시작을 포함한
+XCTest 21개가 iOS simulator에서 통과했습니다. 시뮬레이터 앱 컨테이너에 JSONL
+파일이 생성되는 것도 확인했습니다. 실제 iPhone용 서명 빌드는 성공했고, 실기
+지속 보행 확인은 앱 업데이트 후 별도로 진행합니다.
+
+개발 연결된 iPhone에서 실제 앱 기록을 가져오는 예:
+
+```bash
+xcrun devicectl device copy from --device UJIN17 \
+  --domain-type appDataContainer --domain-identifier com.etnlwind.spotomg.controller \
+  --source Library/Caches/RobotConnection/current.jsonl \
+  --destination /tmp/spot-ios-connection.jsonl
+```

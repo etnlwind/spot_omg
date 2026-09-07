@@ -1,5 +1,86 @@
 import Foundation
 
+/// Keeps each UART line intact across GATT chunks, with only one acknowledged
+/// write in flight. Unsent joystick targets are replaced by the latest target.
+struct RobotBLEWriteQueue {
+    enum Kind { case command, update, stop, interrupt }
+    private struct Message {
+        let data: Data
+        let kind: Kind
+    }
+    private var pending: [Message] = []
+    private var current: Data?
+    private var offset = 0
+    private var awaitingAcknowledgement = false
+
+    mutating func enqueue(_ data: Data, kind: Kind) -> Bool {
+        guard !data.isEmpty else { return true }
+        if kind == .update || kind == .stop || kind == .interrupt {
+            pending.removeAll { $0.kind == .update }
+        }
+        if kind == .stop || kind == .interrupt {
+            // Do not let stale queued commands follow an emergency stop.
+            // Finish only the partially transmitted line to avoid corruption.
+            pending.removeAll()
+            pending.append(Message(data: data, kind: kind))
+        } else {
+            guard pending.count < 16 else { return false }
+            pending.append(Message(data: data, kind: kind))
+        }
+        return true
+    }
+
+    mutating func nextChunk(maximumLength: Int, acknowledged: Bool) -> Data? {
+        guard !awaitingAcknowledgement, maximumLength > 0 else { return nil }
+        if current == nil {
+            guard !pending.isEmpty else { return nil }
+            current = pending.removeFirst().data
+            offset = 0
+        }
+        guard let data = current else { return nil }
+        let end = min(offset + maximumLength, data.count)
+        let chunk = data.subdata(in: offset..<end)
+        offset = end
+        if offset == data.count { current = nil }
+        awaitingAcknowledgement = acknowledged
+        return chunk
+    }
+
+    mutating func acknowledge() { awaitingAcknowledgement = false }
+}
+
+/// STM32 prompts have no newline and may share a BLE notification with the
+/// next response. Consume prompts separately, preserving wire order.
+struct RobotConsoleStream {
+    enum Event: Equatable {
+        case line(String)
+        case prompt
+    }
+
+    private var buffer = ""
+
+    mutating func append(_ text: String) -> [Event] {
+        buffer.append(text)
+        var events: [Event] = []
+        while !buffer.isEmpty {
+            if buffer.hasPrefix("# ") {
+                buffer.removeFirst(2)
+                events.append(.prompt)
+            } else if let newline = buffer.firstIndex(where: { $0.isNewline }) {
+                let line = String(buffer[..<newline])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                buffer.removeSubrange(...newline)
+                if !line.isEmpty { events.append(.line(line)) }
+            } else {
+                break
+            }
+        }
+        // Bound damaged/unterminated input, including unsolicited console text.
+        if buffer.utf8.count > 8192 { buffer = "" }
+        return events
+    }
+}
+
 enum RobotCommand: Equatable {
     case stand
     case stand11

@@ -155,6 +155,11 @@ ESP32–STM32 연결, 부팅, flash partition과 두 BLE OTA 경로의 전체 �
 
 ## 이번 작업 내역
 
+다른 컴퓨터의 VSCode/Codex에서 작업을 이어갈 때는
+[2026-09-07 인수인계 문서](./docs/HANDOFF-2026-09-07.md)를 먼저 읽으세요.
+최종 iOS 연결 수정, 테스트·기기 설치 결과, 실기 미검증 항목과 로그 조회 절차를
+한곳에 정리했습니다.
+
 이번 변경은 단발성 보행 명령을 iPhone에서 반복 호출하던 구조를 실제 원격 조종에
 적합한 연속 제어 구조로 바꾸고, 연결되지 않은 동안의 로봇 사건도 나중에 확인할 수
 있도록 STM32 persistent log를 추가한 작업입니다.
@@ -233,10 +238,12 @@ drive LINEAR YAW SEQ    연속 gait 시작; LINEAR/YAW는 -1000..1000
   기록했습니다.
 - 프로젝트 Conda 환경에서 Python 시험 175개와 C 정책 subtest 25개가 모두
   통과했습니다.
-- iOS Swift compile 단계는 통과했지만 현재 Mac의 CoreSimulator runtime service 문제로
-  asset catalog를 포함한 simulator 최종 build는 완료하지 못했습니다. 실제 iPhone BLE와
-  새 `continuous-drive-v10` STM32 firmware의 연속 보행은 flash 후 거치대에서 먼저
-  end-to-end 검증해야 합니다.
+- iOS simulator 빌드와 연결 회귀 시험 21개가 통과했고, 최종 수정 앱의 iPhone용
+  서명 빌드 및 설치도 성공했습니다. 이전 CoreSimulator 접근 오류는 샌드박스 밖에서
+  정상 접근해 해결했습니다.
+- STM32 `continuous-drive-v10`은 BLE OTA 설치·검증·재부팅과 revision 조회까지
+  완료했습니다. 최종 수정 iOS 앱의 실제 지속 보행은 아직 미확인이며, 다음 세션에서
+  폰 연결 기록과 STM32 로그를 확보해 확인해야 합니다.
 
 ---
 

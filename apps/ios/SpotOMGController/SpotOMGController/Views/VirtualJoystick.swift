@@ -3,9 +3,11 @@ import SwiftUI
 struct VirtualJoystick: View {
     let enabled: Bool
     let onChange: (Double, Double) -> Void
-    let onRelease: () -> Void
+    let onRelease: (String) -> Void
 
     @State private var knobOffset: CGSize = .zero
+    @GestureState private var gestureActive = false
+    @State private var touchActive = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -35,8 +37,10 @@ struct VirtualJoystick: View {
             .contentShape(Circle())
             .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($gestureActive) { _, active, _ in active = true }
                     .onChanged { value in
                         guard enabled else { return }
+                        touchActive = true
                         let dx = value.location.x - diameter / 2
                         let dy = value.location.y - diameter / 2
                         let distance = hypot(dx, dy)
@@ -46,22 +50,29 @@ struct VirtualJoystick: View {
                                  Double(-dy * scale / travel))
                     }
                     .onEnded { _ in
-                        resetToCenter()
+                        resetToCenter(reason: "gesture-ended")
                     })
             .opacity(enabled ? 1 : 0.45)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .aspectRatio(1, contentMode: .fit)
         .onChange(of: enabled) { _, isEnabled in
-            if !isEnabled { resetToCenter() }
+            if !isEnabled { resetToCenter(reason: "control-disabled") }
         }
-        .onDisappear { resetToCenter() }
+        .onDisappear { resetToCenter(reason: "view-disappeared") }
+        .onChange(of: gestureActive) { _, active in
+            // SwiftUI also resets GestureState when a parent cancels a drag;
+            // onEnded alone does not cover that case.
+            if !active { resetToCenter(reason: "gesture-ended-or-cancelled") }
+        }
     }
 
-    private func resetToCenter() {
+    private func resetToCenter(reason: String) {
+        guard touchActive else { return }
+        touchActive = false
         withAnimation(.spring(response: 0.22, dampingFraction: 0.72)) {
             knobOffset = .zero
         }
-        onRelease()
+        onRelease(reason)
     }
 }

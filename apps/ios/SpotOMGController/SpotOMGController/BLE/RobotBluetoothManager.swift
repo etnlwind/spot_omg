@@ -1,5 +1,6 @@
 import CoreBluetooth
 import Foundation
+import Combine
 
 final class RobotBluetoothManager: NSObject, ObservableObject {
     static let deviceName = "SpotOMG-Bridge"
@@ -20,18 +21,41 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var receiveCharacteristic: CBCharacteristic?
     private var transmitCharacteristic: CBCharacteristic?
     private var reconnectRequested = true
-    private var stateLineBuffer = ""
+    private var consoleStream = RobotConsoleStream()
+    private var writes = RobotBLEWriteQueue()
+    private var writeTimeout: DispatchWorkItem?
+    private let trace: RobotConnectionTrace?
     private var stateRefreshWorkItem: DispatchWorkItem?
     private var driveHeartbeat: Timer?
     private var driveVector: RobotDriveVector?
     private var driveSequence: UInt32 = 0
-    private var driveSessionActive = false
+    private enum DrivePhase: String { case idle, controlling, stopping, draining }
+    private var drivePhase: DrivePhase = .idle {
+        didSet {
+            if oldValue != drivePhase {
+                trace?.record("phase", "\(oldValue.rawValue) -> \(drivePhase.rawValue)")
+            }
+        }
+    }
+    private var driveSessionActive: Bool { drivePhase != .idle }
+    private var driveStopRequested: Bool { drivePhase == .stopping }
+    private var driveAwaitingPrompt: Bool { drivePhase == .draining }
+    private var driveCompletionTimeout: DispatchWorkItem?
     private var lastDrivePacketAt = Date.distantPast
     private var pendingCommandAfterDrive: RobotCommand?
-    private var consolePromptTail = ""
 
-    override init() {
+    // Optional transport injection lets host tests exercise the actual session
+    // and timer paths without connecting to (or moving) a robot.
+    private let commandWriter: ((Data) -> Void)?
+
+    init(commandWriter: ((Data) -> Void)? = nil) {
+        self.commandWriter = commandWriter
+        trace = commandWriter == nil ? RobotConnectionTrace() : nil
         super.init()
+        if commandWriter != nil {
+            state = .ready
+            return
+        }
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionShowPowerAlertKey: true])
     }
@@ -43,19 +67,25 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        trace?.record("disconnect-request", "phase=\(drivePhase.rawValue)")
         reconnectRequested = false
-        central.stopScan()
+        central?.stopScan()
         if let peripheral { central.cancelPeripheralConnection(peripheral) }
         resetConnection()
     }
 
     func send(_ command: RobotCommand) {
+        if command == .syncState, driveSessionActive {
+            // Read-only refreshes must never release the joystick or send @S.
+            // Completion always schedules a fresh snapshot.
+            return
+        }
         if driveSessionActive {
             if case .drive = command {
                 sendCommandNow(command)
             } else {
                 pendingCommandAfterDrive = command
-                stopDrive()
+                stopDrive(reason: "command: \(command.consoleLine)")
             }
             return
         }
@@ -63,28 +93,54 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func sendCommandNow(_ command: RobotCommand) {
-        guard state.isReady,
-              let peripheral,
-              let characteristic = receiveCharacteristic,
-              let data = command.encoded else { return }
+        guard state.isReady, let data = command.encoded else { return }
 
         appendConsole("> \(command.consoleLine)\n")
-        let type: CBCharacteristicWriteType =
-            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
-        let maximum = peripheral.maximumWriteValueLength(for: type)
-        var offset = 0
-        while offset < data.count {
-            let end = min(offset + maximum, data.count)
-            peripheral.writeValue(data.subdata(in: offset..<end),
-                                  for: characteristic, type: type)
-            offset = end
-        }
+        write(data)
         if let delay = command.stateRefreshDelay {
             scheduleStateRefresh(after: delay)
         }
     }
 
+    private func write(_ data: Data, kind: RobotBLEWriteQueue.Kind = .command) {
+        trace?.record("tx-enqueue", String(decoding: data, as: UTF8.self))
+        if let commandWriter {
+            commandWriter(data)
+            return
+        }
+        guard writes.enqueue(data, kind: kind) else {
+            disconnect()
+            fail("전송 대기열 초과: 연결을 해제했습니다.")
+            return
+        }
+        drainWrites()
+    }
+
+    private func drainWrites() {
+        guard state.isReady, let peripheral, let characteristic = receiveCharacteristic else { return }
+        let type: CBCharacteristicWriteType =
+            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        let maximum = peripheral.maximumWriteValueLength(for: type)
+        while type == .withResponse || peripheral.canSendWriteWithoutResponse {
+            guard let chunk = writes.nextChunk(maximumLength: maximum,
+                                               acknowledged: type == .withResponse) else { return }
+            trace?.record("tx-write", String(decoding: chunk, as: UTF8.self))
+            if type == .withResponse {
+                let timeout = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    self.disconnect()
+                    self.fail("BLE 쓰기 응답 시간 초과: 연결을 해제했습니다.")
+                }
+                writeTimeout = timeout
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: timeout)
+            }
+            peripheral.writeValue(chunk, for: characteristic, type: type)
+            if type == .withResponse { return }
+        }
+    }
+
     func requestSafeStand() {
+        trace?.record("scene-safety", "phase=\(drivePhase.rawValue)")
         guard state.isReady else { return }
         if driveSessionActive {
             pendingCommandAfterDrive = .stand
@@ -92,6 +148,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             driveHeartbeat?.invalidate()
             driveHeartbeat = nil
             driveVector = nil
+            drivePhase = .stopping
+            armDriveCompletionTimeout()
             driveStatus = "안전 정지 요청"
         } else {
             send(.stand)
@@ -100,13 +158,20 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func updateDrive(x: Double, y: Double) {
         guard state.isReady, let vector = RobotDriveVector.make(x: x, y: y) else {
-            stopDrive()
+            stopDrive(reason: "joystick-neutral-or-disconnected")
             return
         }
+        // A released session cannot be revived with @D while STM32 is finishing
+        // diagnostics. Wait for its prompt and require a new touch update.
+        guard !driveStopRequested, !driveAwaitingPrompt else { return }
         driveVector = vector
         driveStatus = "\(vector.statusTitle) · 속도 \(Int((vector.speedFraction * 100).rounded()))%"
         if !driveSessionActive {
-            driveSessionActive = true
+            stateRefreshWorkItem?.cancel()
+            stateRefreshWorkItem = nil
+            drivePhase = .controlling
+            // The started banner is an unacknowledged console notification,
+            // not a control ACK. Its loss must not terminate a held joystick.
             let sequence = nextDriveSequence()
             sendCommandNow(.drive(linearPerMille: vector.linearPerMille,
                                   yawPerMille: vector.yawPerMille,
@@ -120,14 +185,17 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         }
     }
 
-    func stopDrive() {
+    func stopDrive(reason: String = "joystick-release") {
         guard driveSessionActive, driveVector != nil else {
             if !driveSessionActive { driveStatus = "중립" }
             return
         }
+        trace?.record("stop-request", reason)
         driveVector = nil
         driveHeartbeat?.invalidate()
         driveHeartbeat = nil
+        drivePhase = .stopping
+        armDriveCompletionTimeout()
         sendDrivePacket(.stop(sequence: nextDriveSequence()))
         driveStatus = "중립 · 감속 정지"
     }
@@ -164,9 +232,14 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         driveHeartbeat?.invalidate()
         driveHeartbeat = nil
         driveVector = nil
-        driveSessionActive = false
+        drivePhase = .idle
+        driveCompletionTimeout?.cancel()
+        driveCompletionTimeout = nil
         pendingCommandAfterDrive = nil
-        consolePromptTail = ""
+        consoleStream = RobotConsoleStream()
+        writes = RobotBLEWriteQueue()
+        writeTimeout?.cancel()
+        writeTimeout = nil
         driveStatus = "중립"
         runtimeState = RobotRuntimeState()
         lastStateSync = nil
@@ -213,62 +286,82 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func sendDrivePacket(_ packet: RobotDriveRealtimePacket) {
-        guard state.isReady,
-              let peripheral,
-              let characteristic = receiveCharacteristic else { return }
-        let type: CBCharacteristicWriteType =
-            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
-        let data = packet.encoded
-        let maximum = peripheral.maximumWriteValueLength(for: type)
-        var offset = 0
-        while offset < data.count {
-            let end = min(offset + maximum, data.count)
-            peripheral.writeValue(data.subdata(in: offset..<end),
-                                  for: characteristic, type: type)
-            offset = end
+        guard state.isReady else { return }
+        if case .stop(let sequence) = packet {
+            appendConsole("[DRIVE] 정지 요청 seq=\(sequence)\n")
+        }
+        switch packet {
+        case .update: write(packet.encoded, kind: .update)
+        case .stop: write(packet.encoded, kind: .stop)
         }
         lastDrivePacketAt = Date()
     }
 
     private func sendMotionInterrupt() {
-        guard state.isReady,
-              let peripheral,
-              let characteristic = receiveCharacteristic else { return }
-        let type: CBCharacteristicWriteType =
-            characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
-        peripheral.writeValue(Data([0x03]), for: characteristic, type: type)
+        guard state.isReady else { return }
+        write(Data([0x03]), kind: .interrupt)
         appendConsole("^C\n")
     }
 
-    private func processConsolePrompt(_ text: String) {
-        let probe = consolePromptTail + text
-        consolePromptTail = String(probe.suffix(1))
-        guard probe.contains("# "), !driveSessionActive,
-              let pending = pendingCommandAfterDrive else { return }
-        pendingCommandAfterDrive = nil
-        sendCommandNow(pending)
+    private func armDriveCompletionTimeout() {
+        driveCompletionTimeout?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.driveSessionActive,
+                  self.driveStopRequested || self.driveAwaitingPrompt else { return }
+            self.sendMotionInterrupt()
+            self.disconnect()
+            self.fail("보행 종료 확인 시간 초과: 안전 정지 요청 후 연결을 해제했습니다. 다시 연결해 주세요.")
+        }
+        driveCompletionTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
     }
 
-    private func processStateData(_ text: String) {
-        stateLineBuffer.append(text)
-        while let newline = stateLineBuffer.firstIndex(of: "\n") {
-            let line = String(stateLineBuffer[..<newline])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            stateLineBuffer.removeSubrange(...newline)
+    private func processConsolePrompt() {
+        guard driveSessionActive, driveAwaitingPrompt else { return }
+        driveCompletionTimeout?.cancel()
+        driveCompletionTimeout = nil
+        drivePhase = .idle
+        if let pending = pendingCommandAfterDrive {
+            pendingCommandAfterDrive = nil
+            sendCommandNow(pending)
+        } else {
+            scheduleStateRefresh(after: 0.8)
+        }
+    }
+
+    func receiveConsoleText(_ text: String) {
+        trace?.record("rx", text)
+        appendConsole(text)
+        for event in consoleStream.append(text) {
+            guard case .line(let line) = event else {
+                processConsolePrompt()
+                continue
+            }
             if line.hasPrefix("$SPOTDRIVE started ") {
-                driveSessionActive = true
+                // Informational only: never arm/cancel the stop timeout here.
                 continue
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
                 driveHeartbeat?.invalidate()
                 driveHeartbeat = nil
                 driveVector = nil
-                driveSessionActive = false
+                if driveSessionActive { drivePhase = .draining }
+                if driveSessionActive { armDriveCompletionTimeout() }
                 driveStatus = line.contains("watchdog") ?
                     "통신 지연으로 자동 정지" : "중립"
-                if pendingCommandAfterDrive == nil {
-                    scheduleStateRefresh(after: 0.8)
-                }
+                continue
+            }
+            if drivePhase == .controlling,
+               line.hasPrefix("ERROR:") || line == "unknown command; type help" {
+                // A rejected drive has no started/stopped banner. Its error
+                // and prompt must still terminate the local session.
+                driveHeartbeat?.invalidate()
+                driveHeartbeat = nil
+                driveVector = nil
+                drivePhase = .draining
+                lastError = line
+                driveStatus = "보행 명령 거부"
+                armDriveCompletionTimeout()
                 continue
             }
             guard line.hasPrefix("$SPOTSTATE ") else { continue }
@@ -290,6 +383,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func fail(_ message: String) {
+        trace?.record("error", message)
         lastError = message
         appendConsole("[BLE] \(message)\n")
     }
@@ -328,6 +422,7 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        trace?.record("connected", peripheral.identifier.uuidString)
         state = .discoveringServices
         appendConsole("[BLE] SpotOMG-Bridge connected\n")
         peripheral.discoverServices([Self.serviceUUID])
@@ -344,6 +439,7 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
+        trace?.record("disconnected", error.map { String(describing: $0) } ?? "no-error")
         if let error { fail("연결 끊김: \(error.localizedDescription)") }
         resetConnection()
         if reconnectRequested { startScanning() }
@@ -392,9 +488,7 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
         guard characteristic.uuid == Self.transmitUUID,
               let data = characteristic.value else { return }
         let text = String(decoding: data, as: UTF8.self)
-        appendConsole(text)
-        processStateData(text)
-        processConsolePrompt(text)
+        receiveConsoleText(text)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
@@ -403,6 +497,22 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral,
                     didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        if let error { fail("전송 실패: \(error.localizedDescription)") }
+        guard peripheral == self.peripheral,
+              characteristic.uuid == Self.receiveUUID else { return }
+        writeTimeout?.cancel()
+        writeTimeout = nil
+        if let error {
+            disconnect()
+            fail("전송 실패: \(error.localizedDescription)")
+            return
+        }
+        trace?.record("tx-ack", "ok")
+        writes.acknowledge()
+        drainWrites()
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        guard peripheral == self.peripheral else { return }
+        drainWrites()
     }
 }

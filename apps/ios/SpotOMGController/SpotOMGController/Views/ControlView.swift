@@ -56,8 +56,8 @@ struct ControlView: View {
                         Spacer()
                         VirtualJoystick(enabled: bluetooth.state.isReady) { x, y in
                             bluetooth.updateDrive(x: x, y: y)
-                        } onRelease: {
-                            bluetooth.stopDrive()
+                        } onRelease: { reason in
+                            bluetooth.stopDrive(reason: reason)
                         }
                         .frame(width: 190, height: 190)
                         Spacer()
