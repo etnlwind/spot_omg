@@ -195,10 +195,10 @@ def test_turn_reverses_fore_aft_path_between_robot_sides() -> None:
         assert down_left == pytest.approx(down_right, abs=1.0e-5)
 
 
-def test_continuous_drive_axes_match_the_established_gaits() -> None:
+def test_unit_stride_drive_and_turn_match_the_established_gaits() -> None:
     policy = SharedGaitPolicy()
     for phase in (0.0, 0.17, 0.49, 0.73):
-        forward, support = policy.drive_targets(phase, 1.0, 1.0, 0.0)
+        forward, support = policy.drive_stride_targets(phase, 1.0, 1.0, 0.0, 1.0)
         trot4, trot_support = policy.trot4_direction_targets(phase, 1.0, 1)
         left, left_support = policy.drive_targets(phase, 1.0, 0.0, -1.0)
         turn, turn_support = policy.turn_targets(phase, 1.0, 1)

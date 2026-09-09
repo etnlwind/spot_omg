@@ -23,7 +23,16 @@ class SharedGaitPolicy:
 
     def __init__(self) -> None:
         self._library = ctypes.CDLL(str(self._build_library()))
+        for name, result_type in (("slew", ctypes.c_int16), ("period_ms", ctypes.c_uint16)):
+            fn = getattr(self._library, "spot_gait_drive_" + name)
+            fn.argtypes = (ctypes.c_int16, ctypes.c_int16)
+            fn.restype = result_type
         float_pointer = ctypes.POINTER(ctypes.c_float)
+        self._library.spot_gait_trot5_targets.argtypes = (
+            ctypes.c_float, ctypes.c_float, float_pointer,
+            ctypes.POINTER(ctypes.c_uint8),
+        )
+        self._library.spot_gait_trot5_targets.restype = ctypes.c_int
         self._library.spot_gait_sim_trot_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
@@ -89,6 +98,14 @@ class SharedGaitPolicy:
             ctypes.POINTER(ctypes.c_uint8),
         )
         self._library.spot_gait_drive_targets.restype = ctypes.c_int
+        self._library.spot_gait_drive_walk_targets.argtypes = self._library.spot_gait_drive_targets.argtypes
+        self._library.spot_gait_drive_walk_targets.restype = ctypes.c_int
+        self._library.spot_gait_drive_stride_targets.argtypes = (
+            ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float,
+            ctypes.c_float, float_pointer, ctypes.POINTER(ctypes.c_uint8))
+        self._library.spot_gait_drive_stride_targets.restype = ctypes.c_int
+        self._library.spot_gait_drive_yaw_limit.argtypes = (ctypes.c_int16,)
+        self._library.spot_gait_drive_yaw_limit.restype = ctypes.c_int16
         self._library.spot_gait_crab_targets.argtypes = (
             ctypes.c_float,
             ctypes.c_float,
@@ -364,6 +381,51 @@ class SharedGaitPolicy:
             leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
         }
         return self._unpack(values), support
+
+    def trot5_targets(self, phase: float, amplitude_scale: float = 1.0):
+        """Selected CAD gait, using the same C implementation as firmware."""
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        if not self._library.spot_gait_trot5_targets(
+                phase, amplitude_scale, values, ctypes.byref(mask)):
+            raise ValueError("shared C trot5 policy rejected the requested frame")
+        return self._unpack(values), {
+            leg for index, leg in enumerate(LEGS) if mask.value & (1 << index)
+        }
+
+    def drive_slew(self, current: int, target: int) -> int:
+        if max(abs(current), abs(target)) > 1000:
+            raise ValueError("drive inputs must be within -1000..1000")
+        return int(self._library.spot_gait_drive_slew(current, target))
+
+    def drive_period_ms(self, linear: int, yaw: int) -> int:
+        if max(abs(linear), abs(yaw)) > 1000:
+            raise ValueError("drive inputs must be within -1000..1000")
+        return int(self._library.spot_gait_drive_period_ms(linear, yaw))
+
+    def drive_yaw_limit(self, requested: int) -> int:
+        """Firmware joystick yaw governor, in protocol units -1000..1000."""
+        if not isinstance(requested, int) or not -1000 <= requested <= 1000:
+            raise ValueError("yaw input must be an integer in -1000..1000")
+        return int(self._library.spot_gait_drive_yaw_limit(requested))
+
+    def drive_stride_targets(self, phase, startup, linear, yaw, stride):
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        if not self._library.spot_gait_drive_stride_targets(
+                phase, startup, linear, yaw, stride, values, ctypes.byref(mask)):
+            raise ValueError("shared C stride policy rejected frame")
+        return self._unpack(values), {
+            leg for i, leg in enumerate(LEGS) if mask.value & (1 << i)}
+
+    def drive_walk_targets(self, phase, startup, linear, yaw):
+        values = (ctypes.c_float * 12)()
+        mask = ctypes.c_uint8()
+        if not self._library.spot_gait_drive_walk_targets(
+                phase, startup, linear, yaw, values, ctypes.byref(mask)):
+            raise ValueError("shared C walk stance rejected frame")
+        return self._unpack(values), {
+            leg for i, leg in enumerate(LEGS) if mask.value & (1 << i)}
 
     def drive_targets(
         self,

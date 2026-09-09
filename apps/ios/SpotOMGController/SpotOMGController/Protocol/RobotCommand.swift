@@ -96,6 +96,7 @@ enum RobotCommand: Equatable {
     case synchronizeTime(epochMilliseconds: Int64)
     case storedLogs(count: Int)
     case clearStoredLogs
+    case trot5(cycles: Int, periodMilliseconds: Int)
     case trot4(cycles: Int, periodMilliseconds: Int)
     case trot4Backward(cycles: Int, periodMilliseconds: Int)
     case turnLeft(cycles: Int, periodMilliseconds: Int)
@@ -121,6 +122,7 @@ enum RobotCommand: Equatable {
         case .synchronizeTime(let epoch): return "log time \(epoch)"
         case .storedLogs(let count): return "log show \(count)"
         case .clearStoredLogs: return "log clear"
+        case .trot5(let cycles, let period): return "trot5 \(cycles) \(period)"
         case .trot4(let cycles, let period): return "trot4 \(cycles) \(period)"
         case .trot4Backward(let cycles, let period): return "trot4back \(cycles) \(period)"
         case .turnLeft(let cycles, let period): return "turn left \(cycles) \(period)"
@@ -142,6 +144,8 @@ enum RobotCommand: Equatable {
         switch self {
         case .stand, .stand11, .landing, .hold, .recover: return 4
         case .relax: return 1
+        case .trot5(let cycles, let period):
+            return Double(cycles * period) / 1000.0 + 6
         case .trot4(let cycles, let period),
              .trot4Backward(let cycles, let period),
              .turnLeft(let cycles, let period),
@@ -163,15 +167,21 @@ struct RobotDriveVector: Equatable {
     let speedFraction: Double
 
     static func make(x: Double, y: Double) -> Self? {
+        guard x.isFinite, y.isFinite else { return nil }
         let magnitude = min(1.0, hypot(x, y))
         guard magnitude >= deadZone else { return nil }
         let speed = min(1.0, max(0.0,
             (magnitude - deadZone) / (1.0 - deadZone)))
         let motion = minimumMotion + (1.0 - minimumMotion) * speed
         let axisScale = motion * 1000.0 / max(magnitude, 0.0001)
+        // A narrow vertical corridor rejects finger drift while walking.
+        // Outside it steering grows continuously; pure rotation is unchanged.
+        let steeringDeadZone = 0.10 * min(1.0, abs(y))
+        let steering = max(0, abs(x) - steeringDeadZone) / (1 - steeringDeadZone)
+        let signedSteering = x < 0 ? -steering : steering
         return Self(
             linearPerMille: Int((y * axisScale).rounded()),
-            yawPerMille: Int((x * axisScale).rounded()),
+            yawPerMille: Int((signedSteering * axisScale).rounded()),
             speedFraction: speed)
     }
 

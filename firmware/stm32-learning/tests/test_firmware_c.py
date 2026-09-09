@@ -99,10 +99,10 @@ def test_balance_off_keeps_observation_and_tilt_snapshot() -> None:
     gait_end = source.index("RobotResult robot_trot(", gait_start)
     gait_body = source[gait_start:gait_end]
     assert "if (robot->attitude_reader != NULL &&" in gait_body
-    assert "if (robot->balance_enabled)" in gait_body
+    assert "if (balance_feedback_enabled)" in gait_body
     assert "tilt_snapshot_store(robot, &trace_frame)" in gait_body
     assert gait_body.index("if (robot->attitude_reader != NULL &&") < (
-        gait_body.index("if (robot->balance_enabled)")
+        gait_body.index("if (balance_feedback_enabled)")
     )
 
 
@@ -263,8 +263,8 @@ def test_continuous_drive_uses_realtime_mailbox_and_watchdog() -> None:
     assert "robot_drive_update_realtime" in robot
     assert "robot_drive_stop_realtime" in robot
     assert "drive_sequence_is_newer" in robot
-    assert "ROBOT_DRIVE_SLEW_PER_FRAME" in robot
-    assert "gait_policy_drive_targets" in robot
+    assert "gait_policy_drive_slew(current, target)" in robot
+    assert "gait_policy_drive_walk_targets" in robot
     assert "drive_phase_q16" in robot
     assert "ROBOT_DRIVE_WATCHDOG" in robot
 

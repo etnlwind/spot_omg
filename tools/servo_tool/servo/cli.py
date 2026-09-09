@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .bus import ServoBus
 from .console import CONSOLE_BAUDRATE, ConsoleError, Stm32Console
-from .transport import BleTransport, TcpTransport
+from .transport import BleTransport, TcpTransport, SimulatorTransport
 from .contact import LEGS, LoadContactEstimator
 from .load_profile import DynamicLoadBaseline
 from .spot import GaitParameters, SpotConfig, SpotRobot
@@ -77,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("SPOT_SERVO_PORT"),
         help="URT-2 port; defaults to SPOT_SERVO_PORT or auto-detection",
     )
+    parser.add_argument("--sim-host", help="virtual robot host; verifies simulator identity, never falls back to hardware")
     parser.add_argument("--baudrate", type=int, default=1_000_000)
     parser.add_argument(
         "--host",
@@ -325,6 +326,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("trot3", "overlap trot with actuator limiting and diagnostics"),
         ("trot4", "posture-smooth reduced-path trot with diagnostics"),
         ("trot4back", "reverse trot4 with IMU pitch placement"),
+        ("trot5", "CAD optimized forward (default 3 cycles, 844ms; IMU monitor only)"),
         ("jump", "repeating in-place jump on the STM32; 0 cycles repeats"),
     ):
         motion = commands.add_parser(name, help=help_text)
@@ -450,7 +452,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    return build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.sim_host:
+        if args.host or args.via not in ("auto", "tcp") or args.port or args.stm32_port:
+            parser.error("--sim-host cannot be combined with a hardware target")
+        if args.command == "firmware":
+            parser.error("firmware deployment is not supported for a simulator")
+        args.host = args.sim_host
+    return args
 
 
 #: STMicroelectronics; the ST-LINK virtual COM port on every Nucleo board.
@@ -781,7 +791,7 @@ def run_console_script(
 #: Firmware console commands promoted to top-level spotctl subcommands.
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
-        "trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "turn", "crab", "jump", "targets", "status",
+        "trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "trot5", "turn", "crab", "jump", "targets", "status",
         "gaitdiag", "baldiag", "profile", "imu", "balance", "logs"
     }
 )
@@ -870,7 +880,7 @@ def announce_port(kind: str, port: str) -> None:
 def open_console(args: argparse.Namespace, kind: str, endpoint: str) -> Stm32Console:
     """Build a console using the selected byte-stream transport."""
     if kind == "tcp":
-        transport = TcpTransport(endpoint, args.tcp_port)
+        transport = (SimulatorTransport if getattr(args, "sim_host", None) else TcpTransport)(endpoint, args.tcp_port)
         return Stm32Console(
             f"{endpoint}:{args.tcp_port}", transport=transport
         )
@@ -923,7 +933,7 @@ def console_line_for(args: argparse.Namespace) -> str:
         return f"profile {args.speed} {args.accel}"
     if command in {"imu", "balance"}:
         return command if args.mode is None else f"{command} {args.mode}"
-    if command in {"trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "jump"}:
+    if command in {"trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "trot5", "jump"}:
         if args.cycles is None and args.period_ms is not None:
             raise ValueError("PERIOD_MS requires CYCLES")
         if command in {"trot3", "trot4", "trot4back"} and (
@@ -932,6 +942,11 @@ def console_line_for(args: argparse.Namespace) -> str:
             raise ValueError(
                 f"{command} PERIOD_MS must be 600..2400"
             )
+        if command == "trot5":
+            if args.cycles is not None and not 1 <= args.cycles <= 10:
+                raise ValueError("trot5 CYCLES must be 1..10")
+            if args.period_ms is not None and not 844 <= args.period_ms <= 2400:
+                raise ValueError("trot5 PERIOD_MS must be 844..2400")
         parts = [command]
         if args.cycles is not None:
             parts.append(str(args.cycles))

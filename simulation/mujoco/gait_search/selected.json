@@ -1,0 +1,435 @@
+{
+  "params": {
+    "period": 0.8436922561509421,
+    "duty": 0.5979488437760033,
+    "stride": 0.06280689761866355,
+    "lift": 0.012,
+    "height": 0.20175228283900074,
+    "forward_offset": -0.035,
+    "spread": 0.7411947428343884
+  },
+  "scenarios": {
+    "nominal": {
+      "score": 0.0882904562980423,
+      "fallen": false,
+      "elapsed_s": 20.0,
+      "speed_m_s": 0.1886728804687238,
+      "lateral_speed_m_s": 0.005287098643573057,
+      "yaw_deg": 1.3862216718619729,
+      "tilt_rms_deg": 1.6051798170569507,
+      "peak_tilt_deg": 3.687893521537256,
+      "slip_m_s": 0.04646564291065106,
+      "above_rated_fraction": 0.2807407407407411,
+      "saturation_fraction": 0.059907407407407846,
+      "mechanical_work_j": 124.30823322202411,
+      "cost_of_transport": 0.8493300582020585,
+      "max_penetration_m": 0.0013919840041258097,
+      "max_air_s": 0.0,
+      "displacement_m": [
+        3.5798588633759914,
+        0.09592405067392454,
+        -0.0007454696442262265
+      ],
+      "params": {
+        "period": 0.8436922561509421,
+        "duty": 0.5979488437760033,
+        "stride": 0.06280689761866355,
+        "lift": 0.012,
+        "height": 0.20175228283900074,
+        "forward_offset": -0.035,
+        "spread": 0.7411947428343884
+      },
+      "physics_parameters": {
+        "status": "Uncalibrated engineering estimates; PLA/PETG rigid-body approximation",
+        "mass_kg": {
+          "chassis_without_battery_or_leg_groups": 1.8,
+          "battery": 0.6,
+          "j1_group": 0.12,
+          "j2_group": 0.2245,
+          "j3_group": 0.155
+        },
+        "mass_notes": "Only battery mass is user-measured. Group masses include an allocated servo plus printed parts; chassis includes frame/electronics/covers. Do not add servo masses again. Infill, wall thickness and hardware housing ownership are unverified.",
+        "battery_center_cad_m": [
+          0.05225,
+          0.1495,
+          0.06
+        ],
+        "battery_size_m": [
+          0.045,
+          0.14,
+          0.04
+        ],
+        "gravity_m_s2": 9.81,
+        "timestep_s": 0.002,
+        "friction": [
+          0.8,
+          0.005,
+          0.0001
+        ],
+        "contact_time_constant_s": 0.01,
+        "contact_damping_ratio": 1.0,
+        "foot_radius_m": 0.015,
+        "joint_damping": 0.05,
+        "joint_friction_nm": 0.02,
+        "rotor_armature_kg_m2": 0.0001,
+        "servo_kp": 35.0,
+        "servo_kd": 0.8,
+        "command_delay_s": 0.02,
+        "target_acceleration_rad_s2": 25.0,
+        "pack_open_circuit_voltage": 11.1,
+        "pack_and_wiring_resistance_ohm": 0.06,
+        "electronics_current_a": 0.5,
+        "motor_3215": {
+          "stall_nm": 2.941995,
+          "rated_nm": 0.980665,
+          "speed_rad_s": 4.717106,
+          "stall_current_a": 2.7,
+          "idle_current_a": 0.18
+        },
+        "motor_3250": {
+          "stall_nm": 4.903325,
+          "rated_nm": 1.569064,
+          "speed_rad_s": 7.873666,
+          "stall_current_a": 4.2,
+          "idle_current_a": 0.28
+        },
+        "sources": [
+          "https://www.feetechrc.com/525603.html",
+          "https://www.feetechrc.com/en/562636.html"
+        ],
+        "limitations": [
+          "Rigid bodies only; no PLA/PETG bending, fracture or layer anisotropy",
+          "Collision primitives approximate CAD; no exact concave mesh contacts",
+          "Joint axes and exported zero remain provisional",
+          "PD gains, delays, armature, friction, battery resistance, COM and motor curve are estimates",
+          "No thermal protection, firmware watchdog, exact firmware actuator limiter, gear backlash or battery discharge chemistry",
+          "Rated torque is reported as overload exposure, not enforced as a peak torque limit; long runs are not thermally validated"
+        ],
+        "battery_pack": {
+          "chemistry": "LiPo",
+          "series_cells": 3,
+          "nominal_voltage_v": 11.1,
+          "source": "User confirmed 11.1V 3S; simulated source voltage is a reference operating point, not measured present voltage"
+        }
+      }
+    },
+    "heavy_slippery": {
+      "score": 0.05915073933853974,
+      "fallen": false,
+      "elapsed_s": 20.0,
+      "speed_m_s": 0.18359544234658906,
+      "lateral_speed_m_s": 0.01532068690618325,
+      "yaw_deg": 3.903619894431057,
+      "tilt_rms_deg": 1.487454370193614,
+      "peak_tilt_deg": 3.178256247952618,
+      "slip_m_s": 0.05668276651172472,
+      "above_rated_fraction": 0.3115740740740744,
+      "saturation_fraction": 0.08324074074074074,
+      "mechanical_work_j": 122.53236741338297,
+      "cost_of_transport": 0.7336392810735125,
+      "max_penetration_m": 0.00128995554174198,
+      "max_air_s": 0.0,
+      "displacement_m": [
+        3.485947777493893,
+        0.27531633737109357,
+        -0.0013007488166499326
+      ],
+      "params": {
+        "period": 0.8436922561509421,
+        "duty": 0.5979488437760033,
+        "stride": 0.06280689761866355,
+        "lift": 0.012,
+        "height": 0.20175228283900074,
+        "forward_offset": -0.035,
+        "spread": 0.7411947428343884
+      },
+      "physics_parameters": {
+        "status": "Uncalibrated engineering estimates; PLA/PETG rigid-body approximation",
+        "mass_kg": {
+          "chassis_without_battery_or_leg_groups": 2.16,
+          "battery": 0.6,
+          "j1_group": 0.144,
+          "j2_group": 0.2694,
+          "j3_group": 0.186
+        },
+        "mass_notes": "Only battery mass is user-measured. Group masses include an allocated servo plus printed parts; chassis includes frame/electronics/covers. Do not add servo masses again. Infill, wall thickness and hardware housing ownership are unverified.",
+        "battery_center_cad_m": [
+          0.05225,
+          0.1495,
+          0.06
+        ],
+        "battery_size_m": [
+          0.045,
+          0.14,
+          0.04
+        ],
+        "gravity_m_s2": 9.81,
+        "timestep_s": 0.002,
+        "friction": [
+          0.55,
+          0.005,
+          0.0001
+        ],
+        "contact_time_constant_s": 0.01,
+        "contact_damping_ratio": 1.0,
+        "foot_radius_m": 0.015,
+        "joint_damping": 0.05,
+        "joint_friction_nm": 0.02,
+        "rotor_armature_kg_m2": 0.0001,
+        "servo_kp": 35.0,
+        "servo_kd": 0.8,
+        "command_delay_s": 0.02,
+        "target_acceleration_rad_s2": 25.0,
+        "pack_open_circuit_voltage": 10.8,
+        "pack_and_wiring_resistance_ohm": 0.06,
+        "electronics_current_a": 0.5,
+        "motor_3215": {
+          "stall_nm": 2.941995,
+          "rated_nm": 0.980665,
+          "speed_rad_s": 4.717106,
+          "stall_current_a": 2.7,
+          "idle_current_a": 0.18
+        },
+        "motor_3250": {
+          "stall_nm": 4.903325,
+          "rated_nm": 1.569064,
+          "speed_rad_s": 7.873666,
+          "stall_current_a": 4.2,
+          "idle_current_a": 0.28
+        },
+        "sources": [
+          "https://www.feetechrc.com/525603.html",
+          "https://www.feetechrc.com/en/562636.html"
+        ],
+        "limitations": [
+          "Rigid bodies only; no PLA/PETG bending, fracture or layer anisotropy",
+          "Collision primitives approximate CAD; no exact concave mesh contacts",
+          "Joint axes and exported zero remain provisional",
+          "PD gains, delays, armature, friction, battery resistance, COM and motor curve are estimates",
+          "No thermal protection, firmware watchdog, exact firmware actuator limiter, gear backlash or battery discharge chemistry",
+          "Rated torque is reported as overload exposure, not enforced as a peak torque limit; long runs are not thermally validated"
+        ],
+        "battery_pack": {
+          "chemistry": "LiPo",
+          "series_cells": 3,
+          "nominal_voltage_v": 11.1,
+          "source": "User confirmed 11.1V 3S; simulated source voltage is a reference operating point, not measured present voltage"
+        }
+      }
+    },
+    "light_grippy": {
+      "score": 0.04426301367125762,
+      "fallen": false,
+      "elapsed_s": 20.0,
+      "speed_m_s": 0.18715231351073136,
+      "lateral_speed_m_s": 0.006220426903645061,
+      "yaw_deg": 0.5043932414719254,
+      "tilt_rms_deg": 1.7975613676912863,
+      "peak_tilt_deg": 4.207755963104991,
+      "slip_m_s": 0.03790867768836887,
+      "above_rated_fraction": 0.32157407407407357,
+      "saturation_fraction": 0.08851851851851857,
+      "mechanical_work_j": 352.86417985430387,
+      "cost_of_transport": 2.7922076717603397,
+      "max_penetration_m": 0.0009485769892706858,
+      "max_air_s": 0.0,
+      "displacement_m": [
+        3.5709617897663635,
+        0.11432731984695375,
+        -0.0008284317107870864
+      ],
+      "params": {
+        "period": 0.8436922561509421,
+        "duty": 0.5979488437760033,
+        "stride": 0.06280689761866355,
+        "lift": 0.012,
+        "height": 0.20175228283900074,
+        "forward_offset": -0.035,
+        "spread": 0.7411947428343884
+      },
+      "physics_parameters": {
+        "status": "Uncalibrated engineering estimates; PLA/PETG rigid-body approximation",
+        "mass_kg": {
+          "chassis_without_battery_or_leg_groups": 1.53,
+          "battery": 0.6,
+          "j1_group": 0.102,
+          "j2_group": 0.190825,
+          "j3_group": 0.13175
+        },
+        "mass_notes": "Only battery mass is user-measured. Group masses include an allocated servo plus printed parts; chassis includes frame/electronics/covers. Do not add servo masses again. Infill, wall thickness and hardware housing ownership are unverified.",
+        "battery_center_cad_m": [
+          0.05225,
+          0.1495,
+          0.06
+        ],
+        "battery_size_m": [
+          0.045,
+          0.14,
+          0.04
+        ],
+        "gravity_m_s2": 9.81,
+        "timestep_s": 0.002,
+        "friction": [
+          1.05,
+          0.005,
+          0.0001
+        ],
+        "contact_time_constant_s": 0.01,
+        "contact_damping_ratio": 1.0,
+        "foot_radius_m": 0.015,
+        "joint_damping": 0.05,
+        "joint_friction_nm": 0.02,
+        "rotor_armature_kg_m2": 0.0001,
+        "servo_kp": 35.0,
+        "servo_kd": 0.8,
+        "command_delay_s": 0.02,
+        "target_acceleration_rad_s2": 25.0,
+        "pack_open_circuit_voltage": 12.6,
+        "pack_and_wiring_resistance_ohm": 0.06,
+        "electronics_current_a": 0.5,
+        "motor_3215": {
+          "stall_nm": 2.941995,
+          "rated_nm": 0.980665,
+          "speed_rad_s": 4.717106,
+          "stall_current_a": 2.7,
+          "idle_current_a": 0.18
+        },
+        "motor_3250": {
+          "stall_nm": 4.903325,
+          "rated_nm": 1.569064,
+          "speed_rad_s": 7.873666,
+          "stall_current_a": 4.2,
+          "idle_current_a": 0.28
+        },
+        "sources": [
+          "https://www.feetechrc.com/525603.html",
+          "https://www.feetechrc.com/en/562636.html"
+        ],
+        "limitations": [
+          "Rigid bodies only; no PLA/PETG bending, fracture or layer anisotropy",
+          "Collision primitives approximate CAD; no exact concave mesh contacts",
+          "Joint axes and exported zero remain provisional",
+          "PD gains, delays, armature, friction, battery resistance, COM and motor curve are estimates",
+          "No thermal protection, firmware watchdog, exact firmware actuator limiter, gear backlash or battery discharge chemistry",
+          "Rated torque is reported as overload exposure, not enforced as a peak torque limit; long runs are not thermally validated"
+        ],
+        "battery_pack": {
+          "chemistry": "LiPo",
+          "series_cells": 3,
+          "nominal_voltage_v": 11.1,
+          "source": "User confirmed 11.1V 3S; simulated source voltage is a reference operating point, not measured present voltage"
+        }
+      }
+    },
+    "com_offset": {
+      "score": 0.06195946845842876,
+      "fallen": false,
+      "elapsed_s": 20.0,
+      "speed_m_s": 0.18316042842525423,
+      "lateral_speed_m_s": 0.013156516624023708,
+      "yaw_deg": 6.5571625157877556,
+      "tilt_rms_deg": 1.7404329840220603,
+      "peak_tilt_deg": 3.881419715654252,
+      "slip_m_s": 0.04937660059348589,
+      "above_rated_fraction": 0.27398148148148155,
+      "saturation_fraction": 0.058148148148148546,
+      "mechanical_work_j": 123.27471345371262,
+      "cost_of_transport": 0.8676177556637307,
+      "max_penetration_m": 0.0012733108782699148,
+      "max_air_s": 0.0,
+      "displacement_m": [
+        3.46847363028442,
+        0.2385767247816195,
+        -0.0006286638300521119
+      ],
+      "params": {
+        "period": 0.8436922561509421,
+        "duty": 0.5979488437760033,
+        "stride": 0.06280689761866355,
+        "lift": 0.012,
+        "height": 0.20175228283900074,
+        "forward_offset": -0.035,
+        "spread": 0.7411947428343884
+      },
+      "physics_parameters": {
+        "status": "Uncalibrated engineering estimates; PLA/PETG rigid-body approximation",
+        "mass_kg": {
+          "chassis_without_battery_or_leg_groups": 1.8,
+          "battery": 0.6,
+          "j1_group": 0.12,
+          "j2_group": 0.2245,
+          "j3_group": 0.155
+        },
+        "mass_notes": "Only battery mass is user-measured. Group masses include an allocated servo plus printed parts; chassis includes frame/electronics/covers. Do not add servo masses again. Infill, wall thickness and hardware housing ownership are unverified.",
+        "battery_center_cad_m": [
+          0.07725,
+          0.09949999999999999,
+          0.06
+        ],
+        "battery_size_m": [
+          0.045,
+          0.14,
+          0.04
+        ],
+        "gravity_m_s2": 9.81,
+        "timestep_s": 0.002,
+        "friction": [
+          0.8,
+          0.005,
+          0.0001
+        ],
+        "contact_time_constant_s": 0.01,
+        "contact_damping_ratio": 1.0,
+        "foot_radius_m": 0.015,
+        "joint_damping": 0.05,
+        "joint_friction_nm": 0.02,
+        "rotor_armature_kg_m2": 0.0001,
+        "servo_kp": 35.0,
+        "servo_kd": 0.8,
+        "command_delay_s": 0.04,
+        "target_acceleration_rad_s2": 25.0,
+        "pack_open_circuit_voltage": 11.1,
+        "pack_and_wiring_resistance_ohm": 0.06,
+        "electronics_current_a": 0.5,
+        "motor_3215": {
+          "stall_nm": 2.941995,
+          "rated_nm": 0.980665,
+          "speed_rad_s": 4.717106,
+          "stall_current_a": 2.7,
+          "idle_current_a": 0.18
+        },
+        "motor_3250": {
+          "stall_nm": 4.903325,
+          "rated_nm": 1.569064,
+          "speed_rad_s": 7.873666,
+          "stall_current_a": 4.2,
+          "idle_current_a": 0.28
+        },
+        "sources": [
+          "https://www.feetechrc.com/525603.html",
+          "https://www.feetechrc.com/en/562636.html"
+        ],
+        "limitations": [
+          "Rigid bodies only; no PLA/PETG bending, fracture or layer anisotropy",
+          "Collision primitives approximate CAD; no exact concave mesh contacts",
+          "Joint axes and exported zero remain provisional",
+          "PD gains, delays, armature, friction, battery resistance, COM and motor curve are estimates",
+          "No thermal protection, firmware watchdog, exact firmware actuator limiter, gear backlash or battery discharge chemistry",
+          "Rated torque is reported as overload exposure, not enforced as a peak torque limit; long runs are not thermally validated"
+        ],
+        "battery_pack": {
+          "chemistry": "LiPo",
+          "series_cells": 3,
+          "nominal_voltage_v": 11.1,
+          "source": "User confirmed 11.1V 3S; simulated source voltage is a reference operating point, not measured present voltage"
+        }
+      }
+    }
+  },
+  "robust_score": 0.05192417597938141,
+  "all_upright": true,
+  "trial": "159",
+  "selection": "All-upright first, then 60% worst-case score + 40% mean across four 20s scenarios",
+  "trajectory": "C2 foot trajectory v2",
+  "search_seed": 73
+}

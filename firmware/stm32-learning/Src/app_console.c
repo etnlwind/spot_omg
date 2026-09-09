@@ -613,7 +613,7 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -2028,6 +2028,25 @@ static void command_turn(AppConsole *console,
     }
 }
 
+static void command_trot5(AppConsole *console, char *cycles_text, char *period_text)
+{
+    uint32_t cycles = 3U;
+    uint32_t period = GAIT_POLICY_TROT5_PERIOD_MS;
+    if ((cycles_text != NULL && !parse_u32(cycles_text, 1U, 10U, &cycles)) ||
+        (period_text != NULL && !parse_u32(period_text,
+            GAIT_POLICY_TROT5_PERIOD_MS, GAIT_POLICY_TROT5_MAX_PERIOD_MS, &period))) {
+        write_text(console, "usage: trot5 [CYCLES [PERIOD_MS]]; cycles=1..10, period=844..2400\r\n");
+        return;
+    }
+    write_text(console, "Trot5 CAD forward: smooth preparation/return; IMU monitor on, feedback off; actuator limits on\r\n");
+    const RobotResult result = robot_trot5(console->robot, (uint8_t)cycles, (uint16_t)period);
+    print_robot_result(console, result);
+    command_gait_diagnostics(console);
+    if (result == ROBOT_TILT_LIMIT) {
+        command_balance_diagnostics(console);
+    }
+}
+
 static void command_drive(AppConsole *console,
                           char *linear_text,
                           char *yaw_text,
@@ -2334,6 +2353,10 @@ static void execute_line(AppConsole *console)
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
         command_trot3(console, cycles, period);
+    } else if (strcmp(command, "trot5") == 0) {
+        char *cycles = strtok(NULL, " ");
+        char *period = strtok(NULL, " ");
+        command_trot5(console, cycles, period);
     } else if (strcmp(command, "trot4") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
@@ -2670,6 +2693,7 @@ void app_console_print_help(AppConsole *console)
                "  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n"
                "  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop\r\n"
                "  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)\r\n"
+               "  trot5 [C [MS]]   CAD optimized forward (3 cycles, 844ms); IMU monitor only\r\n"
                "  trot4 [C [MS]]   posture-smooth reduced-path trot (default 1600ms)\r\n"
                "  trot4back [C [MS]] reverse trot4 with IMU pitch placement\r\n"
                "  turn left|right [C [MS]] differential trot turn (default 2200ms)\r\n"

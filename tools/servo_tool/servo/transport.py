@@ -344,3 +344,27 @@ class TcpTransport:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
+
+class SimulatorTransport(TcpTransport):
+    """Require virtual endpoint identity before allowing console commands."""
+    def open(self):
+        if self.is_open:
+            return self
+        super().open()
+        try:
+            self.write(b'identity\n')
+            deadline = time.monotonic() + 5
+            response = bytearray()
+            while time.monotonic() < deadline and len(response) < 8192:
+                response.extend(self.read(1024))
+                if response.endswith(b'# '):
+                    lines = bytes(response).decode('ascii', errors='replace').splitlines()
+                    if any(line.startswith('$SPOTBACKEND ') and
+                           {'backend=sim', 'protocol=1'} <= set(line.split()) for line in lines):
+                        return self
+                    break
+            raise ConnectionError('Endpoint is not a verified Spot OMG simulator (protocol 1)')
+        except BaseException:
+            self.close()
+            raise

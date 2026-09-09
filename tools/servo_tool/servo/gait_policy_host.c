@@ -27,6 +27,19 @@ static void pack_targets(const GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT
     }
 }
 
+SPOT_GAIT_EXPORT int spot_gait_trot5_targets(
+    float phase, float amplitude_scale, float values[12], uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_trot5_targets(phase, amplitude_scale, targets)) {
+        return 0;
+    }
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
 SPOT_GAIT_EXPORT float spot_gait_smootherstep(float progress)
 {
     return gait_policy_smootherstep(progress);
@@ -245,4 +258,42 @@ SPOT_GAIT_EXPORT int spot_gait_balance_targets(
     }
     pack_targets(targets, values);
     return 1;
+}
+
+SPOT_GAIT_EXPORT int16_t spot_gait_drive_yaw_limit(int16_t requested)
+{
+    return gait_policy_drive_yaw_limit(requested);
+}
+
+SPOT_GAIT_EXPORT int spot_gait_drive_stride_targets(
+    float phase, float startup, float linear, float yaw, float stride,
+    float values[12], uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_drive_stride_targets(phase, startup, linear, yaw, stride, targets)) return 0;
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_gait_drive_walk_targets(
+    float phase, float startup, float linear, float yaw,
+    float values[12], uint8_t *support_mask)
+{
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT];
+    if (values == NULL || support_mask == NULL ||
+        !gait_policy_drive_walk_targets(phase, startup, linear, yaw, targets)) return 0;
+    pack_targets(targets, values);
+    *support_mask = gait_policy_support_mask(targets);
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int16_t spot_gait_drive_slew(int16_t current, int16_t target)
+{
+    return gait_policy_drive_slew(current, target);
+}
+SPOT_GAIT_EXPORT uint16_t spot_gait_drive_period_ms(int16_t linear, int16_t yaw)
+{
+    return gait_policy_drive_period_ms(linear, yaw);
 }

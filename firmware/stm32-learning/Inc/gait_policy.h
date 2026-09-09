@@ -79,6 +79,17 @@ extern "C" {
 
 #define GAIT_POLICY_PI 3.14159265358979323846f
 
+/* CAD 300mm-frame search candidate 159, revalidated at 11.1V 3S.
+ * Geometry is simulator-derived, not a hardware calibration. */
+#define GAIT_POLICY_TROT5_PERIOD_MS 844U
+#define GAIT_POLICY_TROT5_MAX_PERIOD_MS 2400U
+#define GAIT_POLICY_TROT5_DUTY 0.5979488437760033f
+#define GAIT_POLICY_TROT5_STRIDE_M 0.06280689761866355f
+#define GAIT_POLICY_TROT5_LIFT_M 0.012f
+#define GAIT_POLICY_TROT5_HEIGHT_M 0.20175228283900074f
+#define GAIT_POLICY_TROT5_FORWARD_M (-0.035f)
+#define GAIT_POLICY_TROT5_SPREAD_DEG 0.7411947428343884f
+
 /*
  * Which way a foot travels along the body while it carries weight: rearward,
  * so the body is pushed forward.
@@ -537,6 +548,60 @@ static inline bool gait_policy_trot3_targets(
     return true;
 }
 
+static inline bool gait_policy_trot5_targets(
+    float global_phase,
+    float amplitude_scale,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    if (targets == NULL || !isfinite(global_phase) ||
+        !isfinite(amplitude_scale) || amplitude_scale < 0.0f ||
+        amplitude_scale > 1.0f) {
+        return false;
+    }
+    static const float offsets[GAIT_POLICY_LEG_COUNT] = {0, .5f, .5f, 0};
+    for (uint8_t leg = 0; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        const float phase = gait_policy_wrap_phase(global_phase + offsets[leg]);
+        float forward;
+        float down = GAIT_POLICY_TROT5_HEIGHT_M;
+        const bool stance = phase < GAIT_POLICY_TROT5_DUTY;
+        if (stance) {
+            forward = GAIT_POLICY_TROT5_STRIDE_M *
+                (.5f - phase / GAIT_POLICY_TROT5_DUTY);
+        } else {
+            const float s = (phase - GAIT_POLICY_TROT5_DUTY) /
+                (1.0f - GAIT_POLICY_TROT5_DUTY);
+            const float k = (1.0f - GAIT_POLICY_TROT5_DUTY) /
+                GAIT_POLICY_TROT5_DUTY;
+            forward = GAIT_POLICY_TROT5_STRIDE_M *
+                (-.5f + (1.0f + k) * gait_policy_smootherstep(s) - k * s);
+            const float u = s * (1.0f - s);
+            down -= GAIT_POLICY_TROT5_LIFT_M * 64.0f * u * u * u;
+        }
+        forward = GAIT_POLICY_TROT5_FORWARD_M + amplitude_scale * forward;
+        down = GAIT_POLICY_TROT5_HEIGHT_M +
+            amplitude_scale * (down - GAIT_POLICY_TROT5_HEIGHT_M);
+        const float l2 = .141f;
+        const float l3 = .150f;
+        const float cosine = (forward * forward + down * down -
+            l2 * l2 - l3 * l3) / (2.0f * l2 * l3);
+        if (cosine < -1.0f || cosine > 1.0f) {
+            return false;
+        }
+        const float knee = acosf(cosine);
+        const float hip = atan2f(-forward, down) +
+            atan2f(l3 * sinf(knee), l2 + l3 * cosf(knee));
+        targets[leg].j1_deg = GAIT_POLICY_TROT5_SPREAD_DEG;
+        targets[leg].j2_deg = hip * 180.0f / GAIT_POLICY_PI;
+        targets[leg].j3_deg = knee * 180.0f / GAIT_POLICY_PI;
+        targets[leg].stance = amplitude_scale == 0.0f || stance;
+        if (targets[leg].j2_deg < -45.0f || targets[leg].j2_deg > 100.0f ||
+            targets[leg].j3_deg < 0.0f || targets[leg].j3_deg > 150.0f) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static inline bool gait_policy_trot4_targets(
     float global_phase,
     float amplitude_scale,
@@ -686,18 +751,30 @@ static inline bool gait_policy_turn_targets(
  * changing support legs or resetting phase when the joystick crosses from a
  * straight walk into a turn.
  */
-static inline bool gait_policy_drive_targets(
+/* Conservative joystick turn limit, applied BEFORE input slew.  Full-scale
+ * forward/backward is unchanged. This reduces turn-to-straight excitation;
+ * it is not a contact estimator or a guarantee against falling. */
+static inline int16_t gait_policy_drive_yaw_limit(int16_t requested)
+{
+    if (requested > 500) return 500;
+    if (requested < -500) return -500;
+    return requested;
+}
+
+static inline bool gait_policy_drive_stride_targets(
     float global_phase,
     float startup_scale,
     float linear,
     float yaw,
+    float forward_stride,
     GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
 {
     GaitPolicyLegTarget base[GAIT_POLICY_LEG_COUNT];
     GaitPolicyLegTarget linear_targets[GAIT_POLICY_LEG_COUNT];
     GaitPolicyLegTarget yaw_targets[GAIT_POLICY_LEG_COUNT];
 
-    if (targets == NULL || !isfinite(global_phase) ||
+    if (!isfinite(forward_stride) || forward_stride < 1.0f || forward_stride > 2.0f ||
+        targets == NULL || !isfinite(global_phase) ||
         !isfinite(startup_scale) || !isfinite(linear) || !isfinite(yaw) ||
         startup_scale < 0.0f || startup_scale > 1.0f ||
         linear < -1.0f || linear > 1.0f || yaw < -1.0f || yaw > 1.0f) {
@@ -728,6 +805,28 @@ static inline bool gait_policy_drive_targets(
         return false;
     }
 
+    /* Extend only the fore/aft excursion of forward travel, about its
+     * existing path center. Foot lift, path center, backward and turn stay
+     * unchanged. Apply before mixing the longitudinal and yaw components. */
+    if (linear > 0.0f && forward_stride != 1.0f) {
+        float bx, fx;
+        gait_policy_leg_forward_kinematics(
+            GAIT_POLICY_SIM_TROT_STANCE_J2_DEG,
+            GAIT_POLICY_SIM_TROT_STANCE_J3_DEG, &bx, NULL);
+        gait_policy_leg_forward_kinematics(
+            GAIT_POLICY_TROT4_FOLD_J2_DEG,
+            GAIT_POLICY_TROT4_FOLD_J3_DEG, &fx, NULL);
+        const float center = bx + linear_weight * GAIT_POLICY_TROT4_PATH_SCALE * (fx - bx);
+        for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+            float x, z;
+            gait_policy_leg_forward_kinematics(
+                linear_targets[leg].j2_deg, linear_targets[leg].j3_deg, &x, &z);
+            if (!gait_policy_leg_inverse_kinematics(
+                    center + forward_stride * (x - center), z,
+                    &linear_targets[leg].j2_deg, &linear_targets[leg].j3_deg)) return false;
+        }
+    }
+
     for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
         targets[leg].j1_deg = base[leg].j1_deg +
             (linear_targets[leg].j1_deg - base[leg].j1_deg) +
@@ -739,6 +838,36 @@ static inline bool gait_policy_drive_targets(
             (linear_targets[leg].j3_deg - base[leg].j3_deg) +
             (yaw_targets[leg].j3_deg - base[leg].j3_deg);
         targets[leg].stance = base[leg].stance;
+    }
+    return true;
+}
+
+/* Selected in STEP dynamics comparisons; physical validation still required. */
+#define GAIT_POLICY_DRIVE_FORWARD_STRIDE 1.6f
+static inline bool gait_policy_drive_targets(
+    float phase, float startup, float linear, float yaw,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    return gait_policy_drive_stride_targets(phase, startup, linear, yaw,
+                                           GAIT_POLICY_DRIVE_FORWARD_STRIDE, targets);
+}
+
+/* Keep one body height for an entire joystick session, including steering
+ * and reverse, so a direction change cannot abruptly change leg extension. */
+static inline bool gait_policy_drive_walk_targets(
+    float phase, float startup, float linear, float yaw,
+    GaitPolicyLegTarget targets[GAIT_POLICY_LEG_COUNT])
+{
+    if (!gait_policy_drive_targets(phase, startup, linear, yaw, targets)) return false;
+    const float height_delta = 2.0f * (cosf(40.0f * GAIT_POLICY_PI / 180.0f) -
+                                     cosf(45.0f * GAIT_POLICY_PI / 180.0f));
+    for (uint8_t leg = 0; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
+        float x, z;
+        gait_policy_leg_forward_kinematics(targets[leg].j2_deg, targets[leg].j3_deg, &x, &z);
+        if (!gait_policy_leg_inverse_kinematics(x, z + height_delta,
+                &targets[leg].j2_deg, &targets[leg].j3_deg) ||
+            targets[leg].j2_deg < -45.0f || targets[leg].j2_deg > 100.0f ||
+            targets[leg].j3_deg < 0.0f || targets[leg].j3_deg > 150.0f) return false;
     }
     return true;
 }
@@ -1014,6 +1143,24 @@ static inline bool gait_policy_balance_targets(
         }
     }
     return true;
+}
+
+/* HAL-independent 20 ms drive command shaping. Keep the simulator and
+ * embedded controller on the same integer rounding and acceleration limit. */
+static inline int16_t gait_policy_drive_slew(int16_t current, int16_t target)
+{
+    const int32_t difference = (int32_t)target - current;
+    if (difference > 40) return (int16_t)(current + 40);
+    if (difference < -40) return (int16_t)(current - 40);
+    return target;
+}
+
+static inline uint16_t gait_policy_drive_period_ms(int16_t linear, int16_t yaw)
+{
+    uint32_t magnitude = (uint32_t)(linear < 0 ? -(int32_t)linear : linear) +
+        (uint32_t)(yaw < 0 ? -(int32_t)yaw : yaw);
+    if (magnitude > 1000U) magnitude = 1000U;
+    return (uint16_t)(2400U - (600U * magnitude) / 1000U);
 }
 
 #ifdef __cplusplus

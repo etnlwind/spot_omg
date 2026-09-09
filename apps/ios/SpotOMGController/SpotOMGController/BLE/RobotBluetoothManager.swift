@@ -1,6 +1,7 @@
 import CoreBluetooth
 import Foundation
 import Combine
+import Network
 
 final class RobotBluetoothManager: NSObject, ObservableObject {
     static let deviceName = "SpotOMG-Bridge"
@@ -15,8 +16,117 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     @Published private(set) var runtimeState = RobotRuntimeState()
     @Published private(set) var lastStateSync: Date?
     @Published private(set) var driveStatus = "중립"
+    @Published private(set) var supplyVoltageMillivolts: Int?
+    @Published private(set) var lastVoltageRead: Date?
 
-    private var central: CBCentralManager!
+    @Published private(set) var target: RobotConnectionTarget =
+        RobotConnectionTarget(rawValue: UserDefaults.standard.string(forKey: "robotTarget") ?? "") ?? .robot
+    @Published var simulatorHost = UserDefaults.standard.string(forKey: "simulatorHost") ?? "127.0.0.1"
+    @Published var simulatorPort = "8765"
+    private var simulatorConnection: NWConnection?
+    private var simulatorTimeout: DispatchWorkItem?
+    private var simulatorIdentity = RobotConsoleStream()
+    private var awaitingSimulatorIdentity = false
+    private var selectedServiceUUID: CBUUID { CBUUID(string: target.serviceID) }
+    private var selectedReceiveUUID: CBUUID { CBUUID(string: target.receiveID) }
+    private var selectedTransmitUUID: CBUUID { CBUUID(string: target.transmitID) }
+
+    private func receiveSimulatorConsoleText(_ text: String) {
+        if state.isReady {
+            receiveConsoleText(text)
+            return
+        }
+        for event in simulatorIdentity.append(text) {
+            if case .line(let line) = event, line.hasPrefix("$SIMLINK disconnected") {
+                disconnect(); fail("MuJoCo 연결이 종료되었습니다."); return
+            }
+            if case .line(let line) = event, RobotConnectionTarget.isSimulatorIdentity(line) {
+                simulatorTimeout?.cancel(); simulatorTimeout = nil
+                awaitingSimulatorIdentity = false
+                state = .ready
+                lastError = nil
+                requestInitialState()
+            }
+        }
+    }
+
+    private func beginSimulatorBLEIdentity() {
+        awaitingSimulatorIdentity = true
+        simulatorIdentity = RobotConsoleStream()
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.awaitingSimulatorIdentity else { return }
+            self.disconnect(); self.fail("가상 BLE 식별 응답 시간 초과")
+        }
+        simulatorTimeout?.cancel(); simulatorTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
+        write(Data("identity\n".utf8))
+    }
+
+    func selectTarget(_ value: RobotConnectionTarget) {
+        guard value != target else { return }
+        disconnect()
+        target = value
+        UserDefaults.standard.set(value.rawValue, forKey: "robotTarget")
+        lastError = nil
+    }
+
+    private func connectSimulator() {
+        disconnect()
+        guard let portValue = UInt16(simulatorPort), portValue > 0,
+              let port = NWEndpoint.Port(rawValue: portValue),
+              !simulatorHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            fail("시뮬레이터 주소와 포트를 확인해 주십시오."); return
+        }
+        UserDefaults.standard.set(simulatorHost, forKey: "simulatorHost")
+        let connection = NWConnection(host: NWEndpoint.Host(simulatorHost), port: port, using: .tcp)
+        simulatorConnection = connection
+        simulatorIdentity = RobotConsoleStream()
+        state = .connecting
+        let timeout = DispatchWorkItem { [weak self, weak connection] in
+            guard let self, let connection, self.simulatorConnection === connection else { return }
+            self.disconnect(); self.fail("시뮬레이터 식별 응답 시간 초과")
+        }
+        simulatorTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeout)
+        connection.stateUpdateHandler = { [weak self, weak connection] status in
+            guard let self, let connection, self.simulatorConnection === connection else { return }
+            self.appendConsole("[TCP] \(status)\n")
+            switch status {
+            case .waiting(let error):
+                self.lastError = "네트워크 연결 대기: \(error.localizedDescription)"
+            case .ready:
+                self.sendSimulator(Data("identity\n".utf8), connection: connection)
+                self.receiveSimulator(connection)
+            case .failed(let error):
+                self.disconnect(); self.fail("시뮬레이터: \(error.localizedDescription)")
+            default: break
+            }
+        }
+        connection.start(queue: .main)
+    }
+
+    private func sendSimulator(_ data: Data, connection: NWConnection) {
+        connection.send(content: data, completion: .contentProcessed { [weak self, weak connection] error in
+            guard let self, let connection, self.simulatorConnection === connection else { return }
+            if let error { self.disconnect(); self.fail("시뮬레이터 전송: \(error.localizedDescription)") }
+        })
+    }
+
+    private func receiveSimulator(_ connection: NWConnection) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self, weak connection] data, _, complete, error in
+            guard let self, let connection, self.simulatorConnection === connection else { return }
+            if let data, !data.isEmpty {
+                let text = String(decoding: data, as: UTF8.self)
+                self.receiveSimulatorConsoleText(text)
+            }
+            if complete || error != nil {
+                self.disconnect(); self.fail("시뮬레이터 연결 종료")
+            } else { self.receiveSimulator(connection) }
+        }
+    }
+
+    private var central: CBCentralManager?
+    private(set) var hasStarted = false
     private var peripheral: CBPeripheral?
     private var receiveCharacteristic: CBCharacteristic?
     private var transmitCharacteristic: CBCharacteristic?
@@ -24,8 +134,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var consoleStream = RobotConsoleStream()
     private var writes = RobotBLEWriteQueue()
     private var writeTimeout: DispatchWorkItem?
-    private let trace: RobotConnectionTrace?
+    private var trace: RobotConnectionTrace?
     private var stateRefreshWorkItem: DispatchWorkItem?
+    private var initialSyncTimeout: DispatchWorkItem?
+    private var initialSyncAttempts = 0
     private var driveHeartbeat: Timer?
     private var driveVector: RobotDriveVector?
     private var driveSequence: UInt32 = 0
@@ -50,18 +162,41 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     init(commandWriter: ((Data) -> Void)? = nil) {
         self.commandWriter = commandWriter
-        trace = commandWriter == nil ? RobotConnectionTrace() : nil
         super.init()
+        // Explicit launch mode used for virtual-only device validation.
+        if commandWriter == nil, CommandLine.arguments.contains("--simulator-ble") {
+            target = .simulatorBluetooth
+            UserDefaults.standard.set(target.rawValue, forKey: "robotTarget")
+        }
         if commandWriter != nil {
             state = .ready
             return
         }
+    }
+
+    /// Called after the control screen has appeared, never from App/StateObject init.
+    /// CoreBluetooth setup and diagnostic setup must not delay the initial layout.
+    func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        guard commandWriter == nil else { return }
+        trace = RobotConnectionTrace()
+        trace?.record("ui-visible", "starting Bluetooth after first appearance")
+        guard target.usesBluetooth else { return }
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionShowPowerAlertKey: true])
     }
 
     func connect() {
+        if target == .simulator { connectSimulator(); return }
+        if central == nil, hasStarted {
+            central = CBCentralManager(delegate: self, queue: .main)
+        }
         reconnectRequested = true
+        guard let central else {
+            start()
+            return
+        }
         guard central.state == .poweredOn else { return }
         startScanning()
     }
@@ -69,12 +204,21 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     func disconnect() {
         trace?.record("disconnect-request", "phase=\(drivePhase.rawValue)")
         reconnectRequested = false
+        simulatorTimeout?.cancel(); simulatorTimeout = nil
+        let previous = simulatorConnection
+        simulatorConnection = nil
+        previous?.cancel()
         central?.stopScan()
-        if let peripheral { central.cancelPeripheralConnection(peripheral) }
+        if let peripheral { central?.cancelPeripheralConnection(peripheral) }
         resetConnection()
     }
 
     func send(_ command: RobotCommand) {
+        if case .trot5 = command, !runtimeState.supportsTrot5 {
+            lastError = "개선 보행은 로봇 V13 업데이트 후 사용할 수 있습니다."
+            return
+        }
+
         if command == .syncState, driveSessionActive {
             // Read-only refreshes must never release the joystick or send @S.
             // Completion always schedules a fresh snapshot.
@@ -108,6 +252,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             commandWriter(data)
             return
         }
+        if target == .simulator {
+            if let connection = simulatorConnection { sendSimulator(data, connection: connection) }
+            return
+        }
         guard writes.enqueue(data, kind: kind) else {
             disconnect()
             fail("전송 대기열 초과: 연결을 해제했습니다.")
@@ -117,7 +265,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func drainWrites() {
-        guard state.isReady, let peripheral, let characteristic = receiveCharacteristic else { return }
+        guard state.isReady || awaitingSimulatorIdentity, let peripheral, let characteristic = receiveCharacteristic else { return }
         let type: CBCharacteristicWriteType =
             characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
         let maximum = peripheral.maximumWriteValueLength(for: type)
@@ -214,15 +362,24 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func startScanning() {
-        guard central.state == .poweredOn else { return }
+        guard target.usesBluetooth, reconnectRequested else { return }
+        guard let central, central.state == .poweredOn else { return }
         central.stopScan()
         resetConnection(keepingState: true)
         state = .scanning
-        central.scanForPeripherals(withServices: [Self.serviceUUID],
+        central.scanForPeripherals(withServices: [selectedServiceUUID],
                                    options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
 
     private func resetConnection(keepingState: Bool = false) {
+        awaitingSimulatorIdentity = false
+        simulatorIdentity = RobotConsoleStream()
+        simulatorTimeout?.cancel(); simulatorTimeout = nil
+        initialSyncTimeout?.cancel()
+        initialSyncTimeout = nil
+        initialSyncAttempts = 0
+        supplyVoltageMillivolts = nil
+        lastVoltageRead = nil
         peripheral = nil
         receiveCharacteristic = nil
         transmitCharacteristic = nil
@@ -258,6 +415,25 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         let work = DispatchWorkItem { [weak self] in self?.send(.syncState) }
         stateRefreshWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    // A GATT write ACK only confirms delivery to ESP32, not a STM32 reply.
+    func requestInitialState(timeout: TimeInterval = 2) {
+        guard state.isReady, lastStateSync == nil, !driveSessionActive else { return }
+        initialSyncTimeout?.cancel()
+        initialSyncAttempts += 1
+        send(.syncState)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.state.isReady, self.lastStateSync == nil,
+                  !self.driveSessionActive else { return }
+            if self.initialSyncAttempts < 3 {
+                self.requestInitialState(timeout: timeout)
+            } else {
+                self.fail("로봇 응답 없음: BLE는 연결되었지만 상태를 수신하지 못했습니다. 다시 연결해 주세요.")
+            }
+        }
+        initialSyncTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
     }
 
     private func nextDriveSequence() -> UInt32 {
@@ -337,9 +513,21 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 processConsolePrompt()
                 continue
             }
+            if target.isSimulator, line.hasPrefix("$SIMLINK disconnected") {
+                disconnect(); fail("MuJoCo 연결이 종료되었습니다."); return
+            }
+            if line.hasPrefix("ERROR:") { lastError = line }
             if line.hasPrefix("$SPOTDRIVE started ") {
                 // Informational only: never arm/cancel the stop timeout here.
                 continue
+            }
+            if line.hasPrefix("ID 1 "),
+               let field = line.split(separator: " ").first(where: { $0.hasPrefix("voltage=") }),
+               field.hasSuffix("mV"),
+               let millivolts = Int(field.dropFirst(8).dropLast(2)),
+               (1...60000).contains(millivolts) {
+                supplyVoltageMillivolts = millivolts
+                lastVoltageRead = Date()
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
                 driveHeartbeat?.invalidate()
@@ -376,21 +564,32 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 torque: values["torque"] ?? "unknown",
                 safety: values["safety"] ?? "unknown",
                 balance: values["balance"] ?? "unknown",
-                revision: values["rev"] ?? "unknown")
+                revision: values["rev"] ?? "unknown",
+                capabilities: Set((values["caps"] ?? "").split(separator: ",").map(String.init)))
+            initialSyncTimeout?.cancel()
+            initialSyncTimeout = nil
             lastStateSync = Date()
             lastError = nil
+            // Existing firmware exposes voltage via a read-only servo snapshot.
+            // Never enqueue a console read while realtime drive is active.
+            if !driveSessionActive {
+                supplyVoltageMillivolts = nil
+                lastVoltageRead = nil
+                sendCommandNow(.raw("read 1"))
+            }
         }
     }
 
     private func fail(_ message: String) {
         trace?.record("error", message)
         lastError = message
-        appendConsole("[BLE] \(message)\n")
+        appendConsole("[\(target.title)] \(message)\n")
     }
 }
 
 extension RobotBluetoothManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard target.usesBluetooth else { return }
         switch central.state {
         case .poweredOn:
             connect()
@@ -411,8 +610,13 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        guard target.usesBluetooth, reconnectRequested else { return }
         let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
-        guard peripheral.name == Self.deviceName || advertisedName == Self.deviceName else { return }
+        // The simulator has its own service UUID. Its name may be omitted by
+        // macOS advertising; never infer a hardware target from a similar name.
+        if target == .robot {
+            guard peripheral.name == target.deviceName || advertisedName == target.deviceName else { return }
+        }
         central.stopScan()
         self.peripheral = peripheral
         signalStrength = RSSI.intValue
@@ -422,15 +626,17 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { central.cancelPeripheralConnection(peripheral); return }
         trace?.record("connected", peripheral.identifier.uuidString)
         state = .discoveringServices
-        appendConsole("[BLE] SpotOMG-Bridge connected\n")
-        peripheral.discoverServices([Self.serviceUUID])
+        appendConsole("[BLE] \(target.deviceName) connected\n")
+        peripheral.discoverServices([selectedServiceUUID])
         peripheral.readRSSI()
     }
 
     func centralManager(_ central: CBCentralManager,
                         didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         fail(error?.localizedDescription ?? "연결 실패")
         resetConnection()
         if reconnectRequested { startScanning() }
@@ -439,6 +645,7 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         trace?.record("disconnected", error.map { String(describing: $0) } ?? "no-error")
         if let error { fail("연결 끊김: \(error.localizedDescription)") }
         resetConnection()
@@ -448,57 +655,74 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
 
 extension RobotBluetoothManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if let error { fail("서비스 검색 실패: \(error.localizedDescription)"); return }
-        guard let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
+        guard let service = peripheral.services?.first(where: { $0.uuid == selectedServiceUUID }) else {
             fail("SpotOMG BLE 서비스를 찾지 못했습니다")
             return
         }
-        peripheral.discoverCharacteristics([Self.receiveUUID, Self.transmitUUID], for: service)
+        peripheral.discoverCharacteristics([selectedReceiveUUID, selectedTransmitUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if let error { fail("특성 검색 실패: \(error.localizedDescription)"); return }
         for characteristic in service.characteristics ?? [] {
-            if characteristic.uuid == Self.receiveUUID { receiveCharacteristic = characteristic }
-            if characteristic.uuid == Self.transmitUUID { transmitCharacteristic = characteristic }
+            if characteristic.uuid == selectedReceiveUUID { receiveCharacteristic = characteristic }
+            if characteristic.uuid == selectedTransmitUUID { transmitCharacteristic = characteristic }
         }
         guard receiveCharacteristic != nil, let transmitCharacteristic else {
             fail("필수 BLE 특성을 찾지 못했습니다")
             return
         }
-        peripheral.setNotifyValue(true, for: transmitCharacteristic)
+        // Clear a retained subscription before enabling notifications anew.
+        peripheral.setNotifyValue(!transmitCharacteristic.isNotifying,
+                                  for: transmitCharacteristic)
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateNotificationStateFor characteristic: CBCharacteristic,
                     error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if let error { fail("알림 활성화 실패: \(error.localizedDescription)"); return }
-        if characteristic.uuid == Self.transmitUUID, characteristic.isNotifying {
+        guard peripheral == self.peripheral,
+              characteristic.uuid == selectedTransmitUUID else { return }
+        trace?.record("notify-state", "isNotifying=\(characteristic.isNotifying)")
+        if !characteristic.isNotifying {
+            peripheral.setNotifyValue(true, for: characteristic)
+            return
+        }
+        if characteristic.isNotifying {
+            if target == .simulatorBluetooth { beginSimulatorBLEIdentity(); return }
             state = .ready
             lastError = nil
             synchronizeClock()
-            scheduleStateRefresh(after: 0.5)
+            requestInitialState()
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if let error { fail("수신 실패: \(error.localizedDescription)"); return }
-        guard characteristic.uuid == Self.transmitUUID,
+        guard characteristic.uuid == selectedTransmitUUID,
               let data = characteristic.value else { return }
         let text = String(decoding: data, as: UTF8.self)
-        receiveConsoleText(text)
+        if target == .simulatorBluetooth { receiveSimulatorConsoleText(text) }
+        else { receiveConsoleText(text) }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if error == nil { signalStrength = RSSI.intValue }
     }
 
     func peripheral(_ peripheral: CBPeripheral,
                     didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard target.usesBluetooth, self.peripheral === peripheral else { return }
         guard peripheral == self.peripheral,
-              characteristic.uuid == Self.receiveUUID else { return }
+              characteristic.uuid == selectedReceiveUUID else { return }
         writeTimeout?.cancel()
         writeTimeout = nil
         if let error {

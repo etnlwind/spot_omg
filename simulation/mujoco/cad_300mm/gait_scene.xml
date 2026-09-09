@@ -1,0 +1,105 @@
+<mujoco model="New STEP / shared drive / KINEMATIC ONLY">
+  <compiler angle="radian" meshdir="/Users/etnlwind/project/spot_omg/simulation/mujoco/cad_300mm" />
+  <option gravity="0 0 0" />
+  <statistic center="0 0 0.22" extent="0.65" />
+  <asset>
+    <mesh name="fl_j1" file="fl_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fl_j2" file="fl_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fl_j3" file="fl_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fr_j1" file="fr_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fr_j2" file="fr_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fr_j3" file="fr_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rl_j1" file="rl_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rl_j2" file="rl_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rl_j3" file="rl_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rr_j1" file="rr_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rr_j2" file="rr_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rr_j3" file="rr_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_0" file="body_0.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_1" file="body_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_2" file="body_2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_3" file="body_3.stl" scale="0.001 0.001 0.001" />
+  </asset>
+  <worldbody>
+    <light pos="0 -1 2" diffuse="0.8 0.8 0.8" />
+    <geom type="plane" size="1 1 .01" pos="0 0 0" rgba=".2 .23 .27 1" contype="0" conaffinity="0" />
+    <body name="cad_base" pos=".1495 -.05225 .253306637937" quat=".707106781187 0 0 .707106781187">
+      <geom name="body_0" type="mesh" mesh="body_0" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+      <geom name="body_1" type="mesh" mesh="body_1" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+      <geom name="body_2" type="mesh" mesh="body_2" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+      <geom name="body_3" type="mesh" mesh="body_3" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+      <body name="fl_j1_link" pos="0.091365438351 -0.068564710884 0.066693362063">
+        <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+        <joint name="fl_j1" type="hinge" axis="0.00462263499864 -0.999967041706 0.00667433499804" limited="false" />
+        <geom name="fl_j1" type="mesh" mesh="fl_j1" contype="0" conaffinity="0" rgba="0.25 0.6 0.9 1" pos="-0.091365438351 0.068564710884 -0.066693362063" />
+        <site name="fl_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+        <body name="fl_j2_link" pos="0.066638129074 0.01888624552 -0.008157801114">
+          <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+          <joint name="fl_j2" type="hinge" axis="0.999955369008 0.00901402200007 0.00282973500002" limited="false" />
+          <geom name="fl_j2" type="mesh" mesh="fl_j2" contype="0" conaffinity="0" rgba="0.25 0.6 0.9 1" pos="-0.158003567425 0.049678465364 -0.058535560949" />
+          <site name="fl_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="fl_j3_link" pos="0.0019 -0.010985824147 -0.141293140854">
+            <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+            <joint name="fl_j3" type="hinge" axis="-0.999955369008 -0.00901402200007 -0.00282973500002" limited="false" />
+            <geom name="fl_j3" type="mesh" mesh="fl_j3" contype="0" conaffinity="0" rgba="0.25 0.6 0.9 1" pos="-0.159903567425 0.060664289511 0.082757579905" />
+            <site name="fl_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          </body>
+        </body>
+      </body>
+      <body name="fr_j1_link" pos="0.013134561649 -0.068564710884 0.066693362063">
+        <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+        <joint name="fr_j1" type="hinge" axis="0.00462263499864 0.999967041706 -0.00667433499804" limited="false" />
+        <geom name="fr_j1" type="mesh" mesh="fr_j1" contype="0" conaffinity="0" rgba="0.25 0.8 0.6 1" pos="-0.013134561649 0.068564710884 -0.066693362063" />
+        <site name="fr_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+        <body name="fr_j2_link" pos="-0.066638129074 0.01888624552 -0.008157801114">
+          <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+          <joint name="fr_j2" type="hinge" axis="0.999955369008 -0.00901402200007 -0.00282973500002" limited="false" />
+          <geom name="fr_j2" type="mesh" mesh="fr_j2" contype="0" conaffinity="0" rgba="0.25 0.8 0.6 1" pos="0.053503567425 0.049678465364 -0.058535560949" />
+          <site name="fr_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="fr_j3_link" pos="-0.0019 -0.010985824147 -0.141293140854">
+            <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+            <joint name="fr_j3" type="hinge" axis="-0.999955369008 0.00901402200007 0.00282973500002" limited="false" />
+            <geom name="fr_j3" type="mesh" mesh="fr_j3" contype="0" conaffinity="0" rgba="0.25 0.8 0.6 1" pos="0.055403567425 0.060664289511 0.082757579905" />
+            <site name="fr_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          </body>
+        </body>
+      </body>
+      <body name="rl_j1_link" pos="0.091365438351 0.330435289116 0.066693362063">
+        <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+        <joint name="rl_j1" type="hinge" axis="0.00462263499864 -0.999967041706 0.00667433499804" limited="false" />
+        <geom name="rl_j1" type="mesh" mesh="rl_j1" contype="0" conaffinity="0" rgba="0.95 0.65 0.25 1" pos="-0.091365438351 -0.330435289116 -0.066693362063" />
+        <site name="rl_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+        <body name="rl_j2_link" pos="0.066638129074 0.01888624552 -0.008157801114">
+          <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+          <joint name="rl_j2" type="hinge" axis="0.999955369008 0.00901402200007 0.00282973500002" limited="false" />
+          <geom name="rl_j2" type="mesh" mesh="rl_j2" contype="0" conaffinity="0" rgba="0.95 0.65 0.25 1" pos="-0.158003567425 -0.349321534636 -0.058535560949" />
+          <site name="rl_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="rl_j3_link" pos="0.0019 -0.010985824147 -0.141293140854">
+            <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+            <joint name="rl_j3" type="hinge" axis="-0.999955369008 -0.00901402200007 -0.00282973500002" limited="false" />
+            <geom name="rl_j3" type="mesh" mesh="rl_j3" contype="0" conaffinity="0" rgba="0.95 0.65 0.25 1" pos="-0.159903567425 -0.338335710489 0.082757579905" />
+            <site name="rl_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          </body>
+        </body>
+      </body>
+      <body name="rr_j1_link" pos="0.013134561649 0.330435289116 0.066693362063">
+        <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+        <joint name="rr_j1" type="hinge" axis="0.00462263499864 0.999967041706 -0.00667433499804" limited="false" />
+        <geom name="rr_j1" type="mesh" mesh="rr_j1" contype="0" conaffinity="0" rgba="0.8 0.4 0.7 1" pos="-0.013134561649 -0.330435289116 -0.066693362063" />
+        <site name="rr_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+        <body name="rr_j2_link" pos="-0.066638129074 0.01888624552 -0.008157801114">
+          <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+          <joint name="rr_j2" type="hinge" axis="0.999955369008 -0.00901402200007 -0.00282973500002" limited="false" />
+          <geom name="rr_j2" type="mesh" mesh="rr_j2" contype="0" conaffinity="0" rgba="0.8 0.4 0.7 1" pos="0.053503567425 -0.349321534636 -0.058535560949" />
+          <site name="rr_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="rr_j3_link" pos="-0.0019 -0.010985824147 -0.141293140854">
+            <inertial pos="0 0 0" mass=".1" diaginertia=".001 .001 .001" />
+            <joint name="rr_j3" type="hinge" axis="-0.999955369008 0.00901402200007 0.00282973500002" limited="false" />
+            <geom name="rr_j3" type="mesh" mesh="rr_j3" contype="0" conaffinity="0" rgba="0.8 0.4 0.7 1" pos="0.055403567425 -0.338335710489 0.082757579905" />
+            <site name="rr_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

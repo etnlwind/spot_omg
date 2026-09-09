@@ -69,7 +69,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "forward11-v12"
+#define ROBOT_CONTROL_REV "walk-stance-v16"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -282,6 +282,7 @@ RobotResult robot_trot3(RobotController *robot,
 RobotResult robot_trot4(RobotController *robot,
                         uint8_t cycles,
                         uint16_t period_ms);
+RobotResult robot_trot5(RobotController *robot, uint8_t cycles, uint16_t period_ms);
 RobotResult robot_trot4_backward(RobotController *robot,
                                  uint8_t cycles,
                                  uint16_t period_ms);

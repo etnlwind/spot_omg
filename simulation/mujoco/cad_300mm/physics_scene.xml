@@ -1,0 +1,146 @@
+<mujoco model="New STEP / free-body dynamics / ESTIMATED PHYSICS">
+  <compiler angle="radian" meshdir="/Users/etnlwind/project/spot_omg/simulation/mujoco/cad_300mm" />
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="Newton" iterations="100" cone="elliptic" />
+  <statistic center="0 0 0.22" extent="0.65" />
+  <asset>
+    <mesh name="fl_j1" file="fl_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fl_j2" file="fl_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fl_j3" file="fl_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fr_j1" file="fr_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fr_j2" file="fr_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fr_j3" file="fr_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rl_j1" file="rl_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rl_j2" file="rl_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rl_j3" file="rl_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rr_j1" file="rr_j1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rr_j2" file="rr_j2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="rr_j3" file="rr_j3.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_0" file="body_0.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_1" file="body_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_2" file="body_2.stl" scale="0.001 0.001 0.001" />
+    <mesh name="body_3" file="body_3.stl" scale="0.001 0.001 0.001" />
+  </asset>
+  <worldbody>
+    <light pos="0 -1 2" diffuse="0.8 0.8 0.8" />
+    <geom type="plane" size="20 20 .01" pos="0 0 0" rgba=".2 .23 .27 1" contype="1" conaffinity="1" name="floor" />
+    <body name="robot">
+      <freejoint name="root" />
+      <body name="cad_base" pos=".1495 -.05225 .253306637937" quat=".707106781187 0 0 .707106781187">
+        <geom name="body_0" type="mesh" mesh="body_0" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+        <geom name="body_1" type="mesh" mesh="body_1" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+        <geom name="body_2" type="mesh" mesh="body_2" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+        <geom name="body_3" type="mesh" mesh="body_3" contype="0" conaffinity="0" rgba="0.65 0.68 0.72 1" />
+        <body name="fl_j1_link" pos="0.091365438351 -0.068564710884 0.066693362063">
+          <joint name="fl_j1" type="hinge" axis="0.00462263499864 -0.999967041706 0.00667433499804" limited="true" range="-0.523598775598 0.523598775598" damping="0.05" frictionloss="0.02" armature="0.0001" />
+          <geom name="fl_j1" type="mesh" mesh="fl_j1" contype="0" conaffinity="0" rgba="0.25 0.6 0.9 1" pos="-0.091365438351 0.068564710884 -0.066693362063" />
+          <site name="fl_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="fl_j2_link" pos="0.066638129074 0.01888624552 -0.008157801114">
+            <joint name="fl_j2" type="hinge" axis="0.999955369008 0.00901402200007 0.00282973500002" limited="true" range="-0.785398163397 1.74532925199" damping="0.05" frictionloss="0.02" armature="0.0001" />
+            <geom name="fl_j2" type="mesh" mesh="fl_j2" contype="0" conaffinity="0" rgba="0.25 0.6 0.9 1" pos="-0.158003567425 0.049678465364 -0.058535560949" />
+            <site name="fl_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+            <body name="fl_j3_link" pos="0.0019 -0.010985824147 -0.141293140854">
+              <joint name="fl_j3" type="hinge" axis="-0.999955369008 -0.00901402200007 -0.00282973500002" limited="true" range="0 2.61799387799" damping="0.05" frictionloss="0.02" armature="0.0001" />
+              <geom name="fl_j3" type="mesh" mesh="fl_j3" contype="0" conaffinity="0" rgba="0.25 0.6 0.9 1" pos="-0.159903567425 0.060664289511 0.082757579905" />
+              <site name="fl_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+              <inertial pos="-0.0172485457575 -0.000405914270128 -0.0716671065269" mass="0.155" diaginertia="0.000359497918257 0.000366816352968 3.34622812381e-05" />
+              <geom name="fl_foot" type="sphere" pos="-0.0145769284725 -0.00253894927687 -0.138551288503" size="0.015" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+              <geom name="fl_j3_collision" type="capsule" fromto="-0.0172485457575 0 0 -0.0172485457575 -0.00253894927687 -0.138551288503" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+            </body>
+            <inertial pos="-0.0138442275202 -0.00460045004127 -0.0715202983452" mass="0.2245" diaginertia="0.000531267935968 0.00055945295901 9.0798070672e-05" />
+            <geom name="fl_j2_collision" type="capsule" fromto="-0.0138442275202 0 0 -0.0138442275202 -0.010985824147 -0.141293140854" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+          </body>
+          <inertial pos="0.00679605685774 0.0184139569091 -0.0137231929956" mass="0.12" diaginertia="3.84667591695e-05 4.47149628833e-05 3.76532745457e-05" />
+          <geom name="fl_j1_collision" type="box" pos="0.00679605685774 0.0184139569091 -0.0137231929956" size="0.0234258079529 0.0198132123947 0.0238559341431" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+        </body>
+        <body name="fr_j1_link" pos="0.013134561649 -0.068564710884 0.066693362063">
+          <joint name="fr_j1" type="hinge" axis="0.00462263499864 0.999967041706 -0.00667433499804" limited="true" range="-0.523598775598 0.523598775598" damping="0.05" frictionloss="0.02" armature="0.0001" />
+          <geom name="fr_j1" type="mesh" mesh="fr_j1" contype="0" conaffinity="0" rgba="0.25 0.8 0.6 1" pos="-0.013134561649 0.068564710884 -0.066693362063" />
+          <site name="fr_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="fr_j2_link" pos="-0.066638129074 0.01888624552 -0.008157801114">
+            <joint name="fr_j2" type="hinge" axis="0.999955369008 -0.00901402200007 -0.00282973500002" limited="true" range="-0.785398163397 1.74532925199" damping="0.05" frictionloss="0.02" armature="0.0001" />
+            <geom name="fr_j2" type="mesh" mesh="fr_j2" contype="0" conaffinity="0" rgba="0.25 0.8 0.6 1" pos="0.053503567425 0.049678465364 -0.058535560949" />
+            <site name="fr_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+            <body name="fr_j3_link" pos="-0.0019 -0.010985824147 -0.141293140854">
+              <joint name="fr_j3" type="hinge" axis="-0.999955369008 0.00901402200007 0.00282973500002" limited="true" range="0 2.61799387799" damping="0.05" frictionloss="0.02" armature="0.0001" />
+              <geom name="fr_j3" type="mesh" mesh="fr_j3" contype="0" conaffinity="0" rgba="0.25 0.8 0.6 1" pos="0.055403567425 0.060664289511 0.082757579905" />
+              <site name="fr_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+              <inertial pos="0.0172485448038 -0.000405914270128 -0.0716671065269" mass="0.155" diaginertia="0.000359497918257 0.00036681635101 3.34622792804e-05" />
+              <geom name="fr_foot" type="sphere" pos="0.0145769277452 -0.00253894927687 -0.138551288503" size="0.015" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+              <geom name="fr_j3_collision" type="capsule" fromto="0.0172485448038 0 0 0.0172485448038 -0.00253894927687 -0.138551288503" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+            </body>
+            <inertial pos="0.0138442318117 -0.00460045004127 -0.0715202983452" mass="0.2245" diaginertia="0.000531267935968 0.000559452944925 9.07980565865e-05" />
+            <geom name="fr_j2_collision" type="capsule" fromto="0.0138442318117 0 0 0.0138442318117 -0.010985824147 -0.141293140854" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+          </body>
+          <inertial pos="-0.00679605781141 0.0184139569091 -0.0137231929956" mass="0.12" diaginertia="3.84667591695e-05 4.47149610961e-05 3.76532727585e-05" />
+          <geom name="fr_j1_collision" type="box" pos="-0.00679605781141 0.0184139569091 -0.0137231929956" size="0.0234258069992 0.0198132123947 0.0238559341431" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+        </body>
+        <body name="rl_j1_link" pos="0.091365438351 0.330435289116 0.066693362063">
+          <joint name="rl_j1" type="hinge" axis="0.00462263499864 -0.999967041706 0.00667433499804" limited="true" range="-0.523598775598 0.523598775598" damping="0.05" frictionloss="0.02" armature="0.0001" />
+          <geom name="rl_j1" type="mesh" mesh="rl_j1" contype="0" conaffinity="0" rgba="0.95 0.65 0.25 1" pos="-0.091365438351 -0.330435289116 -0.066693362063" />
+          <site name="rl_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="rl_j2_link" pos="0.066638129074 0.01888624552 -0.008157801114">
+            <joint name="rl_j2" type="hinge" axis="0.999955369008 0.00901402200007 0.00282973500002" limited="true" range="-0.785398163397 1.74532925199" damping="0.05" frictionloss="0.02" armature="0.0001" />
+            <geom name="rl_j2" type="mesh" mesh="rl_j2" contype="0" conaffinity="0" rgba="0.95 0.65 0.25 1" pos="-0.158003567425 -0.349321534636 -0.058535560949" />
+            <site name="rl_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+            <body name="rl_j3_link" pos="0.0019 -0.010985824147 -0.141293140854">
+              <joint name="rl_j3" type="hinge" axis="-0.999955369008 -0.00901402200007 -0.00282973500002" limited="true" range="0 2.61799387799" damping="0.05" frictionloss="0.02" armature="0.0001" />
+              <geom name="rl_j3" type="mesh" mesh="rl_j3" contype="0" conaffinity="0" rgba="0.95 0.65 0.25 1" pos="-0.159903567425 -0.338335710489 0.082757579905" />
+              <site name="rl_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+              <inertial pos="-0.0172485457575 -0.000405916177477 -0.0716671065269" mass="0.155" diaginertia="0.000359497940202 0.000366816352968 3.3462303183e-05" />
+              <geom name="rl_foot" type="sphere" pos="-0.0145769284725 -0.00253894988488 -0.138551288503" size="0.015" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+              <geom name="rl_j3_collision" type="capsule" fromto="-0.0172485457575 0 0 -0.0172485457575 -0.00253894988488 -0.138551288503" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+            </body>
+            <inertial pos="-0.0138442275202 -0.00460045004127 -0.0715202983452" mass="0.2245" diaginertia="0.000531267912613 0.00055945295901 9.07980473167e-05" />
+            <geom name="rl_j2_collision" type="capsule" fromto="-0.0138442275202 0 0 -0.0138442275202 -0.010985824147 -0.141293140854" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+          </body>
+          <inertial pos="0.00679605685774 0.0184139540481 -0.0137231929956" mass="0.12" diaginertia="3.84667425416e-05 4.47149628833e-05 3.76532579178e-05" />
+          <geom name="rl_j1_collision" type="box" pos="0.00679605685774 0.0184139540481 -0.0137231929956" size="0.0234258079529 0.0198132019043 0.0238559341431" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+        </body>
+        <body name="rr_j1_link" pos="0.013134561649 0.330435289116 0.066693362063">
+          <joint name="rr_j1" type="hinge" axis="0.00462263499864 0.999967041706 -0.00667433499804" limited="true" range="-0.523598775598 0.523598775598" damping="0.05" frictionloss="0.02" armature="0.0001" />
+          <geom name="rr_j1" type="mesh" mesh="rr_j1" contype="0" conaffinity="0" rgba="0.8 0.4 0.7 1" pos="-0.013134561649 -0.330435289116 -0.066693362063" />
+          <site name="rr_j1_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+          <body name="rr_j2_link" pos="-0.066638129074 0.01888624552 -0.008157801114">
+            <joint name="rr_j2" type="hinge" axis="0.999955369008 -0.00901402200007 -0.00282973500002" limited="true" range="-0.785398163397 1.74532925199" damping="0.05" frictionloss="0.02" armature="0.0001" />
+            <geom name="rr_j2" type="mesh" mesh="rr_j2" contype="0" conaffinity="0" rgba="0.8 0.4 0.7 1" pos="0.053503567425 -0.349321534636 -0.058535560949" />
+            <site name="rr_j2_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+            <body name="rr_j3_link" pos="-0.0019 -0.010985824147 -0.141293140854">
+              <joint name="rr_j3" type="hinge" axis="-0.999955369008 0.00901402200007 0.00282973500002" limited="true" range="0 2.61799387799" damping="0.05" frictionloss="0.02" armature="0.0001" />
+              <geom name="rr_j3" type="mesh" mesh="rr_j3" contype="0" conaffinity="0" rgba="0.8 0.4 0.7 1" pos="0.055403567425 -0.338335710489 0.082757579905" />
+              <site name="rr_j3_axis" type="sphere" size=".003" rgba="1 .2 .1 1" />
+              <inertial pos="0.0172485448038 -0.000405916177477 -0.0716671065269" mass="0.155" diaginertia="0.000359497940202 0.00036681635101 3.34623012253e-05" />
+              <geom name="rr_foot" type="sphere" pos="0.0145769277452 -0.00253894988488 -0.138551288503" size="0.015" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+              <geom name="rr_j3_collision" type="capsule" fromto="0.0172485448038 0 0 0.0172485448038 -0.00253894988488 -0.138551288503" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+            </body>
+            <inertial pos="0.0138442318117 -0.00460045004127 -0.0715202983452" mass="0.2245" diaginertia="0.000531267912613 0.000559452944925 9.07980332312e-05" />
+            <geom name="rr_j2_collision" type="capsule" fromto="0.0138442318117 0 0 0.0138442318117 -0.010985824147 -0.141293140854" size=".012" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+          </body>
+          <inertial pos="-0.00679605781141 0.0184139540481 -0.0137231929956" mass="0.12" diaginertia="3.84667425416e-05 4.47149610961e-05 3.76532561306e-05" />
+          <geom name="rr_j1_collision" type="box" pos="-0.00679605781141 0.0184139540481 -0.0137231929956" size="0.0234258069992 0.0198132019043 0.0238559341431" contype="1" conaffinity="1" group="3" rgba=".8 .4 .1 .15" />
+        </body>
+        <inertial pos="0.0520000007153 0.121490783691 0.0595" mass="1.8" diaginertia="0.0415156268215 0.00399717605486 0.0413356028764" />
+        <geom name="chassis_collision" type="box" pos="0.0520000007153 0.121490783691 0.0595" size="0.0564000008106 0.256342956543 0.059" contype="1" conaffinity="1" group="3" rgba=".5 .5 .5 .15" />
+        <body name="battery" pos="0.05225 0.1495 0.06">
+          <inertial pos="0 0 0" mass="0.6" diaginertia="0.00106 0.00018125 0.00108125" />
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <default>
+    <geom friction="0.8 0.005 0.0001" condim="4" solref="0.01 1" />
+  </default>
+  <actuator>
+    <motor name="fl_j1_motor" joint="fl_j1" gear="1" />
+    <motor name="fl_j2_motor" joint="fl_j2" gear="1" />
+    <motor name="fl_j3_motor" joint="fl_j3" gear="1" />
+    <motor name="fr_j1_motor" joint="fr_j1" gear="1" />
+    <motor name="fr_j2_motor" joint="fr_j2" gear="1" />
+    <motor name="fr_j3_motor" joint="fr_j3" gear="1" />
+    <motor name="rl_j1_motor" joint="rl_j1" gear="1" />
+    <motor name="rl_j2_motor" joint="rl_j2" gear="1" />
+    <motor name="rl_j3_motor" joint="rl_j3" gear="1" />
+    <motor name="rr_j1_motor" joint="rr_j1" gear="1" />
+    <motor name="rr_j2_motor" joint="rr_j2" gear="1" />
+    <motor name="rr_j3_motor" joint="rr_j3" gear="1" />
+  </actuator>
+</mujoco>

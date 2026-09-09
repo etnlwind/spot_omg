@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "status": "New STEP imported with provisional articulation and estimated free-body physics in cad_physics.py; optimized simulator gait available in gait_lab.py. Legacy URDF remains separate and hardware calibration is incomplete.",
+  "source_step": "/Users/etnlwind/Downloads/Spot OMG 300mm Frame.step",
+  "units": "metre",
+  "central_aluminum_frame_length": 0.300,
+  "robot_overall_length": null,
+  "cad_envelope_xyz": [0.2402138136331094, 0.5126867679268976, 0.3548088714089378],
+  "front_rear_joint_axis_distance": null,
+  "joint_count": 12,
+  "joint_definitions_in_cad": false,
+  "notes": [
+    "User confirmed on 2026-09-08 that 300mm refers only to the central aluminum frame length, not the robot overall length.",
+    "The 12 motors are the joints. Rotation axes, parent-child connections and zero poses still require verification.",
+    "Measure the overall envelope and joint-axis distances independently from the STEP geometry; do not substitute frame length for either.",
+    "spot_omg_parameters.json and spot_omg_scene.xml retain previous model geometry. Use preview_cad.py to view the new STEP assembly.",
+    "CAD envelope is the assembly bounding box in STEP XYZ at its exported pose, not a measured joint-axis distance or confirmed robot forward-axis length.",
+    "OCCT reported two faces without triangulation during body mesh export; the preview is not a guaranteed complete manufacturing mesh."
+  ]
+}
