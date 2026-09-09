@@ -82,6 +82,8 @@ struct RobotConsoleStream {
 }
 
 enum RobotCommand: Equatable {
+    case simulatorProfile(SimulatorGaitProfile)
+    case simulatorBalance(Bool)
     case stand
     case stand11
     case landing
@@ -108,6 +110,8 @@ enum RobotCommand: Equatable {
 
     var consoleLine: String {
         switch self {
+        case .simulatorBalance(let enabled): return "simbalance \(enabled ? "on" : "off")"
+        case .simulatorProfile(let profile): return "simprofile \(profile.rawValue)"
         case .stand: return "stand"
         case .stand11: return "stand11"
         case .landing: return "landing"
@@ -143,6 +147,7 @@ enum RobotCommand: Equatable {
     var stateRefreshDelay: TimeInterval? {
         switch self {
         case .stand, .stand11, .landing, .hold, .recover: return 4
+        case .simulatorProfile, .simulatorBalance: return 0.4
         case .relax: return 1
         case .trot5(let cycles, let period):
             return Double(cycles * period) / 1000.0 + 6
@@ -175,12 +180,16 @@ struct RobotDriveVector: Equatable {
         let motion = minimumMotion + (1.0 - minimumMotion) * speed
         let axisScale = motion * 1000.0 / max(magnitude, 0.0001)
         // A narrow vertical corridor rejects finger drift while walking.
-        // Outside it steering grows continuously; pure rotation is unchanged.
+        // The matching horizontal corridor keeps left/right input in place.
+        // Both axes grow continuously outside their corridors.
         let steeringDeadZone = 0.10 * min(1.0, abs(y))
         let steering = max(0, abs(x) - steeringDeadZone) / (1 - steeringDeadZone)
         let signedSteering = x < 0 ? -steering : steering
+        let longitudinalDeadZone = 0.10 * min(1.0, abs(x))
+        let longitudinal = max(0, abs(y) - longitudinalDeadZone) / (1 - longitudinalDeadZone)
+        let signedLongitudinal = y < 0 ? -longitudinal : longitudinal
         return Self(
-            linearPerMille: Int((y * axisScale).rounded()),
+            linearPerMille: Int((signedLongitudinal * axisScale).rounded()),
             yawPerMille: Int((signedSteering * axisScale).rounded()),
             speedFraction: speed)
     }
@@ -190,6 +199,7 @@ struct RobotDriveVector: Equatable {
             (linearPerMille < -80 ? "후진" : "")
         let turning = yawPerMille > 80 ? "우회전" :
             (yawPerMille < -80 ? "좌회전" : "")
+        if linearPerMille == 0 && !turning.isEmpty { return "제자리 " + turning }
         return [longitudinal, turning].filter { !$0.isEmpty }.joined(separator: " + ")
     }
 }

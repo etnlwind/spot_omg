@@ -11,7 +11,9 @@ def build(output=Path('/private/tmp/SpotOMGSimBridge.app')):
     digest=hashlib.sha256(source.read_bytes()+Path(__file__).read_bytes()).hexdigest()
     contents=output/'Contents'
     binary=contents/'MacOS/SpotOMGSimBridge'
-    stamp=contents/'source.sha256'
+    stamp=output.with_suffix('.sha256')
+    # Arbitrary files directly under Contents are treated as nested code by codesign.
+    (contents/'source.sha256').unlink(missing_ok=True)
     if binary.exists() and stamp.exists() and stamp.read_text()==digest:
         return binary
     binary.parent.mkdir(parents=True,exist_ok=True)
@@ -28,8 +30,8 @@ def build(output=Path('/private/tmp/SpotOMGSimBridge.app')):
     subprocess.run(['xcrun','swiftc','-module-cache-path','/private/tmp/SpotOMGSwiftModuleCache','-swift-version','5','-O','-framework','AppKit',
                     '-framework','CoreBluetooth','-framework','Network',
                     str(Path(__file__).with_name('Bridge.swift')),'-o',str(binary)],check=True)
-    stamp.write_text(digest)
     subprocess.run(['codesign','--force','--sign','-',str(output)],check=True)
+    stamp.write_text(digest)
     return binary
 
 

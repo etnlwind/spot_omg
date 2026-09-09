@@ -87,9 +87,9 @@ def make_scenario(name='nominal'):
     return p,mujoco.MjModel.from_xml_string(xml)
 
 
-def evaluate(params,p,model,duration=10.,baseline=False,keep_frames=False,push=False,shared=False,drive_stride=1.0,drive_period=None):
+def evaluate(params,p,model,duration=10.,baseline=False,keep_frames=False,push=False,shared=False,drive_stride=1.0,drive_period=None,target_function=None):
     sim=Simulation(p,model);m,d=sim.model,sim.data
-    target_function=shared_targets if shared else targets
+    target_function=target_function or (shared_targets if shared else targets)
     robot=m.body('robot').id;floor=m.geom('floor').id
     # Same initial standing state and physical startup for every policy.
     for _ in range(100):sim.step(balance=False)

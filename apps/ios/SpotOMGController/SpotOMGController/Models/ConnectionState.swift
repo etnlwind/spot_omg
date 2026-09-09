@@ -30,6 +30,16 @@ struct RobotRuntimeState: Equatable {
     var balance = "unknown"
     var revision = "unknown"
     var capabilities: Set<String> = []
+    var simulationProfile = "legacy"
+    var balanceTitle: String {
+        switch balance {
+        case "active": return "수평 보정 작동 중"
+        case "suspended": return "수평 보정 대기 · 자세/센서 확인"
+        case "off": return "수평 보정 꺼짐"
+        case "monitor": return "IMU 관측만 적용"
+        default: return "균형 제어 확인 중"
+        }
+    }
     var supportsTrot5: Bool { capabilities.contains("trot5") }
 
     var poseTitle: String {
@@ -78,5 +88,19 @@ enum RobotConnectionTarget: String, CaseIterable {
     static func isSimulatorIdentity(_ line: String) -> Bool {
         let fields = Set(line.split(separator: " ").map(String.init))
         return line.hasPrefix("$SPOTBACKEND ") && fields.contains("backend=sim") && fields.contains("protocol=1")
+    }
+}
+
+
+enum SimulatorGaitProfile: String, CaseIterable {
+    case legacy, crawl, cruise, trot, highstep
+    var title: String {
+        switch self {
+        case .legacy: return "기존 V16"
+        case .crawl: return "크롤 · 한 발씩"
+        case .cruise: return "크루즈 · 넓은 보폭"
+        case .trot: return "빠른 트롯 · 실험"
+        case .highstep: return "높은 발 들기"
+        }
     }
 }

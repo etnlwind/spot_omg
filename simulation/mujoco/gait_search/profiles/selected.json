@@ -1,0 +1,68 @@
+{
+  "status": "simulator-only; estimated plant; see validation.json for failures",
+  "default": "cruise",
+  "profiles": {
+    "crawl": {
+      "label": "Crawl / four-beat",
+      "family": "crawl",
+      "params": [
+        1.4,
+        0.8,
+        0.05,
+        0.012,
+        0.20175,
+        -0.035,
+        1.5
+      ]
+    },
+    "cruise": {
+      "label": "Cruise / smooth directional",
+      "family": "trot",
+      "params": [
+        0.8,
+        0.64,
+        0.065,
+        0.007,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.6,
+        0.08,
+        0.012,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "validation": "smooth_cruise_directional_validation.json; 17 x 60-second cases"
+    },
+    "trot": {
+      "label": "Trot / brisk diagonal",
+      "family": "trot",
+      "params": [
+        0.8436922561509421,
+        0.5979488437760033,
+        0.06280689761866355,
+        0.012,
+        0.20175228283900074,
+        -0.035,
+        0.7411947428343884
+      ]
+    },
+    "highstep": {
+      "label": "High step / clearance",
+      "family": "trot",
+      "params": [
+        1.05,
+        0.6,
+        0.045,
+        0.02,
+        0.20175,
+        -0.035,
+        0.75
+      ]
+    }
+  }
+}

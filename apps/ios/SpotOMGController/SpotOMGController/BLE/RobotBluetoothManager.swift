@@ -140,6 +140,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var initialSyncAttempts = 0
     private var driveHeartbeat: Timer?
     private var driveVector: RobotDriveVector?
+    private var driveRequiresRelease = false
+    private var driveSafetyLatched = false
+    private var recoveryRequested = false
     private var driveSequence: UInt32 = 0
     private enum DrivePhase: String { case idle, controlling, stopping, draining }
     private var drivePhase: DrivePhase = .idle {
@@ -214,6 +217,17 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func send(_ command: RobotCommand) {
+        if command == .recover { recoveryRequested = true }
+        if case .simulatorBalance = command {
+            guard target.isSimulator, runtimeState.capabilities.contains("simbalance") else {
+                lastError = "균형 제어 설정은 지원되는 가상 로봇에서만 가능합니다."; return
+            }
+        }
+        if case .simulatorProfile = command {
+            guard target.isSimulator, runtimeState.capabilities.contains("simprofiles") else {
+                lastError = "보행 정책 선택은 지원되는 가상 로봇에서만 가능합니다."; return
+            }
+        }
         if case .trot5 = command, !runtimeState.supportsTrot5 {
             lastError = "개선 보행은 로봇 V13 업데이트 후 사용할 수 있습니다."
             return
@@ -306,9 +320,11 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func updateDrive(x: Double, y: Double) {
         guard state.isReady, let vector = RobotDriveVector.make(x: x, y: y) else {
+            driveRequiresRelease = false
             stopDrive(reason: "joystick-neutral-or-disconnected")
             return
         }
+        guard !driveSafetyLatched, !driveRequiresRelease else { return }
         // A released session cannot be revived with @D while STM32 is finishing
         // diagnostics. Wait for its prompt and require a new touch update.
         guard !driveStopRequested, !driveAwaitingPrompt else { return }
@@ -334,6 +350,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func stopDrive(reason: String = "joystick-release") {
+        if reason == "gesture-ended" || reason == "joystick-release" || reason == "joystick-neutral-or-disconnected" {
+            driveRequiresRelease = false
+        }
         guard driveSessionActive, driveVector != nil else {
             if !driveSessionActive { driveStatus = "중립" }
             return
@@ -530,17 +549,29 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 lastVoltageRead = Date()
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
+                let safetyStop = line.contains("reason=tilt") || line.contains("reason=imu") || line.contains("reason=safety")
+                if safetyStop {
+                    driveSafetyLatched = true
+                    recoveryRequested = false
+                    runtimeState.safety = line.contains("reason=imu") ? "imu" : "tilt"
+                    lastError = "안전 정지: 스틱을 놓고 상태를 확인한 뒤 Recover를 실행하십시오."
+                }
+                if !driveStopRequested { driveRequiresRelease = true }
                 driveHeartbeat?.invalidate()
                 driveHeartbeat = nil
                 driveVector = nil
                 if driveSessionActive { drivePhase = .draining }
                 if driveSessionActive { armDriveCompletionTimeout() }
-                driveStatus = line.contains("watchdog") ?
-                    "통신 지연으로 자동 정지" : "중립"
+                driveStatus = safetyStop ? "기울기/센서 안전 정지 · 복구 필요" : (line.contains("watchdog") ? "통신 지연으로 자동 정지" : "중립")
                 continue
             }
-            if drivePhase == .controlling,
+            if driveSessionActive,
                line.hasPrefix("ERROR:") || line == "unknown command; type help" {
+                driveRequiresRelease = true
+                if line.contains("recover") || line.contains("safety") || line.contains("IMU") || line.contains("tilt") {
+                    driveSafetyLatched = true
+                    recoveryRequested = false
+                }
                 // A rejected drive has no started/stopped banner. Its error
                 // and prompt must still terminate the local session.
                 driveHeartbeat?.invalidate()
@@ -565,11 +596,18 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 safety: values["safety"] ?? "unknown",
                 balance: values["balance"] ?? "unknown",
                 revision: values["rev"] ?? "unknown",
-                capabilities: Set((values["caps"] ?? "").split(separator: ",").map(String.init)))
+                capabilities: Set((values["caps"] ?? "").split(separator: ",").map(String.init)),
+                simulationProfile: values["profile"] ?? "legacy")
             initialSyncTimeout?.cancel()
             initialSyncTimeout = nil
             lastStateSync = Date()
-            lastError = nil
+            if runtimeState.safety == "ok", recoveryRequested {
+                driveSafetyLatched = false
+                recoveryRequested = false
+            } else if runtimeState.safety != "ok" && runtimeState.safety != "unknown" {
+                driveSafetyLatched = true
+            }
+            if !driveSafetyLatched { lastError = nil }
             // Existing firmware exposes voltage via a read-only servo snapshot.
             // Never enqueue a console read while realtime drive is active.
             if !driveSessionActive {

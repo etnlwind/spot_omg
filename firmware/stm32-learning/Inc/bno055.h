@@ -26,9 +26,9 @@ extern "C" {
  *   SDA  D14   PB9   I2C1_SDA
  *   COM3       GND   selects address 0x28
  *
- * The Euler output is 16 LSB per degree and the mounting matches the robot
- * frame, so no axis remap is applied.  Unlike the BNO086's game rotation
- * vector, yaw here is an absolute 0..359.9 heading.
+ * Euler output is 16 LSB per degree. The mounted board swaps roll/pitch
+ * into the robot frame in bno055_read_euler(). IMUPLUS does not use the
+ * magnetometer: yaw wraps at 360 degrees but is not an absolute heading.
  */
 
 typedef struct

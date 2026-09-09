@@ -460,3 +460,111 @@ extension RobotCommandTests {
         XCTAssertTrue(manager.lastError?.contains("MuJoCo") == true)
     }
 }
+
+extension RobotCommandTests {
+    func testSimulatorProfileCommandsAndSnapshot() {
+        XCTAssertEqual(RobotCommand.simulatorProfile(.cruise).consoleLine, "simprofile cruise")
+        let manager = RobotBluetoothManager { _ in }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand caps=trot5,simprofiles backend=sim profile=highstep\n")
+        XCTAssertEqual(manager.runtimeState.simulationProfile, "highstep")
+        XCTAssertTrue(manager.runtimeState.capabilities.contains("simprofiles"))
+        manager.disconnect()
+    }
+    func testHardwareRejectsSimulatorProfileCommand() {
+        let previous = UserDefaults.standard.string(forKey: "robotTarget")
+        defer { UserDefaults.standard.set(previous, forKey: "robotTarget") }
+        UserDefaults.standard.set("robot", forKey: "robotTarget")
+        var commands = [String]()
+        let manager = RobotBluetoothManager { commands.append(String(decoding: $0, as: UTF8.self)) }
+        manager.send(.simulatorProfile(.trot))
+        manager.send(.simulatorBalance(true))
+        XCTAssertTrue(commands.isEmpty)
+        XCTAssertNotNil(manager.lastError)
+        manager.disconnect()
+    }
+    func testSimulatorBalanceCommandsAndState() {
+        XCTAssertEqual(RobotCommand.simulatorBalance(true).consoleLine, "simbalance on")
+        XCTAssertEqual(RobotCommand.simulatorBalance(false).consoleLine, "simbalance off")
+        let manager = RobotBluetoothManager { _ in }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand balance=active caps=simbalance,bno055emu backend=sim\n")
+        XCTAssertEqual(manager.runtimeState.balanceTitle, "수평 보정 작동 중")
+        manager.disconnect()
+    }
+
+    func testTiltStopCannotRestartHeldJoystickUntilReleaseAndRecovery() {
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.updateDrive(x: 0, y: 1)
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=tilt\r\nOK\r\n# ")
+        let count = sent.filter { $0.hasPrefix("drive ") }.count
+        for _ in 0..<10 { manager.updateDrive(x: 0, y: 1) }
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count)
+        XCTAssertEqual(manager.runtimeState.safety, "tilt")
+        manager.receiveConsoleText("$SPOTSTATE safety=ok\n# ") // stale snapshot cannot clear latch
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count)
+        manager.stopDrive(reason: "gesture-ended")
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count)
+        manager.send(.recover)
+        manager.receiveConsoleText("OK\n# $SPOTSTATE safety=ok\n# ")
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count + 1)
+        manager.disconnect()
+    }
+
+    func testRejectedDriveDuringStopCompletesWithoutDisconnectTimeout() {
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.updateDrive(x: 0, y: 1)
+        manager.stopDrive(reason: "gesture-ended")
+        manager.receiveConsoleText("ERROR: stand/recover required before gait\r\n# ")
+        RunLoop.main.run(until: Date().addingTimeInterval(5.2))
+        XCTAssertEqual(manager.state, .ready)
+        XCTAssertFalse(sent.contains("\u{03}"))
+        let count = sent.filter { $0.hasPrefix("drive ") }.count
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count)
+        manager.disconnect()
+    }
+
+    func testWatchdogStopRequiresJoystickRelease() {
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.updateDrive(x: 0, y: 1)
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=watchdog\nOK\n# ")
+        let count = sent.filter { $0.hasPrefix("drive ") }.count
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count)
+        manager.stopDrive(reason: "gesture-ended")
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, count + 1)
+        manager.disconnect()
+    }
+
+    func testHorizontalCorridorSelectsInPlaceTurnsAndIsContinuous() {
+        for x in [-1.0, -0.6, -0.3, 0.3, 0.6, 1.0] {
+            for fraction in [-0.10, -0.04, 0, 0.05, 0.10] {
+                let v = RobotDriveVector.make(x: x, y: abs(x)*fraction)!
+                XCTAssertEqual(v.linearPerMille, 0)
+                XCTAssertEqual(v.yawPerMille > 0, x > 0)
+                XCTAssertTrue(v.statusTitle.hasPrefix("제자리 "))
+            }
+        }
+        let inside = RobotDriveVector.make(x: 1, y: 0.0999)!
+        let outside = RobotDriveVector.make(x: 1, y: 0.1001)!
+        XCTAssertLessThanOrEqual(abs(outside.linearPerMille-inside.linearPerMille), 1)
+    }
+
+    func testAllDiagonalsKeepTravelAndTurnSigns() {
+        for x in [-0.7, 0.7] {
+            for y in [-0.7, 0.7] {
+                let v = RobotDriveVector.make(x: x, y: y)!
+                XCTAssertEqual(v.linearPerMille > 0, y > 0)
+                XCTAssertEqual(v.yawPerMille > 0, x > 0)
+                XCTAssertFalse(v.statusTitle.contains("제자리"))
+            }
+        }
+    }
+
+}

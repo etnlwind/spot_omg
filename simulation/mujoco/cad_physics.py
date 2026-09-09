@@ -36,6 +36,11 @@ def build(parameters=None,write_scene=True):
     ET.SubElement(default,'geom',friction=vec(p['friction']),condim='4',solref=vec([p['contact_time_constant_s'],p['contact_damping_ratio']]))
     world = root.find('worldbody'); floor = world.find("geom[@type='plane']")
     floor.set('name','floor'); floor.set('contype','1');floor.set('conaffinity','1');floor.set('size','20 20 .01')
+    floor_roll=math.radians(p.get('floor_roll_deg',0.0))
+    floor_pitch=math.radians(p.get('floor_pitch_deg',0.0))
+    cr,sr=math.cos(floor_roll/2),math.sin(floor_roll/2)
+    cp,sp=math.cos(floor_pitch/2),math.sin(floor_pitch/2)
+    floor.set('quat',vec([cr*cp,sr*cp,cr*sp,-sr*sp]))
     cadbase=world.find("body[@name='cad_base']"); world.remove(cadbase)
     robot=ET.SubElement(world,'body',name='robot');ET.SubElement(robot,'freejoint',name='root');robot.append(cadbase)
     points=np.concatenate([vertices(f'body_{i}') for i in range(4)])
@@ -88,6 +93,7 @@ class Simulation:
             self.p=p
             self.model=model
         self.data=mujoco.MjData(self.model)
+        self.sensor_observer = None
         self.policy=SharedGaitPolicy();self.phase=self.linear=self.yaw=0.
         self.q=np.array([self.model.jnt_qposadr[self.model.joint(f'{l.lower()}_j{j}').id] for l,j in KEYS])
         self.v=np.array([self.model.jnt_dofadr[self.model.joint(f'{l.lower()}_j{j}').id] for l,j in KEYS])
@@ -140,6 +146,8 @@ class Simulation:
             self.current=p['electronics_current_a']+sum(motor['idle_current_a']+abs(t)/stall*(motor['stall_current_a']-motor['idle_current_a']) for motor,t,stall in zip(self.motors,torque,self.stall))
             self.voltage=max(0,p['pack_open_circuit_voltage']-self.current*p['pack_and_wiring_resistance_ohm'])
             self.saturated=float(np.mean(abs(raw)>self.limits))
+            if self.sensor_observer is not None:
+                self.sensor_observer(m, d)
             mujoco.mj_step(m,d)
         if not np.isfinite(d.qpos).all() or not np.isfinite(d.qvel).all() or any(w.number for w in d.warning):raise RuntimeError('Nonfinite state or MuJoCo numerical warning')
 

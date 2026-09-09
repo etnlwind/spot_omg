@@ -4,6 +4,7 @@ Run with mjpython for --viewer. No hardware transport is imported or opened.
 The protocol adapter is intentionally separate from the physics plant.
 """
 import argparse
+import collections
 import json
 import math
 import selectors
@@ -15,6 +16,10 @@ from pathlib import Path
 import numpy as np
 from cad_gait import CAD, KEYS
 from cad_physics import Simulation
+from realtime_pacer import PhysicsPacer
+from balance_controller import BalanceController
+from bno055_emulator import BNO055Config, BNO055Emulator, FirmwareAttitudeFilter
+from gait_profiles import foot_targets, load_profiles, PROFILE_FILE
 
 
 class RobotController:
@@ -34,6 +39,36 @@ class RobotController:
         self.last_packet = 0.
         self.elapsed = 0.
         self.out = []
+        self.profiles = load_profiles() if PROFILE_FILE.exists() else {}
+        self.profile = 'cruise' if 'cruise' in self.profiles else 'legacy'
+        self.stopping_reason = None
+        self.pending_profile = None
+        self.imu = BNO055Emulator(BNO055Config(**plant.p.get("bno055", {})))
+        self.attitude_filter = FirmwareAttitudeFilter()
+        self.imu_reading = None
+        self.balance = BalanceController(plant.policy)
+        self.command_target = self.target.copy()
+        self.flight_frames = collections.deque(maxlen=1500)
+        self.flight_commands = collections.deque(maxlen=512)
+        self.incident_directory = None
+        self.last_incident = None
+        self.realtime_factor = None
+        self.plant.sensor_observer = self.observe_imu
+
+    def observe_imu(self, model, data):
+        r = data.xmat[model.body('robot').id].reshape(3,3)
+        self.imu.advance(float(data.time),
+            math.degrees(math.atan2(r[2,1],r[2,2])),
+            math.degrees(math.asin(float(np.clip(-r[2,0],-1,1)))),
+            math.degrees(math.atan2(r[1,0],r[0,0])))
+
+    def imu_diagnostic(self):
+        return dict(sensor='BNO055', mode='IMUPLUS', emulated=True,
+                    feedback='active' if self.balance.applied else 'suspended', balance=self.balance.diagnostic(), reading=self.imu_reading,
+                    filtered_tenths=self.attitude_filter.filtered,
+                    filtered_rate_tenths_s=self.attitude_filter.rate,
+                    failures=self.attitude_filter.failures,
+                    config=vars(self.imu.config),last_incident=self.last_incident,realtime_factor=self.realtime_factor)
 
     def reply(self, text='OK'):
         self.out.append(text + '\r\n# ')
@@ -48,13 +83,33 @@ class RobotController:
         self.pose = 'custom'
 
     def stop(self, reason='requested'):
-        if self.motion is None:
+        if self.motion is None or self.stopping_reason:
             return
+        if self.profile != 'legacy' and self.motion[0] in ('drive','profile') and not self.transition and self.elapsed > .1:
+            self.stopping_reason = reason
+            self.request = (0.,0.)
+            return
+        self.finish_stop(reason)
+
+    def finish_stop(self, reason):
         drive = self.motion[0] == 'drive'
         self.motion = None
+        self.stopping_reason = None
         self.request = (0., 0.)
-        self.blend([0, 45, 90]*4,
-                   f'$SPOTDRIVE stopped reason={reason}\r\nOK' if drive else 'STOPPED: '+reason)
+        completion = f'$SPOTDRIVE stopped reason={reason}\r\nOK' if drive else ('OK' if reason=='complete' else 'STOPPED: '+reason)
+        self.blend([0, 45, 90]*4, completion)
+
+    def limited_linear(self, value):
+        # Fast trot / high-step full reverse strides lost stability in the 60 s matrix.
+        # Its validated reverse envelope is 60%; forward remains unrestricted.
+        return max(-.6,value) if self.profile in ('trot','highstep') else value
+
+    def select_profile(self, name):
+        if name != 'legacy' and name not in self.profiles:
+            raise ValueError('unknown profile: '+name)
+        if self.motion or self.transition:
+            raise ValueError('stop before changing profile')
+        self.profile = name
 
     def disconnected(self):
         self.stop('disconnect')
@@ -62,42 +117,60 @@ class RobotController:
         self.out.clear()
 
     def command(self, line, now):
+        self.flight_commands.append((float(self.plant.data.time),line))
         words = line.split()
         if not words:
             return
         cmd = words[0]
         try:
             if cmd == 'identity':
-                self.reply('$SPOTBACKEND backend=sim protocol=1 physics=estimated controller=shared-gait adapter=python')
+                self.reply('$SPOTBACKEND backend=sim protocol=1 physics=estimated controller=sim-profiles adapter=python')
             elif cmd in ('echo', 'log'):
                 if line not in ('echo off', 'echo on') and not (len(words)==3 and words[:2]==['log','time'] and words[2].isdigit()):
                     raise ValueError('unsupported simulator command')
                 self.reply()
             elif cmd == 'syncstate':
-                error = round(float(np.max(np.abs(self.target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance=monitor rev=walk-stance-v16-sim caps=trot5 backend=sim physics=estimated')
+                error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} rev=balance-v5-pivot-sim caps=trot5,simprofiles,bno055emu,simbalance imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep") else 1000}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
+            elif cmd == 'imudiag':
+                self.reply('$SIMIMU '+json.dumps(self.imu_diagnostic(), separators=(',', ':')))
             elif cmd in ('gaitdiag', 'baldiag', 'targets'):
-                self.reply('$SIMSTATE '+json.dumps(self.plant.row(), separators=(',', ':')))
+                self.reply('$SIMSTATE '+json.dumps(dict(self.plant.row(), imu=self.imu_diagnostic()), separators=(',', ':')))
             elif cmd == '@D':
                 seq, linear, yaw = map(int, words[1:])
                 if not 0 <= seq <= 0xffffffff or max(abs(linear),abs(yaw)) > 1000:
                     raise ValueError('invalid drive packet')
                 delta = (seq-self.sequence) & 0xffffffff
-                if self.motion and self.motion[0]=='drive' and 0 < delta < 0x80000000:
+                if self.motion and self.motion[0]=='drive' and not self.stopping_reason and 0 < delta < 0x80000000:
                     self.sequence=seq; self.last_packet=now
-                    self.request=(linear/1000, self.plant.policy.drive_yaw_limit(yaw)/1000)
+                    self.request=(self.limited_linear(linear/1000), self.plant.policy.drive_yaw_limit(yaw)/1000)
             elif cmd == '@S':
                 seq = int(words[1])
                 if len(words)!=2 or not 0 <= seq <= 0xffffffff:
                     raise ValueError('invalid stop packet')
                 if 0 < ((seq-self.sequence)&0xffffffff) < 0x80000000:
-                    self.sequence=seq; self.stop()
+                    self.sequence=seq
+                    if self.motion: self.stop()
+                    elif not self.transition: self.reply('$SPOTDRIVE stopped reason=already-stopped\r\nOK')
             elif cmd == '\x03':
                 self.stop('interrupt')
             elif self.motion or self.transition:
                 raise ValueError('busy; stop and wait for prompt')
+            elif cmd == 'simbalance' and len(words)==2 and words[1] in ('on','off'):
+                self.balance.enabled=words[1]=='on'; self.reply()
+            elif cmd == 'simprofile' and len(words)==2:
+                self.select_profile(words[1]); self.reply('OK profile='+self.profile)
+            elif cmd == 'simprofiles' and len(words)==1:
+                self.reply('$SIMPROFILES '+','.join(['legacy',*self.profiles]))
+            elif cmd == 'simwalk' and len(words)==2:
+                duration=float(words[1])
+                if not math.isfinite(duration) or not 1<=duration<=60:
+                    raise ValueError('duration must be 1..60 seconds')
+                period=1.8 if self.profile=='legacy' else self.profiles[self.profile]['params'][0]
+                self.begin(('profile',duration,period,1),now)
+                self.request=(1.,0.)
             elif cmd == 'relax' and len(words)==1:
                 self.torque=False; self.pose='custom'; self.reply()
             elif cmd in ('stand', 'stand11', 'landing', 'hold', 'recover') and len(words)==1:
@@ -115,7 +188,7 @@ class RobotController:
                     raise ValueError('invalid drive input')
                 self.begin(('drive',), now)
                 self.sequence=seq; self.last_packet=now
-                self.request=(linear/1000,self.plant.policy.drive_yaw_limit(yaw)/1000)
+                self.request=(self.limited_linear(linear/1000),self.plant.policy.drive_yaw_limit(yaw)/1000)
                 self.out.append(f'$SPOTDRIVE started seq={seq} watchdog=800ms\r\n')
             elif cmd in ('trot5','trot4','trot4back','turn','crab'):
                 direction=1
@@ -133,9 +206,24 @@ class RobotController:
         except (ValueError, IndexError, TypeError) as exc:
             self.reply('ERROR: '+str(exc))
 
+    def active_profile_params(self):
+        profile=self.profiles[self.profile]
+        forward=np.asarray(profile['params'],dtype=float)
+        if 'turn_reverse_params' not in profile:return forward
+        # Blend continuously through low forward input; phase is never reset.
+        weight=self.plant.policy.smootherstep(float(np.clip(self.linear/.5,0,1)))
+        base=np.asarray(profile['turn_reverse_params'],dtype=float)
+        return base+(forward-base)*weight
+
     def gait(self, phase, amplitude):
         policy=self.plant.policy; kind=self.motion[0]
-        if kind=='drive':
+        if kind in ('drive','profile') and self.profile != 'legacy':
+            profile=self.profiles[self.profile]
+            params=self.active_profile_params()
+            values=foot_targets(params,phase*params[0],amplitude,
+                                profile['family'],self.linear,self.yaw)
+            return dict(zip(KEYS,values))
+        if kind in ('drive','profile'):
             return policy.drive_walk_targets(phase,amplitude,self.linear,self.yaw)[0]
         if kind=='trot5': return policy.trot5_targets(phase,amplitude)[0]
         if kind in ('trot4','trot4back'):
@@ -145,7 +233,9 @@ class RobotController:
     def begin(self, motion, now):
         if self.safety!='ok' or not self.torque:
             raise ValueError('stand/recover required before gait')
+        self.attitude_filter = FirmwareAttitudeFilter()
         self.motion=motion; self.elapsed=self.phase=self.linear=self.yaw=0.
+        self.stopping_reason=None
         neutral=self.gait(0,0)
         self.blend([neutral[k] for k in KEYS], None)
 
@@ -161,7 +251,7 @@ class RobotController:
             if elapsed>=duration:
                 self.transition=None
                 if completion:
-                    self.pose=completion[3:] if completion in ('OK stand','OK stand11','OK landing') else 'custom'
+                    self.pose=completion[3:] if completion in ('OK stand','OK stand11','OK landing') else ('stand' if np.allclose(end,[0,45,90]*4) else 'custom')
                     self.reply(completion)
         elif self.motion:
             self.elapsed+=.02
@@ -170,13 +260,57 @@ class RobotController:
             result=self.gait(self.phase,self.plant.policy.smootherstep(min(1,self.elapsed)))
             self.target=np.array([result[k] for k in KEYS])
             period=self.plant.policy.drive_period_ms(round(self.linear*1000),round(self.yaw*1000))/1000 if self.motion[0]=='drive' else self.motion[2]
+            if self.motion[0] in ('drive','profile') and self.profile != 'legacy':
+                period=self.active_profile_params()[0]*(1.35-.35*min(1,abs(self.linear)+abs(self.yaw)))
             self.phase=(self.phase+.02/period)%1
-            if self.motion[0]!='drive' and self.elapsed>=self.motion[1]:
-                self.motion=None; self.blend([0,45,90]*4,'OK')
-        self.plant.step(targets_deg=self.target,balance=False,torque_enabled=self.torque)
-        row=self.plant.row()
-        if self.motion and max(abs(row['roll_deg']),abs(row['pitch_deg']))>12:
-            self.safety='tilt'; self.stop('tilt')
+            if self.stopping_reason and max(abs(self.linear),abs(self.yaw))<=.008:
+                self.finish_stop(self.stopping_reason)
+            elif self.motion[0]!='drive' and self.elapsed>=self.motion[1]:
+                if self.motion[0]=='profile': self.stop('complete')
+                else: self.motion=None; self.blend([0,45,90]*4,'OK')
+        if self.pending_profile and not self.motion and not self.transition:
+            self.select_profile(self.pending_profile); self.pending_profile=None
+        returning_stand = self.transition is not None and np.allclose(self.transition[1],[0,45,90]*4)
+        permitted = self.torque and self.safety=='ok' and (self.pose=='stand' or self.motion is not None or returning_stand)
+        if self.transition and self.transition[4] in ('OK landing','OK stand11','OK hold'):
+            permitted=False
+        # Delayed angle derivatives amplified full-speed gait oscillations.
+        # Use bounded slow PI during all motion/pose transitions, D only at rest.
+        moving = self.motion is not None or self.transition is not None
+        self.balance.kp,self.balance.kd,self.balance.ki = (.1,0.,.03) if moving else (.25,.015,.15)
+        self.balance.standing = self.motion is None and self.transition is None and self.pose=='stand'
+        self.command_target = self.balance.apply(self.target,self.attitude_filter,
+            self.imu_reading is not None and self.attitude_filter.failures==0,permitted)
+        self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque)
+        self.imu_reading = self.imu.read(float(self.plant.data.time))
+        # Ignore configured sensor-entry warmup; subsequent missing reads fail
+        # after three control polls, as in firmware. Ground truth is display only.
+        ready_at = self.imu.config.startup_s+self.imu.config.fusion_delay_s+81/self.imu.config.i2c_hz
+        previous_safety = self.safety
+        if self.plant.data.time >= ready_at:
+            fault = self.attitude_filter.update(self.imu_reading)
+            if (self.motion or (self.balance.enabled and self.pose=='stand' and self.torque)) and fault:
+                self.safety=fault
+                if self.motion: self.finish_stop(fault)
+        rotation=self.plant.data.xmat[self.plant.model.body('robot').id].reshape(3,3)
+        self.flight_frames.append(dict(time_s=float(self.plant.data.time),profile=self.profile,
+            request=self.request,linear=self.linear,yaw=self.yaw,phase=self.phase,
+            roll_deg=math.degrees(math.atan2(rotation[2,1],rotation[2,2])),
+            pitch_deg=math.degrees(math.asin(float(np.clip(-rotation[2,0],-1,1)))),
+            imu=self.imu_reading,balance=self.balance.diagnostic(),
+            nominal=self.target.tolist(),command=self.command_target.tolist(),
+            voltage=self.plant.voltage,safety=self.safety))
+        if previous_safety=='ok' and self.safety!='ok' and self.incident_directory:
+            try:
+                self.incident_directory.mkdir(parents=True,exist_ok=True)
+                path=self.incident_directory/f'incident-{time.time_ns()}.json'
+                path.write_text(json.dumps(dict(reason=self.safety,frames=list(self.flight_frames),
+                                               commands=list(self.flight_commands))))
+                self.last_incident=str(path)
+                print('Simulator incident:',path,flush=True)
+            except OSError as exc:
+                print('Simulator incident write failed:',exc,flush=True)
+
 
 
 class ConsoleServer:
@@ -247,23 +381,55 @@ def main():
         bridge_binary=build_bridge()
     parameters=json.loads(args.parameters.read_text()); parameters['timestep_s']=.0005
     plant=Simulation(parameters); controller=RobotController(plant)
+    controller.incident_directory=Path('/private/tmp/spot-omg-sim')
     server=ConsoleServer(controller,args.host,args.port)
     bridge_process=None
     viewer=None
+    keys=collections.deque()
+    profile_keys={49:'legacy',50:'crawl',51:'cruise',52:'trot',53:'highstep'}
     try:
         if bridge_binary:
             bridge_process=subprocess.Popen([str(bridge_binary),"--port",str(args.port)])
         if args.viewer:
             import mujoco.viewer
-            viewer=mujoco.viewer.launch_passive(plant.model,plant.data)
+            viewer=mujoco.viewer.launch_passive(plant.model,plant.data,key_callback=keys.append)
             viewer.cam.distance=1.5
-        print(f'Virtual robot: {server.listener.getsockname()} / physics=estimated / V16 shared C gait',flush=True)
-        deadline=time.monotonic()
+        print(f'Virtual robot: {server.listener.getsockname()} / physics=estimated / gait profiles + shared C balance',flush=True)
+        pacer=PhysicsPacer(time.monotonic())
+        rate_wall=time.monotonic();rate_sim=float(plant.data.time);realtime_factor=1.0;display_speed=0.0
         while viewer is None or viewer.is_running():
+            while keys:
+                key=keys.popleft()
+                if key in profile_keys:
+                    if controller.motion or controller.transition:
+                        controller.pending_profile=profile_keys[key]
+                        controller.stop('profile-change')
+                    else: controller.select_profile(profile_keys[key])
+                elif key==32: controller.stop('keyboard-stop')
+                elif key==87 and not server.client and not controller.motion and not controller.transition:
+                    controller.command('simwalk 8',time.monotonic())
             now=time.monotonic(); server.poll(now)
-            if now>=deadline:
-                controller.tick(now); deadline=max(deadline+.02,time.monotonic())
-                if viewer: viewer.sync()
+            steps=pacer.due(now)
+            for _ in range(steps):
+                controller.tick(time.monotonic())
+            if steps:
+                elapsed_wall=time.monotonic()-rate_wall
+                if elapsed_wall>=1:
+                    realtime_factor=(float(plant.data.time)-rate_sim)/elapsed_wall
+                    rate_wall=time.monotonic();rate_sim=float(plant.data.time)
+                    controller.realtime_factor=realtime_factor
+                if viewer:
+                    row=plant.row()
+                    camera_alpha=1-math.exp(-steps*.02/.15)
+                    viewer.cam.lookat[:]+=camera_alpha*(np.asarray(row['com_m'])-viewer.cam.lookat)
+                    rotation=plant.data.xmat[plant.model.body('robot').id].reshape(3,3)
+                    speed=float(rotation[:,0]@plant.data.qvel[:3])
+                    display_speed+=camera_alpha*(speed-display_speed)
+                    viewer.opt.geomgroup[3]=0
+                    viewer.set_texts((mujoco.mjtFontScale.mjFONTSCALE_150,mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                        'Profile / simulated physics\nMovement\nSpeed / tilt\nBNO055 / balance\nProfiles\nDemo / stop\nRemote',
+                        f'{controller.profile.upper()} / 11.1V 3S\n{controller.motion[0] if controller.motion else "stand"}\n{display_speed:.2f} m/s / {max(abs(row["roll_deg"]),abs(row["pitch_deg"])):.1f} deg\n{controller.imu_reading["age_ms"] if controller.imu_reading else -1:.0f} ms / {"ACTIVE" if controller.balance.applied else "SUSPENDED"} / {max(abs(controller.balance.correction)):.1f} deg correction\n1 Legacy  2 Crawl  3 Cruise  4 Trot  5 High step\nW: 8s walk (no remote owner) / Space: stop\nBLE app / TCP :{args.port} / real time {realtime_factor:.2f}x'))
+                    viewer.sync()
             time.sleep(.001)
     except KeyboardInterrupt: pass
     finally:

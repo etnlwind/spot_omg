@@ -62,7 +62,7 @@ struct ControlView: View {
                         }.disabled(bluetooth.state != .disconnected)
                     }
                     if bluetooth.target.isSimulator {
-                        Text("추정 물성 · C 보행 정책 공유 · IMU는 모니터링만 적용")
+                        Text("추정 물성 · " + bluetooth.runtimeState.balanceTitle)
                             .font(.caption).foregroundStyle(.orange)
                     }
                     HStack {
@@ -97,6 +97,25 @@ struct ControlView: View {
                     }
                 }
 
+                if bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simprofiles") {
+                    Section("가상 로봇 보행") {
+                        if bluetooth.runtimeState.capabilities.contains("simbalance") {
+                            Toggle("BNO055 수평 보정", isOn: Binding(
+                                get: { bluetooth.runtimeState.balance == "active" || bluetooth.runtimeState.balance == "suspended" },
+                                set: { bluetooth.send(.simulatorBalance($0)) }))
+                                .disabled(!bluetooth.state.isReady)
+                            Text("지연된 IMU 측정으로 다리를 보정합니다. 설정 변경 시 먼저 정지합니다.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Picker("보행 정책", selection: Binding(
+                            get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
+                            set: { bluetooth.send(.simulatorProfile($0)) })) {
+                            ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }.disabled(!bluetooth.state.isReady)
+                        Text("크루즈가 기본입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 Section("조이스틱") {
                     HStack {
                         Spacer()
@@ -111,7 +130,7 @@ struct ControlView: View {
                     Text(bluetooth.driveStatus)
                         .font(.system(.subheadline, design: .monospaced).bold())
                         .frame(maxWidth: .infinity, alignment: .center)
-                    Text(bluetooth.target.isSimulator ? "가상 모터로 전진·후진·회전합니다. IMU 기울기는 관측하며 보정 제어는 아직 적용하지 않습니다. 손을 떼면 정지를 요청합니다." : "위·아래는 IMU 기울기 보정 전진·후진, 좌우는 회전입니다. 직진 근처의 작은 좌우 입력은 무시합니다. 중심에서 멀수록 빨라지고 손을 떼면 스틱이 중앙으로 복귀하며 즉시 정지를 요청합니다.")
+                    Text(bluetooth.target.isSimulator ? "대각선은 전진·후진하면서 회전하고, 좌우는 제자리 회전합니다. 수평 보정 상태는 상단에 표시됩니다. 손을 떼면 정지합니다." : "위·아래는 IMU 기울기 보정 전진·후진, 대각선은 이동과 회전, 좌우는 제자리 회전입니다. 직진 근처의 작은 좌우 입력은 무시합니다. 중심에서 멀수록 빨라지고 손을 떼면 스틱이 중앙으로 복귀하며 즉시 정지를 요청합니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -135,7 +154,7 @@ struct ControlView: View {
                 }
                 .disabled(!bluetooth.runtimeState.supportsTrot5)
                 Text(bluetooth.runtimeState.supportsTrot5 ?
-                     "3S 배터리 모델에서 개선한 전진 보행입니다. 준비 자세로 천천히 전환한 뒤 실행하며, IMU는 기울기 감시에 사용합니다." :
+                     "3S 배터리 모델에서 개선한 전진 보행입니다. 준비 자세로 천천히 전환한 뒤 실행하며, IMU 보정은 상단 설정에 따릅니다." :
                      "개선 전진은 로봇 V13 업데이트 후 사용할 수 있습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
