@@ -30,7 +30,7 @@ def build(parameters=None,write_scene=True):
     root,mapping = build_rig(write_files=False)
     root.set('model', 'New STEP / free-body dynamics / ESTIMATED PHYSICS')
     option = root.find('option'); option.set('gravity', f"0 0 {-p['gravity_m_s2']}")
-    option.set('timestep', str(p['timestep_s'])); option.set('integrator','implicitfast')
+    option.set('timestep', str(min(p['timestep_s'], .0005))); option.set('integrator','implicitfast')
     option.set('solver','Newton'); option.set('iterations','100'); option.set('cone','elliptic')
     default = ET.SubElement(root,'default')
     ET.SubElement(default,'geom',friction=vec(p['friction']),condim='4',solref=vec([p['contact_time_constant_s'],p['contact_damping_ratio']]))
@@ -57,7 +57,7 @@ def build(parameters=None,write_scene=True):
         inertia(body,p['mass_kg'][f'j{j}_group'],(lo+hi)/2-pivot,hi-lo)
         joint=body.find('joint');joint.set('limited','true')
         bounds={1:[-30,30],2:[-45,100],3:[0,150]}[j]
-        if p.get('experimental_stow') and j==2:
+        if j==2:
             bounds=[-275,105] if leg in ('FL','FR') else [-95,105]
         joint.set('range',vec(np.radians(bounds)))
         for field,key in [('damping','joint_damping'),('frictionloss','joint_friction_nm'),('armature','rotor_armature_kg_m2')]:joint.set(field,str(p[key]))
@@ -76,19 +76,18 @@ def build(parameters=None,write_scene=True):
             midpoint=(lo+hi)/2; start=pivot.copy();start[0]=midpoint[0];end=endpoint.copy();end[0]=midpoint[0]
             ET.SubElement(body,'geom',name=name+'_collision',type='capsule',fromto=vec(np.r_[start-pivot,end-pivot]),size='.012',**attrs)
         ET.SubElement(act,'motor',name=name+'_motor',joint=name,gear='1')
-    if p.get('experimental_stow'):
-        # Explicit inter-leg mesh contacts let unpowered legs rest on each other.
-        # MuJoCo uses convex mesh hulls here; the separate FCL audit measures
-        # actual triangles before torque release. Keep normal gait unchanged.
-        contact=ET.SubElement(root,'contact')
-        legs=('fl','fr','rl','rr')
-        for a in range(4):
-            for b in range(a+1,4):
-                for j in (1,2,3):
-                    for k in (1,2,3):
-                        ET.SubElement(contact,'pair',geom1=f'{legs[a]}_j{j}',
-                                      geom2=f'{legs[b]}_j{k}',condim='3',
-                                      friction='.8 .8 .005 .0001 .0001')
+    # Explicit inter-leg mesh contacts let unpowered legs rest on each other.
+    # MuJoCo uses convex mesh hulls here; the separate FCL audit measures
+    # actual triangles before torque release. Keep normal gait unchanged.
+    contact=ET.SubElement(root,'contact')
+    legs=('fl','fr','rl','rr')
+    for a in range(4):
+        for b in range(a+1,4):
+            for j in (1,2,3):
+                for k in (1,2,3):
+                    ET.SubElement(contact,'pair',geom1=f'{legs[a]}_j{j}',
+                                  geom2=f'{legs[b]}_j{k}',condim='3',
+                                  friction='.8 .8 .005 .0001 .0001')
     # Show detailed CAD; collision proxies remain active but hidden in GUI group 3.
     if not write_scene:
         return ET.tostring(root,encoding='unicode'),p
@@ -148,7 +147,10 @@ class Simulation:
         if values.shape != (12,) or not np.isfinite(values).all():
             raise ValueError('Expected twelve finite joint targets')
         # Same calibration, 0.1-degree rounding and 4096-tick encoding as STM32.
-        if self.p.get('embedded_servo_quantization', True) and not getattr(self,'stow_active',False):
+        if getattr(self,'stow_active',False):
+            from stow_policy import encode
+            values=np.asarray(encode(values)[0])
+        elif self.p.get('embedded_servo_quantization', True):
             import ctypes
             fn=self.policy._library.spot_servo_encode
             fp=ctypes.POINTER(ctypes.c_float)

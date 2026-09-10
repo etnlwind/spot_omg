@@ -272,7 +272,7 @@ struct ControlView: View {
     }
 
     private var supportsStow: Bool {
-        bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simstow")
+        bluetooth.runtimeState.capabilities.contains("stow") || (bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simstow"))
     }
 
     private var compactControls: some View {

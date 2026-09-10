@@ -279,8 +279,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             lastError = postureInProgress == nil ? "Stow 상태에서는 Landing으로 먼저 펼쳐 주십시오." : "자세 전환 중입니다. 완료될 때까지 기다려 주십시오."; return
         }
         if command == .stow {
-            guard target.isSimulator, runtimeState.capabilities.contains("simstow") else {
-                lastError = "Stow는 설계 검토용 가상 로봇에서만 사용할 수 있습니다."; return
+            guard runtimeState.capabilities.contains("stow") || (target.isSimulator && runtimeState.capabilities.contains("simstow")) else {
+                lastError = "연결된 제어기를 Stow 지원 버전으로 업데이트해 주십시오."; return
             }
         }
         if command == .recover { recoveryRequested = true }
@@ -681,12 +681,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 lastVoltageRead = Date()
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
-                let safetyStop = line.contains("reason=tilt") || line.contains("reason=imu") || line.contains("reason=safety")
+                let stopReason = line.lowercased()
+                let safetyStop = stopReason.contains("reason=tilt") || stopReason.contains("reason=imu") || stopReason.contains("reason=safety")
                 if safetyStop {
-                    driveSafetyLatched = true
+                    driveSafetyLatched = !runtimeState.capabilities.contains("commandretry")
                     recoveryRequested = false
-                    runtimeState.safety = line.contains("reason=imu") ? "imu" : "tilt"
-                    lastError = "안전 정지: 스틱을 놓고 상태를 확인한 뒤 Recover를 실행하십시오."
+                    runtimeState.safety = stopReason.contains("reason=imu") ? "imu" : (stopReason.contains("reason=tilt") ? "tilt" : "fault")
+                    lastError = "안전 정지: 원인을 확인하고 스틱을 놓았다가 다시 조작하십시오."
                 }
                 if !driveStopRequested { driveRequiresRelease = true }
                 driveHeartbeat?.invalidate()
@@ -694,14 +695,14 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 driveVector = nil
                 if driveSessionActive { drivePhase = .draining }
                 if driveSessionActive { armDriveCompletionTimeout() }
-                driveStatus = safetyStop ? "기울기/센서 안전 정지 · 복구 필요" : (line.contains("watchdog") ? "통신 지연으로 자동 정지" : "중립")
+                driveStatus = safetyStop ? "안전 정지 · 스틱을 놓고 다시 조작" : (line.contains("watchdog") ? "통신 지연으로 자동 정지" : "중립")
                 continue
             }
             if driveSessionActive,
                line.hasPrefix("ERROR:") || line == "unknown command; type help" {
                 driveRequiresRelease = true
                 if line.contains("recover") || line.contains("safety") || line.contains("IMU") || line.contains("tilt") {
-                    driveSafetyLatched = true
+                    driveSafetyLatched = !runtimeState.capabilities.contains("commandretry")
                     recoveryRequested = false
                 }
                 // A rejected drive has no started/stopped banner. Its error
@@ -745,7 +746,12 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             initialSyncTimeout?.cancel()
             initialSyncTimeout = nil
             lastStateSync = Date()
-            if runtimeState.safety == "ok", recoveryRequested {
+            if runtimeState.capabilities.contains("commandretry") {
+                // Firmware rechecks faults for each fresh command. Keep the release
+                // gate from the interrupted session so held input cannot resume.
+                driveSafetyLatched = false
+                recoveryRequested = false
+            } else if runtimeState.safety == "ok", recoveryRequested {
                 driveSafetyLatched = false
                 recoveryRequested = false
             } else if runtimeState.safety != "ok" && runtimeState.safety != "unknown" {

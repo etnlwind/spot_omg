@@ -24,6 +24,9 @@ typedef enum
 typedef struct
 {
     UART_HandleTypeDef *uart;
+    int32_t front_position_bias[2]; /* Live STS3250 turn origin; never EEPROM. */
+    int32_t front_stow_origin[2];
+    bool front_origin_valid[2];
     uint32_t timeout_ms;
     uint8_t last_servo_error;
     uint32_t read_retry_attempts;

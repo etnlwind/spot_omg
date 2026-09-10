@@ -153,6 +153,101 @@ ESP32–STM32 연결, 부팅, flash partition과 두 BLE OTA 경로의 전체 �
 [`tools/servo_tool/HARDWARE_TEST_LOG.md`](./tools/servo_tool/HARDWARE_TEST_LOG.md)의
 해당 날짜 기록을 참고하세요.
 
+## 서보 제어 변경 전 참고
+
+**관절각·방향·Stow/Landing을 수정하기 전에 [STS3250 위치 제어 실기 기준](./docs/STS3250-POSITION-CONTROL.md)을 먼저 확인합니다.**
+현재 기체에서 확인한 누적 목표와 단회전 피드백의 차이, 실제 실패 사례, 검증 순서를 정리했습니다.
+
+## STM32 펌웨어 직접 컴파일 및 BLE 전송 (macOS)
+
+현재 Mac의 `spot_omg` Python 환경과 STM32CubeIDE에 포함된 ARM 컴파일러를
+사용하는 절차입니다. 아래 명령은 **STM32 로봇 제어 펌웨어**를 업데이트합니다.
+ESP32 브리지 펌웨어 업데이트와는 별도입니다.
+
+### 준비
+
+- STM32CubeIDE가 `/Applications/STM32CubeIDE.app`에 설치되어 있어야 합니다.
+- 아래 Python/spotctl 경로는 현재 Mac의 `/opt/anaconda3/envs/spot_omg` 기준입니다.
+- 로봇을 정지시키고 안정적으로 받친 상태에서 진행합니다. 업데이트 중 전원을 끄지 않습니다.
+- iPhone/Mac 앱의 로봇 BLE 연결을 해제합니다. 다른 `spotctl` 실행이나 펌웨어 전송과 동시에 연결하지 않습니다.
+- 기존 STM32 OTA 부트로더와 ESP32 BLE 브리지가 설치된 기체를 대상으로 합니다.
+  최초 설치는 [펌웨어 구조 문서](./firmware/FIRMWARE_ARCHITECTURE.md)를 참고하세요.
+
+### 1. 컴파일
+
+```bash
+cd /Users/etnlwind/project/spot_omg
+
+/opt/anaconda3/envs/spot_omg/bin/python \
+  firmware/stm32-learning/build_firmware.py \
+  --output /private/tmp/spot-firmware-build
+```
+
+성공하면 `binary`, `size`, `sha256` 등이 출력되고, 출력 디렉터리에
+`manifest.json`과 `build.log`가 생성됩니다. **컴파일이 실패하면 전송하지 말고
+`/private/tmp/spot-firmware-build/build.log`를 확인합니다.** 이전 빌드 파일이
+남아 있을 수 있으므로 `.bin` 파일이 존재한다는 사실만으로 성공을 판단하지 않습니다.
+
+파일명은 `firmware/stm32-learning/Inc/robot.h`의 `ROBOT_CONTROL_REV`에서 정합니다.
+예를 들어 V29는 `shared-locomotion-v29.bin`입니다. 다음 단계에서는 버전명을
+직접 입력하지 않고 이번 빌드의 `manifest.json`에서 정확한 경로를 읽습니다.
+
+### 2. BLE로 전송
+
+1단계가 성공한 뒤 실행합니다.
+
+```bash
+SPOT_FIRMWARE_IMAGE="$(/opt/anaconda3/envs/spot_omg/bin/python -c 'import json; print(json.load(open("/private/tmp/spot-firmware-build/manifest.json"))["binary"])')"
+
+/opt/anaconda3/envs/spot_omg/bin/python -u \
+  /opt/anaconda3/envs/spot_omg/bin/spotctl \
+  --via ble --ble-name SpotOMG-Bridge \
+  firmware stm32 "$SPOT_FIRMWARE_IMAGE"
+```
+
+`-u`는 진행률을 즉시 표시합니다. ESP32에 이미지를 전송한 뒤 STM32 플래시를
+기록하며, 수 분이 걸릴 수 있습니다. 마지막에 다음 문구가 나와야 완료입니다.
+
+```text
+STM32 firmware verified and rebooted
+```
+
+### 3. 설치 버전 확인
+
+```bash
+/opt/anaconda3/envs/spot_omg/bin/spotctl \
+  --via ble --ble-name SpotOMG-Bridge \
+  console send syncstate
+```
+
+응답의 `rev=`가 빌드한 버전인지 확인합니다. 이 명령은 상태 조회이며 움직임을
+명령하지 않습니다. `BLE device ... not found`가 나오면 로봇 전원, Mac Bluetooth,
+앱이나 다른 프로그램의 BLE 연결 점유 여부를 확인합니다.
+
+앱에서 확인하려면 조이스틱 아래로 스크롤해 제어 대상·연결 설정의 **로봇 펌웨어**
+항목을 확인하고, 연결 후 **현재 상태 동기화**를 누릅니다.
+`shared-locomotion-v34` 같은 값이 STM32 펌웨어 버전입니다.
+상단 `Spot OMG V0.x.x (빌드번호)`는 iPhone 앱 버전이며 서로 별개입니다.
+
+### 현재 Stow / Landing 검증 상태 (2026-09-10)
+
+최종 V34는 누적 목표와 단회전 피드백의 좌표 처리 오류를 수정하고,
+Landing 완료 후 토크를 유지합니다. 느린 일반 자세 전환의 완료 허용 오차는
+기존120틱 기준으로 복원했습니다. 펌웨어 회귀 테스트28개 통과 및 실제 로봇 설치를 완료했습니다.
+
+실제 기체에서 **`OK stow` → `OK landing` 왕복1회 성공**을 확인했습니다.
+최종 조회는 `pose=landing error=10 torque=on safety=ok rev=shared-locomotion-v34`이며,
+최대 자세 오차는 약0.9도였습니다. 모든 하중/전원 재인가 조건의 실기 검증을 의미하지는 않습니다.
+
+읽기 전용 진단과 저장 로그 조회:
+
+```bash
+/opt/anaconda3/envs/spot_omg/bin/spotctl --via ble --ble-name SpotOMG-Bridge console send stowdiag
+/opt/anaconda3/envs/spot_omg/bin/spotctl --via ble --ble-name SpotOMG-Bridge console send 'log show 40'
+```
+
+자세한 증거와 변경 내용은 [Stow/Landing 진단 기록](./docs/STOW-LANDING-DIAG-2026-09-10.md)에 정리합니다.
+
 ## 이번 작업 내역
 
 다른 컴퓨터의 VSCode/Codex에서 작업을 이어갈 때는

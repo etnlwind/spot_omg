@@ -15,7 +15,7 @@ def main():
      r=RobotController(Simulation(p));checker=LegClearance(r.plant.model)
      minimum=(float('inf'),None);frames=[];labels=[];release=None;resttorque=0
      r.command('stow',0)
-     for i in range(850):
+     for i in range(1100):
       r.tick(float(r.plant.data.time));frames.append(r.plant.data.qpos.copy());labels.append('fold' if r.torque else 'gravity-settle')
       if r.torque:
        dist,pair=checker.measure(r.plant.data,ceiling=.03)
@@ -24,7 +24,7 @@ def main():
       if not r.torque:resttorque=max(resttorque,float(np.max(abs(r.plant.data.ctrl))))
      out=r.drain().decode();settled=np.degrees(r.plant.data.qpos[r.plant.q]).tolist()
      r.command('landing',float(r.plant.data.time))
-     for i in range(705):
+     for i in range(1200):
       r.tick(float(r.plant.data.time));frames.append(r.plant.data.qpos.copy());labels.append('unfold')
      result=dict(scenario=name,min_powered_fold_clearance_mm=minimum[0]*1000,closest_pair=minimum[1],release_actual_deg=release,settled_actual_deg=settled,max_settling_motor_torque_nm=resttorque,fold_reply=out,unfold_reply=r.drain().decode(),final_pose=r.pose)
      results.append(result);print(json.dumps(result),flush=True)

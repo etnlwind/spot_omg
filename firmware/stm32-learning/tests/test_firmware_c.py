@@ -379,3 +379,44 @@ def test_shared_drive_diagnostics_do_not_add_motor_reads_or_flash_writes() -> No
     assert "flight_log" not in body and "mechanical_log" not in body
     assert body.index("gait_target_history_push(robot,positions)") < body.index("sample_next_joint(")
     assert body.index("robot->gait_support_mask=gait_policy_support_mask(nominal)") < body.index("sample_next_joint(")
+
+
+def test_command_recovery_runtime() -> None:
+    """Run the real firmware routine against a bus/clock fake, without motion."""
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("no host C compiler available")
+    sources = ["Src/command_recovery.c", "Src/robot_config.c", "Src/safety.c",
+               "tests/test_command_recovery.c"]
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / sources[-1].split("/")[-1].removesuffix(".c")
+        build = subprocess.run(
+            [compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"),
+             *[str(PROJECT / src) for src in sources], "-o", str(binary), "-lm"],
+            capture_output=True, text=True,
+        )
+        assert build.returncode == 0, build.stderr
+        run = subprocess.run([str(binary)], capture_output=True, text=True)
+        assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"
+
+
+def test_stow_motion_runtime():
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if not compiler:
+        pytest.skip("no host C compiler")
+    sources = ["Src/stow_motion.c", "Src/command_recovery.c", "Src/robot_config.c", "Src/safety.c", "Src/feetech_protocol.c", "tests/test_stow_motion.c"]
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / "stow"
+        subprocess.run([compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"), *[str(PROJECT / s) for s in sources], "-o", str(binary), "-lm"], check=True)
+        subprocess.run([str(binary)], check=True)
+
+
+def test_stow_servo_coordinates_runtime():
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if not compiler:
+        pytest.skip("no host C compiler")
+    sources = ["Src/sts3215.c", "Src/robot_config.c", "Src/feetech_protocol.c", "tests/test_stow_servo_coordinates.c"]
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / "coordinates"
+        subprocess.run([compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"), *[str(PROJECT / s) for s in sources], "-o", str(binary), "-lm"], check=True)
+        subprocess.run([str(binary)], check=True)

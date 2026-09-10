@@ -244,6 +244,9 @@ def build_parser() -> argparse.ArgumentParser:
                 help="move only the selected leg to calibrated neutral",
             )
 
+    commands.add_parser("stow", help="fold for transport using onboard shared Stow control")
+    commands.add_parser("stowcheck", help="read Stow servo settings without motion")
+
     save_pose = commands.add_parser(
         "save-pose", help="save all current servo positions as a named pose"
     )
@@ -792,7 +795,7 @@ def run_console_script(
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
         "trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "trot5", "turn", "crab", "jump", "targets", "status",
-        "gaitdiag", "baldiag", "profile", "imu", "balance", "logs"
+        "gaitdiag", "baldiag", "profile", "imu", "balance", "logs", "stow", "stowcheck"
     }
 )
 
@@ -911,7 +914,7 @@ def console_line_for(args: argparse.Namespace) -> str:
                 "STM32 console always moves all twelve joints"
             )
         return command
-    if command in {"targets", "status", "gaitdiag", "baldiag"}:
+    if command in {"targets", "status", "gaitdiag", "baldiag", "stow", "stowcheck"}:
         return command
     if command == "logs":
         if not 1 <= args.count <= 512:

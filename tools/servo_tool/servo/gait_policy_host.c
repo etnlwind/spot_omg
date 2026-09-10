@@ -375,3 +375,30 @@ SPOT_GAIT_EXPORT int spot_servo_encode(const float values[12],uint16_t ticks[12]
     }
     return 1;
 }
+
+#include "stow_control.h"
+SPOT_GAIT_EXPORT int spot_stow_frame(const float from[12],int folded,unsigned elapsed,
+                                    int32_t ticks[12],float degrees[12]) {
+    return stow_frame(from,folded!=0,elapsed,ticks,degrees);
+}
+SPOT_GAIT_EXPORT int spot_stow_encode(const float degrees[12],int32_t ticks[12],float actual[12]) {
+    for(unsigned i=0;i<12;i++) {
+        if(!stow_encode(i,degrees[i],&ticks[i]))return 0;
+        actual[i]=(ticks[i]-g_robot_joints[i].center)*g_robot_joints[i].direction*360.f/4096.f;
+    }
+    return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_stow_attitude(int valid,int roll,int pitch){return stow_attitude_ok(valid,roll,pitch);}
+
+#include "pose_control.h"
+SPOT_GAIT_EXPORT int spot_pose_frame(const float start[12],const float end[12],unsigned elapsed,float out[12]) {
+    uint16_t from[12],to[12],ticks[12];
+    for(unsigned i=0;i<12;i++) {
+        if(!isfinite(start[i]) || !isfinite(end[i]) || fabsf(start[i])>300 || fabsf(end[i])>300)return -1;
+        if(!robot_angle_tenths_to_position(i,lroundf(start[i]*10),from+i) || !robot_angle_tenths_to_position(i,lroundf(end[i]*10),to+i))return -1;
+    }
+    unsigned duration=pose_duration(from,to);pose_frame(from,to,duration,elapsed,ticks);
+    for(unsigned i=0;i<12;i++)out[i]=(ticks[i]-g_robot_joints[i].center)*g_robot_joints[i].direction*360.f/4096.f;
+    return duration;
+}

@@ -126,6 +126,8 @@ def estimate_timeout(command: str) -> float | None:
     if not tokens:
         return DEFAULT_TIMEOUT_SECONDS
     name = tokens[0]
+    if name in {"landing", "stand", "stand11", "stow"}:
+        return 75.0
     if name == "scan":
         return 30.0
     if name not in _TIMED_COMMANDS:

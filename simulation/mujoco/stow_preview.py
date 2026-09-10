@@ -49,9 +49,8 @@ def make_plant(extended=False, overhead=False):
     p=json.loads((CAD/'physics_parameters.json').read_text())
     p['timestep_s']=.0005
     if overhead:
-        # Unwrapped full-turn design study; the real single-turn encoder cannot
-        # express this path. Keep physical motor/voltage/contact dynamics.
-        p['embedded_servo_quantization']=False
+        # Use the same signed STS3250 encoder as physical Stow.
+        p['embedded_servo_quantization']=True
         p['experimental_stow']=True
     xml,_=build(p,write_scene=False)
     model=mujoco.MjModel.from_xml_string(xml)
@@ -61,7 +60,9 @@ def make_plant(extended=False, overhead=False):
     if overhead:
         for leg in ('fl','fr'):
             model.jnt_range[model.joint(leg+'_j2').id]=np.radians([-275,105])
-    return Simulation(p,model=model)
+    plant=Simulation(p,model=model)
+    plant.stow_active=overhead
+    return plant
 
 
 def envelope(plant):

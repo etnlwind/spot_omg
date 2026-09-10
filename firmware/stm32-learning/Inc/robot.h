@@ -74,7 +74,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "shared-locomotion-v24"
+#define ROBOT_CONTROL_REV "shared-locomotion-v34"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -156,6 +156,13 @@ typedef struct
     bool heading_enabled;
     RobotHeadingReader heading_reader;
     bool locomotion_fault;
+    RobotResult locomotion_fault_reason;
+    bool stow_active;
+    bool stow_complete;
+    bool stow_tracking_failure;
+    uint32_t stow_failure_elapsed;
+    int32_t stow_failure_target;
+    int32_t stow_failure_actual;
     bool shared_idle;
     uint32_t shared_idle_at;
     DriveControl drive_control;
@@ -324,6 +331,16 @@ RobotResult robot_move_single_safe(RobotController *robot,
                                    uint8_t servo_id,
                                    uint16_t target_position,
                                    uint16_t maximum_delta);
+
+
+void robot_latch_locomotion_fault(RobotController *robot, RobotResult reason);
+RobotResult robot_prepare_new_command(RobotController *robot);
+RobotResult robot_stow(RobotController *robot, bool folded);
+RobotResult robot_stow_probe(RobotController *robot);
+RobotResult robot_stow_check(RobotController *robot);
+RobotResult robot_stow_check_modes(RobotController *robot);
+RobotResult robot_stow_hold(RobotController *robot);
+RobotResult robot_stow_hold_check(RobotController *robot, uint8_t id, bool extended, bool canonical);
 
 const char *robot_result_string(RobotResult result);
 

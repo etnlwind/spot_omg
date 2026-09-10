@@ -113,6 +113,9 @@ void servo_bus_init(ServoBus *bus,
     }
 
     bus->uart = uart;
+    bus->front_position_bias[0] = bus->front_position_bias[1] = 0;
+    bus->front_stow_origin[0] = bus->front_stow_origin[1] = 0;
+    bus->front_origin_valid[0] = bus->front_origin_valid[1] = false;
     bus->timeout_ms = timeout_ms;
     bus->last_servo_error = 0U;
     bus->read_retry_attempts = 0U;

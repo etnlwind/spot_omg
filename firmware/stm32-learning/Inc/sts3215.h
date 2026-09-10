@@ -44,6 +44,8 @@ ServoBusResult sts3215_read_position(ServoBus *bus,
                                      uint8_t servo_id,
                                      uint16_t *position);
 
+ServoBusResult sts3215_read_state_raw(ServoBus *bus, uint8_t servo_id, Sts3215State *state);
+
 ServoBusResult sts3215_read_state(ServoBus *bus,
                                   uint8_t servo_id,
                                   Sts3215State *state);

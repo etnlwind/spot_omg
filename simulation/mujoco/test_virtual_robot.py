@@ -35,6 +35,8 @@ def test_motion_uses_torque_not_teleport(robot):
     assert robot.plant.data.time == pytest.approx(1.02)
     assert not np.allclose(before,robot.plant.data.qpos)
     assert np.any(robot.plant.data.ctrl)
+    assert b'OK landing' not in robot.drain()
+    tick(robot,300,1.02)
     assert b'OK landing' in robot.drain()
 
 
@@ -142,8 +144,9 @@ def test_balance_enabled_by_default_and_suspended_for_landing(robot):
     robot.command('landing',1.2)
     tick(robot,60,1.2)
     assert not robot.balance.applied
-    robot.command('stand',2.4)
-    tick(robot,60,2.4)
+    tick(robot,300,2.4)
+    robot.command('stand',float(robot.plant.data.time))
+    tick(robot,350,float(robot.plant.data.time))
     assert robot.balance.applied
     robot.command('simbalance off',3.6)
     tick(robot,30,3.6)

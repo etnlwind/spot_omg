@@ -1099,3 +1099,7 @@ BUSPROBE RX (6): FF FF 01 02 00 FC
 `config/*.md`는 `joints.json`에서 자동 생성되는 사람이 읽기 위한 표이며 펌웨어가
 런타임에 Markdown을 읽지는 않습니다. 값 변경 시 JSON과 `robot_config.c`를 함께
 갱신하고 위 호스트 회귀 시험과 ARM 빌드를 모두 다시 수행합니다.
+
+## STS3250 위치 좌표 주의사항
+
+서보 위치·Stow/Landing 변경 전 [실기 위치 제어 기준](../../docs/STS3250-POSITION-CONTROL.md)을 먼저 읽습니다. 누적 목표와 단회전 피드백을 같은 좌표로 가정하면 큰 역회전을 명령할 수 있습니다.

@@ -7,6 +7,7 @@
 #include "robot_config.h"
 #include "safety.h"
 #include "sts3215.h"
+#include "stow_control.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -125,6 +126,19 @@ static void print_robot_result(AppConsole *console, RobotResult result)
 {
     char message[128];
 
+    if(result==ROBOT_VERIFY_ERROR && console->robot->stow_tracking_failure) {
+        RobotController *r=console->robot;
+        (void)snprintf(message,sizeof(message),
+            "STOW_TRACK id=%u elapsed=%lu target=%ld actual=%ld\r\n",
+            (unsigned)r->last_failed_servo_id,(unsigned long)r->stow_failure_elapsed,
+            (long)r->stow_failure_target,(long)r->stow_failure_actual);
+        write_text(console,message);
+        (void)flight_log_appendf("STOW_TRACK id=%u elapsed=%lu target=%ld actual=%ld",
+            (unsigned)r->last_failed_servo_id,(unsigned long)r->stow_failure_elapsed,
+            (long)r->stow_failure_target,(long)r->stow_failure_actual);
+        r->stow_tracking_failure=false;
+    }
+
     (void)flight_log_appendf("RESULT result=%s servo=%u bus=%s error=0x%02X",
                              robot_result_string(result),
                              (unsigned int)console->robot->last_failed_servo_id,
@@ -138,18 +152,18 @@ static void print_robot_result(AppConsole *console, RobotResult result)
     if (result == ROBOT_SAFETY_FAULT) {
         print_safety_fault(console);
         write_text(console,
-                   "ERROR: safety fault; torque off, run recover\r\n");
+                   "ERROR: safety fault; check obstruction/temperature and retry a new command\r\n");
         return;
     }
     if (result == ROBOT_SERVO_POWER_LOST) {
         write_text(console,
                    "ERROR: servo power lost; restore the 12V supply then "
-                   "run recover\r\n");
+                   "retry a new command\r\n");
         return;
     }
     if (result == ROBOT_IMU_ERROR) {
         write_text(console,
-                   "ERROR: IMU balance error; stand target requested\r\n");
+                   "ERROR: IMU balance error; motion cancelled\r\n");
         return;
     }
     if (result == ROBOT_ACTUATOR_PROFILE_ERROR) {
@@ -168,8 +182,8 @@ static void print_robot_result(AppConsole *console, RobotResult result)
     }
     if (result == ROBOT_TILT_LIMIT) {
         write_text(console,
-                   "ERROR: motion tilt safety limit reached; stand target "
-                   "requested\r\n");
+                   "ERROR: motion tilt safety limit reached; motion "
+                   "cancelled\r\n");
         return;
     }
 
@@ -535,6 +549,38 @@ static void command_read(AppConsole *console, char *id_text)
     write_text(console, message);
 }
 
+/* Read-only, including the unwrapped counter; never changes mode or torque. */
+static void command_stow_diagnostics(AppConsole *console)
+{
+    ServoBus *bus=console->robot->bus;
+    for(unsigned id=2;id<=5;id+=3) {
+        uint8_t mode,resolution,bounds[4],torque,goal[2];
+        Sts3215State state;
+        ServoBusResult result=sts3215_read_state_raw(bus,(uint8_t)id,&state);
+        if(result==SERVO_BUS_OK)result=servo_bus_read(bus,id,33,&mode,1);
+        if(result==SERVO_BUS_OK)result=servo_bus_read(bus,id,30,&resolution,1);
+        if(result==SERVO_BUS_OK)result=servo_bus_read(bus,id,9,bounds,4);
+        if(result==SERVO_BUS_OK)result=servo_bus_read(bus,id,40,&torque,1);
+        if(result==SERVO_BUS_OK)result=servo_bus_read(bus,id,42,goal,2);
+        if(result!=SERVO_BUS_OK){print_bus_result(console,id,result);continue;}
+        char text[192];
+        (void)snprintf(text,sizeof(text),
+            "STOW_RAW id=%u word=%u raw=%ld goal=%ld mode=%u res=%u min=%u max=%u torque=%u hw=%u\r\n",
+            id,(unsigned)state.position,(long)stow_unwire(state.position),
+            (long)stow_unwire(feetech_decode_u16(goal)),(unsigned)mode,(unsigned)resolution,
+            (unsigned)feetech_decode_u16(bounds),(unsigned)feetech_decode_u16(bounds+2),
+            (unsigned)torque,(unsigned)state.hardware_error);
+        write_text(console,text);
+        uint8_t config[40];
+        result=servo_bus_read(bus,id,0,config,sizeof config);
+        if(result!=SERVO_BUS_OK){print_bus_result(console,id,result);continue;}
+        int used=snprintf(text,sizeof(text),"STOW_CONFIG id=%u addr=0:",id);
+        for(unsigned j=0;j<sizeof config;j++)used+=snprintf(text+used,sizeof(text)-(size_t)used," %02X",config[j]);
+        (void)snprintf(text+used,sizeof(text)-(size_t)used,"\r\n");
+        write_text(console,text);
+    }
+}
+
 static void command_status(AppConsole *console)
 {
     servo_bus_clear_retry_diagnostics(console->robot->bus);
@@ -610,22 +656,25 @@ static void command_sync_state(AppConsole *console)
         torque = torque_raw == 0U ? "off" : "on";
     }
 
-    char message[320];
+    if(console->robot->stow_active)pose=console->robot->stow_complete?"stow":"stow-paused";
+    char message[400];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,balancecontrol%s profile=%s heading=%s reverse_limit=%d\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
-        (safety_is_faulted(&console->robot->safety) || console->robot->locomotion_fault) ? "fault" : "ok",
+        safety_is_faulted(&console->robot->safety) ? "fault" : console->robot->locomotion_fault ? (console->robot->locomotion_fault_reason==ROBOT_TILT_LIMIT ? "tilt":"fault") : "ok",
         console->robot->balance_enabled ?
             robot_balance_mode_string(console->robot->balance_mode) : "off",
         ROBOT_CONTROL_REV,
         console->robot->heading_reader ? ",headinghold" : "",
         locomotion_names[console->robot->locomotion_profile],
         console->robot->heading_reader ? (console->robot->heading_enabled ? "on":"off") : "unavailable",
-        console->robot->locomotion_profile>=3?600:1000);
+        console->robot->locomotion_profile>=3?600:1000,
+        "new-command",
+        (unsigned)console->robot->locomotion_fault_reason);
     write_text(console, message);
 }
 
@@ -876,6 +925,11 @@ static void command_safety(AppConsole *console)
     write_text(console, message);
 
     print_bus_retry_diagnostics(console);
+    (void)snprintf(message,sizeof(message),"Locomotion fault=%u reason=%s recovery=%s\r\n",
+        (unsigned)console->robot->locomotion_fault,
+        robot_result_string(console->robot->locomotion_fault_reason),
+        "new-command");
+    write_text(console,message);
 
     (void)snprintf(
         message,
@@ -928,7 +982,7 @@ static void command_gait_diagnostics(AppConsole *console)
 {
     const ActuatorDiagnostics *diagnostics =
         robot_gait_diagnostics(console->robot);
-    char message[320];
+    char message[400];
 
     if (diagnostics == NULL || diagnostics->total_samples == 0U) {
         write_text(console, "Gait diagnostics: no samples yet\r\n");
@@ -1100,7 +1154,7 @@ static void command_gait_diagnostics(AppConsole *console)
 static void command_balance_diagnostics(AppConsole *console)
 {
     const RobotController *robot = console->robot;
-    char message[320];
+    char message[400];
     char support[16];
 
     (void)snprintf(
@@ -2299,6 +2353,24 @@ static void execute_line(AppConsole *console)
         return;
     }
 
+    /* A new command may retry a stopped controller. Realtime @D heartbeat
+     * packets never enter this path. Stop/Relax remain independent of recovery. */
+    const char *motion_commands[]={"stand","landing","stow","stand11","forward11","hold","move",
+        "drive","trot","trotplace","trot2","trot3","trot4","trot4back","trot5","turn","crab","jump"};
+    for(size_t i=0;i<sizeof(motion_commands)/sizeof(motion_commands[0]);i++) {
+        if(strcmp(command,motion_commands[i]))continue;
+        RobotResult probe=robot_stow_probe(console->robot);
+        if(probe!=ROBOT_OK && probe!=ROBOT_POSITION_LIMIT) {print_robot_result(console,probe);return;}
+        if(console->robot->stow_active && strcmp(command,"landing") && strcmp(command,"stow") && strcmp(command,"hold")) {
+            write_text(console,"ERROR: Stow posture; unfold with landing first\r\n");return;
+        }
+        if(!console->robot->stow_active && strcmp(command,"stow")) {
+            RobotResult ready=robot_prepare_new_command(console->robot);
+            if(ready!=ROBOT_OK) {print_robot_result(console,ready);return;}
+        }
+        break;
+    }
+
     if (strcmp(command, "help") == 0) {
         app_console_print_help(console);
     } else if (strcmp(command, "ping") == 0) {
@@ -2328,9 +2400,9 @@ static void execute_line(AppConsole *console)
         char *position = strtok(NULL, " \t");
         command_move(console, id, position);
     } else if (strcmp(command, "hold") == 0) {
-        print_robot_result(console, robot_hold(console->robot));
+        print_robot_result(console, (console->robot->stow_active ? robot_stow_hold(console->robot) : robot_hold(console->robot)));
     } else if (strcmp(command, "stand11") == 0) {
-        write_text(console, "Straightening all four legs\r\n");
+        write_text(console, "Slowly straightening all four legs\r\n");
         finish_mechanical_pose(console, robot_stand_straight(console->robot), "stand11");
     } else if (strcmp(command, "forward11") == 0) {
         if (strtok(NULL, " \t") != NULL) {
@@ -2347,10 +2419,38 @@ static void execute_line(AppConsole *console)
             print_robot_result(console, result);
         }
     } else if (strcmp(command, "stand") == 0) {
-        write_text(console, "Starting direct synchronized stand move\r\n");
+        write_text(console, "Starting slow synchronized stand move\r\n");
         finish_mechanical_pose(console, robot_stand(console->robot), "stand");
+    } else if (strcmp(command, "stowdiag") == 0) {
+        command_stow_diagnostics(console);
+    } else if (strcmp(command, "stowholdcheck") == 0) {
+        uint32_t id;char *id_text=strtok(NULL," \t"),*mode=strtok(NULL," \t");
+        if(!parse_u32(id_text,2,5,&id) || (id!=2 && id!=5) || !mode ||
+           (strcmp(mode,"normal") && strcmp(mode,"extended") && strcmp(mode,"canonical")) || strtok(NULL," \t")) {
+            write_text(console,"usage: stowholdcheck 2|5 normal|extended|canonical; all torque must be off\r\n");return;
+        }
+        RobotResult result=robot_stow_hold_check(console->robot,(uint8_t)id,strcmp(mode,"normal")!=0,!strcmp(mode,"canonical"));
+        char message[160];RobotController *r=console->robot;
+        (void)snprintf(message,sizeof message,"STOW_HOLD id=%lu mode=%s target=%ld peak_actual=%ld elapsed=%lu\r\n",
+            (unsigned long)id,mode,(long)r->stow_failure_target,(long)r->stow_failure_actual,(unsigned long)r->stow_failure_elapsed);
+        write_text(console,message);(void)flight_log_append(message);
+        print_robot_result(console,result);
+    } else if (strcmp(command, "stowcheck") == 0) {
+        char *option=strtok(NULL," \t");
+        if(option && strcmp(option,"modes")){write_text(console,"usage: stowcheck [modes]\r\n");return;}
+        RobotResult result=option?robot_stow_check_modes(console->robot):robot_stow_check(console->robot);
+        if(result==ROBOT_OK)write_text(console,option?"STOWCHECK: temporary multi-turn and restore readback verified; torque off; no motion\r\n":"STOWCHECK: mode=0 resolution=1 limits=compatible; runtime readback required; no motion\r\n");
+        else print_robot_result(console,result);
+    } else if (strcmp(command, "stow") == 0) {
+        RobotResult result=robot_stow(console->robot,true);
+        if(result==ROBOT_OK)write_text(console,"OK stow\r\n");
+        else print_robot_result(console,result);
+    } else if (strcmp(command, "landing") == 0 && console->robot->stow_active) {
+        RobotResult result=robot_stow(console->robot,false);
+        if(result==ROBOT_OK)write_text(console,"OK landing\r\n");
+        else print_robot_result(console,result);
     } else if (strcmp(command, "landing") == 0) {
-        write_text(console, "Starting direct synchronized landing move\r\n");
+        write_text(console, "Starting slow synchronized landing move\r\n");
         finish_mechanical_pose(console, robot_landing(console->robot), "landing");
     } else if (strcmp(command, "trot") == 0) {
         char *cycles = strtok(NULL, " \t");

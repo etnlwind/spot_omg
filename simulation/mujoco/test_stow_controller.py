@@ -3,7 +3,7 @@ import numpy as np
 from cad_gait import CAD
 from cad_physics import Simulation
 from virtual_robot import RobotController
-from stow_policy import LANDING, FOLDED
+from stow_policy import LANDING, FOLDED, encode
 
 
 def controller(enabled=True):
@@ -21,12 +21,12 @@ def test_stow_roundtrip_uses_physics_and_restores_encoding():
     r.command('stow',0)
     np.testing.assert_array_equal(r.plant.data.qpos,before)
     assert r.stow_path and r.plant.stow_active
-    for _ in range(705):
+    for _ in range(1200):
         tick(r,1)
         if r.pose=='stow':break
     assert r.pose=='stow' and r.transition is None
     assert b'OK stow' in r.drain()
-    np.testing.assert_allclose(r.command_target,FOLDED,atol=.01)
+    np.testing.assert_array_equal(r.command_target,encode(FOLDED)[0])
     assert np.max(abs(np.degrees(r.plant.data.qpos[r.plant.q])-FOLDED))<8
     assert not r.torque
     tick(r,150)
@@ -34,7 +34,7 @@ def test_stow_roundtrip_uses_physics_and_restores_encoding():
     assert not r.balance.applied
     r.command('drive 500 0 1',15)
     assert b'ERROR' in r.drain() and r.motion is None
-    r.command('landing',15);tick(r,705)
+    r.command('landing',15);tick(r,1200)
     assert r.pose=='landing' and not r.stow_path and not r.plant.stow_active
     assert np.max(abs(np.degrees(r.plant.data.qpos[r.plant.q])-LANDING))<3
 
@@ -51,11 +51,11 @@ def test_stow_disconnect_and_hold_stop_transition_and_allow_unfold():
     assert b'ERROR' in r.drain()
 
 
-def test_normal_simulator_cannot_advertise_or_execute_stow():
+def test_normal_simulator_advertises_and_executes_shared_stow():
     r=controller(False);r.command('syncstate',0)
-    assert b'simstow' not in r.drain()
+    assert b',stow' in r.drain()
     r.command('stow',0)
-    assert b'ERROR' in r.drain() and not r.stow_path
+    assert r.stow_path and b'ERROR' not in r.drain()
 
 
 def test_emergency_interrupt_cancels_midfold_without_pose_teleport_or_resume():
@@ -85,7 +85,7 @@ def test_stow_can_resume_either_direction_from_interrupted_position():
         np.testing.assert_array_equal(r.plant.data.qpos,before)
         np.testing.assert_array_equal(r.transition[0],held)
         assert r.transition[3]==12
-        for _ in range(705):
+        for _ in range(1200):
             tick(r,1)
             if r.pose==next_command:break
         assert r.pose==next_command
@@ -93,7 +93,7 @@ def test_stow_can_resume_either_direction_from_interrupted_position():
 
 
 def test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque():
-    r=controller();r.command('stow',0);tick(r,850)
+    r=controller();r.command('stow',0);tick(r,1100)
     assert r.pose=='stow' and not r.torque
     before=r.plant.data.qpos.copy()
     measured=np.degrees(before[r.plant.q])
@@ -103,7 +103,7 @@ def test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque():
     np.testing.assert_allclose(r.transition[0],measured)
     assert r.torque
     for target in r.plant.delay:np.testing.assert_allclose(np.degrees(target),measured)
-    tick(r,705)
+    tick(r,1200)
     assert r.pose=='landing' and not r.stow_path
 
 

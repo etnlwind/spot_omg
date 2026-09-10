@@ -1,4 +1,5 @@
 #include "robot.h"
+#include "pose_control.h"
 
 #include "actuator_control.h"
 #include "safety.h"
@@ -67,6 +68,13 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->heading_enabled = true;
     robot->heading_reader = NULL;
     robot->locomotion_fault = false;
+    robot->stow_active = false;
+    robot->stow_complete = false;
+    robot->stow_tracking_failure = false;
+    robot->stow_failure_elapsed = 0;
+    robot->stow_failure_target = 0;
+    robot->stow_failure_actual = 0;
+    robot->locomotion_fault_reason = ROBOT_OK;
     robot->shared_idle = false;
     robot->shared_idle_at = 0;
     memset(&robot->drive_control,0,sizeof(robot->drive_control));
@@ -208,7 +216,8 @@ bool robot_drive_update_realtime(RobotController *robot,
                                  int16_t yaw,
                                  uint32_t received_at_ms)
 {
-    if (robot == NULL || !robot->drive_active ||
+    if (robot == NULL || !robot->drive_active || robot->locomotion_fault ||
+        safety_is_faulted(&robot->safety) ||
         linear < -ROBOT_DRIVE_INPUT_LIMIT ||
         linear > ROBOT_DRIVE_INPUT_LIMIT ||
         yaw < -ROBOT_DRIVE_INPUT_LIMIT || yaw > ROBOT_DRIVE_INPUT_LIMIT ||
@@ -360,6 +369,7 @@ RobotResult robot_recover(RobotController *robot)
      */
     safety_clear(&robot->safety);
     robot->locomotion_fault = false;
+    robot->locomotion_fault_reason = ROBOT_OK;
     robot->safety_scan_index = 0U;
     robot->motion_abort_requested = false;
     return robot_hold(robot);
@@ -370,7 +380,7 @@ RobotResult robot_hold(RobotController *robot)
     if(robot) robot->shared_idle=false;
     uint16_t current[ROBOT_JOINT_COUNT];
 
-    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+    if (robot != NULL && (safety_is_faulted(&robot->safety) || robot->locomotion_fault)) {
         return ROBOT_SAFETY_FAULT;
     }
 
@@ -435,69 +445,13 @@ static RobotResult sample_joint(RobotController *robot,
  * simply run out of time are reported too, with torque off, since not arriving
  * means still pushing.
  */
+typedef bool (*RobotPoseTargets)(uint16_t targets[ROBOT_JOINT_COUNT]);
+static RobotResult robot_move_to_pose(RobotController *, RobotPoseTargets);
+static RobotResult sample_next_joint(RobotController *,const uint16_t [ROBOT_JOINT_COUNT],uint16_t);
 RobotResult robot_stand_straight(RobotController *robot)
 {
-    if(robot) robot->shared_idle=false;
-    uint16_t target[ROBOT_JOINT_COUNT];
-    uint16_t position = 0U;
-
-    if (robot == NULL || robot->bus == NULL) {
-        return ROBOT_INVALID_ARGUMENT;
-    }
-    if (safety_is_faulted(&robot->safety)) {
-        return ROBOT_SAFETY_FAULT;
-    }
-    if (!robot_straight_targets(target)) {
-        return ROBOT_CONFIG_ERROR;
-    }
-
-    RobotResult result = robot_hold(robot);
-    if (result != ROBOT_OK) {
-        return result;
-    }
-
-    const ServoBusResult bus_result = sts3215_sync_positions(
-        robot->bus, g_robot_servo_ids, target, ROBOT_JOINT_COUNT);
-    if (bus_result != SERVO_BUS_OK) {
-        return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
-    }
-
-    const uint32_t started_at = HAL_GetTick();
-    for (;;) {
-        uint16_t worst_error = 0U;
-        uint8_t worst_servo_id = 0U;
-
-        for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
-            bool tripped = false;
-            result = sample_joint(robot, index, target, 0U, &position,
-                                  &tripped);
-            if (result != ROBOT_OK) {
-                return result;
-            }
-            int32_t error = (int32_t)position - (int32_t)target[index];
-            if (error < 0) {
-                error = -error;
-            }
-            if ((uint32_t)error > worst_error) {
-                worst_error = (uint16_t)error;
-                worst_servo_id = g_robot_servo_ids[index];
-            }
-        }
-
-        if (worst_error <= ROBOT_VERIFY_TOLERANCE) {
-            return ROBOT_OK;
-        }
-        if ((uint32_t)(HAL_GetTick() - started_at) >=
-            ROBOT_STRAIGHTEN_TIMEOUT_MS) {
-            /* Still short of the pose, so still pushing: stop pushing. */
-            (void)robot_relax(robot);
-            robot->last_failed_servo_id = worst_servo_id;
-            return ROBOT_VERIFY_ERROR;
-        }
-    }
+    return robot_move_to_pose(robot,robot_straight_targets);
 }
-
-typedef bool (*RobotPoseTargets)(uint16_t targets[ROBOT_JOINT_COUNT]);
 
 static RobotResult robot_move_to_pose(RobotController *robot,
                                       RobotPoseTargets build_targets)
@@ -508,7 +462,7 @@ static RobotResult robot_move_to_pose(RobotController *robot,
      * cutting torque is the safe direction and must work in any state.
      * robot_recover() clears the latch before it holds, so it is unaffected.
      */
-    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+    if (robot != NULL && (safety_is_faulted(&robot->safety) || robot->locomotion_fault)) {
         return ROBOT_SAFETY_FAULT;
     }
     uint16_t target[ROBOT_JOINT_COUNT];
@@ -521,21 +475,36 @@ static RobotResult robot_move_to_pose(RobotController *robot,
         return ROBOT_CONFIG_ERROR;
     }
 
+    robot->motion_abort_requested=false;
     RobotResult result = robot_hold(robot);
     if (result != ROBOT_OK) {
         return result;
     }
 
-    ServoBusResult bus_result = sts3215_sync_positions(robot->bus,
-                                                       g_robot_servo_ids,
-                                                       target,
-                                                       ROBOT_JOINT_COUNT);
-    if (bus_result != SERVO_BUS_OK) {
-        return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
+    uint16_t from[12],frame[12];
+    result=robot_read_positions(robot,from);
+    if(result!=ROBOT_OK)return result;
+    uint32_t duration=pose_duration(from,target);
+    if(duration==0) {
+        ServoBusResult sent=sts3215_sync_move(robot->bus,g_robot_servo_ids,target,12,robot->profile_speed,robot->profile_acceleration);
+        if(sent!=SERVO_BUS_OK)return bus_failure(robot,254,sent);
+    }
+    for(uint32_t elapsed=20;elapsed<=duration;elapsed+=20) {
+        uint32_t started=HAL_GetTick();
+        if(robot->motion_abort_requested) {
+            (void)robot_hold(robot);return ROBOT_MOTION_ABORTED;
+        }
+        pose_frame(from,target,duration,elapsed,frame);
+        ServoBusResult bus_result=sts3215_sync_move(robot->bus,g_robot_servo_ids,frame,12,300,30);
+        if(bus_result!=SERVO_BUS_OK){(void)robot_relax(robot);return bus_failure(robot,254,bus_result);}
+        result=sample_next_joint(robot,frame,0);
+        if(result!=ROBOT_OK){(void)robot_relax(robot);return result;}
+        uint32_t spent=HAL_GetTick()-started;if(spent<20)HAL_Delay(20-spent);
     }
 
     const uint32_t verify_started_at = HAL_GetTick();
     for (;;) {
+        if(robot->motion_abort_requested){(void)robot_hold(robot);return ROBOT_MOTION_ABORTED;}
         result = robot_read_positions(robot, measured_positions);
         if (result != ROBOT_OK) {
             return result;
@@ -557,11 +526,14 @@ static RobotResult robot_move_to_pose(RobotController *robot,
         }
 
         if (all_within_tolerance) {
-            return ROBOT_OK;
+            ServoBusResult restored=sts3215_sync_move(robot->bus,g_robot_servo_ids,target,12,robot->profile_speed,robot->profile_acceleration);
+            return restored==SERVO_BUS_OK?ROBOT_OK:bus_failure(robot,254,restored);
         }
+        result=sample_next_joint(robot,target,0);
+        if(result!=ROBOT_OK){(void)robot_relax(robot);return result;}
         if ((uint32_t)(HAL_GetTick() - verify_started_at) >=
             ROBOT_VERIFY_TIMEOUT_MS) {
-            return ROBOT_VERIFY_ERROR;
+            (void)robot_relax(robot);return ROBOT_VERIFY_ERROR;
         }
         HAL_Delay(ROBOT_VERIFY_POLL_MS);
     }
@@ -893,7 +865,7 @@ static void return_to_stand_best_effort(RobotController *robot)
      * torque is already off, and sending a stand target would re-command the
      * caught joint and put the current straight back.
      */
-    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+    if (robot != NULL && (safety_is_faulted(&robot->safety) || robot->locomotion_fault)) {
         return;
     }
     if (robot != NULL && robot->bus != NULL &&
@@ -2009,7 +1981,7 @@ static RobotResult shared_observe(RobotController *robot)
     robot->balance_last_roll_error_tenths=robot->shared_attitude.filtered[0];
     robot->balance_last_pitch_error_tenths=robot->shared_attitude.filtered[1];
     if(fault) {
-        robot->locomotion_fault=true;robot->shared_idle=false;
+        robot_latch_locomotion_fault(robot, fault==1?ROBOT_IMU_ERROR:ROBOT_TILT_LIMIT);
         return fault==1?ROBOT_IMU_ERROR:ROBOT_TILT_LIMIT;
     }
     return ROBOT_OK;
@@ -2130,13 +2102,13 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if((int32_t)(deadline-now)>0) HAL_Delay(deadline-now);
         else {
             if(robot->balance_late_frames<UINT16_MAX)robot->balance_late_frames++;
-            if((uint32_t)(now-deadline)>40U) {result=ROBOT_MOTION_ABORTED;robot->locomotion_fault=true;break;}
+            if((uint32_t)(now-deadline)>40U) {result=ROBOT_MOTION_ABORTED;robot_latch_locomotion_fault(robot,result);break;}
             deadline=now; /* Never burst stale targets to catch up. */
         }
     }
     robot->gait_elapsed_ms=HAL_GetTick()-started;robot->gait_diagnostics_active=false;
     memset(&robot->drive_control.heading,0,sizeof(robot->drive_control.heading));
-    if(result!=ROBOT_OK) {robot->shared_idle=false;return_to_stand_best_effort(robot);return result;}
+    if(result!=ROBOT_OK) {robot_latch_locomotion_fault(robot,result);return result;}
     robot->shared_idle=true;
     return watchdog?ROBOT_DRIVE_WATCHDOG:ROBOT_OK;
 }
@@ -2149,9 +2121,10 @@ void robot_control_idle(RobotController *robot)
     if(shared_observe(robot)!=ROBOT_OK)return;
     GaitPolicyLegTarget out[4];for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
     uint16_t positions[12];
-    if(!shared_correct(robot,out,true,false) || !gait_policy_to_servo_targets(out,positions)) {robot->shared_idle=false;robot->locomotion_fault=true;return;}
+    if(!shared_correct(robot,out,true,false) || !gait_policy_to_servo_targets(out,positions)) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
     ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,12);
-    if(sent!=SERVO_BUS_OK || sample_next_joint(robot,positions,0)!=ROBOT_OK) {robot->shared_idle=false;robot->locomotion_fault=true;}
+    RobotResult result=sent==SERVO_BUS_OK ? sample_next_joint(robot,positions,0) : bus_failure(robot,FEETECH_BROADCAST_ID,sent);
+    if(result!=ROBOT_OK) robot_latch_locomotion_fault(robot,result);
 }
 
 RobotResult robot_drive(RobotController *robot,
@@ -2378,7 +2351,7 @@ RobotResult robot_move_single_safe(RobotController *robot,
      * state the shutdown deliberately avoids.  Recovery goes through
      * robot_recover(), which brings all twelve back together.
      */
-    if (robot != NULL && safety_is_faulted(&robot->safety)) {
+    if (robot != NULL && (safety_is_faulted(&robot->safety) || robot->locomotion_fault)) {
         return ROBOT_SAFETY_FAULT;
     }
     uint16_t current = 0U;
@@ -2471,9 +2444,9 @@ const char *robot_result_string(RobotResult result)
     case ROBOT_DRIVE_WATCHDOG:
         return "drive watchdog expired";
     case ROBOT_SAFETY_FAULT:
-        return "safety fault; torque off, run recover";
+        return "safety fault; check cause and retry new command";
     case ROBOT_SERVO_POWER_LOST:
-        return "servo power lost; restore supply then run recover";
+        return "servo power lost; restore supply then retry new command";
     case ROBOT_TILT_LIMIT:
         return "tilt safety limit reached";
     default:

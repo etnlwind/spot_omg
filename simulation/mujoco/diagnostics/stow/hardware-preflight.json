@@ -1,37 +1,50 @@
 {
-  "hardware_ready": false,
-  "encoder_pass": false,
-  "encoder_failures": [
-    {
-      "servo_id": 2,
-      "leg": "FL",
-      "joint": 2,
-      "first_failed_fold_time_s": 7.6000000000000005,
-      "first_failed_angle_deg": -177.55508537232876,
-      "configured_encoder_range_deg": [
-        -177.36328125,
-        182.548828125
-      ],
-      "stow_target_deg": -254.63
-    },
-    {
-      "servo_id": 5,
-      "leg": "FR",
-      "joint": 2,
-      "first_failed_fold_time_s": 7.4,
-      "first_failed_angle_deg": -169.4642180776596,
-      "configured_encoder_range_deg": [
-        -168.92578125,
-        190.986328125
-      ],
-      "stow_target_deg": -254.63
-    }
+  "encoder_pass": true,
+  "encoder_failures": [],
+  "encoder": "shared stow_control.h, signed-magnitude STS absolute position",
+  "tick_min": [
+    1929,
+    1622,
+    2015,
+    2089,
+    -975,
+    602,
+    2104,
+    1487,
+    2014,
+    1951,
+    1336,
+    567
   ],
-  "reason": "Current Stow path fails existing firmware position encoding",
-  "additional_unverified": [
-    "exact mesh/shaft/housing/wire clearances",
-    "measured joint hard stops and encoder seam behavior",
-    "PLA/PETG mass/inertia, backlash and friction uncertainty",
-    "loaded actuator response and electrical/thermal envelope"
+  "tick_max": [
+    1929,
+    4974,
+    3444,
+    2089,
+    2377,
+    2031,
+    2104,
+    2861,
+    3443,
+    1951,
+    2710,
+    1996
+  ],
+  "max_frame_step_ticks": 12,
+  "multi_turn_servo_ids": [
+    2,
+    5
+  ],
+  "physical_validation": "pending",
+  "required_runtime_checks": [
+    "STS3250 position mode 0, resolution 1; verify limits 9/11 zero",
+    "torque-off before mode change; settings readback before torque enable",
+    "temperature/hardware-error/load/tracking checks; stop and resume",
+    "verify normalized counters before returning to ordinary gait after power loss"
+  ],
+  "limitations": [
+    "CAD joint axes and assembly tolerances remain provisional",
+    "mesh clearance does not model wires or all same-leg/chassis contacts",
+    "host and MuJoCo tests do not replace on-robot validation"
   ]
 }

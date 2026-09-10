@@ -3,7 +3,7 @@
 Run with mjpython for --viewer. No hardware transport is imported or opened.
 The protocol adapter is intentionally separate from the physics plant.
 """
-from stow_policy import LANDING, FOLDED, FOLD_SECONDS, RELEASE_TORQUE_AT_STOW
+from stow_policy import LANDING, FOLDED, FOLD_SECONDS, RELEASE_TORQUE_AT_STOW, frame as stow_frame, attitude_ok as stow_attitude_ok, pose_frame as shared_pose_frame
 import argparse
 import collections
 import json
@@ -90,6 +90,11 @@ class RobotController:
         self.transition = (self.target.copy(), np.array(target), 0., duration, completion)
         self.pose = 'custom'
 
+    def blend_pose(self,target,completion):
+        self.capture_current_target()
+        _,duration=shared_pose_frame(self.target,target)
+        self.blend(target,completion,max(.02,duration))
+
     def capture_current_target(self):
         """Restart from the measured pose without restoring an old queued goal."""
         held=self.plant.data.qpos[self.plant.q].copy()
@@ -156,7 +161,7 @@ class RobotController:
                 self.reply()
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v24-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold{",simstow" if self.plant.p.get("experimental_stow") else ""} imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v27-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'locomotiondiag':
@@ -190,10 +195,10 @@ class RobotController:
                 raise ValueError('busy; stop and wait for prompt')
             elif self.stow_path and cmd not in ('stow','landing','recover','relax'):
                 raise ValueError('unfold with landing before other commands')
+            elif cmd=='stowcheck' and len(words)==1:
+                self.reply('STOWCHECK: shared signed STS3250 encoder; simulated mode=0 resolution=1; no motion')
             elif cmd=='stow' and len(words)==1:
-                if not self.plant.p.get('experimental_stow'):
-                    raise ValueError('Stow requires --stow experimental simulator')
-                if self.safety!='ok':raise ValueError('recover required')
+                self.safety='ok'  # Fresh command retries; active IMU checks still stop faults.
                 already_stow=self.stow_path
                 if already_stow and not self.torque:self.capture_current_target()
                 self.stow_path=True;self.plant.stow_active=True;self.torque=True
@@ -202,7 +207,7 @@ class RobotController:
                     self.blend(FOLDED,'OK stow',FOLD_SECONDS)
                 else:
                     self.stow_queue=[(FOLDED,'OK stow',FOLD_SECONDS)]
-                    self.blend(LANDING,'STOW landing',2.)
+                    self.blend_pose(LANDING,'STOW landing')
             elif cmd=='landing' and self.stow_path and len(words)==1:
                 self.capture_current_target()
                 self.torque=True
@@ -232,7 +237,8 @@ class RobotController:
                 self.torque=True
                 target = {'stand':[0,45,90]*4,'stand11':[0,0,0]*4,'landing':[0,40,130]*4,
                           'hold':np.degrees(self.plant.data.qpos[self.plant.q])}[cmd]
-                self.blend(target, 'OK '+cmd)
+                if cmd in ('stand','stand11','landing'):self.blend_pose(target,'OK '+cmd)
+                else:self.blend(target,'OK '+cmd)
             elif cmd == 'drive':
                 linear,yaw,seq=map(int,words[1:])
                 if max(abs(linear),abs(yaw))>1000 or not 0<=seq<=0xffffffff:
@@ -302,7 +308,12 @@ class RobotController:
             start,end,elapsed,duration,completion=self.transition
             elapsed=min(duration,elapsed+.02)
             t=self.plant.policy.smootherstep(elapsed/duration)
-            self.target=start+(end-start)*t
+            if self.stow_path and completion in ('OK stow','OK landing'):
+                self.target=np.asarray(stow_frame(start,completion=='OK stow',elapsed)[0])
+            elif completion in ('OK stand','OK stand11','OK landing','STOW landing'):
+                self.target=np.asarray(shared_pose_frame(start,end,elapsed)[0])
+            else:
+                self.target=start+(end-start)*t
             self.transition=(start,end,elapsed,duration,completion)
             if elapsed>=duration:
                 self.transition=None
@@ -311,7 +322,7 @@ class RobotController:
                 elif completion:
                     if self.stow_path and completion in ('OK stow','OK landing'):
                         error=float(np.max(abs(np.degrees(self.plant.data.qpos[self.plant.q])-end)))
-                        if error>12:
+                        if error>5:
                             self.capture_current_target()
                             if completion=='OK stow':self.torque=False
                             completion=f'ERROR: Stow posture target not reached ({error:.1f} deg)'
@@ -377,6 +388,8 @@ class RobotController:
         previous_safety = self.safety
         if self.plant.data.time >= ready_at:
             fault = self.attitude_filter.update(self.imu_reading)
+            if self.stow_path and self.transition and not stow_attitude_ok(self.imu_reading):
+                self.stop('Stow IMU/tilt limit');self.torque=False;self.safety='imu' if self.imu_reading is None else 'tilt'
             if (self.motion or (self.balance.enabled and self.pose=='stand' and self.torque)) and fault:
                 self.safety=fault
                 if self.motion: self.finish_stop(fault)
@@ -453,7 +466,7 @@ def main():
     parser=argparse.ArgumentParser(__doc__)
     parser.add_argument('--host',default='0.0.0.0',help='LAN control for iPhone; use 127.0.0.1 for Mac-only control')
     parser.add_argument('--port',type=int,default=8765)
-    parser.add_argument('--stow',action='store_true',help='Enable experimental full-turn Stow (simulation only)')
+    parser.add_argument('--stow',action='store_true',help='Compatibility option; shared physical Stow is enabled by default')
     parser.add_argument('--no-video',action='store_true',help='Disable LAN phone video')
     parser.add_argument('--video-host',default='0.0.0.0')
     parser.add_argument('--video-port',type=int,default=8766)
@@ -475,7 +488,7 @@ def main():
         from ble_bridge.build import build as build_bridge
         bridge_binary=build_bridge()
     parameters=json.loads(args.parameters.read_text()); parameters['timestep_s']=.0005
-    if args.stow:parameters['experimental_stow']=True
+    parameters['experimental_stow']=True
     plant=Simulation(parameters); controller=RobotController(plant)
     if args.profile: controller.select_profile(args.profile)
     controller.heading.enabled=args.heading=='on'

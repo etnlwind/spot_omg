@@ -2,11 +2,11 @@ import numpy as np
 from stow_preview import make_plant, STAGES
 
 
-def test_experimental_limits_do_not_modify_normal_robot():
+def test_stow_physical_joint_ranges_are_available_in_normal_robot():
     extended=make_plant(True)
     nominal=make_plant(False)
     for leg in ('fl','fr','rl','rr'):
-        np.testing.assert_allclose(np.degrees(nominal.model.jnt_range[nominal.model.joint(leg+'_j2').id]),[-45,100])
+        np.testing.assert_allclose(np.degrees(nominal.model.jnt_range[nominal.model.joint(leg+'_j2').id]),([-275,105] if leg in ('fl','fr') else [-95,105]))
         np.testing.assert_allclose(np.degrees(extended.model.jnt_range[extended.model.joint(leg+'_j2').id]),[-95,105])
 
 
@@ -45,7 +45,7 @@ def test_overhead_path_stops_before_original_overlap_orientation():
             hip=plant.data.xpos[plant.model.body('fl_j2_link').id]
             assert positions[0][2]-hip[2] > .2
     assert np.linalg.norm(positions[1]-positions[2]) > .01
-    assert plant.p['embedded_servo_quantization'] is False
+    assert plant.p['embedded_servo_quantization'] is True
     assert make_plant(True).p.get('embedded_servo_quantization',True) is True
 
 
