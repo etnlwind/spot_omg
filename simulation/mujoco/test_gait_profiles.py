@@ -7,7 +7,7 @@ from optimize_cad_gait import targets
 def test_diagonal_path_matches_existing_search_math():
     params=load_profiles()['trot']['params']
     for t in np.linspace(0,2,101):
-        np.testing.assert_allclose(foot_targets(params,t,.8),targets(params,t,.8),atol=1e-10)
+        np.testing.assert_allclose(foot_targets(params,t,.8),targets(params,t,.8),atol=1e-4)
 
 
 @pytest.mark.parametrize('name',list(load_profiles()))

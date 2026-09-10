@@ -262,6 +262,7 @@ int main(void)
                    (unsigned int)(imu055.address >> 1));
     uart_print(message);
     robot_set_attitude_reader(&robot, bno055_read_attitude, &imu055);
+    robot.heading_reader = bno055_read_heading;
     uart_print("IMU balance default ON: full, absolute level target\r\n");
   }
   else
@@ -336,6 +337,7 @@ int main(void)
       last_imu_print = HAL_GetTick();
     }
 
+    robot_control_idle(&robot);
     HAL_Delay(1);
   }
   /* USER CODE END 3 */

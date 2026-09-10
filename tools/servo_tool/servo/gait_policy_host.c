@@ -297,3 +297,81 @@ SPOT_GAIT_EXPORT uint16_t spot_gait_drive_period_ms(int16_t linear, int16_t yaw)
 {
     return gait_policy_drive_period_ms(linear, yaw);
 }
+
+#include "heading_control.h"
+SPOT_GAIT_EXPORT float spot_heading_update(float v[6], float heading,
+    int valid, int enabled, float linear, float manual_yaw, float applied_yaw, float dt)
+{
+    HeadingControl s = {v[0], v[1], v[2], v[3], v[4], v[5] != 0};
+    float result = heading_update(&s, heading, valid, enabled, linear, manual_yaw, applied_yaw, dt);
+    v[0]=s.reference; v[1]=s.error; v[2]=s.integral;
+    v[3]=s.correction; v[4]=s.settling; v[5]=s.active;
+    return result;
+}
+
+#include "locomotion.h"
+SPOT_GAIT_EXPORT int spot_locomotion_targets(int profile,float phase,float scale,float linear,float yaw,float values[12]) {
+    GaitPolicyLegTarget targets[4];
+    if(!locomotion_targets(profile,phase,scale,linear,yaw,targets)) return 0;
+    pack_targets(targets,values);return 1;
+}
+SPOT_GAIT_EXPORT int spot_foot_targets(const float params[7],float phase,float scale,int family,float linear,float yaw,float values[12]) {
+    GaitPolicyLegTarget targets[4];
+    if(!locomotion_foot_targets(params,phase,scale,family,linear,yaw,targets)) return 0;
+    pack_targets(targets,values);return 1;
+}
+SPOT_GAIT_EXPORT float spot_locomotion_period(int profile,float linear,float yaw) {return locomotion_period(profile,linear,yaw);}
+
+#include "balance_control.h"
+SPOT_GAIT_EXPORT int spot_balance_control(float state[16],float values[12],const float imu[4],int enabled,int standing,float kp,float kd,float ki) {
+    BalanceControl s={0};s.integral[0]=state[0];s.integral[1]=state[1];
+    for(int i=0;i<12;i++)s.correction[i]=state[i+2];
+    s.saturated=state[14]!=0;s.applied=state[15]!=0;
+    GaitPolicyLegTarget targets[4];unpack_targets(values,targets);
+    GaitPolicyImuSample sample={imu[0],imu[1],imu[2],imu[3]};
+    if(!balance_control_apply(&s,targets,&sample,enabled,standing,kp,kd,ki))return 0;
+    pack_targets(targets,values);
+    state[0]=s.integral[0];state[1]=s.integral[1];
+    for(int i=0;i<12;i++)state[i+2]=s.correction[i];
+    state[14]=s.saturated;state[15]=s.applied;return 1;
+}
+SPOT_GAIT_EXPORT int spot_balance_control_policy(float state[16],float values[12],const float imu[4],int enabled,int standing,float kp,float kd,float ki,int profile,float phase,int moving,float linear,float yaw) {
+    BalanceControl s={0};s.integral[0]=state[0];s.integral[1]=state[1];
+    for(int i=0;i<12;i++)s.correction[i]=state[i+2];
+    s.saturated=state[14]!=0;s.applied=state[15]!=0;
+    GaitPolicyLegTarget targets[4];unpack_targets(values,targets);
+    GaitPolicyImuSample sample={imu[0],imu[1],imu[2],imu[3]};
+    if(!balance_control_apply_policy(&s,targets,&sample,enabled,standing,kp,kd,ki,profile,phase,moving,linear,yaw))return 0;
+    pack_targets(targets,values);
+    state[0]=s.integral[0];state[1]=s.integral[1];
+    for(int i=0;i<12;i++)state[i+2]=s.correction[i];
+    state[14]=s.saturated;state[15]=s.applied;return 1;
+}
+
+#include "attitude_control.h"
+#include "drive_control.h"
+SPOT_GAIT_EXPORT int spot_attitude_update(int v[9],int valid,int roll,int pitch) {
+    AttitudeControl s={{v[0],v[1]},{v[2],v[3]},{v[4],v[5]},v[6],v[7],v[8]!=0};
+    int fault=attitude_update(&s,valid,roll,pitch);
+    for(int i=0;i<2;i++){v[i]=s.previous[i];v[i+2]=s.filtered[i];v[i+4]=s.rate[i];}
+    v[6]=s.failures;v[7]=s.tilt_frames;v[8]=s.initialized;return fault;
+}
+SPOT_GAIT_EXPORT int spot_drive_step(float v[10],int profile,float linear,float yaw,float heading,int valid,int enabled,int stopping,float out[12]) {
+    DriveControl s={v[0],v[1],v[2],v[3],{v[4],v[5],v[6],v[7],v[8],v[9]!=0}};
+    GaitPolicyLegTarget targets[4];
+    if(!drive_control_step(&s,profile,linear,yaw,heading,valid,enabled,stopping,targets))return 0;
+    v[0]=s.phase;v[1]=s.linear;v[2]=s.yaw;v[3]=s.elapsed;
+    v[4]=s.heading.reference;v[5]=s.heading.error;v[6]=s.heading.integral;v[7]=s.heading.correction;v[8]=s.heading.settling;v[9]=s.heading.active;
+    pack_targets(targets,out);return 1;
+}
+
+#include "locomotion_servo.h"
+SPOT_GAIT_EXPORT int spot_servo_encode(const float values[12],uint16_t ticks[12],float decoded[12]) {
+    GaitPolicyLegTarget targets[4];unpack_targets(values,targets);
+    if(!locomotion_servo_targets(targets,ticks))return 0;
+    for(int i=0;i<12;i++) {
+        const RobotJointConfig *j=&g_robot_joints[i];
+        decoded[j->leg_index*3+j->joint_index-1]=((int)ticks[i]-j->center)*j->direction*360.f/4096.f;
+    }
+    return 1;
+}

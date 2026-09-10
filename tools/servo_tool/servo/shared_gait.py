@@ -142,8 +142,12 @@ class SharedGaitPolicy:
     @classmethod
     def _build_library(cls) -> Path:
         wrapper, header = cls._paths()
+        manifest=header.parents[3]/"config"/"locomotion_profiles.json"
+        manifest_hash=hashlib.sha256(manifest.read_bytes()).hexdigest()
+        if manifest_hash not in header.with_name("locomotion_profiles.h").read_text():
+            raise RuntimeError("Stale deployed gait header: run tools/generate_locomotion_profiles.py")
         digest = hashlib.sha256(
-            wrapper.read_bytes() + header.read_bytes()
+            wrapper.read_bytes() + header.read_bytes() + b"".join(header.with_name(name).read_bytes() for name in ("heading_control.h", "locomotion.h", "locomotion_profiles.h", "balance_control.h", "drive_control.h", "attitude_control.h", "locomotion_servo.h", "robot_config.h", "motor_capability.h")) + (header.parent.parent / "Src" / "robot_config.c").read_bytes()
         ).hexdigest()[:16]
         extension = ".dylib" if platform.system() == "Darwin" else ".so"
         build_dir = Path(tempfile.gettempdir()) / "spot-omg-gait-policy"
@@ -163,6 +167,7 @@ class SharedGaitPolicy:
             "-fPIC",
             link_mode,
             str(wrapper),
+            str(header.parent.parent / "Src" / "robot_config.c"),
             "-I",
             str(header.parent),
             "-o",

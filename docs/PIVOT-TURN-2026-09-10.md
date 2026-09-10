@@ -24,3 +24,5 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/p
 이 검증은 제자리 회전의 실제 누적 yaw와 중심 이동, 대각선 이동, 회전→직진, 낮은 전진·후진 입력의 회전, 정지 완료, 안전 상태, 발 이외의 접촉을 측정한다. 테스트는 중력과 접촉을 포함한 동역학을 진행하며 자세나 위치를 강제로 바꾸지 않는다. 결과는 `simulation/mujoco/pivot_turn_validation.json`에 저장한다.
 
 실제 펌웨어의 legacy 궤적은 이번 수정 범위에 포함되지 않는다. 새 궤적은 가상 로봇의 crawl/cruise/trot/highstep 정책에 적용된다. 물성이 추정값인 시뮬레이션의 측정 결과이며 하드웨어 검증 결과는 아니다.
+
+검증 완료: 30초 명령 및 정지 구간을 포함한 44개 동역학 시나리오 모두 통과했다. 제자리 회전은 의도한 방향으로 60° 이상 회전하고 최종 중심 이동 0.30m 미만이어야 통과하며, 모든 시나리오는 안전 상태 정상, 발 이외의 접촉 없음, 정지 완료를 요구한다. 전체 Python 테스트 251개 및 subtest 26개 통과. 실행 중 가상 제어기를 `balance-v5-pivot-sim`으로 교체하고 Mac 앱의 TCP 연결을 확인했다. 앱 버전은 V0.3.4 (10)을 유지한다.

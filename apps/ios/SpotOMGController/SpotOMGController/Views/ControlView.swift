@@ -97,11 +97,22 @@ struct ControlView: View {
                     }
                 }
 
-                if bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simprofiles") {
-                    Section("가상 로봇 보행") {
-                        if bluetooth.runtimeState.capabilities.contains("simbalance") {
+                if bluetooth.runtimeState.capabilities.contains("headinghold") {
+                    Section("직진 보정") {
+                        Toggle("IMU 직진 방향 유지", isOn: Binding(
+                            get: { bluetooth.runtimeState.heading == "on" },
+                            set: { bluetooth.send(.headingHold($0)) }))
+                            .disabled(!bluetooth.state.isReady)
+                        Text("전진 시 시작 방향을 유지합니다. 회전 입력은 우선하며, 설정 변경 시 정지합니다.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                if bluetooth.runtimeState.capabilities.contains("gaitprofiles") || (bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simprofiles")) {
+                    Section("보행 제어") {
+                        if bluetooth.runtimeState.capabilities.contains("balancecontrol") || bluetooth.runtimeState.capabilities.contains("simbalance") {
                             Toggle("BNO055 수평 보정", isOn: Binding(
-                                get: { bluetooth.runtimeState.balance == "active" || bluetooth.runtimeState.balance == "suspended" },
+                                get: { !["off", "unknown"].contains(bluetooth.runtimeState.balance) },
                                 set: { bluetooth.send(.simulatorBalance($0)) }))
                                 .disabled(!bluetooth.state.isReady)
                             Text("지연된 IMU 측정으로 다리를 보정합니다. 설정 변경 시 먼저 정지합니다.")
@@ -110,9 +121,9 @@ struct ControlView: View {
                         Picker("보행 정책", selection: Binding(
                             get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
                             set: { bluetooth.send(.simulatorProfile($0)) })) {
-                            ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.title).tag($0) }
+                            ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.titleWithSpeed).tag($0) }
                         }.disabled(!bluetooth.state.isReady)
-                        Text("크루즈가 기본입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
+                        Text("괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

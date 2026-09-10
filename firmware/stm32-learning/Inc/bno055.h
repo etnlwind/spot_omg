@@ -34,6 +34,9 @@ extern "C" {
 typedef struct
 {
     I2C_HandleTypeDef *i2c;
+    int16_t cached_yaw_tenths;
+    uint32_t cached_yaw_at;
+    bool cached_yaw_valid;
     uint16_t address;     /* 8-bit form, as HAL wants it; 0 when absent */
     int16_t level_roll_tenths;
     int16_t level_pitch_tenths;
@@ -63,6 +66,7 @@ bool bno055_init(Bno055 *imu, I2C_HandleTypeDef *i2c);
  * RobotAttitudeReader implementation.  Reads over I2C on the spot: the part
  * has no interrupt line here, so there is nothing to cache from.
  */
+bool bno055_read_heading(void *context, int16_t *yaw_tenths);
 bool bno055_read_attitude(void *context,
                           int16_t *roll_tenths,
                           int16_t *pitch_tenths);

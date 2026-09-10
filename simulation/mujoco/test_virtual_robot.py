@@ -20,7 +20,7 @@ def tick(robot, count, start=0):
 def test_identity_and_unsupported_are_honest(robot):
     robot.command('identity',0)
     assert b'backend=sim' in robot.drain()
-    robot.command('balance on',0)
+    robot.command('balance invalid',0)
     assert b'ERROR:' in robot.drain()
     robot.command('syncstate',0)
     assert b'balance=suspended' in robot.drain()
@@ -198,7 +198,7 @@ def test_motion_uses_pi_and_standing_retains_d(robot):
     assert robot.balance.kp==.1
 
 
-@pytest.mark.parametrize('profile,limit', [('trot',600),('highstep',600),('cruise',1000)])
+@pytest.mark.parametrize('profile,limit', [('trot',600),('highstep',600),('cruise',1000),('lift',600),('imu',600),('level',600)])
 def test_reverse_envelope_is_reported_and_applies_to_drive_and_packets(robot,profile,limit):
     robot.select_profile(profile)
     robot.command('syncstate',0)
@@ -226,3 +226,56 @@ def test_directional_cruise_blends_without_neutral_discontinuity(robot):
     before=robot.active_profile_params()
     robot.linear=1e-5
     np.testing.assert_allclose(robot.active_profile_params(),before,atol=1e-10)
+
+
+def test_heading_switch_reports_state_and_waits_for_idle(robot):
+    robot.command('syncstate',0)
+    assert b'heading=on' in robot.drain()
+    robot.command('heading off',0)
+    assert not robot.heading.enabled
+    robot.command('heading on',0)
+    assert robot.heading.enabled
+    robot.command('drive 800 0 1',0)
+    robot.command('heading off',.1)
+    assert robot.heading.enabled
+    assert b'ERROR: busy' in robot.drain()
+
+
+def test_heading_does_not_override_manual_steering(robot):
+    robot.command('drive 800 0 1',0)
+    for i in range(100):
+        if i%10==0:robot.command(f'@D {i+2} 800 0',i*.02)
+        robot.tick(i*.02)
+    assert robot.heading.diagnostic()['active']
+    robot.command('@D 200 800 -400',2)
+    robot.tick(2)
+    assert not robot.heading.diagnostic()['active']
+    assert robot.request == (.8,-.4)
+
+
+def test_shared_hardware_protocol_aliases(robot):
+    robot.command('gaitprofile trot',0)
+    assert robot.profile=='trot'
+    robot.command('balance off',0)
+    assert not robot.balance.enabled
+    robot.command('heading off',0)
+    assert not robot.heading.enabled
+    robot.command('syncstate',0)
+    reply=robot.drain()
+    assert b'gaitprofiles' in reply and b'balancecontrol' in reply
+    assert b'heading=off' in reply and b'profile=trot' in reply
+
+
+def test_imu_policy_sensor_loss_during_walk_stops(robot):
+    robot.select_profile('imu')
+    tick(robot,60)
+    robot.command('drive 700 0 1',1.2)
+    for n in range(100):
+        now=1.2+n*.02
+        if n%10==0:robot.command(f'@D {n+2} 700 0',now)
+        robot.tick(now)
+    assert robot.balance.moving and robot.balance.applied
+    robot.imu.online=False
+    tick(robot,5,3.2)
+    assert robot.safety=='imu' and robot.motion is None
+    assert not robot.balance.applied

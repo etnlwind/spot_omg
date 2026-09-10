@@ -9,6 +9,9 @@ extern "C" {
 #include "robot_config.h"
 #include "safety.h"
 #include "servo_bus.h"
+#include "drive_control.h"
+#include "balance_control.h"
+#include "attitude_control.h"
 
 #include <stdint.h>
 
@@ -33,6 +36,8 @@ typedef enum
     ROBOT_SERVO_POWER_LOST,  /* nothing on the bus answers a ping */
     ROBOT_STAND_REQUIRED
 } RobotResult;
+
+typedef bool (*RobotHeadingReader)(void *context, int16_t *yaw_tenths);
 
 typedef bool (*RobotAttitudeReader)(void *context,
                                     int16_t *roll_tenths,
@@ -69,7 +74,7 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "walk-stance-v16"
+#define ROBOT_CONTROL_REV "shared-locomotion-v23"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -110,6 +115,9 @@ typedef struct
     uint8_t saturation_flags;
     uint16_t limited_joint_mask;
     uint16_t tracking_lag_samples;
+    int16_t heading_error_tenths;
+    int16_t heading_correction_milli;
+    int16_t drive_yaw_milli;
 } RobotBalanceTraceFrame;
 
 typedef struct
@@ -144,6 +152,15 @@ typedef struct
     uint8_t last_failed_servo_id;
     uint16_t profile_speed;
     uint8_t profile_acceleration;
+    int locomotion_profile;
+    bool heading_enabled;
+    RobotHeadingReader heading_reader;
+    bool locomotion_fault;
+    bool shared_idle;
+    uint32_t shared_idle_at;
+    DriveControl drive_control;
+    BalanceControl shared_balance;
+    AttitudeControl shared_attitude;
     RobotAttitudeReader attitude_reader;
     void *attitude_context;
     bool balance_enabled;
@@ -217,6 +234,7 @@ typedef struct
 } RobotController;
 
 void robot_init(RobotController *robot, ServoBus *bus);
+void robot_control_idle(RobotController *robot);
 
 bool robot_set_profile(RobotController *robot,
                        uint16_t speed,

@@ -218,14 +218,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func send(_ command: RobotCommand) {
         if command == .recover { recoveryRequested = true }
+        if case .headingHold = command {
+            guard runtimeState.capabilities.contains("headinghold") else {
+                lastError = "직진 방향 유지는 제어기 업데이트 후 사용할 수 있습니다."; return
+            }
+        }
         if case .simulatorBalance = command {
-            guard target.isSimulator, runtimeState.capabilities.contains("simbalance") else {
-                lastError = "균형 제어 설정은 지원되는 가상 로봇에서만 가능합니다."; return
+            guard runtimeState.capabilities.contains("balancecontrol") || (target.isSimulator && runtimeState.capabilities.contains("simbalance")) else {
+                lastError = "균형 제어 설정은 지원되는 제어기에서만 가능합니다."; return
             }
         }
         if case .simulatorProfile = command {
-            guard target.isSimulator, runtimeState.capabilities.contains("simprofiles") else {
-                lastError = "보행 정책 선택은 지원되는 가상 로봇에서만 가능합니다."; return
+            guard runtimeState.capabilities.contains("gaitprofiles") || (target.isSimulator && runtimeState.capabilities.contains("simprofiles")) else {
+                lastError = "보행 정책 선택은 지원되는 제어기에서만 가능합니다."; return
             }
         }
         if case .trot5 = command, !runtimeState.supportsTrot5 {
@@ -251,9 +256,17 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func sendCommandNow(_ command: RobotCommand) {
-        guard state.isReady, let data = command.encoded else { return }
+        guard state.isReady else { return }
+        var wireCommand = command
+        if case .simulatorProfile(let profile) = command, runtimeState.capabilities.contains("gaitprofiles") {
+            wireCommand = .raw("gaitprofile \(profile.rawValue)")
+        }
+        if case .simulatorBalance(let enabled) = command, runtimeState.capabilities.contains("balancecontrol") {
+            wireCommand = .raw("balance \(enabled ? "on" : "off")")
+        }
+        guard let data = wireCommand.encoded else { return }
 
-        appendConsole("> \(command.consoleLine)\n")
+        appendConsole("> \(wireCommand.consoleLine)\n")
         write(data)
         if let delay = command.stateRefreshDelay {
             scheduleStateRefresh(after: delay)
@@ -595,6 +608,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 torque: values["torque"] ?? "unknown",
                 safety: values["safety"] ?? "unknown",
                 balance: values["balance"] ?? "unknown",
+                heading: values["heading"] ?? "unknown",
                 revision: values["rev"] ?? "unknown",
                 capabilities: Set((values["caps"] ?? "").split(separator: ",").map(String.init)),
                 simulationProfile: values["profile"] ?? "legacy")

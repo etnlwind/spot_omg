@@ -5,6 +5,7 @@
 
 #include "feetech_protocol.h"
 #include "gait_policy.h"
+#include "locomotion_servo.h"
 #include "sts3215.h"
 
 #include <stdbool.h>
@@ -62,6 +63,15 @@ void robot_init(RobotController *robot, ServoBus *bus)
         return;
     }
 
+    robot->locomotion_profile = LOCOMOTION_DEFAULT_PROFILE;
+    robot->heading_enabled = true;
+    robot->heading_reader = NULL;
+    robot->locomotion_fault = false;
+    robot->shared_idle = false;
+    robot->shared_idle_at = 0;
+    memset(&robot->drive_control,0,sizeof(robot->drive_control));
+    memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
+    memset(&robot->shared_attitude,0,sizeof(robot->shared_attitude));
     robot->bus = bus;
     robot->last_bus_result = SERVO_BUS_OK;
     robot->last_failed_servo_id = 0U;
@@ -289,6 +299,7 @@ RobotResult robot_read_positions(
 
 RobotResult robot_relax(RobotController *robot)
 {
+    if(robot) robot->shared_idle=false;
     if (robot == NULL || robot->bus == NULL) {
         return ROBOT_INVALID_ARGUMENT;
     }
@@ -306,6 +317,7 @@ RobotResult robot_relax(RobotController *robot)
 
 RobotResult robot_relax_servo(RobotController *robot, uint8_t servo_id)
 {
+    if(robot) robot->shared_idle=false;
     if (robot == NULL || robot->bus == NULL ||
         config_for_servo(servo_id) == NULL) {
         return ROBOT_INVALID_ARGUMENT;
@@ -347,6 +359,7 @@ RobotResult robot_recover(RobotController *robot)
      * the obstacle again the moment torque returns.
      */
     safety_clear(&robot->safety);
+    robot->locomotion_fault = false;
     robot->safety_scan_index = 0U;
     robot->motion_abort_requested = false;
     return robot_hold(robot);
@@ -354,6 +367,7 @@ RobotResult robot_recover(RobotController *robot)
 
 RobotResult robot_hold(RobotController *robot)
 {
+    if(robot) robot->shared_idle=false;
     uint16_t current[ROBOT_JOINT_COUNT];
 
     if (robot != NULL && safety_is_faulted(&robot->safety)) {
@@ -423,6 +437,7 @@ static RobotResult sample_joint(RobotController *robot,
  */
 RobotResult robot_stand_straight(RobotController *robot)
 {
+    if(robot) robot->shared_idle=false;
     uint16_t target[ROBOT_JOINT_COUNT];
     uint16_t position = 0U;
 
@@ -487,6 +502,7 @@ typedef bool (*RobotPoseTargets)(uint16_t targets[ROBOT_JOINT_COUNT]);
 static RobotResult robot_move_to_pose(RobotController *robot,
                                       RobotPoseTargets build_targets)
 {
+    if(robot) robot->shared_idle=false;
     /*
      * Gated because it commands positions.  robot_relax() deliberately is not:
      * cutting torque is the safe direction and must work in any state.
@@ -553,7 +569,9 @@ static RobotResult robot_move_to_pose(RobotController *robot,
 
 RobotResult robot_stand(RobotController *robot)
 {
-    return robot_move_to_pose(robot, robot_stand_targets);
+    RobotResult result=robot_move_to_pose(robot, robot_stand_targets);
+    if(robot) robot->shared_idle=result==ROBOT_OK;
+    return result;
 }
 
 RobotResult robot_landing(RobotController *robot)
@@ -1103,24 +1121,7 @@ static bool gait_policy_to_servo_targets(
     const GaitPolicyLegTarget leg_targets[GAIT_POLICY_LEG_COUNT],
     uint16_t servo_targets[ROBOT_JOINT_COUNT])
 {
-    if (leg_targets == NULL || servo_targets == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index < ROBOT_JOINT_COUNT; ++index) {
-        const RobotJointConfig *joint = &g_robot_joints[index];
-        const GaitPolicyLegTarget *leg = &leg_targets[joint->leg_index];
-        float angle = leg->j1_deg;
-        if (joint->joint_index == 2U) {
-            angle = leg->j2_deg;
-        } else if (joint->joint_index == 3U) {
-            angle = leg->j3_deg;
-        }
-        if (!robot_angle_tenths_to_position(
-                index, degrees_to_tenths(angle), &servo_targets[index])) {
-            return false;
-        }
-    }
-    return true;
+    return locomotion_servo_targets(leg_targets,servo_targets);
 }
 
 static bool gait_policy_to_canonical_angles(
@@ -1325,6 +1326,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
                                      bool actuator_limited,
                                      bool continuous_drive)
 {
+    if(robot) robot->shared_idle=false;
+    if(robot && robot->locomotion_fault)return ROBOT_SAFETY_FAULT;
     const bool optimized = policy == ROBOT_TROT_POLICY_CAD_OPTIMIZED;
     const bool balance_feedback_enabled = robot != NULL && robot->balance_enabled && !optimized;
     uint16_t targets[ROBOT_JOINT_COUNT];
@@ -1996,6 +1999,143 @@ RobotResult robot_turn(RobotController *robot,
         false);
 }
 
+/* Deployed 50 Hz drive path. Transport and hardware safety stay here; all
+ * trajectory, heading and balance arithmetic is shared with the simulator. */
+static RobotResult shared_observe(RobotController *robot)
+{
+    int16_t roll=0,pitch=0;
+    bool valid=robot->attitude_reader && robot->attitude_reader(robot->attitude_context,&roll,&pitch);
+    int fault=attitude_update(&robot->shared_attitude,valid,roll,pitch);
+    robot->balance_last_roll_error_tenths=robot->shared_attitude.filtered[0];
+    robot->balance_last_pitch_error_tenths=robot->shared_attitude.filtered[1];
+    if(fault) {
+        robot->locomotion_fault=true;robot->shared_idle=false;
+        return fault==1?ROBOT_IMU_ERROR:ROBOT_TILT_LIMIT;
+    }
+    return ROBOT_OK;
+}
+static bool shared_correct(RobotController *robot,GaitPolicyLegTarget out[4],bool standing,bool moving)
+{
+    const float k=GAIT_POLICY_PI/1800.f;
+    GaitPolicyImuSample sample={robot->shared_attitude.filtered[0]*k,robot->shared_attitude.filtered[1]*k,
+        robot->shared_attitude.rate[0]*k,robot->shared_attitude.rate[1]*k};
+    return balance_control_apply_policy(&robot->shared_balance,out,&sample,
+        robot->balance_enabled && robot->shared_attitude.failures==0 && !robot->locomotion_fault,
+        standing,standing?.25f:.1f,standing?.015f:0.f,standing?.15f:.03f,
+        robot->locomotion_profile,robot->drive_control.phase,
+        moving,robot->drive_control.linear,robot->drive_control.yaw);
+}
+static void shared_blend(const GaitPolicyLegTarget from[4],const GaitPolicyLegTarget to[4],float scale,GaitPolicyLegTarget out[4])
+{
+    float w=gait_policy_smootherstep(fminf(1,scale));
+    for(int i=0;i<4;i++) out[i]=(GaitPolicyLegTarget){
+        from[i].j1_deg+(to[i].j1_deg-from[i].j1_deg)*w,
+        from[i].j2_deg+(to[i].j2_deg-from[i].j2_deg)*w,
+        from[i].j3_deg+(to[i].j3_deg-from[i].j3_deg)*w,true};
+}
+static RobotResult robot_shared_drive(RobotController *robot)
+{
+    if(robot->locomotion_fault || safety_is_faulted(&robot->safety)) return ROBOT_SAFETY_FAULT;
+    if(!robot->attitude_reader) return ROBOT_IMU_ERROR;
+    if(!actuator_profile_supports_limited_gait(robot->profile_speed,robot->profile_acceleration)) return ROBOT_ACTUATOR_PROFILE_ERROR;
+    robot->motion_abort_requested=false;
+    RobotResult result=robot_stand(robot);
+    robot->shared_idle=false;
+    if(result!=ROBOT_OK)return result;
+    memset(&robot->drive_control,0,sizeof(robot->drive_control));
+    memset(&robot->shared_attitude,0,sizeof(robot->shared_attitude));
+    memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
+    GaitPolicyLegTarget stand[4],neutral[4],nominal[4],from[4],command[4];
+    for(int i=0;i<4;i++)stand[i]=nominal[i]=from[i]=(GaitPolicyLegTarget){0,45,90,true};
+    if(!locomotion_targets(robot->locomotion_profile,0,0,0,0,neutral))return ROBOT_CONFIG_ERROR;
+    result=shared_observe(robot);if(result!=ROBOT_OK)return result;
+    bool stopping=false,watchdog=false;int stage=1;float transition=0;
+    uint32_t started=HAL_GetTick(),deadline=started;
+    robot->gait_diagnostics_active=true;actuator_diagnostics_reset(&robot->gait_diagnostics);
+    balance_trace_reset(robot);robot->balance_late_frames=0;
+    robot->balance_peak_roll_error_tenths=0;robot->balance_peak_pitch_error_tenths=0;
+    for(;;) {
+        RobotDriveSnapshot request=drive_snapshot(robot);
+        if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
+        if((uint32_t)(HAL_GetTick()-request.updated_at_ms)>ROBOT_DRIVE_WATCHDOG_MS) {stopping=true;watchdog=true;}
+        if(request.stop_requested)stopping=true;
+        if(stage==1 && stopping) {
+            for(int i=0;i<4;i++) {from[i]=nominal[i];}
+            stage=3;transition=0;
+        }
+        if(stage==1 || stage==3) {
+            transition+=.02f;
+            shared_blend(from,stage==1?neutral:stand,transition,nominal);
+            if(transition>=.99999f) {
+                if(stage==3) stage=0;
+                else stage=2;
+                transition=0;
+            }
+        } else if(stage==2) {
+            int16_t yaw=0;
+            bool yaw_valid=robot->heading_reader && robot->shared_attitude.failures==0 && robot->heading_reader(robot->attitude_context,&yaw);
+            if(!drive_control_step(&robot->drive_control,robot->locomotion_profile,
+                    stopping?0:request.linear*.001f,stopping?0:request.yaw*.001f,
+                    yaw*.1f,yaw_valid,robot->heading_enabled,stopping,nominal)) {result=ROBOT_CONFIG_ERROR;break;}
+            if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f) {
+                for(int i=0;i<4;i++) {from[i]=nominal[i];}
+            stage=3;transition=0;
+            }
+        }
+        for(int i=0;i<4;i++)command[i]=nominal[i];
+        if(!shared_correct(robot,command,false,stage==2)) {result=ROBOT_CONFIG_ERROR;break;}
+        uint16_t positions[12];
+        if(!gait_policy_to_servo_targets(command,positions)) {result=ROBOT_CONFIG_ERROR;break;}
+        ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,ROBOT_JOINT_COUNT);
+        if(sent!=SERVO_BUS_OK) {result=bus_failure(robot,FEETECH_BROADCAST_ID,sent);break;}
+        result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
+        if(result!=ROBOT_OK)break;
+        result=shared_observe(robot);
+        RobotBalanceTraceFrame trace={0};
+        trace.phase=(uint16_t)(robot->drive_control.phase*1000);
+        trace.support_mask=gait_policy_support_mask(nominal);
+        trace.balance_applied=robot->shared_balance.applied;
+        trace.roll_tenths=robot->shared_attitude.filtered[0];trace.pitch_tenths=robot->shared_attitude.filtered[1];
+        trace.raw_roll_tenths=robot->shared_attitude.previous[0];trace.raw_pitch_tenths=robot->shared_attitude.previous[1];
+        trace.roll_rate_tenths_s=robot->shared_attitude.rate[0];trace.pitch_rate_tenths_s=robot->shared_attitude.rate[1];
+        trace.heading_error_tenths=degrees_to_tenths(robot->drive_control.heading.error);
+        trace.heading_correction_milli=(int16_t)(robot->drive_control.heading.correction*1000);
+        trace.drive_yaw_milli=(int16_t)(robot->drive_control.yaw*1000);
+        trace.tracking_lag_samples=robot->gait_diagnostics.lag_samples;
+        update_peak(trace.roll_tenths,&robot->balance_peak_roll_error_tenths);
+        update_peak(trace.pitch_tenths,&robot->balance_peak_pitch_error_tenths);
+        balance_trace_push(robot,&trace);
+        if(result!=ROBOT_OK)break;
+        if(stage==0)break;
+        deadline+=ROBOT_TROT_FRAME_MS;
+        uint32_t now=HAL_GetTick();
+        if((int32_t)(deadline-now)>0) HAL_Delay(deadline-now);
+        else {
+            if(robot->balance_late_frames<UINT16_MAX)robot->balance_late_frames++;
+            if((uint32_t)(now-deadline)>40U) {result=ROBOT_MOTION_ABORTED;robot->locomotion_fault=true;break;}
+            deadline=now; /* Never burst stale targets to catch up. */
+        }
+    }
+    robot->gait_elapsed_ms=HAL_GetTick()-started;robot->gait_diagnostics_active=false;
+    memset(&robot->drive_control.heading,0,sizeof(robot->drive_control.heading));
+    if(result!=ROBOT_OK) {robot->shared_idle=false;return_to_stand_best_effort(robot);return result;}
+    robot->shared_idle=true;
+    return watchdog?ROBOT_DRIVE_WATCHDOG:ROBOT_OK;
+}
+
+void robot_control_idle(RobotController *robot)
+{
+    if(!robot || !robot->shared_idle || robot->drive_active || robot->locomotion_fault || safety_is_faulted(&robot->safety))return;
+    uint32_t now=HAL_GetTick();if((uint32_t)(now-robot->shared_idle_at)<20U)return;
+    robot->shared_idle_at=now;
+    if(shared_observe(robot)!=ROBOT_OK)return;
+    GaitPolicyLegTarget out[4];for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
+    uint16_t positions[12];
+    if(!shared_correct(robot,out,true,false) || !gait_policy_to_servo_targets(out,positions)) {robot->shared_idle=false;robot->locomotion_fault=true;return;}
+    ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,12);
+    if(sent!=SERVO_BUS_OK || sample_next_joint(robot,positions,0)!=ROBOT_OK) {robot->shared_idle=false;robot->locomotion_fault=true;}
+}
+
 RobotResult robot_drive(RobotController *robot,
                         int16_t initial_linear,
                         int16_t initial_yaw,
@@ -2018,14 +2158,7 @@ RobotResult robot_drive(RobotController *robot,
     robot->drive_sequence = sequence;
     robot->drive_active = true;
 
-    const RobotResult result = robot_trot_scaled(
-        robot,
-        0U,
-        gait_policy_drive_period_ms(0, 0),
-        1.0f,
-        ROBOT_TROT_POLICY_POSTURE_SMOOTH,
-        true,
-        true);
+    const RobotResult result = robot_shared_drive(robot);
     robot->drive_active = false;
     robot->drive_stop_requested = false;
     robot->drive_target_linear = 0;
@@ -2220,6 +2353,7 @@ RobotResult robot_move_single_safe(RobotController *robot,
                                    uint16_t target_position,
                                    uint16_t maximum_delta)
 {
+    if(robot) robot->shared_idle=false;
     /*
      * Gated because this enables torque on one servo.  After a fault the rest
      * are off, and bringing a single joint back under power is the asymmetric

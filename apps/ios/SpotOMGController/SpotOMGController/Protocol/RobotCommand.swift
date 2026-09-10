@@ -84,6 +84,7 @@ struct RobotConsoleStream {
 enum RobotCommand: Equatable {
     case simulatorProfile(SimulatorGaitProfile)
     case simulatorBalance(Bool)
+    case headingHold(Bool)
     case stand
     case stand11
     case landing
@@ -110,6 +111,7 @@ enum RobotCommand: Equatable {
 
     var consoleLine: String {
         switch self {
+        case .headingHold(let enabled): return "heading \(enabled ? "on" : "off")"
         case .simulatorBalance(let enabled): return "simbalance \(enabled ? "on" : "off")"
         case .simulatorProfile(let profile): return "simprofile \(profile.rawValue)"
         case .stand: return "stand"
@@ -147,7 +149,7 @@ enum RobotCommand: Equatable {
     var stateRefreshDelay: TimeInterval? {
         switch self {
         case .stand, .stand11, .landing, .hold, .recover: return 4
-        case .simulatorProfile, .simulatorBalance: return 0.4
+        case .simulatorProfile, .simulatorBalance, .headingHold: return 0.4
         case .relax: return 1
         case .trot5(let cycles, let period):
             return Double(cycles * period) / 1000.0 + 6

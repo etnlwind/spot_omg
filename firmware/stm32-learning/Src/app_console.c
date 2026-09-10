@@ -609,18 +609,22 @@ static void command_sync_state(AppConsole *console)
         torque = torque_raw == 0U ? "off" : "on";
     }
 
-    char message[192];
+    char message[320];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,balancecontrol%s profile=%s heading=%s reverse_limit=%d\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
-        safety_is_faulted(&console->robot->safety) ? "fault" : "ok",
+        (safety_is_faulted(&console->robot->safety) || console->robot->locomotion_fault) ? "fault" : "ok",
         console->robot->balance_enabled ?
             robot_balance_mode_string(console->robot->balance_mode) : "off",
-        ROBOT_CONTROL_REV);
+        ROBOT_CONTROL_REV,
+        console->robot->heading_reader ? ",headinghold" : "",
+        locomotion_names[console->robot->locomotion_profile],
+        console->robot->heading_reader ? (console->robot->heading_enabled ? "on":"off") : "unavailable",
+        console->robot->locomotion_profile>=3?600:1000);
     write_text(console, message);
 }
 
@@ -1155,7 +1159,7 @@ static void command_balance_diagnostics(AppConsole *console)
             "  B phase=%u support=%s raw10=%d/%d filtered10=%d/%d "
             "rate10/s=%d/%d "
             "control_mrad=%d/%d j1_10=%d len_milli=%d knee_10=%d "
-            "place_milli=%d sat=0x%02X limited=0x%03X lag=%u\r\n",
+            "place_milli=%d sat=0x%02X limited=0x%03X lag=%u heading10=%d heading_cmd=%d yaw=%d\r\n",
             (unsigned int)frame->phase,
             support,
             (int)frame->raw_roll_tenths,
@@ -1172,7 +1176,8 @@ static void command_balance_diagnostics(AppConsole *console)
             (int)frame->foot_placement_correction_milli,
             (unsigned int)frame->saturation_flags,
             (unsigned int)frame->limited_joint_mask,
-            (unsigned int)frame->tracking_lag_samples);
+            (unsigned int)frame->tracking_lag_samples,
+            (int)frame->heading_error_tenths, (int)frame->heading_correction_milli, (int)frame->drive_yaw_milli);
         write_text(console, message);
     }
 }
@@ -2418,6 +2423,27 @@ static void execute_line(AppConsole *console)
         command_imu(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "imucal") == 0) {
         command_imucal(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "locomotiondiag") == 0) {
+        int16_t yaw=0; bool fresh=console->robot->heading_reader && console->robot->heading_reader(console->robot->attitude_context,&yaw);
+        char state[240];
+        (void)snprintf(state,sizeof(state),"$LOCOMOTION profile=%s heading=%s yaw10=%d valid=%u error10=%d correction=%d late=%u fault=%u\r\n",
+            locomotion_names[console->robot->locomotion_profile],console->robot->heading_enabled?"on":"off",(int)yaw,(unsigned)fresh,
+            (int)(console->robot->drive_control.heading.error*10),(int)(console->robot->drive_control.heading.correction*1000),
+            (unsigned)console->robot->balance_late_frames,(unsigned)console->robot->locomotion_fault);
+        write_text(console,state);
+    } else if (strcmp(command, "gaitprofiles") == 0) {
+        write_text(console,"$GAITPROFILES legacy,crawl,cruise,trot,highstep,lift,imu,level,level15,joint,jointfast,jointsport\r\n");
+    } else if (strcmp(command, "gaitprofile") == 0) {
+        int profile=locomotion_profile_id(strtok(NULL," \t"));
+        if(profile<0 || robot_drive_is_active(console->robot)) write_text(console,"ERROR: stop before selecting a valid gait profile\r\n");
+        else {console->robot->locomotion_profile=profile;write_text(console,"OK\r\n");}
+    } else if (strcmp(command, "heading") == 0) {
+        char *value=strtok(NULL," \t");
+        if(!value || (strcmp(value,"on") && strcmp(value,"off")) || robot_drive_is_active(console->robot))
+            write_text(console,"ERROR: heading on|off requires idle\r\n");
+        else if(!console->robot->heading_reader && !strcmp(value,"on"))
+            write_text(console,"ERROR: heading sensor unavailable\r\n");
+        else {console->robot->heading_enabled=!strcmp(value,"on");memset(&console->robot->drive_control.heading,0,sizeof(console->robot->drive_control.heading));write_text(console,"OK\r\n");}
     } else if (strcmp(command, "balance") == 0) {
         command_balance(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "log") == 0) {
@@ -2682,6 +2708,8 @@ void app_console_print_help(AppConsole *console)
                "  targets          print calibrated stand raw targets\r\n"
                "  status           read health state from all 12 servos\r\n"
                "  syncstate        compact mobile-app state snapshot\r\n"
+               "  gaitprofile NAME legacy|crawl|cruise|trot|highstep|lift|imu|level|level15|joint|jointfast|jointsport (idle)\r\n"
+               "  heading on|off   IMU forward heading hold (idle)\r\n"
                "  profile [S A]   show/set speed 1..3400, acceleration 0..254\r\n"
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"

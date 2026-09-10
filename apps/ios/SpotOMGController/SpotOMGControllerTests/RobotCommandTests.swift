@@ -568,3 +568,70 @@ extension RobotCommandTests {
     }
 
 }
+
+extension RobotCommandTests {
+    func testHeadingHoldCapabilitySnapshotAndCommands() {
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.send(.headingHold(true))
+        XCTAssertTrue(sent.isEmpty)
+        manager.receiveConsoleText("$SPOTSTATE pose=stand heading=on caps=headinghold\n")
+        XCTAssertEqual(manager.runtimeState.heading, "on")
+        manager.send(.headingHold(false))
+        XCTAssertTrue(sent.contains("heading off\n"))
+        manager.receiveConsoleText("$SPOTSTATE pose=stand heading=off caps=headinghold\n")
+        XCTAssertEqual(manager.runtimeState.heading, "off")
+        XCTAssertEqual(RobotCommand.headingHold(true).consoleLine, "heading on")
+        manager.disconnect()
+    }
+
+    func testHeadingToggleWaitsForDriveStop() {
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand heading=on caps=headinghold\n")
+        manager.updateDrive(x: 0, y: 1)
+        manager.receiveConsoleText("$SPOTDRIVE started seq=1 watchdog=800ms\n")
+        manager.send(.headingHold(false))
+        XCTAssertFalse(sent.contains("heading off\n"))
+        XCTAssertTrue(sent.contains { $0.hasPrefix("@S ") })
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=requested\nOK\n# ")
+        XCTAssertTrue(sent.contains("heading off\n"))
+        manager.disconnect()
+    }
+}
+
+extension RobotCommandTests {
+    func testSharedHardwareProfilesBalanceAndHeadingCommands() {
+        let previous = UserDefaults.standard.string(forKey: "robotTarget")
+        defer { UserDefaults.standard.set(previous, forKey: "robotTarget") }
+        UserDefaults.standard.set("robot", forKey: "robotTarget")
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand balance=full heading=on rev=shared-locomotion-v17 caps=gaitprofiles,balancecontrol,headinghold profile=cruise\n")
+        manager.send(.simulatorProfile(.trot))
+        manager.send(.simulatorBalance(false))
+        manager.send(.headingHold(false))
+        XCTAssertTrue(sent.contains("gaitprofile trot\n"))
+        XCTAssertTrue(sent.contains("balance off\n"))
+        XCTAssertTrue(sent.contains("heading off\n"))
+        XCTAssertFalse(sent.contains { $0.hasPrefix("simprofile") || $0.hasPrefix("simbalance") })
+        XCTAssertEqual(manager.runtimeState.balanceTitle, "수평 보정 켜짐")
+        manager.disconnect()
+    }
+}
+
+
+extension RobotCommandTests {
+    func testJointProfileSelectionUsesSharedFirmwareCommand() {
+        let previous = UserDefaults.standard.string(forKey: "robotTarget")
+        defer { UserDefaults.standard.set(previous, forKey: "robotTarget") }
+        UserDefaults.standard.set("robot", forKey: "robotTarget")
+        var sent = [String]()
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand caps=gaitprofiles profile=joint rev=shared-locomotion-v21\n")
+        manager.send(.simulatorProfile(.joint))
+        XCTAssertTrue(sent.contains("gaitprofile joint\n"))
+        XCTAssertEqual(manager.runtimeState.simulationProfile, "joint")
+        manager.disconnect()
+    }
+}

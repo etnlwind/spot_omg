@@ -41,3 +41,18 @@ def test_forward_policy_advances_free_body_without_pose_overwrites():
     assert abs(s.row()['roll_deg'])<15
     assert abs(s.row()['pitch_deg'])<15
     assert not any(w.number for w in s.data.warning)
+
+
+def test_zero_command_delay_applies_new_target_in_first_control_tick():
+    import json
+    from pathlib import Path
+    base=json.loads((Path(__file__).parent/'cad_300mm/physics_parameters.json').read_text())
+    changes=[]
+    for delay in (0.,.02):
+        s=Simulation({**base,'command_delay_s':delay,'embedded_servo_quantization':False})
+        initial=s.filtered.copy()
+        target=np.degrees(initial);target[2]+=5
+        s.step(targets_deg=target,balance=False)
+        changes.append(abs(s.filtered[2]-initial[2]))
+    assert changes[0]>1e-4
+    assert changes[1]<1e-10

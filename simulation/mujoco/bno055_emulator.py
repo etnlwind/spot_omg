@@ -103,18 +103,13 @@ class FirmwareAttitudeFilter:
         self.initialized = False
 
     def update(self, reading):
-        if reading is None:
-            self.failures += 1
-            return 'imu' if self.failures >= 3 else None
-        self.failures = 0
-        errors = [max(-300,min(300,reading[key])) for key in ('roll_tenths','pitch_tenths')]
-        if not self.initialized:
-            self.previous = errors.copy()
-            self.initialized = True
-        self.tilt_frames = self.tilt_frames+1 if max(map(abs,errors)) > 120 else 0
-        for i, error in enumerate(errors):
-            rate = max(-1200,min(1200,(error-self.previous[i])*50))
-            self.previous[i] = error
-            self.filtered[i] = math.trunc((3*self.filtered[i]+error)/4)
-            self.rate[i] = math.trunc((3*self.rate[i]+rate)/4)
-        return 'tilt' if self.tilt_frames >= 2 else None
+        import ctypes
+        from gait_profiles import _shared
+        fn=_shared()[0]._library.spot_attitude_update
+        fn.argtypes=(ctypes.POINTER(ctypes.c_int),ctypes.c_int,ctypes.c_int,ctypes.c_int)
+        fn.restype=ctypes.c_int
+        state=(ctypes.c_int*9)(*self.previous,*self.filtered,*self.rate,self.failures,self.tilt_frames,self.initialized)
+        result=fn(state,reading is not None,reading['roll_tenths'] if reading else 0,reading['pitch_tenths'] if reading else 0)
+        self.previous=list(state[:2]);self.filtered=list(state[2:4]);self.rate=list(state[4:6])
+        self.failures,self.tilt_frames=state[6:8];self.initialized=bool(state[8])
+        return {0:None,1:'imu',2:'tilt'}[result]

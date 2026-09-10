@@ -92,6 +92,9 @@ class Simulation:
         else:
             self.p=p
             self.model=model
+        self.joint_zero_error=np.asarray(self.p.get('joint_zero_error_deg',[0.]*12),dtype=float)
+        if self.joint_zero_error.shape!=(12,) or not np.isfinite(self.joint_zero_error).all():
+            raise ValueError('joint_zero_error_deg must contain twelve finite values')
         self.data=mujoco.MjData(self.model)
         self.sensor_observer = None
         self.policy=SharedGaitPolicy();self.phase=self.linear=self.yaw=0.
@@ -107,7 +110,7 @@ class Simulation:
         self.data.qpos[2] += .001-floor
         mujoco.mj_forward(self.model,self.data)
         self.filtered=self.desired.copy();self.target_velocity=np.zeros(12)
-        self.delay=collections.deque([self.desired.copy() for _ in range(max(1,round(self.p['command_delay_s']/.02)))])
+        self.delay=collections.deque([self.desired.copy() for _ in range(max(0,round(self.p['command_delay_s']/.02)))])
         self.voltage=self.p['pack_open_circuit_voltage'];self.current=0.;self.limits=self.stall.copy();self.saturated=0.
 
     def step(self,linear=0,yaw=0,balance=True,startup=1,targets_deg=None,limit_yaw=True,stride_scale=None,period_s=None,torque_enabled=True):
@@ -127,6 +130,16 @@ class Simulation:
         values=np.asarray(targets_deg,dtype=float)
         if values.shape != (12,) or not np.isfinite(values).all():
             raise ValueError('Expected twelve finite joint targets')
+        # Same calibration, 0.1-degree rounding and 4096-tick encoding as STM32.
+        if self.p.get('embedded_servo_quantization', True):
+            import ctypes
+            fn=self.policy._library.spot_servo_encode
+            fp=ctypes.POINTER(ctypes.c_float)
+            fn.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);fn.restype=ctypes.c_int
+            ticks=(ctypes.c_uint16*12)();decoded=(ctypes.c_float*12)()
+            if not fn((ctypes.c_float*12)(*values),ticks,decoded):raise ValueError('Servo target outside calibrated tick range')
+            self.servo_ticks=list(ticks);values=np.array(decoded)
+        values=values+self.joint_zero_error
         self.desired=np.radians(values);self.delay.append(self.desired.copy());delayed=self.delay.popleft()
         self.phase=(self.phase+.02/(period_s if period_s is not None else (2.4-.6*min(1,abs(self.linear)+abs(self.yaw)))))%1
         for _ in range(round(.02/dt)):

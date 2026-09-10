@@ -270,6 +270,7 @@ bool bno055_read_euler(Bno055 *imu,
         return false;
     }
 
+    imu->cached_yaw_valid = false;
     if (HAL_I2C_Mem_Read(imu->i2c,
                          imu->address,
                          BNO055_EULER_H_LSB_ADDR,
@@ -294,6 +295,9 @@ bool bno055_read_euler(Bno055 *imu,
     const int16_t mapped_roll = sensor_pitch;
     const int16_t mapped_pitch = sensor_roll;
     *yaw_tenths = (int16_t)(BNO055_YAW_SIGN * sensor_yaw);
+    imu->cached_yaw_tenths = *yaw_tenths;
+    imu->cached_yaw_at = HAL_GetTick();
+    imu->cached_yaw_valid = true;
     *roll_tenths = (int16_t)(mapped_roll -
         (imu->level_valid ? imu->level_roll_tenths : 0));
     *pitch_tenths = (int16_t)(mapped_pitch -
@@ -406,4 +410,14 @@ bool bno055_read_attitude(void *context,
 
     /* Yaw is deliberately unused: balance only corrects roll and pitch. */
     return bno055_read_euler(imu, &yaw_tenths, roll_tenths, pitch_tenths);
+}
+
+/* Reuse the same six-byte Euler transaction as roll/pitch, not another read. */
+bool bno055_read_heading(void *context, int16_t *yaw_tenths)
+{
+    Bno055 *imu=context;
+    if(!imu || !yaw_tenths || !imu->present || !imu->cached_yaw_valid ||
+       (uint32_t)(HAL_GetTick()-imu->cached_yaw_at)>100U) return false;
+    *yaw_tenths=imu->cached_yaw_tenths;
+    return true;
 }
