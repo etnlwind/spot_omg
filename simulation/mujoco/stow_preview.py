@@ -12,7 +12,7 @@ import mujoco
 import numpy as np
 from cad_gait import CAD
 from cad_physics import Simulation, build
-from stow_policy import LANDING, FOLDED, FOLD_SECONDS
+from stow_policy import LANDING, FOLDED, FOLD_SECONDS, SETTLE_SECONDS
 
 OUT = Path(__file__).parent / 'diagnostics' / 'stow'
 # Logical motor angles, degrees, ordered FL/FR/RL/RR, each J1/J2/J3.
@@ -36,7 +36,7 @@ def stages_for(name):
         folded = FOLDED.copy()
         return [('landing', LANDING, 2.),
                 ('all-legs-slow-overhead-fold', folded, FOLD_SECONDS),
-                ('stow-hold', folded, 2.)]
+                ('stow-gravity-settle', folded, SETTLE_SECONDS)]
     if name != 'overhead':
         return STAGES
     # Same final geometric angle as +95, reached above the body via -180.
@@ -52,6 +52,7 @@ def make_plant(extended=False, overhead=False):
         # Unwrapped full-turn design study; the real single-turn encoder cannot
         # express this path. Keep physical motor/voltage/contact dynamics.
         p['embedded_servo_quantization']=False
+        p['experimental_stow']=True
     xml,_=build(p,write_scene=False)
     model=mujoco.MjModel.from_xml_string(xml)
     if extended:
@@ -80,18 +81,28 @@ def envelope(plant):
 
 
 def run_case(name):
+    if name not in ('simultaneous','stow-cycle'):
+        raise ValueError('Historical unrestricted Stow paths are no longer executable')
     plant=make_plant(name!='nominal',overhead=name in ('overhead','simultaneous','stow-cycle'));m,d=plant.model,plant.data
     limits=np.degrees(m.jnt_range[[m.joint(f'{l.lower()}_j{j}').id for l in ('FL','FR','RL','RR') for j in (1,2,3)]])
     previous=np.degrees(plant.desired).copy()
-    frames=[];labels=[];stages=[];collisions={};max_tilt=0.;max_error=0.
+    frames=[];labels=[];stages=[];collisions={};powered_collisions={};max_tilt=0.;max_error=0.
     for label,requested,duration in stages_for(name):
+        if label=='all-legs-slow-unfold-to-landing':
+            # Re-enable from the gravity-settled measured pose, as the bridge does.
+            previous=np.degrees(d.qpos[plant.q]).copy()
+            plant.desired=d.qpos[plant.q].copy();plant.filtered=plant.desired.copy()
+            plant.target_velocity[:]=0
+            from collections import deque
+            plant.delay=deque([plant.desired.copy() for _ in range(len(plant.delay))])
         requested=np.array(requested,float)
         target=np.clip(requested,limits[:,0],limits[:,1])
         clamped=np.flatnonzero(abs(target-requested)>1e-6).tolist()
         for n in range(round(duration/.02)):
             t=plant.policy.smootherstep(min(1,(n+1)*.02/duration))
             command=previous+(target-previous)*t
-            plant.step(targets_deg=command,balance=False)
+            plant.step(targets_deg=command,balance=False,
+                       torque_enabled=label!='stow-gravity-settle')
             r=d.xmat[m.body('robot').id].reshape(3,3)
             tilt=np.degrees(np.arccos(np.clip(r[2,2],-1,1)))
             max_tilt=max(max_tilt,float(tilt))
@@ -102,16 +113,20 @@ def run_case(name):
                 if m.geom_bodyid[a]==0 or m.geom_bodyid[b]==0:continue
                 key=' / '.join(sorted([m.geom(a).name,m.geom(b).name]))
                 collisions[key]=max(collisions.get(key,0),float(-c.dist))
+                if label!='stow-gravity-settle':
+                    powered_collisions[key]=max(powered_collisions.get(key,0),float(-c.dist))
             if n%2==0:
                 frames.append(d.qpos.copy());labels.append(label)
         previous=target
         dimensions=envelope(plant)
         stages.append(dict(stage=label,requested_deg=requested.tolist(),commanded_deg=target.tolist(),
+                           motor_torque_enabled=label!='stow-gravity-settle',
                            clamped_joint_indices=clamped,actual_deg=np.degrees(d.qpos[plant.q]).tolist(),
                            body_envelope_m=dimensions,volume_m3=float(np.prod(dimensions)),tilt_deg=float(tilt)))
     result=dict(case=name,experimental=True,physical_robot_approved=False,
                 stages=stages,peak_tilt_deg=max_tilt,peak_tracking_error_deg=max_error,
                 non_floor_penetrations_over_1mm=collisions,
+                powered_non_floor_penetrations_over_1mm=powered_collisions,
                 limitations=['Estimated masses and collision proxies; wiring/motor-case clearance not validated.',
                              'Extended J2 limits are hypothetical. Nominal case explicitly clips unavailable angles.',
                              'Overhead case uses unwrapped front J2 angles and disables single-turn servo encoding only in this isolated study.',
@@ -160,7 +175,7 @@ def replay(name,video=False,viewer=False):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(__doc__)
-    parser.add_argument('--case',choices=['nominal','extended','overhead','simultaneous','stow-cycle'],default='stow-cycle')
+    parser.add_argument('--case',choices=['simultaneous','stow-cycle'],default='stow-cycle')
     parser.add_argument('--run',action='store_true')
     parser.add_argument('--video',action='store_true')
     parser.add_argument('--viewer',action='store_true')

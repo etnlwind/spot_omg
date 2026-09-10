@@ -76,6 +76,19 @@ def build(parameters=None,write_scene=True):
             midpoint=(lo+hi)/2; start=pivot.copy();start[0]=midpoint[0];end=endpoint.copy();end[0]=midpoint[0]
             ET.SubElement(body,'geom',name=name+'_collision',type='capsule',fromto=vec(np.r_[start-pivot,end-pivot]),size='.012',**attrs)
         ET.SubElement(act,'motor',name=name+'_motor',joint=name,gear='1')
+    if p.get('experimental_stow'):
+        # Explicit inter-leg mesh contacts let unpowered legs rest on each other.
+        # MuJoCo uses convex mesh hulls here; the separate FCL audit measures
+        # actual triangles before torque release. Keep normal gait unchanged.
+        contact=ET.SubElement(root,'contact')
+        legs=('fl','fr','rl','rr')
+        for a in range(4):
+            for b in range(a+1,4):
+                for j in (1,2,3):
+                    for k in (1,2,3):
+                        ET.SubElement(contact,'pair',geom1=f'{legs[a]}_j{j}',
+                                      geom2=f'{legs[b]}_j{k}',condim='3',
+                                      friction='.8 .8 .005 .0001 .0001')
     # Show detailed CAD; collision proxies remain active but hidden in GUI group 3.
     if not write_scene:
         return ET.tostring(root,encoding='unicode'),p

@@ -116,7 +116,7 @@ struct ControlView: View {
                         Toggle("IMU 직진 방향 유지", isOn: Binding(
                             get: { bluetooth.runtimeState.heading == "on" },
                             set: { bluetooth.send(.headingHold($0)) }))
-                            .disabled(!bluetooth.state.isReady)
+                            .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                         Text("전진 시 시작 방향을 유지합니다. 회전 입력은 우선하며, 설정 변경 시 정지합니다.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -128,7 +128,7 @@ struct ControlView: View {
                             Toggle("BNO055 수평 보정", isOn: Binding(
                                 get: { !["off", "unknown"].contains(bluetooth.runtimeState.balance) },
                                 set: { bluetooth.send(.simulatorBalance($0)) }))
-                                .disabled(!bluetooth.state.isReady)
+                                .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                             Text("지연된 IMU 측정으로 다리를 보정합니다. 설정 변경 시 먼저 정지합니다.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
@@ -136,7 +136,7 @@ struct ControlView: View {
                             get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
                             set: { bluetooth.send(.simulatorProfile($0)) })) {
                             ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.titleWithSpeed).tag($0) }
-                        }.disabled(!bluetooth.state.isReady)
+                        }.disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                         Text("괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
@@ -155,9 +155,9 @@ struct ControlView: View {
                 }
                 postureButton("Stand", pose: "stand", command: .stand)
                 postureButton("Stand11", pose: "stand11", command: .stand11)
-                Button("Hold") { bluetooth.send(.hold) }
-                Button("Recover") { bluetooth.send(.recover) }
-                Button("Relax", role: .destructive) { showRelaxConfirmation = true }
+                Button("Stop") { bluetooth.send(.hold) }.tint(.red)
+                Button("Recover") { bluetooth.send(.recover) }.disabled(bluetooth.motionControlsLocked)
+                Button("Relax", role: .destructive) { showRelaxConfirmation = true }.disabled(bluetooth.motionControlsLocked)
                 Text("Stand11은 다리를 곧게 펴는 캘리브레이션 확인 자세입니다. 몸체를 지지한 상태에서 사용하십시오.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -187,7 +187,7 @@ struct ControlView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .disabled(!bluetooth.state.isReady)
+            .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
 
             Section("진단") {
                 Button("Targets") { bluetooth.send(.targets) }
@@ -244,7 +244,7 @@ struct ControlView: View {
                 .font(.caption).lineLimit(1).minimumScaleFactor(0.7)
             GeometryReader { area in
                 let diameter = max(72, min(250, area.size.width, area.size.height))
-                VirtualJoystick(enabled: bluetooth.state.isReady) { x, y in
+                VirtualJoystick(enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked) { x, y in
                     bluetooth.updateDrive(x: x, y: y)
                 } onRelease: { reason in
                     bluetooth.stopDrive(reason: reason)
@@ -286,13 +286,13 @@ struct ControlView: View {
                     bluetooth.synchronizeState()
                 }
                 compactButton("직진", icon: "arrow.up", selected: bluetooth.runtimeState.heading == "on",
-                              enabled: bluetooth.state.isReady && bluetooth.runtimeState.capabilities.contains("headinghold"),
+                              enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked && bluetooth.runtimeState.capabilities.contains("headinghold"),
                               toggle: true) {
                     bluetooth.send(.headingHold(bluetooth.runtimeState.heading != "on"))
                 }
                 compactButton("수평", icon: "gyroscope",
                               selected: !["off", "unknown"].contains(bluetooth.runtimeState.balance),
-                              enabled: bluetooth.state.isReady &&
+                              enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked &&
                                 (bluetooth.runtimeState.capabilities.contains("balancecontrol") ||
                                  bluetooth.runtimeState.capabilities.contains("simbalance")), toggle: true) {
                     bluetooth.send(.simulatorBalance(["off", "unknown"].contains(bluetooth.runtimeState.balance)))
@@ -306,25 +306,28 @@ struct ControlView: View {
                 } label: {
                     compactLabel("정책", icon: "figure.walk", selected: false)
                 }
-                .disabled(!bluetooth.state.isReady || !supportsProfiles)
+                .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked || !supportsProfiles)
                 .accessibilityLabel("보행 정책 선택")
                 .accessibilityValue((SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy).titleWithSpeed)
             }
             HStack(spacing: 0) {
                 compactButton("Landing", icon: "arrow.down.to.line", selected: bluetooth.runtimeState.pose == "landing",
-                              enabled: bluetooth.state.isReady) { bluetooth.send(.landing) }
+                              enabled: bluetooth.state.isReady && bluetooth.permitsCommand(.landing)) { bluetooth.send(.landing) }
                 if supportsStow {
                     compactButton("Stow", icon: "shippingbox", selected: bluetooth.runtimeState.pose == "stow",
-                                  enabled: bluetooth.state.isReady) { bluetooth.send(.stow) }
+                                  enabled: bluetooth.state.isReady && bluetooth.permitsCommand(.stow)) { bluetooth.send(.stow) }
                 }
                 compactButton("Stand", icon: "figure.stand", selected: bluetooth.runtimeState.pose == "stand",
-                              enabled: bluetooth.state.isReady) { bluetooth.send(.stand) }
+                              enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked) { bluetooth.send(.stand) }
                 compactButton("Stand11", icon: "arrow.up.to.line", selected: bluetooth.runtimeState.pose == "stand11",
-                              enabled: bluetooth.state.isReady) { bluetooth.send(.stand11) }
-                compactButton("Hold", icon: "pause.fill", enabled: bluetooth.state.isReady) { bluetooth.send(.hold) }
-                compactButton("Recover", icon: "arrow.counterclockwise", enabled: bluetooth.state.isReady) { bluetooth.send(.recover) }
-                compactButton("Relax", icon: "power", enabled: bluetooth.state.isReady, destructive: true) { showRelaxConfirmation = true }
+                              enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked) { bluetooth.send(.stand11) }
+                compactButton("Recover", icon: "arrow.counterclockwise", enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked) { bluetooth.send(.recover) }
+                compactButton("Relax", icon: "power", enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked, destructive: true) { showRelaxConfirmation = true }
                     .tint(.red)
+                compactButton("Stop", icon: "stop.fill", enabled: bluetooth.state.isReady, destructive: true) {
+                    bluetooth.send(.hold)
+                }
+                .accessibilityIdentifier("controllerStop")
             }
         }
         .buttonStyle(.plain)
@@ -452,6 +455,7 @@ struct ControlView: View {
                 }
             }
         }
+        .disabled(!bluetooth.state.isReady || !bluetooth.permitsCommand(command))
     }
 
     private func sendConsoleCommand() {

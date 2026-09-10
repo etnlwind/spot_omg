@@ -28,13 +28,14 @@ def test_no_direct_pose_changes_when_requesting_stow():
     assert not np.array_equal(before,plant.data.qpos)
 
 
-def test_overhead_path_passes_above_hip_and_ends_at_same_orientation():
+def test_overhead_path_stops_before_original_overlap_orientation():
     import mujoco
     from stow_preview import stages_for
     plant=make_plant(True,overhead=True)
     stages=stages_for('overhead')
     before=np.array(stages[2][1]);after=np.array(stages[3][1])
-    np.testing.assert_array_equal((after-before)[[1,4]],[-180,-180])
+    assert np.all((after-before)[[1,4]] > -180)
+    assert np.all((after-before)[[1,4]] < -160)
     positions=[]
     for values in ((before+after)/2,after,np.array(STAGES[3][1])):
         plant.data.qpos[plant.q]=np.radians(values)
@@ -43,7 +44,7 @@ def test_overhead_path_passes_above_hip_and_ends_at_same_orientation():
         if len(positions)==1:
             hip=plant.data.xpos[plant.model.body('fl_j2_link').id]
             assert positions[0][2]-hip[2] > .2
-    np.testing.assert_allclose(positions[1],positions[2],atol=1e-6)
+    assert np.linalg.norm(positions[1]-positions[2]) > .01
     assert plant.p['embedded_servo_quantization'] is False
     assert make_plant(True).p.get('embedded_servo_quantization',True) is True
 

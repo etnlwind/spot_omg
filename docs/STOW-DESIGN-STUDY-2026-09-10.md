@@ -119,3 +119,44 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/p
 ### 실행 중인 TCP 가상 로봇 최종 확인
 
 실행 중인 가상 로봇에 TCP로 `stow` → `targets` → `landing`을 전송해 왕복을 확인했다. Stow의 실제 앞다리 J2는 FL −263.39°, FR −263.46°였으며 `OK stow` 응답 후 Landing 복귀도 `OK landing`으로 완료했다. 이후 사용자도 앱에서 동작 성공을 확인했다.
+
+## 접촉 직전 구동 종료와 중력 안착 (현재 선택 정책)
+
+이 절이 앞선 −265° 목표 및 위치 유지 설명을 대체한다. 사용자의 의도는 다리의 가벼운 접촉을 금지하는 것이 아니라, 맞닿은 다리를 모터가 계속 밀어붙이지 않게 하는 것이다.
+
+- `stow_clearance.py`가 STEP에서 추출한 12개 다리 STL의 전체 삼각형을 FCL BVH로 검사한다. 서로 다른 다리의 54개 링크 쌍을 검사하며, MuJoCo의 기존 가느다란 충돌 프록시를 거리 측정에 사용하지 않는다. 원래 동시 접기 경로를 진행률 0.001 간격으로 검사하고 첫 경계 구간을 이분 탐색한다.
+- 최초 접촉 경계는 진행률 약 0.983070, FR J3–RR J3이다. 해당 앞 J2는 약 −259.836°, 뒤 J2는 −82.884°, J3는 2.201°이다.
+- 명령 목표는 20mm 설계 여유를 확보하도록 진행률 0.964로 제한한다. **FL/FR: J1 0°, J2 −254.02°, J3 4.68°; RL/RR: J1 0°, J2 −80.5°, J3 4.68°.** 이 명령 자세의 상세 형상 간격은 20.481mm이다.
+- `stow_policy.py`를 앱/TCP/BLE가 명령하는 가상 로봇, 미리보기, 실제 펌웨어 인코딩 사전 검사에서 공통으로 참조한다. 앱은 같은 `stow` 명령을 사용하므로 이번 동작 변경에 재설치가 필요하지 않다. 이전의 제한 없는 실험 경로는 CLI 실행 선택지에서 제외했다.
+- 12초 구동 후 **모든 모터 토크를 0으로 해제**한다. 이후 중력으로 다리가 서로 기대게 하며, 원래 끝 각도를 계속 추종하지 않는다. `pose=stow torque=off`로 보고한다. 목표 도달 오류가 발생해도 Stow 구동을 계속하지 않고 토크를 해제하고 `stow-paused`로 전환한다. 임의 장애물을 실시간 감지하는 기능은 아니다.
+- 실험 모델에만 서로 다른 다리의 상세 메시 접촉 쌍을 추가했다. MuJoCo 접촉 반력은 메시의 **볼록 껍질 근사**이며 FCL의 삼각형 거리 측정과 구분해야 한다. 같은 다리의 결합면, 몸체/배선 간섭, 실물 조립 오차는 이번 검증 범위 밖이다.
+- Landing은 중력 안착 이후 측정된 관절 위치에서 서보 목표/지연 버퍼를 재설정하고 구동력을 켜서 12초 동안 펼친다. 이전 명령 자세로 먼저 튀어 돌아가지 않는다. 진행 중 Stop 및 중지 후 양방향 재개 동작도 유지한다.
+
+### 검증 결과
+
+- 기본 물리 모델: 구동 중 상세 다리 간 최소 간격 **14.699mm**.
+- 현재 실행하는 `right_drift.json` 모델: 구동 중 최소 간격 **10.630mm**.
+- 두 모델 모두 안착 중 모터 토크 최대값 **0Nm**, `OK stow` → `OK landing` 왕복 성공.
+- 접촉 후 모터가 미는지에 대한 검증은 실제 출력 `data.ctrl`을 확인한다. 중력에 따른 관절 회전은 허용된다. 무구동 안착 자세는 명령 각도와 달라진다.
+- Stow/Stop/재개 검사 13개, 상세 형상/기존 가상 로봇/물리 검사 35개 통과.
+- 실물 인코딩 검사는 여전히 실패한다(앞 J2 −254.02°가 현재 단일 회전 인코딩 범위를 벗어남). 이번 검증은 실물 적용 승인이 아니며 물리 펌웨어의 제한을 우회하지 않는다.
+
+재현 명령:
+
+```sh
+/opt/anaconda3/envs/spot_omg/bin/python -m pip install -r simulation/mujoco/requirements-stow.txt
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/stow_clearance.py
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/validate_stow_dynamics.py
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/stow_preview.py --case stow-cycle --run --video
+```
+
+결과는 `diagnostics/stow/clearance.json`(메시 SHA256 및 경로 표본), `dynamic-clearance.json`(가상 컨트롤러 동역학), `stow-cycle.mp4`(접기·무구동 안착·Landing 왕복)에 저장한다. STL 표면, 잠정 관절 축/원점, 추정 질량 및 마찰에 따른 결과이며, 실물의 감속기 역구동성·배선·유격은 별도 측정이 필요하다.
+
+### 추가 회전 후 토크 해제 조정 (최신)
+
+사용자 요청에 따라 구동 종료 목표를 조금 더 접는 방향으로 수정했다.
+FL/FR J2는 −254.02° → **−254.63°**(0.61° 추가), RL/RR J2는 −80.5° → **−80.75°**(0.25° 추가), 모든 J3는 4.68° → **4.42°**이다. J1은 0°이며 12초 동시 접기와 완료 후 토크 해제는 유지한다.
+
+설계 여유를 20mm에서 18mm로 조정했고, 공통 경로 진행률은 0.964 → 0.966이다. 정적 상세 메시 간격은 **18.336mm**이다. 이번 조정의 동역학 통과 기준은 구동 중 최소 5mm 간격이다. 더 크게 접은 두 후보는 편차 모델에서 이 기준을 충족하지 못해 적용하지 않았다.
+
+선택한 목표의 구동 중 최소 간격은 기본 모델 **11.208mm**, right-drift 모델 **6.279mm**였다. 두 경우 모두 토크 해제 후 출력은 0Nm이며 Stow/Landing 왕복이 성공했다. 상세 형상 보고서, 동역학 기록, 왕복 영상 및 실물 인코딩 사전 검사를 새 목표로 갱신했다. 실물 인코딩 제한은 여전히 미통과이다.

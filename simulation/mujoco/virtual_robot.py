@@ -3,7 +3,7 @@
 Run with mjpython for --viewer. No hardware transport is imported or opened.
 The protocol adapter is intentionally separate from the physics plant.
 """
-from stow_policy import LANDING, FOLDED, FOLD_SECONDS
+from stow_policy import LANDING, FOLDED, FOLD_SECONDS, RELEASE_TORQUE_AT_STOW
 import argparse
 import collections
 import json
@@ -90,11 +90,22 @@ class RobotController:
         self.transition = (self.target.copy(), np.array(target), 0., duration, completion)
         self.pose = 'custom'
 
+    def capture_current_target(self):
+        """Restart from the measured pose without restoring an old queued goal."""
+        held=self.plant.data.qpos[self.plant.q].copy()
+        self.target=np.degrees(held)
+        self.command_target=self.target.copy()
+        self.plant.desired=held.copy();self.plant.filtered=held.copy()
+        self.plant.target_velocity[:]=0
+        self.plant.delay=collections.deque([held.copy() for _ in range(len(self.plant.delay))])
+
     def stop(self, reason='requested'):
-        if self.stow_path:
+        if self.stow_path or (self.motion is None and self.transition is not None):
             self.stow_queue.clear(); self.transition=None
-            self.target=np.degrees(self.plant.data.qpos[self.plant.q]).copy()
-            self.pose='stow-paused'
+            # Flush queued servo targets, not physical state/velocity. Subsequent
+            # physics dissipates motion while the position controller holds here.
+            self.capture_current_target()
+            self.pose='stow-paused' if self.stow_path else 'custom'
             self.reply('STOPPED: '+reason)
             return
         if self.motion is None or self.stopping_reason:
@@ -184,6 +195,7 @@ class RobotController:
                     raise ValueError('Stow requires --stow experimental simulator')
                 if self.safety!='ok':raise ValueError('recover required')
                 already_stow=self.stow_path
+                if already_stow and not self.torque:self.capture_current_target()
                 self.stow_path=True;self.plant.stow_active=True;self.torque=True
                 self.balance.correction[:]=0;self.balance.integral[:]=0
                 if self.pose=='landing' or already_stow:
@@ -192,6 +204,7 @@ class RobotController:
                     self.stow_queue=[(FOLDED,'OK stow',FOLD_SECONDS)]
                     self.blend(LANDING,'STOW landing',2.)
             elif cmd=='landing' and self.stow_path and len(words)==1:
+                self.capture_current_target()
                 self.torque=True
                 self.blend(LANDING,'OK landing',FOLD_SECONDS)
             elif cmd == 'heading' and len(words)==2 and words[1] in ('on','off'):
@@ -299,10 +312,18 @@ class RobotController:
                     if self.stow_path and completion in ('OK stow','OK landing'):
                         error=float(np.max(abs(np.degrees(self.plant.data.qpos[self.plant.q])-end)))
                         if error>12:
+                            self.capture_current_target()
+                            if completion=='OK stow':self.torque=False
                             completion=f'ERROR: Stow posture target not reached ({error:.1f} deg)'
                     if self.stow_path and completion=='OK landing':
                         self.stow_path=False;self.plant.stow_active=False
+                    if completion=='OK stow' and RELEASE_TORQUE_AT_STOW:
+                        # Do not keep pushing toward a position after the legs
+                        # settle into contact. Gravity/contact now support them.
+                        self.torque=False
                     self.pose=completion[3:] if completion in ('OK stand','OK stand11','OK landing','OK stow') else ('stand' if np.allclose(end,[0,45,90]*4) else 'custom')
+                    if self.stow_path and completion.startswith('ERROR:'):
+                        self.pose='stow-paused'
                     self.reply(completion)
         elif self.motion:
             if self.motion[0]=='drive' and self.profiles==self.deployed_profiles:

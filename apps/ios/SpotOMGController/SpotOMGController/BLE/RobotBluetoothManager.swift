@@ -9,6 +9,12 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     static let receiveUUID = CBUUID(string: "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
     static let transmitUUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
+    @Published private(set) var postureInProgress: String?
+    @Published private(set) var postureQueued = false
+    @Published private(set) var stopRequested = false
+    private var postureAcknowledged = false
+    var motionControlsLocked: Bool { stowControlLocked || postureInProgress != nil || postureQueued || stopRequested }
+    @Published private(set) var stowControlLocked = false
     @Published private(set) var state: RobotConnectionState = .disconnected
     @Published private(set) var consoleText = ""
     @Published private(set) var lastError: String?
@@ -218,6 +224,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func disconnect() {
+        stowControlLocked = false
         trace?.record("disconnect-request", "phase=\(drivePhase.rawValue)")
         reconnectRequested = false
         simulatorTimeout?.cancel(); simulatorTimeout = nil
@@ -229,7 +236,48 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         resetConnection()
     }
 
+    func permitsCommand(_ command: RobotCommand) -> Bool {
+        if command.consoleLine == "hold" || command.consoleLine == "\u{03}" { return true }
+        if postureInProgress != nil || postureQueued || stopRequested {
+            switch command {
+            case .syncState, .targets, .gaitDiagnostics, .balanceDiagnostics: return true
+            case .raw(let text):
+                return ["syncstate", "targets", "gaitdiag", "baldiag", "imudiag", "locomotiondiag", "read 1", "identity"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            default: return false
+            }
+        }
+        guard stowControlLocked else { return true }
+        if runtimeState.pose == "stow-paused", command.consoleLine.trimmingCharacters(in: .whitespacesAndNewlines) == "stow" {
+            return true
+        }
+        switch command {
+        case .landing, .syncState, .targets, .gaitDiagnostics, .balanceDiagnostics, .storedLogs:
+            return true
+        case .raw(let text):
+            return ["landing", "syncstate", "targets", "gaitdiag", "baldiag", "imudiag", "locomotiondiag", "read 1", "identity"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        default: return false
+        }
+    }
+
     func send(_ command: RobotCommand) {
+        if (command.consoleLine == "hold" || command.consoleLine == "\u{03}"),
+           motionControlsLocked || driveSessionActive {
+            guard state.isReady else { return }
+            pendingCommandAfterDrive = nil
+            postureQueued = false
+            stopRequested = true
+            sendMotionInterrupt()
+            if driveSessionActive {
+                driveHeartbeat?.invalidate(); driveHeartbeat = nil
+                driveVector = nil; drivePhase = .stopping
+                armDriveCompletionTimeout()
+            }
+            driveStatus = "긴급 중지 요청 · 응답 대기"
+            return
+        }
+        guard permitsCommand(command) else {
+            lastError = postureInProgress == nil ? "Stow 상태에서는 Landing으로 먼저 펼쳐 주십시오." : "자세 전환 중입니다. 완료될 때까지 기다려 주십시오."; return
+        }
         if command == .stow {
             guard target.isSimulator, runtimeState.capabilities.contains("simstow") else {
                 lastError = "Stow는 설계 검토용 가상 로봇에서만 사용할 수 있습니다."; return
@@ -266,6 +314,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 sendCommandNow(command)
             } else {
                 pendingCommandAfterDrive = command
+                postureQueued = ["stow", "landing", "stand", "stand11"].contains(command.consoleLine.trimmingCharacters(in: .whitespacesAndNewlines))
                 stopDrive(reason: "command: \(command.consoleLine)")
             }
             return
@@ -274,7 +323,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func sendCommandNow(_ command: RobotCommand) {
-        guard state.isReady else { return }
+        guard state.isReady, permitsCommand(command) else { return }
         var wireCommand = command
         if case .simulatorProfile(let profile) = command, runtimeState.capabilities.contains("gaitprofiles") {
             wireCommand = .raw("gaitprofile \(profile.rawValue)")
@@ -284,6 +333,12 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         }
         guard let data = wireCommand.encoded else { return }
 
+        let posture = wireCommand.consoleLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if ["stow", "landing", "stand", "stand11"].contains(posture) {
+            postureInProgress = posture
+            postureAcknowledged = false
+            driveStatus = "\(posture.capitalized) 전환 중"
+        }
         appendConsole("> \(wireCommand.consoleLine)\n")
         write(data)
         if let delay = command.stateRefreshDelay {
@@ -350,6 +405,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func updateDrive(x: Double, y: Double) {
+        guard !motionControlsLocked else { return }
         guard state.isReady, let vector = RobotDriveVector.make(x: x, y: y) else {
             driveRequiresRelease = false
             stopDrive(reason: "joystick-neutral-or-disconnected")
@@ -422,6 +478,11 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func resetConnection(keepingState: Bool = false) {
+        postureInProgress = nil
+        postureQueued = false
+        stopRequested = false
+        postureAcknowledged = false
+        stowControlLocked = false
         awaitingSimulatorIdentity = false
         simulatorIdentity = RobotConsoleStream()
         simulatorTimeout?.cancel(); simulatorTimeout = nil
@@ -549,6 +610,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         drivePhase = .idle
         if let pending = pendingCommandAfterDrive {
             pendingCommandAfterDrive = nil
+            postureQueued = false
             sendCommandNow(pending)
         } else {
             scheduleStateRefresh(after: 0.8)
@@ -565,6 +627,45 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             }
             if target.isSimulator, line.hasPrefix("$SIMLINK disconnected") {
                 disconnect(); fail("MuJoCo 연결이 종료되었습니다."); return
+            }
+            if line.hasPrefix("STOPPED:") || line.hasPrefix("$SPOTDRIVE stopped ") {
+                stopRequested = false
+            }
+            if let pending = postureInProgress {
+                if line == "OK \(pending)" {
+                    postureInProgress = nil
+                    runtimeState.pose = pending
+                    driveStatus = pending == "stow" ? "Stow · Landing으로 펼치기" : "중립"
+                    scheduleStateRefresh(after: 0.1)
+                } else if line == "OK", !target.isSimulator {
+                    // Real firmware reports a bare completion ACK; confirm its
+                    // resulting pose with a subsequent state snapshot.
+                    postureAcknowledged = true
+                    scheduleStateRefresh(after: 0.1)
+                } else if line.hasPrefix("ERROR:") || line.hasPrefix("STOPPED:") {
+                    if line.hasPrefix("STOPPED:"), pending == "stow" || stowControlLocked {
+                        stowControlLocked = true
+                        runtimeState.pose = "stow-paused"
+                    }
+                    postureInProgress = nil
+                    scheduleStateRefresh(after: 0.1)
+                }
+            }
+            if line.hasPrefix("STOPPED:"), !driveSessionActive {
+                driveStatus = "중지됨"
+                if stowControlLocked { runtimeState.pose = "stow-paused" }
+                scheduleStateRefresh(after: 0.1)
+            }
+            if line == "OK stow" {
+                stowControlLocked = true
+                runtimeState.pose = "stow"
+                driveStatus = "Stow · Landing으로 펼치기"
+                scheduleStateRefresh(after: 0.1)
+            } else if line == "OK landing" {
+                stowControlLocked = false
+                runtimeState.pose = "landing"
+                driveStatus = "중립"
+                scheduleStateRefresh(after: 0.1)
             }
             if line.hasPrefix("ERROR:") { lastError = line }
             if line.hasPrefix("$SPOTDRIVE started ") {
@@ -630,6 +731,17 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 revision: values["rev"] ?? "unknown",
                 capabilities: Set((values["caps"] ?? "").split(separator: ",").map(String.init)),
                 simulationProfile: values["profile"] ?? "legacy")
+            if postureAcknowledged, let pending = postureInProgress, runtimeState.pose == pending {
+                postureInProgress = nil
+                postureAcknowledged = false
+                driveStatus = "중립"
+            }
+            if ["stow", "stow-paused"].contains(runtimeState.pose) {
+                stowControlLocked = true
+                driveStatus = runtimeState.pose == "stow-paused" ? "중지됨 · Landing / Stow 선택" : "Stow · Landing으로 펼치기"
+            } else if ["landing", "stand", "stand11"].contains(runtimeState.pose) {
+                stowControlLocked = false
+            }
             initialSyncTimeout?.cancel()
             initialSyncTimeout = nil
             lastStateSync = Date()
