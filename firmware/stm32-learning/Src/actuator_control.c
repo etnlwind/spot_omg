@@ -166,7 +166,17 @@ bool actuator_diagnostics_update(ActuatorDiagnostics *diagnostics,
     const uint16_t current = magnitude_i16(sample->current);
     const uint16_t load = magnitude_i16(sample->load);
 
-    ++joint->sample_count;
+    if(joint->sample_count < UINT32_MAX) {
+        ++joint->sample_count;
+        joint->signed_error_sum_ticks += sample->position_error;
+        if(sample->stance) {
+            ++joint->stance_samples;
+            joint->stance_error_sum_ticks += sample->position_error;
+        } else {
+            ++joint->swing_samples;
+            joint->swing_error_sum_ticks += sample->position_error;
+        }
+    }
     ++diagnostics->total_samples;
     if (UINT32_MAX - joint->absolute_error_sum_ticks >= error) {
         joint->absolute_error_sum_ticks += error;

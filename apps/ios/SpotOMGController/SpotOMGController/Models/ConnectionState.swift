@@ -119,18 +119,18 @@ enum SimulatorGaitProfile: String, CaseIterable {
 extension SimulatorGaitProfile {
     var benchmarkSpeedMetersPerSecond: Double? {
         switch self {
-        case .legacy: return 0.054788653
-        case .crawl: return 0.026911941
-        case .cruise: return 0.212291093
-        case .trot: return 0.198381223
-        case .highstep: return 0.081839884
-        case .lift: return 0.081839884
-        case .imu: return 0.076509574
-        case .level: return 0.092028071
-        case .level15: return 0.075968784
-        case .joint: return 0.085978608
-        case .jointfast: return 0.106714989
-        case .jointsport: return 0.145050750
+        case .legacy: return 0.047956415
+        case .crawl: return 0.028477535
+        case .cruise: return 0.212593697
+        case .trot: return 0.173329346
+        case .highstep: return 0.089345535
+        case .lift: return 0.089345535
+        case .imu: return 0.078093022
+        case .level: return 0.099763812
+        case .level15: return 0.076044601
+        case .joint: return 0.085797550
+        case .jointfast: return 0.105461897
+        case .jointsport: return 0.138690490
         }
     }
 

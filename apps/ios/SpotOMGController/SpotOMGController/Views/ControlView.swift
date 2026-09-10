@@ -4,6 +4,7 @@ struct ControlView: View {
     @EnvironmentObject private var bluetooth: RobotBluetoothManager
     @State private var showRelaxConfirmation = false
     @State private var consoleCommand = ""
+    @State private var terminalPage = CommandLine.arguments.contains("--simulator-video") ? 1 : 0
     @FocusState private var consoleInputFocused: Bool
 
     private static let appVersion: String = {
@@ -22,7 +23,13 @@ struct ControlView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            terminalPanel
+            TabView(selection: $terminalPage) {
+                terminalPanel.tag(0)
+                SimulatorVideoView(active: terminalPage == 1, controlHost: bluetooth.target == .simulator ? bluetooth.simulatorHost : nil).tag(1)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 246)
+            .onChange(of: terminalPage) { _, _ in consoleInputFocused = false }
 
             HStack {
                 (Text("Spot OMG ").font(.headline) +
@@ -49,7 +56,14 @@ struct ControlView: View {
             .frame(height: 48)
             .background(Color(uiColor: .systemBackground))
 
+            GeometryReader { geometry in
             List {
+                Section {
+                    controllerPage(height: max(220, geometry.size.height - 28))
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                }
+
                 Section {
                     Picker("제어 대상", selection: Binding(get: { bluetooth.target }, set: { bluetooth.selectTarget($0) })) {
                         ForEach(RobotConnectionTarget.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -127,25 +141,11 @@ struct ControlView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Section("조이스틱") {
-                    HStack {
-                        Spacer()
-                        VirtualJoystick(enabled: bluetooth.state.isReady) { x, y in
-                            bluetooth.updateDrive(x: x, y: y)
-                        } onRelease: { reason in
-                            bluetooth.stopDrive(reason: reason)
-                        }
-                        .frame(width: 190, height: 190)
-                        Spacer()
-                    }
-                    Text(bluetooth.driveStatus)
-                        .font(.system(.subheadline, design: .monospaced).bold())
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    Text(bluetooth.target.isSimulator ? "대각선은 전진·후진하면서 회전하고, 좌우는 제자리 회전합니다. 수평 보정 상태는 상단에 표시됩니다. 손을 떼면 정지합니다." : "위·아래는 IMU 기울기 보정 전진·후진, 대각선은 이동과 회전, 좌우는 제자리 회전입니다. 직진 근처의 작은 좌우 입력은 무시합니다. 중심에서 멀수록 빨라지고 손을 떼면 스틱이 중앙으로 복귀하며 즉시 정지를 요청합니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
 
+            Section("조이스틱 사용법") {
+                Text("위·아래는 전진·후진, 대각선은 이동과 회전, 좌우는 제자리 회전입니다. 중심에서 멀수록 빨라지고 손을 떼면 정지합니다.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("안전 자세") {
                 postureButton("Landing", pose: "landing", command: .landing)
                 postureButton("Stand", pose: "stand", command: .stand)
@@ -196,7 +196,12 @@ struct ControlView: View {
             }
             .disabled(!bluetooth.state.isReady)
             }
+            .listSectionSpacing(12)
+            .contentMargins(.vertical, 0, for: .scrollContent)
             .scrollDismissesKeyboard(.interactively)
+            .padding(.top, 16)
+            .background(Color(uiColor: .systemGroupedBackground))
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -213,13 +218,140 @@ struct ControlView: View {
         }
     }
 
+    private func controllerPage(height: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            compactControls
+            HStack(spacing: 6) {
+                Circle().fill(bluetooth.state.isReady ? Color.green : Color.orange)
+                    .frame(width: 6, height: 6)
+                Text(bluetooth.target.isSimulator ? "가상 로봇" : "실제 로봇")
+                Spacer()
+                TimelineView(.periodic(from: .now, by: 5)) { context in
+                    let stale = bluetooth.lastVoltageRead.map { context.date.timeIntervalSince($0) > 15 } ?? false
+                    Text(bluetooth.supplyVoltageMillivolts.map {
+                        String(format: "≈ %.1f V", Double($0) / 1000) + (stale ? " · 이전" : "")
+                    } ?? "— V")
+                    .foregroundStyle(stale ? .secondary : .primary)
+                }
+            }
+            .font(.caption2.monospacedDigit())
+            Text((SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy).titleWithSpeed)
+                .font(.caption).lineLimit(1).minimumScaleFactor(0.7)
+            GeometryReader { area in
+                let diameter = max(72, min(250, area.size.width, area.size.height))
+                VirtualJoystick(enabled: bluetooth.state.isReady) { x, y in
+                    bluetooth.updateDrive(x: x, y: y)
+                } onRelease: { reason in
+                    bluetooth.stopDrive(reason: reason)
+                }
+                .frame(width: diameter, height: diameter)
+                .position(x: area.size.width / 2, y: area.size.height - diameter / 2)
+                .accessibilityIdentifier("mainJoystick")
+            }
+            Text(bluetooth.driveStatus)
+                .font(.system(.subheadline, design: .monospaced).bold())
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Label("상세 설정", systemImage: "chevron.down")
+                .font(.system(size: 9)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 22)
+        .padding(.bottom, 6)
+        .frame(height: height)
+        .accessibilityIdentifier("controllerPage")
+    }
+
+    private var supportsProfiles: Bool {
+        bluetooth.runtimeState.capabilities.contains("gaitprofiles") ||
+        (bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simprofiles"))
+    }
+
+    private var compactControls: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 0) {
+                compactButton(bluetooth.state.isReady ? "해제" : "연결", icon: "link",
+                              selected: bluetooth.state.isReady) {
+                    bluetooth.state.isReady ? bluetooth.disconnect() : bluetooth.connect()
+                }
+                compactButton("동기화", icon: "arrow.clockwise", enabled: bluetooth.state.isReady) {
+                    bluetooth.synchronizeState()
+                }
+                compactButton("직진", icon: "arrow.up", selected: bluetooth.runtimeState.heading == "on",
+                              enabled: bluetooth.state.isReady && bluetooth.runtimeState.capabilities.contains("headinghold"),
+                              toggle: true) {
+                    bluetooth.send(.headingHold(bluetooth.runtimeState.heading != "on"))
+                }
+                compactButton("수평", icon: "gyroscope",
+                              selected: !["off", "unknown"].contains(bluetooth.runtimeState.balance),
+                              enabled: bluetooth.state.isReady &&
+                                (bluetooth.runtimeState.capabilities.contains("balancecontrol") ||
+                                 bluetooth.runtimeState.capabilities.contains("simbalance")), toggle: true) {
+                    bluetooth.send(.simulatorBalance(["off", "unknown"].contains(bluetooth.runtimeState.balance)))
+                }
+                Menu {
+                    Picker("보행 정책", selection: Binding(
+                        get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
+                        set: { bluetooth.send(.simulatorProfile($0)) })) {
+                        ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.titleWithSpeed).tag($0) }
+                    }
+                } label: {
+                    compactLabel("정책", icon: "figure.walk", selected: false)
+                }
+                .disabled(!bluetooth.state.isReady || !supportsProfiles)
+                .accessibilityLabel("보행 정책 선택")
+                .accessibilityValue((SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy).titleWithSpeed)
+            }
+            HStack(spacing: 0) {
+                compactButton("Landing", icon: "arrow.down.to.line", selected: bluetooth.runtimeState.pose == "landing",
+                              enabled: bluetooth.state.isReady) { bluetooth.send(.landing) }
+                compactButton("Stand", icon: "figure.stand", selected: bluetooth.runtimeState.pose == "stand",
+                              enabled: bluetooth.state.isReady) { bluetooth.send(.stand) }
+                compactButton("Stand11", icon: "arrow.up.to.line", selected: bluetooth.runtimeState.pose == "stand11",
+                              enabled: bluetooth.state.isReady) { bluetooth.send(.stand11) }
+                compactButton("Hold", icon: "pause.fill", enabled: bluetooth.state.isReady) { bluetooth.send(.hold) }
+                compactButton("Recover", icon: "arrow.counterclockwise", enabled: bluetooth.state.isReady) { bluetooth.send(.recover) }
+                compactButton("Relax", icon: "power", enabled: bluetooth.state.isReady, destructive: true) { showRelaxConfirmation = true }
+                    .tint(.red)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("compactControls")
+    }
+
+    private func compactLabel(_ title: String, icon: String, selected: Bool, destructive: Bool = false) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+            Text(title).font(.system(size: 9, weight: .medium)).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .foregroundStyle(selected ? Color.green : (destructive ? Color.red : Color.accentColor))
+        .background(selected ? Color.green.opacity(0.12) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+    }
+
+    private func compactButton(_ title: String, icon: String, selected: Bool = false,
+                               enabled: Bool = true, toggle: Bool = false, destructive: Bool = false,
+                               action: @escaping () -> Void) -> some View {
+        Button(role: destructive ? .destructive : nil, action: action) {
+            compactLabel(title, icon: icon, selected: selected, destructive: destructive)
+        }
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.35)
+            .accessibilityLabel(toggle ? "IMU \(title) 보정" : title)
+            .accessibilityValue(toggle ? (selected ? "켜짐" : "꺼짐") : (selected ? "선택됨" : ""))
+            .accessibilityHint(toggle ? "변경하면 먼저 보행을 정지합니다" : "")
+            .help(toggle ? "IMU \(title) 보정: \(selected ? "켜짐" : "꺼짐")" : title)
+    }
+
     private var terminalPanel: some View {
         VStack(spacing: 0) {
             HStack {
                 Circle()
                     .fill(bluetooth.state.isReady ? Color.green : Color.orange)
                     .frame(width: 8, height: 8)
-                Text("SPOT OMG TERMINAL")
+                Text("TERMINAL · 1/2 ↔")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                 Spacer()
                 Button("CLEAR") { bluetooth.clearConsole() }

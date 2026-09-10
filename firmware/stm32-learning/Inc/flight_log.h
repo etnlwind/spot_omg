@@ -26,6 +26,8 @@ typedef struct
 void flight_log_init(const char *revision);
 
 /* Append compact events only while the motion loop is not running. */
+/* Reserve a whole diagnostic batch before its first record; idle only. */
+bool flight_log_prepare_entries(size_t count);
 bool flight_log_append(const char *text);
 bool flight_log_appendf(const char *format, ...);
 

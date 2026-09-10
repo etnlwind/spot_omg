@@ -46,3 +46,29 @@ def test_saturation_slew_and_turn_settle():
     assert not h.diagnostic()['active']
     for _ in range(15):h.update(sample(75),.8,0,0)
     assert h.diagnostic()['reference_deg']==75
+
+
+def test_sub_degree_error_is_not_ignored():
+    h=locked()
+    for _ in range(100):
+        out=h.update(sample(.2),.8,0,0)
+    assert out > .005
+
+
+def test_reference_averages_wrapped_samples_during_settle():
+    h=HeadingController(SharedGaitPolicy())
+    for i in range(10):
+        h.update(sample(359.9 if i%2 else .1),.8,0,0)
+    reference=h.diagnostic()['reference_deg']
+    assert abs((reference+180)%360-180) < .03
+
+
+def test_constant_disturbance_rejected_without_windup():
+    h=locked()
+    yaw=0.
+    for _ in range(3000):
+        correction=h.update(sample(yaw),.8,0,0)
+        # Simple independent yaw plant, clockwise actuator and CCW disturbance.
+        yaw += (1.0-20*correction)*.02
+    assert abs(yaw)<.15
+    assert abs(correction-.05)<.01

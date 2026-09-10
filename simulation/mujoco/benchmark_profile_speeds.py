@@ -30,7 +30,7 @@ def run(profile):
     return dict(profile=profile,speed_m_s=speed,passed=passed,safety=r.safety,nonfoot_contact=nonfoot,peak_tilt_deg=peak,observed_steady_samples=count)
 
 if __name__=='__main__':
-    result=dict(protocol='nominal estimated MuJoCo physics; 60s maximum forward; steady measurement 5-62s; seed55; successful stop required',manifest_sha256=hashlib.sha256((ROOT/'config/locomotion_profiles.json').read_bytes()).hexdigest(),profiles={})
+    result=dict(protocol='nominal estimated MuJoCo physics; 60s maximum forward; steady measurement 5-62s; seed55; successful stop required',manifest_sha256=hashlib.sha256((ROOT/'config/locomotion_profiles.json').read_bytes()).hexdigest(),heading_controller_sha256=hashlib.sha256((ROOT/'firmware/stm32-learning/Inc/heading_control.h').read_bytes()).hexdigest(),profiles={})
     with ProcessPoolExecutor(max_workers=4) as pool:
         for row in pool.map(run,('legacy',*load_profiles())):
             print(json.dumps(row),flush=True);result['profiles'][row['profile']]=row

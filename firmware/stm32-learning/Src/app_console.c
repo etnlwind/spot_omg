@@ -2,6 +2,7 @@
 
 #include "feetech_protocol.h"
 #include "flight_log.h"
+#include "mechanical_diagnostics.h"
 #include "gait_policy.h"
 #include "robot_config.h"
 #include "safety.h"
@@ -894,6 +895,35 @@ static void command_safety(AppConsole *console)
     }
 }
 
+static bool mechanical_log_writer(void *context, const char *text)
+{
+    (void)context;
+    static bool group_failed;
+    if(strncmp(text,"MECH_BEGIN ",11)==0)
+        group_failed=!flight_log_prepare_entries(50);
+    if(group_failed)return false;
+    group_failed=!flight_log_append(text);
+    return !group_failed;
+}
+
+static void command_mechanical_capture(AppConsole *console, const char *label)
+{
+    bool moving=console->robot->drive_active || console->robot->gait_diagnostics_active;
+    bool complete=mechanical_log_capture(console->robot->bus,moving,label,
+                                         mechanical_log_writer,NULL);
+    char message[160];
+    (void)snprintf(message,sizeof(message),
+        "$MECHLOG label=%s complete=%u; %s\r\n",label,complete,
+        complete ? "saved: log show 64" : "busy, invalid label, missing motor read or flash error; log show 64");
+    write_text(console,message);
+}
+
+static void finish_mechanical_pose(AppConsole *console, RobotResult result, const char *label)
+{
+    print_robot_result(console,result);
+    if(result==ROBOT_OK)command_mechanical_capture(console,label);
+}
+
 static void command_gait_diagnostics(AppConsole *console)
 {
     const ActuatorDiagnostics *diagnostics =
@@ -931,36 +961,10 @@ static void command_gait_diagnostics(AppConsole *console)
         console->robot->tilt_snapshot.valid ? 1U : 0U,
         (unsigned int)console->robot->balance_late_frames,
         (unsigned long)console->robot->gait_limited_frames);
-    uint8_t logged_joint[3] = {UINT8_MAX, UINT8_MAX, UINT8_MAX};
-    for (size_t rank = 0U; rank < 3U; ++rank) {
-        uint8_t best = UINT8_MAX;
-        for (uint8_t candidate = 0U; candidate < ROBOT_JOINT_COUNT; ++candidate) {
-            bool already_logged = false;
-            for (size_t prior = 0U; prior < rank; ++prior) {
-                already_logged = already_logged || logged_joint[prior] == candidate;
-            }
-            const ActuatorJointDiagnostics *joint = &diagnostics->joints[candidate];
-            if (!already_logged && joint->sample_count > 0U &&
-                (best == UINT8_MAX || joint->peak_position_error >
-                                      diagnostics->joints[best].peak_position_error)) {
-                best = candidate;
-            }
-        }
-        if (best == UINT8_MAX) {
-            break;
-        }
-        logged_joint[rank] = best;
-        const ActuatorJointDiagnostics *joint = &diagnostics->joints[best];
-        const ActuatorTrackingSample *peak = &joint->peak_error_sample;
-        (void)flight_log_appendf(
-            "JOINT id=%u peak=%u phase=%u current=%u load=%u min_v=%u lag=%u",
-            (unsigned int)peak->servo_id,
-            (unsigned int)joint->peak_position_error,
-            (unsigned int)joint->peak_error_phase,
-            (unsigned int)joint->peak_current_magnitude,
-            (unsigned int)joint->peak_load_magnitude,
-            (unsigned int)joint->minimum_voltage_mv,
-            (unsigned int)joint->lag_samples);
+    if(!mechanical_log_gait(diagnostics,
+            console->robot->drive_active || console->robot->gait_diagnostics_active,
+            mechanical_log_writer,NULL)) {
+        write_text(console,"ERROR: mechanical gait log incomplete; inspect log show 64\r\n");
     }
     print_bus_retry_diagnostics(console);
 
@@ -2309,6 +2313,12 @@ static void execute_line(AppConsole *console)
         command_linestate(console);
     } else if (strcmp(command, "read") == 0) {
         command_read(console, strtok(NULL, " \t"));
+    } else if (strcmp(command, "mechdiag") == 0) {
+        char *action=strtok(NULL," \t");
+        char *label=strtok(NULL," \t");
+        if(action && !strcmp(action,"capture") && label && !strtok(NULL," \t"))
+            command_mechanical_capture(console,label);
+        else write_text(console,"usage: mechdiag capture LABEL (1-16 letters/digits/_/-); idle read-only\r\n");
     } else if (strcmp(command, "status") == 0) {
         command_status(console);
     } else if (strcmp(command, "syncstate") == 0) {
@@ -2321,7 +2331,7 @@ static void execute_line(AppConsole *console)
         print_robot_result(console, robot_hold(console->robot));
     } else if (strcmp(command, "stand11") == 0) {
         write_text(console, "Straightening all four legs\r\n");
-        print_robot_result(console, robot_stand_straight(console->robot));
+        finish_mechanical_pose(console, robot_stand_straight(console->robot), "stand11");
     } else if (strcmp(command, "forward11") == 0) {
         if (strtok(NULL, " \t") != NULL) {
             write_text(console, "usage: forward11 (from stand, 24s nominal)\r\n");
@@ -2338,10 +2348,10 @@ static void execute_line(AppConsole *console)
         }
     } else if (strcmp(command, "stand") == 0) {
         write_text(console, "Starting direct synchronized stand move\r\n");
-        print_robot_result(console, robot_stand(console->robot));
+        finish_mechanical_pose(console, robot_stand(console->robot), "stand");
     } else if (strcmp(command, "landing") == 0) {
         write_text(console, "Starting direct synchronized landing move\r\n");
-        print_robot_result(console, robot_landing(console->robot));
+        finish_mechanical_pose(console, robot_landing(console->robot), "landing");
     } else if (strcmp(command, "trot") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
@@ -2742,6 +2752,7 @@ void app_console_print_help(AppConsole *console)
                "  imu on|off|status control 10 Hz IMU logging (default off)\r\n"
                "  imucal status|device|level|clear BNO055 persistent calibration\r\n"
                "  balance full|normal|on|off|status IMU balance (default full/on)\r\n"
+               "  mechdiag capture LABEL  persist 12 motor readings; no motion\r\n"
                "  log status|time MS|show [N]|clear persistent flight recorder\r\n"
                "  help             show this help\r\n\r\n");
     write_text(console,

@@ -71,6 +71,9 @@ typedef struct
 {
     uint32_t sample_count;
     uint32_t absolute_error_sum_ticks;
+    int64_t signed_error_sum_ticks;
+    int64_t stance_error_sum_ticks, swing_error_sum_ticks;
+    uint32_t stance_samples, swing_samples;
     uint16_t peak_position_error;
     uint16_t peak_error_phase;
     uint16_t peak_current_magnitude;

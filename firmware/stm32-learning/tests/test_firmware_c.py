@@ -342,3 +342,40 @@ def test_forward_pose_runtime() -> None:
         assert build.returncode == 0, build.stderr
         run = subprocess.run([str(binary)], capture_output=True, text=True)
         assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"
+
+
+def test_mechanical_diagnostics_runtime() -> None:
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("no host C compiler available")
+    sources = ["Src/mechanical_diagnostics.c", "Src/actuator_control.c",
+               "Src/robot_config.c", "Src/feetech_protocol.c", "tests/test_mechanical_diagnostics.c"]
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / "mechanical_diagnostics"
+        subprocess.run([compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"),
+                        *[str(PROJECT / src) for src in sources], "-o", str(binary), "-lm"], check=True)
+        subprocess.run([str(binary)], check=True)
+
+
+def test_flight_log_power_loss_runtime() -> None:
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("no host C compiler available")
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / "flight_log"
+        subprocess.run([compiler, *CFLAGS, "-DFLIGHT_LOG_HOST_TEST", "-include",
+                        str(PROJECT / "tests/flight_log_test_hal.h"),
+                        str(PROJECT / "Src/flight_log.c"), str(PROJECT / "tests/test_flight_log.c"),
+                        "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+
+
+def test_shared_drive_diagnostics_do_not_add_motor_reads_or_flash_writes() -> None:
+    source = (PROJECT / "Src/robot.c").read_text()
+    start=source.index("static RobotResult robot_shared_drive(")
+    body=source[start:source.index("void robot_control_idle(",start)]
+    assert body.count("sample_next_joint(")==1
+    assert "sts3215_read_state" not in body
+    assert "flight_log" not in body and "mechanical_log" not in body
+    assert body.index("gait_target_history_push(robot,positions)") < body.index("sample_next_joint(")
+    assert body.index("robot->gait_support_mask=gait_policy_support_mask(nominal)") < body.index("sample_next_joint(")

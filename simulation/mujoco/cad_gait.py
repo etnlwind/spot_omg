@@ -30,9 +30,20 @@ def build(write_files=True):
     ET.SubElement(root, 'option', gravity='0 0 0')
     ET.SubElement(root, 'statistic', center='0 0 0.22', extent='0.65')
     root.append(copy.deepcopy(source.find('asset')))
+    # Camera fill and directional studio lights keep the moving robot readable.
+    visual = ET.SubElement(root, 'visual')
+    ET.SubElement(visual, 'headlight', ambient='.35 .35 .35',
+                  diffuse='.5 .5 .5', specular='.15 .15 .15')
+    ET.SubElement(root.find('asset'), 'texture', name='studio_sky', type='skybox',
+                  builtin='gradient', rgb1='.28 .34 .42', rgb2='.55 .62 .70',
+                  width='512', height='3072')
     world = ET.SubElement(root, 'worldbody')
-    ET.SubElement(world, 'light', pos='0 -1 2', diffuse='0.8 0.8 0.8')
-    ET.SubElement(world, 'geom', type='plane', size='1 1 .01', pos='0 0 0', rgba='.2 .23 .27 1', contype='0', conaffinity='0')
+    ET.SubElement(world, 'light', name='studio_key', pos='0 -1 2',
+                  directional='true', dir='.3 .4 -1', diffuse='.6 .6 .6')
+    ET.SubElement(world, 'light', name='studio_fill', pos='0 1 2',
+                  directional='true', dir='-.4 -.3 -1', diffuse='.3 .3 .3',
+                  castshadow='false')
+    ET.SubElement(world, 'geom', type='plane', size='1 1 .01', pos='0 0 0', rgba='.42 .46 .50 1', contype='0', conaffinity='0')
     # CAD +X is robot left, CAD -Y is robot front, CAD +Z is up.
     base = ET.SubElement(world, 'body', name='cad_base', pos='.1495 -.05225 .253306637937', quat='.707106781187 0 0 .707106781187')
     geoms = {g.get('name'): g for g in source.find('worldbody').findall('geom')}

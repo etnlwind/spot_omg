@@ -27,18 +27,26 @@ static inline float heading_update(HeadingControl *s, float heading,
     }
     if (!s->active) {
         if (fabsf(applied_yaw) > .02f) s->settling = 0.f;
-        else s->settling += dt;
+        else {
+            /* Average the settling observations across the +/-180 boundary.
+             * A single noisy sample must not define the entire straight run. */
+            if (s->settling <= 0.f) s->reference = heading;
+            else s->reference = heading_wrap(s->reference +
+                heading_wrap(heading - s->reference) * dt / (s->settling + dt));
+            s->settling += dt;
+        }
         if (s->settling < .2f) return 0.f;
-        s->reference = heading;
         s->active = true;
     }
     float raw = heading_wrap(heading - s->reference);
-    s->error += .2f * (raw - s->error);
-    float error = fabsf(s->error) < .3f ? 0.f : s->error;
-    float candidate = heading_clip(s->integral + .006f * error * dt, .15f);
-    float wanted = .035f * error + candidate;
+    s->error += 0.1f * (raw - s->error);
+    /* No angular deadband: a persistent sub-degree bias still curves the path.
+     * Low-pass filtering, bounded integration and output slew suppress noise. */
+    float error = s->error;
+    float candidate = heading_clip(s->integral + 0.04f * error * dt, .15f);
+    float wanted = 0.035f * error + candidate;
     if (fabsf(wanted) < .25f || wanted * error < 0.f) s->integral = candidate;
-    wanted = heading_clip(.035f * error + s->integral, .25f);
+    wanted = heading_clip(0.035f * error + s->integral, .25f);
     s->correction += heading_clip(wanted - s->correction, .5f * dt);
     return s->correction;
 }

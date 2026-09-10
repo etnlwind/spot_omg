@@ -171,6 +171,15 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             target = .simulatorBluetooth
             UserDefaults.standard.set(target.rawValue, forKey: "robotTarget")
         }
+        if commandWriter == nil, CommandLine.arguments.contains("--simulator-tcp") {
+            target = .simulator
+            UserDefaults.standard.set(target.rawValue, forKey: "robotTarget")
+            if let index = CommandLine.arguments.firstIndex(of: "--simulator-host"),
+               index + 1 < CommandLine.arguments.count {
+                simulatorHost = CommandLine.arguments[index + 1]
+                UserDefaults.standard.set(simulatorHost, forKey: "simulatorHost")
+            }
+        }
         if commandWriter != nil {
             state = .ready
             return
@@ -185,6 +194,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         guard commandWriter == nil else { return }
         trace = RobotConnectionTrace()
         trace?.record("ui-visible", "starting Bluetooth after first appearance")
+        if target == .simulator, CommandLine.arguments.contains("--simulator-tcp") {
+            connectSimulator()
+            return
+        }
         guard target.usesBluetooth else { return }
         central = CBCentralManager(delegate: self, queue: .main,
                                    options: [CBCentralManagerOptionShowPowerAlertKey: true])

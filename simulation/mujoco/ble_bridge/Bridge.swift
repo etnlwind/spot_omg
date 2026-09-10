@@ -42,7 +42,14 @@ final class Bridge: NSObject, CBPeripheralManagerDelegate, NSApplicationDelegate
         manager = CBPeripheralManager(delegate: self, queue: .main)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    // The window only displays status. Closing it must not remove the simulator's
+    // BLE service while MuJoCo and its independent video server are still running.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        window?.makeKeyAndOrderFront(nil)
+        return true
+    }
     func applicationWillTerminate(_ notification: Notification) {
         closeLink(); manager?.stopAdvertising()
     }

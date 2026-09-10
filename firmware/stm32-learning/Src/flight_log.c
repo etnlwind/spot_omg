@@ -38,6 +38,24 @@ typedef struct
 _Static_assert(sizeof(FlightLogRecord) == 128U,
                "flight log record must remain 128 bytes");
 
+#define FLIGHT_LOG_SLOT_COUNT ((FLIGHT_LOG_FLASH_END-FLIGHT_LOG_FLASH_ADDRESS)/sizeof(FlightLogRecord))
+static uint16_t valid_slots[FLIGHT_LOG_SLOT_COUNT];
+static const void *flash_pointer(uint32_t address)
+{
+#ifdef FLIGHT_LOG_HOST_TEST
+    extern const void *flight_log_test_pointer(uint32_t address);
+    return flight_log_test_pointer(address);
+#else
+    return (const void *)(uintptr_t)address;
+#endif
+}
+static bool record_erased(const FlightLogRecord *record)
+{
+    const uint8_t *bytes=(const uint8_t *)record;
+    for(size_t i=0;i<sizeof(*record);i++)if(bytes[i]!=0xff)return false;
+    return true;
+}
+
 static uint32_t next_address = FLIGHT_LOG_FLASH_ADDRESS;
 static uint32_t next_sequence = 1U;
 static uint32_t current_boot_id = 1U;
@@ -78,7 +96,7 @@ static bool address_has_space(uint32_t address)
 static bool erase_preserving_calibration(void)
 {
     memcpy(preserved_prefix,
-           (const void *)FLIGHT_LOG_SECTOR_ADDRESS,
+           flash_pointer(FLIGHT_LOG_SECTOR_ADDRESS),
            sizeof(preserved_prefix));
 
     HAL_FLASH_Unlock();
@@ -120,34 +138,34 @@ static void copy_entry(const FlightLogRecord *record, FlightLogEntry *entry)
 
 void flight_log_init(const char *revision)
 {
-    uint32_t address = FLIGHT_LOG_FLASH_ADDRESS;
     const FlightLogRecord *last = NULL;
-    bool incomplete_record = false;
     record_count = 0U;
-    while (address_has_space(address)) {
-        const FlightLogRecord *record = (const FlightLogRecord *)address;
-        if (!record_valid(record)) {
-            incomplete_record = record->magic != UINT32_MAX;
-            break;
+    next_address = FLIGHT_LOG_FLASH_ADDRESS;
+    /* Scan the entire sector: interrupted records and erased gaps are consumed
+     * slots, not a reason to erase earlier completed diagnostic batches. */
+    for(uint32_t address=FLIGHT_LOG_FLASH_ADDRESS;address_has_space(address);
+            address+=sizeof(FlightLogRecord)) {
+        const FlightLogRecord *record=flash_pointer(address);
+        if(!record_erased(record))next_address=address+sizeof(FlightLogRecord);
+        if(record_valid(record)) {
+            valid_slots[record_count++]=(uint16_t)((address-FLIGHT_LOG_FLASH_ADDRESS)/sizeof(FlightLogRecord));
+            last=record;
         }
-        last = record;
-        ++record_count;
-        address += sizeof(FlightLogRecord);
     }
-    next_address = address;
     next_sequence = last == NULL ? 1U : last->sequence + 1U;
     current_boot_id = last == NULL ? 1U : last->boot_id + 1U;
     initialized = true;
     time_synchronized = false;
-    /* A reset can interrupt one word-program sequence. Flash cannot change
-     * those partially programmed zero bits back to one, so start a clean
-     * generation instead of repeatedly trying to overwrite the bad slot. */
-    if (incomplete_record) {
-        (void)erase_preserving_calibration();
-    }
     (void)flight_log_appendf("BOOT reset_flags=%08lx rev=%s",
                              (unsigned long)RCC->CSR,
                              revision == NULL ? "unknown" : revision);
+}
+
+bool flight_log_prepare_entries(size_t count)
+{
+    if(!initialized || count==0 || count>FLIGHT_LOG_SLOT_COUNT)return false;
+    size_t remaining=(FLIGHT_LOG_FLASH_END-next_address)/sizeof(FlightLogRecord);
+    return remaining>=count || erase_preserving_calibration();
 }
 
 bool flight_log_append(const char *text)
@@ -182,6 +200,9 @@ bool flight_log_append(const char *text)
     record.text_length = (uint16_t)length;
     record.checksum = record_checksum(&record);
 
+    const uint32_t record_address=next_address;
+    /* Never retry programming a partially written slot. */
+    next_address += sizeof(record);
     HAL_FLASH_Unlock();
     bool ok = true;
     const uint8_t *bytes = (const uint8_t *)&record;
@@ -189,16 +210,15 @@ bool flight_log_append(const char *text)
         uint32_t word;
         memcpy(&word, bytes + offset, sizeof(word));
         ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                               next_address + (uint32_t)offset,
+                               record_address + (uint32_t)offset,
                                word) == HAL_OK;
     }
     HAL_FLASH_Lock();
     if (!ok) {
         return false;
     }
-    next_address += sizeof(record);
+    valid_slots[record_count++]=(uint16_t)((record_address-FLIGHT_LOG_FLASH_ADDRESS)/sizeof(record));
     ++next_sequence;
-    ++record_count;
     return true;
 }
 
@@ -276,8 +296,8 @@ bool flight_log_get(size_t index, FlightLogEntry *entry)
     if (entry == NULL || index >= record_count) {
         return false;
     }
-    const FlightLogRecord *record = (const FlightLogRecord *)(
-        FLIGHT_LOG_FLASH_ADDRESS + index * sizeof(FlightLogRecord));
+    const FlightLogRecord *record = flash_pointer(
+        FLIGHT_LOG_FLASH_ADDRESS + valid_slots[index] * sizeof(FlightLogRecord));
     if (!record_valid(record)) {
         return false;
     }

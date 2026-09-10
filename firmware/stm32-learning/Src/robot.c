@@ -2052,6 +2052,11 @@ static RobotResult robot_shared_drive(RobotController *robot)
     bool stopping=false,watchdog=false;int stage=1;float transition=0;
     uint32_t started=HAL_GetTick(),deadline=started;
     robot->gait_diagnostics_active=true;actuator_diagnostics_reset(&robot->gait_diagnostics);
+    robot->gait_target_history_write_index=robot->gait_target_history_count=0;
+    memset(robot->gait_command_velocity_deg_s,0,sizeof(robot->gait_command_velocity_deg_s));
+    memset(robot->gait_command_acceleration_deg_s2,0,sizeof(robot->gait_command_acceleration_deg_s2));
+    uint16_t previous_command[ROBOT_JOINT_COUNT]={0};
+    bool have_previous_command=false;
     balance_trace_reset(robot);robot->balance_late_frames=0;
     robot->balance_peak_roll_error_tenths=0;robot->balance_peak_pitch_error_tenths=0;
     for(;;) {
@@ -2088,6 +2093,19 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if(!gait_policy_to_servo_targets(command,positions)) {result=ROBOT_CONFIG_ERROR;break;}
         ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,ROBOT_JOINT_COUNT);
         if(sent!=SERVO_BUS_OK) {result=bus_failure(robot,FEETECH_BROADCAST_ID,sent);break;}
+        /* Tag the existing safety read with this command, not stale legacy
+         * gait history. No additional bus transaction is added. */
+        robot->gait_support_mask=gait_policy_support_mask(nominal);
+        for(size_t j=0;j<ROBOT_JOINT_COUNT;j++) {
+            int32_t velocity=have_previous_command ?
+                ((int32_t)positions[j]-previous_command[j])*g_robot_joints[j].direction*18000/4096 : 0;
+            int32_t acceleration=(velocity-robot->gait_command_velocity_deg_s[j])*50;
+            robot->gait_command_acceleration_deg_s2[j]=clamp_i16(acceleration,INT16_MAX);
+            robot->gait_command_velocity_deg_s[j]=clamp_i16(velocity,INT16_MAX);
+            previous_command[j]=positions[j];
+        }
+        have_previous_command=true;
+        gait_target_history_push(robot,positions);
         result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
         if(result!=ROBOT_OK)break;
         result=shared_observe(robot);

@@ -136,7 +136,7 @@ class RobotController:
                 self.reply()
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v23-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v24-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'locomotiondiag':
@@ -386,10 +386,15 @@ class ConsoleServer:
 
 def main():
     parser=argparse.ArgumentParser(__doc__)
-    parser.add_argument('--host',default='127.0.0.1',help='use LAN IP or 0.0.0.0 for iPhone')
+    parser.add_argument('--host',default='0.0.0.0',help='LAN control for iPhone; use 127.0.0.1 for Mac-only control')
     parser.add_argument('--port',type=int,default=8765)
+    parser.add_argument('--no-video',action='store_true',help='Disable LAN phone video')
+    parser.add_argument('--video-host',default='0.0.0.0')
+    parser.add_argument('--video-port',type=int,default=8766)
     parser.add_argument('--profile', choices=('legacy',*load_profiles()), help='Initial gait profile')
     parser.add_argument('--parameters',type=Path,default=CAD/'physics_parameters.json')
+    parser.add_argument('--heading',choices=('on','off'),default='on',help='Initial IMU heading hold state')
+    parser.add_argument('--balance',choices=('on','off'),default='on',help='Initial IMU body leveling state')
     display=parser.add_mutually_exclusive_group()
     display.add_argument('--viewer',dest='viewer',action='store_true')
     display.add_argument('--headless',dest='viewer',action='store_false')
@@ -406,13 +411,19 @@ def main():
     parameters=json.loads(args.parameters.read_text()); parameters['timestep_s']=.0005
     plant=Simulation(parameters); controller=RobotController(plant)
     if args.profile: controller.select_profile(args.profile)
+    controller.heading.enabled=args.heading=='on'
+    controller.balance.enabled=args.balance=='on'
     controller.incident_directory=Path('/private/tmp/spot-omg-sim')
     server=ConsoleServer(controller,args.host,args.port)
     bridge_process=None
     viewer=None
+    video=None
     keys=collections.deque()
     profile_keys={49:'legacy',50:'crawl',51:'cruise',52:'trot',53:'highstep',54:'lift',55:'imu',56:'level',57:'level15',48:'joint',70:'jointfast',71:'jointsport'}
     try:
+        if not args.no_video:
+            from video_stream import VideoStream
+            video=VideoStream(parameters,args.video_host,args.video_port)
         if bridge_binary:
             bridge_process=subprocess.Popen([str(bridge_binary),"--port",str(args.port)])
         if args.viewer:
@@ -437,6 +448,7 @@ def main():
             steps=pacer.due(now)
             for _ in range(steps):
                 controller.tick(time.monotonic())
+                if video:video.publish(plant,viewer.cam if viewer else None)
             if steps:
                 elapsed_wall=time.monotonic()-rate_wall
                 if elapsed_wall>=1:
@@ -453,12 +465,13 @@ def main():
                     viewer.opt.geomgroup[3]=0
                     viewer.set_texts((mujoco.mjtFontScale.mjFONTSCALE_150,mujoco.mjtGridPos.mjGRID_TOPLEFT,
                         'Profile / simulated physics\nMovement\nSpeed / tilt\nBNO055 / balance\nProfiles\nDemo / stop\nRemote',
-                        f'{controller.profile.upper()} / 11.1V 3S\n{controller.motion[0] if controller.motion else "stand"}\n{display_speed:.2f} m/s / {max(abs(row["roll_deg"]),abs(row["pitch_deg"])):.1f} deg\n{controller.imu_reading["age_ms"] if controller.imu_reading else -1:.0f} ms / {"ACTIVE" if controller.balance.applied else "SUSPENDED"} / {max(abs(controller.balance.correction)):.1f} deg correction\n1 Legacy  2 Crawl  3 Cruise  4 Trot  5 High step  6 Lift  7 IMU  8 Level  9 Level15 0 Joint F Fast G Sport\nW: 8s walk (no remote owner) / Space: stop\nBLE app / TCP :{args.port} / real time {realtime_factor:.2f}x'))
+                        f'{controller.profile.upper()} / 11.1V 3S / {parameters.get("scenario","nominal")}\n{controller.motion[0] if controller.motion else "stand"}\n{display_speed:.2f} m/s / {max(abs(row["roll_deg"]),abs(row["pitch_deg"])):.1f} deg\n{controller.imu_reading["age_ms"] if controller.imu_reading else -1:.0f} ms / balance {"ON" if controller.balance.enabled else "OFF"} / heading {"ON" if controller.heading.enabled else "OFF"} / {max(abs(controller.balance.correction)):.1f} deg correction\n1 Legacy  2 Crawl  3 Cruise  4 Trot  5 High step  6 Lift  7 IMU  8 Level  9 Level15 0 Joint F Fast G Sport\nW: 8s walk (no remote owner) / Space: stop\nBLE app / TCP :{args.port} / real time {realtime_factor:.2f}x'))
                     viewer.sync()
             time.sleep(.001)
     except KeyboardInterrupt: pass
     finally:
         server.close()
+        if video:video.close()
         if bridge_process:
             bridge_process.terminate()
             try: bridge_process.wait(timeout=3)
