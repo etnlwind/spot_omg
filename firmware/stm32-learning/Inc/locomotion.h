@@ -45,10 +45,32 @@ static inline bool locomotion_foot_targets(const float p[7],float phase,float sc
     }
     return true;
 }
-static inline bool locomotion_targets(int profile,float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
-    if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT) return false;
+static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
+    if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(linear) || !isfinite(yaw))return 0;
+    return locomotion_turn_lift_m[profile]>0?
+        gait_policy_smootherstep(gait_policy_clampf((.5f-linear)/.3f,0,1))*
+        gait_policy_smootherstep(gait_policy_clampf(1+linear/.2f,0,1))*
+        gait_policy_smootherstep(gait_policy_clampf(fabsf(yaw)/.25f,0,1)):0;
+}
+static inline bool locomotion_targets_assisted(int profile,float phase,float scale,float linear,float yaw,float assist,GaitPolicyLegTarget out[4]) {
+    if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(assist) || assist<0 || assist>1) return false;
     if(profile==0) return gait_policy_drive_walk_targets(phase,scale,linear,yaw,out);
     float p[7];locomotion_params(profile,linear,p);
+    /* Recenter the stance as the legs straighten: lift alone left the
+     * front feet loaded against the floor in the estimated physical plant. */
+    if(locomotion_turn_posture_m[profile][0]>0) {
+        float w=assist;
+        p[4]+=(locomotion_turn_posture_m[profile][0]-p[4])*w;
+        p[5]+=(locomotion_turn_posture_m[profile][1]-p[5])*w;
+    }
+    /* Small turn commands must not shrink swing lift into ground clearance.
+     * Ramp the lift floor continuously from zero yaw; IK coordinates J2/J3.
+     * Startup/stop amplitude still scales the entire trajectory below. */
+    float pivot=gait_policy_smootherstep(gait_policy_clampf(1-fabsf(linear)/.6f,0,1));
+    float activity=fminf(1,fabsf(linear)+(1+pivot)*fabsf(yaw));
+    float turn=assist;
+    if(activity>1.e-6f)
+        p[3]=fmaxf(p[3],locomotion_turn_lift_m[profile]*turn/activity);
     if(!locomotion_foot_targets(p,phase,scale,profile==1?1:0,linear,yaw,out))return false;
     const float *lead=locomotion_joint_lead_s[profile];
     if(lead[1]>0 || lead[2]>0) {
@@ -65,6 +87,9 @@ static inline bool locomotion_targets(int profile,float phase,float scale,float 
         }
     }
     return true;
+}
+static inline bool locomotion_targets(int profile,float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
+    return locomotion_targets_assisted(profile,phase,scale,linear,yaw,locomotion_turn_assist(profile,linear,yaw),out);
 }
 static inline float locomotion_period(int profile,float linear,float yaw) {
     if(profile==0) return gait_policy_drive_period_ms(lroundf(linear*1000),lroundf(yaw*1000))*.001f;

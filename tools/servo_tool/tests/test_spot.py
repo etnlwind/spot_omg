@@ -1248,9 +1248,10 @@ class CommandLineTest(unittest.TestCase):
             image = Path(directory) / "firmware.bin"
             image.write_bytes(payload)
             args = parse_args(["firmware", "esp32", str(image)])
-            with patch("servo.cli.BleTransport", FakeBleTransport):
+            with patch("servo.cli.BleTransport", FakeBleTransport), patch("servo.cli._land_before_update") as land:
                 with redirect_stdout(io.StringIO()):
                     self.assertEqual(update_esp32_firmware(args), 0)
+                land.assert_called_once_with(FakeBleTransport.instance, "SpotOMG-Bridge")
 
         transport = FakeBleTransport.instance
         self.assertIsNotNone(transport)
@@ -1760,7 +1761,7 @@ class ConsoleProtocolTest(unittest.TestCase):
         self.assertAlmostEqual(estimate_timeout("trotplace"), 20.8)
         # cycles=0 repeats until Ctrl+C, so there is no completion time.
         self.assertIsNone(estimate_timeout("jump 0"))
-        self.assertAlmostEqual(estimate_timeout("stand"), 15.0)
+        self.assertAlmostEqual(estimate_timeout("stand"), 75.0)
         self.assertAlmostEqual(estimate_timeout("scan"), 30.0)
         # Bad arguments are the firmware's to reject, not ours.
         self.assertAlmostEqual(estimate_timeout("trot2 many"), 15.0)

@@ -10,7 +10,7 @@ def step(robot):
     fp=ctypes.POINTER(ctypes.c_float)
     fn.argtypes=(fp,ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_int,ctypes.c_int,ctypes.c_int,fp)
     fn.restype=ctypes.c_int
-    v=(ctypes.c_float*10)(robot.phase,robot.linear,robot.yaw,robot.elapsed,*robot.heading.state)
+    v=(ctypes.c_float*11)(robot.phase,robot.linear,robot.yaw,robot.elapsed,*robot.heading.state,robot.turn_assist)
     out=(ctypes.c_float*12)()
     sample=robot.imu_reading
     valid=sample is not None and sample['age_ms']<=100
@@ -18,5 +18,6 @@ def step(robot):
               valid,robot.heading.enabled and robot.safety=='ok',bool(robot.stopping_reason),out):
         raise ValueError('Invalid shared drive target')
     robot.phase,robot.linear,robot.yaw,robot.elapsed=v[:4]
-    robot.heading.state[:]=v[4:]
+    robot.heading.state[:]=v[4:10]
+    robot.turn_assist=v[10]
     return np.array(out)

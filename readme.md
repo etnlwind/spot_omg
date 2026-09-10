@@ -345,3 +345,33 @@ drive LINEAR YAW SEQ    연속 gait 시작; LINEAR/YAW는 -1000..1000
 ## License
 
 MIT
+
+
+## 페어링된 아이폰 앱 원격 연결 제어
+
+앱 V0.5.0 (34)부터 Mac에서 아이폰 앱의 연결 상태를 조회하고 연결/해제할 수 있습니다.
+아이폰을 Mac에 개발 기기로 페어링하고 USB 또는 개발용 Wi-Fi로 접근할 수 있어야 합니다.
+아이폰이 잠금 해제되어 앱을 실행할 수 있어야 하며, Tailscale만으로 이 기능이 제공되지는 않습니다.
+휴대폰 에뮬레이터는 사용하지 않습니다.
+
+```bash
+spotctl app pair --device UJIN17
+spotctl app status
+spotctl app disconnect
+spotctl app connect --target robot
+```
+
+`pair` 성공 후 기기를 `~/.config/spot_omg/app-control.json`에 저장합니다.
+이후 `spotctl --via ble ...` 및 `spotctl firmware ...` 실행 시 앱의 로봇 연결을 먼저 해제합니다.
+작업 성공 후에는 원래 연결되어 있었던 경우에만 앱을 재연결합니다. 작업 실패 시에는 재연결하지 않습니다.
+기기별 일회성 지정은 전역 옵션 `--app-device UJIN17`, 자동 제어 생략은 `--no-app-control`입니다.
+원격 요청 확인에 실패하면 자동 BLE 작업을 시작하지 않습니다. 이미 수동 해제했다면 `--no-app-control`로 실행할 수 있습니다.
+
+연결 해제는 모터 토크 해제와 다릅니다. 움직이는 중이면 먼저 Stop 응답을 기다린 뒤 BLE를 해제하며,
+기존 앱을 강제 종료하지 않습니다. 앱이 중지 확인을 받지 못하면 연결 해제 실패를 보고합니다.
+
+**펌웨어 업데이트가 우선입니다.** 업데이트 전에 Landing을 시도하지만 Landing 실패·중지·응답 시간 초과가
+발생해도 경고 후 업데이트를 계속합니다. 업데이트를 가로막는 자세 검증 조건으로 사용하지 않습니다.
+앱의 일반 Relax 버튼은 Landing 완료 후 힘을 해제하며, Stop/오류 시 예약된 힘 해제를 취소합니다.
+
+검증 및 제한 사항은 [원격 연결 제어 기록](docs/APP-REMOTE-CONTROL-2026-09-10.md)을 참고하십시오.

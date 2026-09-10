@@ -15,6 +15,50 @@ def test_profile_manifest_matches_embedded_generated_constants():
     subprocess.run(['python3',str(ROOT/'tools/generate_locomotion_profiles.py'),'--check'],check=True)
 
 
+def test_cruise_uses_the_reverse_stride_and_lift_for_forward():
+    cruise=load_profiles()['cruise']
+    # Measured/user-preferred reverse gait is the reference for both directions.
+    assert cruise['params']==cruise['turn_reverse_params']==[1.05,.6,.08,.012,.20175,-.035,.75]
+    policy=SharedGaitPolicy();fp=ctypes.POINTER(ctypes.c_float)
+    target=policy._library.spot_locomotion_targets
+    target.argtypes=(ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_float,fp)
+    target.restype=ctypes.c_int
+    from drive_controller import NAMES
+    for phase in np.linspace(0,1,101):
+        trajectories=[]
+        for direction in (-1,1):
+            out=(ctypes.c_float*12)()
+            assert target(NAMES.index('cruise'),phase,1,direction,0,out)
+            a=np.radians(np.array(out).reshape(4,3))
+            forward=.141*np.sin(a[:,1])+.150*np.sin(a[:,1]-a[:,2])
+            down=.141*np.cos(a[:,1])+.150*np.cos(a[:,1]-a[:,2])
+            trajectories.append((forward,down))
+        np.testing.assert_allclose(trajectories[0][1],trajectories[1][1],atol=1e-7)
+        np.testing.assert_allclose(trajectories[0][0]+trajectories[1][0],.070,atol=1e-7)
+
+
+def test_turn_posture_slews_and_does_not_activate_on_fast_arc_start():
+    policy=SharedGaitPolicy();fp=ctypes.POINTER(ctypes.c_float)
+    drive=policy._library.spot_drive_step
+    drive.argtypes=(fp,ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_int,ctypes.c_int,ctypes.c_int,fp)
+    drive.restype=ctypes.c_int
+    from drive_controller import NAMES
+    profile=NAMES.index('jointsport')
+    state=(ctypes.c_float*11)();out=(ctypes.c_float*12)()
+    # A requested fast arc must not enter the taller posture during speed slew.
+    for _ in range(60):
+        assert drive(state,profile,.7,.7,0,True,False,False,out)
+        assert state[10]==0
+    # Enter pivot, then accelerate out. The posture may move at most 2%/frame.
+    for linear,yaw in ((0,.5),(1,0),(0,-.5),(0,0)):
+        for frame in range(60):
+            previous=state[10]
+            assert drive(state,profile,linear,yaw,0,True,False,False,out)
+            assert abs(state[10]-previous)<=.020001
+            assert np.isfinite(list(out)).all()
+        assert state[10]==pytest.approx(1 if yaw else 0,abs=1e-6)
+
+
 def test_unoptimized_firmware_kernel_matches_host_and_tick_commands(tmp_path):
     inc=ROOT/'firmware/stm32-learning/Inc'
     source=tmp_path/'kernel.c'
@@ -46,7 +90,7 @@ int main(void) {
     encode.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);encode.restype=ctypes.c_int
     rows=[]
     for profile in range(1+len(load_profiles())):
-        state=(ctypes.c_float*10)()
+        state=(ctypes.c_float*11)()
         for frame in range(500):
             linear=.8 if frame<200 else .4 if frame<300 else -.6 if frame<400 else 0
             yaw=.4 if 100<=frame<300 else 0

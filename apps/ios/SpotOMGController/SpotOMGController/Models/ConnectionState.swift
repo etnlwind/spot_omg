@@ -123,7 +123,7 @@ extension SimulatorGaitProfile {
         switch self {
         case .legacy: return 0.047956415
         case .crawl: return 0.028477535
-        case .cruise: return 0.212593697
+        case .cruise: return 0.157175313
         case .trot: return 0.173329346
         case .highstep: return 0.089345535
         case .lift: return 0.089345535

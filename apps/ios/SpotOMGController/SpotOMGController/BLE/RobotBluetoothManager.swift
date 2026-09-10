@@ -13,7 +13,99 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     @Published private(set) var postureQueued = false
     @Published private(set) var stopRequested = false
     private var postureAcknowledged = false
-    var motionControlsLocked: Bool { stowControlLocked || postureInProgress != nil || postureQueued || stopRequested }
+    private var relaxAfterLanding = false
+    private var relaxLandingTimeout: DispatchWorkItem?
+    var motionControlsLocked: Bool { remotePending != nil || stowControlLocked || postureInProgress != nil || postureQueued || stopRequested }
+    @Published private(set) var remotePending: AppRemoteRequest?
+    private var remoteTimer: Timer?
+    private var remotePhase = ""
+    private var remoteReleaseID: UUID?
+    private var remoteStopConfirmed = false
+    private var remoteDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("RemoteControl")
+    }
+
+    func pollRemoteControl() {
+        let directory = remoteDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("request.json")
+        if let data = try? Data(contentsOf: file), data.count <= 4096,
+           let request = try? JSONDecoder().decode(AppRemoteRequest.self, from: data) {
+            try? FileManager.default.removeItem(at: file)
+            let now = Date().timeIntervalSince1970
+            guard request.isValid(now: now) else {
+                if UUID(uuidString: request.id) != nil { remoteReply(request, error: "invalid_or_expired_request") }
+                return
+            }
+            var consumed = UserDefaults.standard.stringArray(forKey: "remoteConsumedRequests") ?? []
+            if consumed.contains(request.id) { return }
+            consumed.append(request.id)
+            UserDefaults.standard.set(Array(consumed.suffix(64)), forKey: "remoteConsumedRequests")
+            beginRemoteRequest(request)
+        }
+        advanceRemoteRequest()
+    }
+
+    func beginRemoteRequest(_ request: AppRemoteRequest) {
+        guard request.isValid(now: Date().timeIntervalSince1970) else { remoteReply(request, error: "invalid_or_expired_request"); return }
+        if request.action == "status" { remoteReply(request); return }
+        guard remotePending == nil else { remoteReply(request, error: "busy"); return }
+        let moving = driveSessionActive || postureInProgress != nil || postureQueued || stopRequested
+        if request.action == "connect" {
+            if moving { remoteReply(request, error: "motion_in_progress"); return }
+            if let name=request.target, let selection=RobotConnectionTarget(rawValue:name) {
+                selectTarget(selection)
+            }
+            remotePending=request; remotePhase="connecting"
+            if !state.isReady { connect() }
+        } else {
+            cancelLandingRelease()
+            remotePending=request
+            reconnectRequested=false
+            pendingCommandAfterDrive=nil; postureQueued=false
+            driveHeartbeat?.invalidate(); driveHeartbeat=nil; driveVector=nil
+            if moving && state.isReady {
+                remoteStopConfirmed=false; remotePhase="stopping"
+                sendMotionInterrupt()
+                driveStatus="원격 연결 해제 · 정지 확인 중"
+            } else { releaseRemoteConnection() }
+        }
+        advanceRemoteRequest()
+    }
+
+    private func releaseRemoteConnection() {
+        remotePhase="disconnecting"
+        remoteReleaseID=peripheral?.state == .disconnected ? nil : peripheral?.identifier
+        disconnect()
+    }
+
+    func advanceRemoteRequest() {
+        guard let request=remotePending else { return }
+        if remotePhase == "stopping", remoteStopConfirmed { releaseRemoteConnection() }
+        if (remotePhase == "connecting" && state.isReady && lastStateSync != nil) ||
+           (remotePhase == "disconnecting" && remoteReleaseID == nil && !state.isReady) {
+            remotePending=nil; remotePhase=""; remoteReply(request); return
+        }
+        if Date().timeIntervalSince1970 >= request.expiresAt {
+            let error=remotePhase == "stopping" ? "stop_unconfirmed" : "connection_timeout"
+            if remotePhase == "connecting" { disconnect() }
+            remotePending=nil; remotePhase=""; remoteReply(request,error:error)
+        }
+    }
+
+    private func remoteReply(_ request: AppRemoteRequest, error: String? = nil) {
+        var value: [String:Any] = ["request_id":request.id,"action":request.action,"ok":error == nil,
+            "ready":state.isReady,"state":state.title,"target":target.rawValue,
+            "pose":runtimeState.pose,"firmware":runtimeState.revision,
+            "motion_active":driveSessionActive || postureInProgress != nil,
+            "responded_at":Date().timeIntervalSince1970]
+        if let error { value["error"]=error }
+        let url=remoteDirectory.appendingPathComponent("response-\(request.id).json")
+        if let data=try? JSONSerialization.data(withJSONObject:value,options:[.sortedKeys]) {
+            try? FileManager.default.createDirectory(at:remoteDirectory,withIntermediateDirectories:true)
+            try? data.write(to:url,options:.atomic)
+        }
+    }
     @Published private(set) var stowControlLocked = false
     @Published private(set) var state: RobotConnectionState = .disconnected
     @Published private(set) var consoleText = ""
@@ -196,6 +288,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     /// CoreBluetooth setup and diagnostic setup must not delay the initial layout.
     func start() {
         guard !hasStarted else { return }
+        if commandWriter == nil {
+            remoteTimer=Timer.scheduledTimer(withTimeInterval:0.3,repeats:true) { [weak self] _ in self?.pollRemoteControl() }
+        }
         hasStarted = true
         guard commandWriter == nil else { return }
         trace = RobotConnectionTrace()
@@ -210,6 +305,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func connect() {
+        guard remotePending?.action != "disconnect" else { return }
         if target == .simulator { connectSimulator(); return }
         if central == nil, hasStarted {
             central = CBCentralManager(delegate: self, queue: .main)
@@ -238,6 +334,15 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func permitsCommand(_ command: RobotCommand) -> Bool {
         if command.consoleLine == "hold" || command.consoleLine == "\u{03}" { return true }
+        if remotePending != nil {
+            if remotePhase == "connecting" {
+                switch command {
+                case .syncState, .synchronizeTime: return true
+                default: break
+                }
+            }
+            return false
+        }
         if postureInProgress != nil || postureQueued || stopRequested {
             switch command {
             case .syncState, .targets, .gaitDiagnostics, .balanceDiagnostics: return true
@@ -259,10 +364,24 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         }
     }
 
+    private func cancelLandingRelease() {
+        relaxAfterLanding = false
+        relaxLandingTimeout?.cancel(); relaxLandingTimeout = nil
+    }
+
+    private func finishLandingRelease() {
+        guard relaxAfterLanding, runtimeState.pose == "landing", postureInProgress == nil else { return }
+        cancelLandingRelease()
+        if state.isReady, remotePending == nil, let data = RobotCommand.relax.encoded {
+            appendConsole("> relax\n"); write(data); scheduleStateRefresh(after: 0.2)
+        }
+    }
+
     func send(_ command: RobotCommand) {
         if (command.consoleLine == "hold" || command.consoleLine == "\u{03}"),
            motionControlsLocked || driveSessionActive {
             guard state.isReady else { return }
+            cancelLandingRelease()
             pendingCommandAfterDrive = nil
             postureQueued = false
             stopRequested = true
@@ -324,6 +443,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     private func sendCommandNow(_ command: RobotCommand) {
         guard state.isReady, permitsCommand(command) else { return }
+        if command.consoleLine.trimmingCharacters(in: .whitespacesAndNewlines) == "relax" {
+            // An explicit completion is required even when the cached pose says Landing.
+            relaxAfterLanding = true
+            let timeout = DispatchWorkItem { [weak self] in
+                guard let self, self.relaxAfterLanding else { return }
+                self.cancelLandingRelease()
+                self.lastError = "Landing 완료를 확인하지 못하여 모터 해제를 취소했습니다."
+            }
+            relaxLandingTimeout = timeout
+            DispatchQueue.main.asyncAfter(deadline: .now() + 75, execute: timeout)
+            sendCommandNow(.landing)
+            return
+        }
         var wireCommand = command
         if case .simulatorProfile(let profile) = command, runtimeState.capabilities.contains("gaitprofiles") {
             wireCommand = .raw("gaitprofile \(profile.rawValue)")
@@ -406,9 +538,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func updateDrive(x: Double, y: Double) {
         guard !motionControlsLocked else { return }
-        guard state.isReady, let vector = RobotDriveVector.make(x: x, y: y) else {
+        guard state.isReady, x.isFinite, y.isFinite else {
+            stopDrive(reason: "invalid-or-disconnected")
+            return
+        }
+        guard let vector = RobotDriveVector.make(x: x, y: y) else {
             driveRequiresRelease = false
-            stopDrive(reason: "joystick-neutral-or-disconnected")
+            // Crossing center is a zero velocity update, not a gesture release.
+            // Keep the heartbeat/session alive so reverse can follow immediately.
+            if driveSessionActive && !driveStopRequested && !driveAwaitingPrompt {
+                driveVector = RobotDriveVector(linearPerMille: 0, yawPerMille: 0, speedFraction: 0)
+                sendDriveUpdate()
+                driveStatus = "중립"
+            }
             return
         }
         guard !driveSafetyLatched, !driveRequiresRelease else { return }
@@ -478,6 +620,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func resetConnection(keepingState: Bool = false) {
+        cancelLandingRelease()
         postureInProgress = nil
         postureQueued = false
         stopRequested = false
@@ -628,6 +771,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             if target.isSimulator, line.hasPrefix("$SIMLINK disconnected") {
                 disconnect(); fail("MuJoCo 연결이 종료되었습니다."); return
             }
+            if remotePhase == "stopping", line.hasPrefix("STOPPED:") || line.hasPrefix("$SPOTDRIVE stopped ") || line == "ERROR: motion aborted" {
+                remoteStopConfirmed=true
+            }
             if line.hasPrefix("STOPPED:") || line.hasPrefix("$SPOTDRIVE stopped ") {
                 stopRequested = false
             }
@@ -667,6 +813,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 driveStatus = "중립"
                 scheduleStateRefresh(after: 0.1)
             }
+            if line.hasPrefix("ERROR:") || line.hasPrefix("STOPPED:") { cancelLandingRelease() }
+            if line == "OK landing" { finishLandingRelease() }
             if line.hasPrefix("ERROR:") { lastError = line }
             if line.hasPrefix("$SPOTDRIVE started ") {
                 // Informational only: never arm/cancel the stop timeout here.
@@ -710,9 +858,11 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 driveHeartbeat?.invalidate()
                 driveHeartbeat = nil
                 driveVector = nil
+                let alreadyStopping = driveStopRequested || driveAwaitingPrompt
                 drivePhase = .draining
                 lastError = line
-                driveStatus = "보행 명령 거부"
+                driveStatus = line.contains("drive watchdog expired") ? "조종 신호 지연 · 자동 정지" :
+                    (alreadyStopping ? "보행 중단 · 오류 확인" : "보행 명령 거부")
                 armDriveCompletionTimeout()
                 continue
             }
@@ -743,6 +893,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             } else if ["landing", "stand", "stand11"].contains(runtimeState.pose) {
                 stowControlLocked = false
             }
+            finishLandingRelease()
             initialSyncTimeout?.cancel()
             initialSyncTimeout = nil
             lastStateSync = Date()
@@ -824,6 +975,7 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager,
                         didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        if remoteReleaseID == peripheral.identifier { remoteReleaseID=nil; advanceRemoteRequest() }
         guard target.usesBluetooth, self.peripheral === peripheral else { return }
         fail(error?.localizedDescription ?? "연결 실패")
         resetConnection()
@@ -833,6 +985,7 @@ extension RobotBluetoothManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
+        if remoteReleaseID == peripheral.identifier { remoteReleaseID=nil; advanceRemoteRequest() }
         guard target.usesBluetooth, self.peripheral === peripheral else { return }
         trace?.record("disconnected", error.map { String(describing: $0) } ?? "no-error")
         if let error { fail("연결 끊김: \(error.localizedDescription)") }

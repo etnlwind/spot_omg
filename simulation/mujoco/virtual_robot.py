@@ -39,6 +39,7 @@ class RobotController:
         self.stow_path = False
         self.stow_queue = []
         self.phase = 0.
+        self.turn_assist = 0.
         self.linear = self.yaw = 0.
         self.request = (0., 0.)
         self.sequence = 0
@@ -295,12 +296,13 @@ class RobotController:
         self.balance.integral[:]=0; self.balance.correction[:]=0
         self.balance.saturated=False
         self.motion=motion; self.elapsed=self.phase=self.linear=self.yaw=0.
+        self.turn_assist=0.
         self.stopping_reason=None
         neutral=self.gait(0,0)
         self.blend([neutral[k] for k in KEYS], None)
 
     def tick(self, now):
-        if self.motion and self.motion[0]=='drive' and now-self.last_packet>.8:
+        if self.motion and self.motion[0]=='drive' and not self.stopping_reason and now-self.last_packet>.8:
             self.stop('watchdog')
         if self.motion is None or self.transition:
             self.heading.update(None,0,0,0)

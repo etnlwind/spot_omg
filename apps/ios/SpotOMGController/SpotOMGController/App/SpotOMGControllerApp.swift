@@ -9,6 +9,9 @@ struct SpotOMGControllerApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(bluetooth)
+                .onOpenURL { url in
+                    if url.scheme == "spotomg", url.host == "remote-control" { bluetooth.pollRemoteControl() }
+                }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {

@@ -129,7 +129,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="append the STM32 console transcript to this file",
     )
+    parser.add_argument("--app-device", help="paired iPhone for automatic BLE handoff")
+    parser.add_argument("--no-app-control", action="store_true", help="skip paired app handoff")
     commands = parser.add_subparsers(dest="command", required=True)
+    app = commands.add_parser("app", help="control the paired iPhone robot connection")
+    app.add_argument("action", choices=("pair", "status", "connect", "disconnect"))
+    app.add_argument("--device", help="paired CoreDevice name or identifier")
+    app.add_argument("--target", choices=("robot", "simulatorBluetooth", "simulator"))
 
     commands.add_parser("ports", help="list serial ports")
     scan = commands.add_parser("scan", help="scan for responding servo IDs")
@@ -2166,6 +2172,7 @@ def update_esp32_firmware(args: argparse.Namespace) -> int:
     print(f"ESP32 image: {image} ({image_size} bytes, sha256={sha256})")
 
     with BleTransport(args.ble_name, timeout=0.5) as transport:
+        _land_before_update(transport, args.ble_name)
         transport.reset_input_buffer()
         header = f"$ESPOTA BEGIN {image_size} {sha256}\n".encode("ascii")
         transport.write(header)
@@ -2236,6 +2243,26 @@ def _validate_stm32_application(image: Path, size: int) -> None:
         )
 
 
+def _land_before_update(transport, name):
+    """Attempt Landing first; recovery updates must work even if motion fails."""
+    console = Stm32Console(name, transport=transport)
+    try:
+        console.sync()
+        result = console.send("landing", timeout=75.0, on_line=print)
+        completed = result.ok and any(line in ("OK", "OK landing") for line in result.lines)
+        if completed:
+            state = console.send("syncstate", timeout=15.0)
+            completed = state.ok and any(line.startswith("$SPOTSTATE ") and
+                                        "pose=landing" in line.split() for line in state.lines)
+        if completed:
+            print("Landing confirmed; continuing firmware update", flush=True)
+        else:
+            print("WARNING: Landing failed or stopped; continuing firmware update as requested", flush=True)
+    except (OSError, RuntimeError) as exc:
+        print(f"WARNING: Landing not confirmed ({exc}); continuing firmware update as requested", flush=True)
+
+
+
 def update_stm32_firmware(args: argparse.Namespace) -> int:
     """Stage a complete image on ESP32, then let its fixed bootloader flash it."""
     image = args.image.expanduser().resolve()
@@ -2252,6 +2279,7 @@ def update_stm32_firmware(args: argparse.Namespace) -> int:
     print(f"STM32 image: {image} ({image_size} bytes, sha256={digest})")
 
     with BleTransport(args.ble_name, timeout=0.5) as transport:
+        _land_before_update(transport, args.ble_name)
         transport.reset_input_buffer()
         header = f"$STM32OTA BEGIN {image_size} {digest}\n".encode("ascii")
         transport.write(header)
@@ -2301,7 +2329,7 @@ def update_stm32_firmware(args: argparse.Namespace) -> int:
         raise RuntimeError("STM32 flash operation timed out")
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         if args.command == "ports":
@@ -2550,6 +2578,38 @@ def main(argv: list[str] | None = None) -> int:
         print("\nStopped by user.", file=sys.stderr)
         return 130
     except (EOFError, ImportError, KeyError, OSError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+class _BLEOperationFailed(Exception):
+    def __init__(self, code):
+        self.code = code
+
+
+def main(argv: list[str] | None = None) -> int:
+    from . import app_control
+    args = parse_args(argv)
+    try:
+        if args.command == "app":
+            return app_control.run(args)
+        device = None if args.no_app_control else (args.app_device or app_control.configured_device())
+        if args.command == "firmware":
+            manages_ble = True
+        elif args.command == "console":
+            manages_ble = not args.host and (args.via == "ble" or (args.via == "auto" and args.stm32_port is None))
+        elif args.command in {"ports", "analyze-loads", "configure-mapping", "configure-directions"}:
+            manages_ble = False
+        else:
+            manages_ble = resolve_transport(args)[0] == "ble"
+        with app_control.robot_ble_lease(device if manages_ble else None):
+            code = _main(argv)
+            if code:
+                raise _BLEOperationFailed(code)
+        return code
+    except _BLEOperationFailed as exc:
+        return exc.code
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

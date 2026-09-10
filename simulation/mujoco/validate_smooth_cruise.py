@@ -1,14 +1,15 @@
-"""Validate the faster smooth cruise on the exact virtual controller."""
+"""Validate the deployed cruise on the exact shared-C virtual controller."""
 import json
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from validate_high_speed_balance import run_case
+from gait_profiles import load_profiles
 
-PARAMS=[.8,.64,.065,.007,.20175,-.035,.75]
+PARAMS=load_profiles()['cruise']['params']
 
 
 def run(case):
-    return run_case(case,PARAMS,[1.05,.6,.08,.012,.20175,-.035,.75])
+    return run_case(case)
 
 
 if __name__=='__main__':
@@ -19,5 +20,5 @@ if __name__=='__main__':
     with ProcessPoolExecutor(max_workers=4) as pool:
         for r in pool.map(run,cases):
             rows.append(r);print(json.dumps(r),flush=True)
-            Path(__file__).with_name('smooth_cruise_directional_validation.json').write_text(json.dumps(dict(params=PARAMS,cases=rows),indent=2)+'\n')
+            Path(__file__).with_name('cruise_symmetric_validation.json').write_text(json.dumps(dict(params=PARAMS,cases=rows),indent=2)+'\n')
     assert all(r['safety']=='ok' and r['stopped'] and not r['nonfoot_contact'] for r in rows)

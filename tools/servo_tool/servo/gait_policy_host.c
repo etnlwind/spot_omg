@@ -356,12 +356,13 @@ SPOT_GAIT_EXPORT int spot_attitude_update(int v[9],int valid,int roll,int pitch)
     for(int i=0;i<2;i++){v[i]=s.previous[i];v[i+2]=s.filtered[i];v[i+4]=s.rate[i];}
     v[6]=s.failures;v[7]=s.tilt_frames;v[8]=s.initialized;return fault;
 }
-SPOT_GAIT_EXPORT int spot_drive_step(float v[10],int profile,float linear,float yaw,float heading,int valid,int enabled,int stopping,float out[12]) {
-    DriveControl s={v[0],v[1],v[2],v[3],{v[4],v[5],v[6],v[7],v[8],v[9]!=0}};
+SPOT_GAIT_EXPORT int spot_drive_step(float v[11],int profile,float linear,float yaw,float heading,int valid,int enabled,int stopping,float out[12]) {
+    DriveControl s={v[0],v[1],v[2],v[3],{v[4],v[5],v[6],v[7],v[8],v[9]!=0},v[10]};
     GaitPolicyLegTarget targets[4];
     if(!drive_control_step(&s,profile,linear,yaw,heading,valid,enabled,stopping,targets))return 0;
     v[0]=s.phase;v[1]=s.linear;v[2]=s.yaw;v[3]=s.elapsed;
     v[4]=s.heading.reference;v[5]=s.heading.error;v[6]=s.heading.integral;v[7]=s.heading.correction;v[8]=s.heading.settling;v[9]=s.heading.active;
+    v[10]=s.turn_assist;
     pack_targets(targets,out);return 1;
 }
 

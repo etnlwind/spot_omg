@@ -24,6 +24,16 @@ def render():
   lead=p[name].get('joint_lead_s',[0,0,0])
   assert len(lead)==3 and all(0<=v<=.1 for v in lead)
   rows.append('  '+fmt(lead)+',')
+ rows+=['};','static const float locomotion_turn_lift_m[LOCOMOTION_PROFILE_COUNT] = {', '  0.0f,']
+ for name in p:
+  lift=p[name].get('turn_lift_m',0.)
+  assert 0<=lift<=.04
+  rows.append('  '+format(lift,'.10f')+'f,')
+ rows+=['};','static const float locomotion_turn_posture_m[LOCOMOTION_PROFILE_COUNT][2] = {', '  {0.0f,0.0f},']
+ for name in p:
+  posture=p[name].get('turn_posture_m',[0,0])
+  assert len(posture)==2 and (posture==[0,0] or (.18<=posture[0]<=.25 and abs(posture[1])<=.05))
+  rows.append('  '+fmt(posture)+',')
  return '\n'.join(rows+['};','#endif',''])
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--check',action='store_true');args=parser.parse_args()

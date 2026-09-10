@@ -1,3 +1,4 @@
+#include "drive_watchdog.h"
 #include "robot.h"
 #include "pose_control.h"
 
@@ -1481,14 +1482,18 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             const RobotDriveSnapshot snapshot = drive_snapshot(robot);
             int16_t target_linear = snapshot.linear;
             int16_t target_yaw = gait_policy_drive_yaw_limit(snapshot.yaw);
-            if ((uint32_t)(now - snapshot.updated_at_ms) >
-                ROBOT_DRIVE_WATCHDOG_MS) {
+            if (drive_watchdog_due(now, snapshot.updated_at_ms,
+                ROBOT_DRIVE_WATCHDOG_MS, snapshot.stop_requested)) {
                 target_linear = 0;
                 target_yaw = 0;
                 robot->drive_stop_requested = true;
                 drive_watchdog_expired = true;
             } else if (!snapshot.stop_requested) {
                 drive_watchdog_expired = false;
+            }
+            if (snapshot.stop_requested || drive_watchdog_expired) {
+                target_linear = 0;
+                target_yaw = 0;
             }
             drive_linear = drive_slew(drive_linear, target_linear);
             drive_yaw = drive_slew(drive_yaw, target_yaw);
@@ -2034,7 +2039,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
     for(;;) {
         RobotDriveSnapshot request=drive_snapshot(robot);
         if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
-        if((uint32_t)(HAL_GetTick()-request.updated_at_ms)>ROBOT_DRIVE_WATCHDOG_MS) {stopping=true;watchdog=true;}
+        if(drive_watchdog_due(HAL_GetTick(),request.updated_at_ms,ROBOT_DRIVE_WATCHDOG_MS,stopping || request.stop_requested)) {stopping=true;watchdog=true;}
         if(request.stop_requested)stopping=true;
         if(stage==1 && stopping) {
             for(int i=0;i<4;i++) {from[i]=nominal[i];}

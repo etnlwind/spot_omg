@@ -23,6 +23,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 CFLAGS = ["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror", f"-I{PROJECT/'Inc'}"]
 
 CASES = [
+    ("drive_watchdog", ["tests/test_drive_watchdog.c"]),
     ("safety", ["Src/safety.c", "tests/test_safety.c"]),
     ("actuator_control",
      ["Src/actuator_control.c", "Src/robot_config.c",

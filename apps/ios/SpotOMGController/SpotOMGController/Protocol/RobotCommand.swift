@@ -1,5 +1,22 @@
 import Foundation
 
+/// Only a paired development host can place requests in the app container.
+/// URLs merely wake the reader; they never carry robot commands themselves.
+struct AppRemoteRequest: Codable {
+    let id: String
+    let action: String
+    let issuedAt: Double
+    let expiresAt: Double
+    let target: String?
+
+    func isValid(now: Double) -> Bool {
+        UUID(uuidString: id) != nil && ["status", "connect", "disconnect"].contains(action)
+        && issuedAt.isFinite && expiresAt.isFinite && issuedAt <= now + 5
+        && expiresAt > now && expiresAt > issuedAt && expiresAt-issuedAt <= 60
+        && (target == nil || RobotConnectionTarget(rawValue: target!) != nil)
+    }
+}
+
 /// Keeps each UART line intact across GATT chunks, with only one acknowledged
 /// write in flight. Unsent joystick targets are replaced by the latest target.
 struct RobotBLEWriteQueue {
