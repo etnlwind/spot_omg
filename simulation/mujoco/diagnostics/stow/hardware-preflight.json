@@ -1,0 +1,37 @@
+{
+  "hardware_ready": false,
+  "encoder_pass": false,
+  "encoder_failures": [
+    {
+      "servo_id": 2,
+      "leg": "FL",
+      "joint": 2,
+      "first_failed_fold_time_s": 7.42,
+      "first_failed_angle_deg": -177.68742501735687,
+      "configured_encoder_range_deg": [
+        -177.36328125,
+        182.548828125
+      ],
+      "stow_target_deg": -265.0
+    },
+    {
+      "servo_id": 5,
+      "leg": "FR",
+      "joint": 2,
+      "first_failed_fold_time_s": 7.22,
+      "first_failed_angle_deg": -169.05798316001892,
+      "configured_encoder_range_deg": [
+        -168.92578125,
+        190.986328125
+      ],
+      "stow_target_deg": -265.0
+    }
+  ],
+  "reason": "Current Stow path fails existing firmware position encoding",
+  "additional_unverified": [
+    "exact mesh/shaft/housing/wire clearances",
+    "measured joint hard stops and encoder seam behavior",
+    "PLA/PETG mass/inertia, backlash and friction uncertainty",
+    "loaded actuator response and electrical/thermal envelope"
+  ]
+}

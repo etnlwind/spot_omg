@@ -3,6 +3,7 @@
 Run with mjpython for --viewer. No hardware transport is imported or opened.
 The protocol adapter is intentionally separate from the physics plant.
 """
+from stow_policy import LANDING, FOLDED, FOLD_SECONDS
 import argparse
 import collections
 import json
@@ -35,6 +36,8 @@ class RobotController:
         self.safety = 'ok'
         self.motion = None
         self.transition = None
+        self.stow_path = False
+        self.stow_queue = []
         self.phase = 0.
         self.linear = self.yaw = 0.
         self.request = (0., 0.)
@@ -88,6 +91,12 @@ class RobotController:
         self.pose = 'custom'
 
     def stop(self, reason='requested'):
+        if self.stow_path:
+            self.stow_queue.clear(); self.transition=None
+            self.target=np.degrees(self.plant.data.qpos[self.plant.q]).copy()
+            self.pose='stow-paused'
+            self.reply('STOPPED: '+reason)
+            return
         if self.motion is None or self.stopping_reason:
             return
         if self.motion[0] in ('drive','profile') and not self.transition and self.elapsed > .1:
@@ -136,7 +145,7 @@ class RobotController:
                 self.reply()
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v24-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v24-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold{",simstow" if self.plant.p.get("experimental_stow") else ""} imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'locomotiondiag':
@@ -164,8 +173,27 @@ class RobotController:
                     elif not self.transition: self.reply('$SPOTDRIVE stopped reason=already-stopped\r\nOK')
             elif cmd == '\x03':
                 self.stop('interrupt')
+            elif cmd=='hold' and self.stow_path:
+                self.stop('hold')
             elif self.motion or self.transition:
                 raise ValueError('busy; stop and wait for prompt')
+            elif self.stow_path and cmd not in ('stow','landing','recover','relax'):
+                raise ValueError('unfold with landing before other commands')
+            elif cmd=='stow' and len(words)==1:
+                if not self.plant.p.get('experimental_stow'):
+                    raise ValueError('Stow requires --stow experimental simulator')
+                if self.safety!='ok':raise ValueError('recover required')
+                already_stow=self.stow_path
+                self.stow_path=True;self.plant.stow_active=True;self.torque=True
+                self.balance.correction[:]=0;self.balance.integral[:]=0
+                if self.pose=='landing' or already_stow:
+                    self.blend(FOLDED,'OK stow',FOLD_SECONDS)
+                else:
+                    self.stow_queue=[(FOLDED,'OK stow',FOLD_SECONDS)]
+                    self.blend(LANDING,'STOW landing',2.)
+            elif cmd=='landing' and self.stow_path and len(words)==1:
+                self.torque=True
+                self.blend(LANDING,'OK landing',FOLD_SECONDS)
             elif cmd == 'heading' and len(words)==2 and words[1] in ('on','off'):
                 self.heading.enabled=words[1]=='on'; self.heading.update(None,0,0,0); self.reply()
             elif cmd in ('balance','simbalance') and len(words)==2 and words[1] in ('on','off'):
@@ -241,6 +269,7 @@ class RobotController:
         return getattr(policy,kind+'_targets')(phase,amplitude,self.motion[3])[0]
 
     def begin(self, motion, now):
+        if self.stow_path:raise ValueError('unfold with landing before gait')
         if self.safety!='ok' or not self.torque:
             raise ValueError('stand/recover required before gait')
         self.attitude_filter = FirmwareAttitudeFilter()
@@ -264,8 +293,16 @@ class RobotController:
             self.transition=(start,end,elapsed,duration,completion)
             if elapsed>=duration:
                 self.transition=None
-                if completion:
-                    self.pose=completion[3:] if completion in ('OK stand','OK stand11','OK landing') else ('stand' if np.allclose(end,[0,45,90]*4) else 'custom')
+                if self.stow_queue:
+                    self.blend(*self.stow_queue.pop(0))
+                elif completion:
+                    if self.stow_path and completion in ('OK stow','OK landing'):
+                        error=float(np.max(abs(np.degrees(self.plant.data.qpos[self.plant.q])-end)))
+                        if error>12:
+                            completion=f'ERROR: Stow posture target not reached ({error:.1f} deg)'
+                    if self.stow_path and completion=='OK landing':
+                        self.stow_path=False;self.plant.stow_active=False
+                    self.pose=completion[3:] if completion in ('OK stand','OK stand11','OK landing','OK stow') else ('stand' if np.allclose(end,[0,45,90]*4) else 'custom')
                     self.reply(completion)
         elif self.motion:
             if self.motion[0]=='drive' and self.profiles==self.deployed_profiles:
@@ -291,7 +328,7 @@ class RobotController:
             self.select_profile(self.pending_profile); self.pending_profile=None
         returning_stand = self.transition is not None and np.allclose(self.transition[1],[0,45,90]*4)
         permitted = self.torque and self.safety=='ok' and (self.pose=='stand' or self.motion is not None or returning_stand)
-        if self.transition and self.transition[4] in ('OK landing','OK stand11','OK hold'):
+        if self.stow_path or (self.transition and self.transition[4] in ('OK landing','OK stand11','OK hold')):
             permitted=False
         # Delayed angle derivatives amplified full-speed gait oscillations.
         # Use bounded slow PI during all motion/pose transitions, D only at rest.
@@ -302,8 +339,15 @@ class RobotController:
         self.balance.phase=self.phase
         self.balance.moving=self.motion is not None and self.transition is None
         self.balance.linear,self.balance.yaw=self.linear,self.yaw
-        self.command_target = self.balance.apply(self.target,self.attitude_filter,
-            self.imu_reading is not None and self.attitude_filter.failures==0,permitted)
+        if self.stow_path:
+            # Experimental unwrapped posture: the gait balance stage clamps J2
+            # even when disabled. Preserve this posture's separately checked path.
+            self.balance.integral[:]=0;self.balance.correction[:]=0
+            self.balance.applied=False;self.balance.saturated=False
+            self.command_target=self.target.copy()
+        else:
+            self.command_target = self.balance.apply(self.target,self.attitude_filter,
+                self.imu_reading is not None and self.attitude_filter.failures==0,permitted)
         self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque)
         self.imu_reading = self.imu.read(float(self.plant.data.time))
         # Ignore configured sensor-entry warmup; subsequent missing reads fail
@@ -388,6 +432,7 @@ def main():
     parser=argparse.ArgumentParser(__doc__)
     parser.add_argument('--host',default='0.0.0.0',help='LAN control for iPhone; use 127.0.0.1 for Mac-only control')
     parser.add_argument('--port',type=int,default=8765)
+    parser.add_argument('--stow',action='store_true',help='Enable experimental full-turn Stow (simulation only)')
     parser.add_argument('--no-video',action='store_true',help='Disable LAN phone video')
     parser.add_argument('--video-host',default='0.0.0.0')
     parser.add_argument('--video-port',type=int,default=8766)
@@ -409,6 +454,7 @@ def main():
         from ble_bridge.build import build as build_bridge
         bridge_binary=build_bridge()
     parameters=json.loads(args.parameters.read_text()); parameters['timestep_s']=.0005
+    if args.stow:parameters['experimental_stow']=True
     plant=Simulation(parameters); controller=RobotController(plant)
     if args.profile: controller.select_profile(args.profile)
     controller.heading.enabled=args.heading=='on'

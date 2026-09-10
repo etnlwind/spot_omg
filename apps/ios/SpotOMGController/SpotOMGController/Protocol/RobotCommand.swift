@@ -88,6 +88,7 @@ enum RobotCommand: Equatable {
     case stand
     case stand11
     case landing
+    case stow
     case hold
     case relax
     case recover
@@ -117,6 +118,7 @@ enum RobotCommand: Equatable {
         case .stand: return "stand"
         case .stand11: return "stand11"
         case .landing: return "landing"
+        case .stow: return "stow"
         case .hold: return "hold"
         case .relax: return "relax"
         case .recover: return "recover"

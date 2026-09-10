@@ -230,6 +230,11 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func send(_ command: RobotCommand) {
+        if command == .stow {
+            guard target.isSimulator, runtimeState.capabilities.contains("simstow") else {
+                lastError = "Stow는 설계 검토용 가상 로봇에서만 사용할 수 있습니다."; return
+            }
+        }
         if command == .recover { recoveryRequested = true }
         if case .headingHold = command {
             guard runtimeState.capabilities.contains("headinghold") else {

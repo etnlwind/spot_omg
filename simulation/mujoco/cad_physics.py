@@ -55,7 +55,11 @@ def build(parameters=None,write_scene=True):
         pivot=np.array(mapping[name]['pivot_cad_m']);points=vertices(name)
         lo,hi=points.min(0),points.max(0)
         inertia(body,p['mass_kg'][f'j{j}_group'],(lo+hi)/2-pivot,hi-lo)
-        joint=body.find('joint');joint.set('limited','true');joint.set('range',vec(np.radians({1:[-30,30],2:[-45,100],3:[0,150]}[j])))
+        joint=body.find('joint');joint.set('limited','true')
+        bounds={1:[-30,30],2:[-45,100],3:[0,150]}[j]
+        if p.get('experimental_stow') and j==2:
+            bounds=[-275,105] if leg in ('FL','FR') else [-95,105]
+        joint.set('range',vec(np.radians(bounds)))
         for field,key in [('damping','joint_damping'),('frictionloss','joint_friction_nm'),('armature','rotor_armature_kg_m2')]:joint.set(field,str(p[key]))
         attrs=dict(contype='1',conaffinity='1',group='3',rgba='.8 .4 .1 .15')
         if j==1:
@@ -131,7 +135,7 @@ class Simulation:
         if values.shape != (12,) or not np.isfinite(values).all():
             raise ValueError('Expected twelve finite joint targets')
         # Same calibration, 0.1-degree rounding and 4096-tick encoding as STM32.
-        if self.p.get('embedded_servo_quantization', True):
+        if self.p.get('embedded_servo_quantization', True) and not getattr(self,'stow_active',False):
             import ctypes
             fn=self.policy._library.spot_servo_encode
             fp=ctypes.POINTER(ctypes.c_float)

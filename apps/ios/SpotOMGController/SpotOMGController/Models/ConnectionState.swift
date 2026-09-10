@@ -49,6 +49,8 @@ struct RobotRuntimeState: Equatable {
         case "stand": return "Stand"
         case "stand11": return "Stand11"
         case "landing": return "Landing"
+        case "stow": return "Stow"
+        case "stow-paused": return "Stow 중단"
         case "custom": return "Custom"
         default: return "Unknown"
         }

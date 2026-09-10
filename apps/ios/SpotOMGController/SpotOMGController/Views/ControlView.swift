@@ -148,6 +148,11 @@ struct ControlView: View {
             }
             Section("안전 자세") {
                 postureButton("Landing", pose: "landing", command: .landing)
+                if supportsStow {
+                    postureButton("Stow · 수납", pose: "stow", command: .stow)
+                    Text("설계 검토용 · 12초 동시 접기 / Landing으로 펼치기")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 postureButton("Stand", pose: "stand", command: .stand)
                 postureButton("Stand11", pose: "stand11", command: .stand11)
                 Button("Hold") { bluetooth.send(.hold) }
@@ -266,6 +271,10 @@ struct ControlView: View {
         (bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simprofiles"))
     }
 
+    private var supportsStow: Bool {
+        bluetooth.target.isSimulator && bluetooth.runtimeState.capabilities.contains("simstow")
+    }
+
     private var compactControls: some View {
         VStack(spacing: 2) {
             HStack(spacing: 0) {
@@ -304,6 +313,10 @@ struct ControlView: View {
             HStack(spacing: 0) {
                 compactButton("Landing", icon: "arrow.down.to.line", selected: bluetooth.runtimeState.pose == "landing",
                               enabled: bluetooth.state.isReady) { bluetooth.send(.landing) }
+                if supportsStow {
+                    compactButton("Stow", icon: "shippingbox", selected: bluetooth.runtimeState.pose == "stow",
+                                  enabled: bluetooth.state.isReady) { bluetooth.send(.stow) }
+                }
                 compactButton("Stand", icon: "figure.stand", selected: bluetooth.runtimeState.pose == "stand",
                               enabled: bluetooth.state.isReady) { bluetooth.send(.stand) }
                 compactButton("Stand11", icon: "arrow.up.to.line", selected: bluetooth.runtimeState.pose == "stand11",

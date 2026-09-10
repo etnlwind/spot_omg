@@ -320,3 +320,7 @@ V0.4.2 (14) / shared-locomotion-v20: `level15` (**수평 + 발 들기 · 15mm**)
 - Apple 참고: https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsallowslocalnetworking 및 https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsexceptiondomains
 - 영상 연결 실패 시 NSError 코드와 설명을 화면/개발 콘솔에 표시합니다. `--simulator-video` 실행 옵션으로 초기 영상 페이지를 열어 실기기에서 확인할 수 있습니다.
 - V0.5.0 (27)을 실제 폰에 설치하고 Tailscale 주소로 영상 페이지를 열었습니다. 폰 100.70.226.1에서 Mac 100.67.61.114의 TCP 8765(조종), 8766(영상) 연결이 모두 ESTABLISHED이며 영상 프레임이 갱신되는 것을 확인했습니다. 이 확인은 폰 Wi-Fi를 켠 상태의 Tailscale 경로이며 5G 전환 후 확인은 별도입니다.
+
+### V0.5.0 (28) — 가상 로봇 Stow 버튼
+
+`--stow`로 실행한 MuJoCo가 `simstow` 기능을 알리면 작은 자세 버튼 모음과 상세 자세 메뉴에 Stow가 표시됩니다. Stow로 12초 동시 접기, Landing으로 12초 동시 펼치기를 실행합니다. Landing 준비가 필요한 경우 먼저 2초 동안 Landing으로 이동합니다. Hold로 중단할 수 있습니다. 실제 로봇에서는 사용되지 않는 확장 관절 설계 검토 기능입니다. 실제 서보의 기계적 가능 여부는 미검증이며 현재 펌웨어 인코딩 그대로 적용할 수 있다는 뜻은 아닙니다.
