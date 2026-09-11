@@ -1,0 +1,21 @@
+identity
+$SPOTBACKEND backend=sim protocol=1 physics=estimated controller=sim-profiles adapter=python
+# 
+simprofiles
+$SIMPROFILES legacy,crawl,cruise,trot,highstep,lift,imu,level,level15,joint,jointfast,jointsport,upright,upright_reach,cushion_reach,cushion_j2lift,cushion_j1level,cushion_wbc,cushion_forward,cushion_forward_small,cushion_support_shift
+# 
+simprofile cushion_forward
+OK profile=cushion_forward
+# 
+simprofile cushion_support_shift
+OK profile=cushion_support_shift
+# 
+drive 0 0 10
+$SPOTDRIVE started seq=10 watchdog=800ms
+
+@S 11
+
+$SPOTDRIVE stopped reason=requested
+OK
+# $SPOTSTATE pose=stand error=20 torque=on safety=ok balance=active heading=on rev=shared-locomotion-v27-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated profile=cushion_support_shift reverse_limit=1000
+# 

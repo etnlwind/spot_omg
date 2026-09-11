@@ -98,8 +98,18 @@ enum RobotConnectionTarget: String, CaseIterable {
 
 enum SimulatorGaitProfile: String, CaseIterable {
     case legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
+    case cushion_reach, cushion_j2lift, cushion_wbc, cushion_forward, cushion_support_shift, cushion_support_shift_v2, cushion_v2_push, cushion_diagonal_sync_wide80
+    var simulatorOnly: Bool { [.cushion_reach, .cushion_j2lift, .cushion_wbc, .cushion_forward, .cushion_support_shift, .cushion_support_shift_v2, .cushion_v2_push, .cushion_diagonal_sync_wide80].contains(self) }
     var title: String {
         switch self {
+        case .cushion_diagonal_sync_wide80: return "대각선 · 넓은 보폭 80mm"
+        case .cushion_v2_push: return "V2 · 추진 타이밍 · 실험"
+        case .cushion_support_shift_v2: return "V2 · J1 고정 · 실험"
+        case .cushion_support_shift: return "큰 스텝 · 지지 전환 보정 · 실험"
+        case .cushion_forward: return "큰 전진 스텝 · 실험"
+        case .cushion_reach: return "쿠션 · 어깨 앞 착지"
+        case .cushion_j2lift: return "쿠션 · J2 높이 들기"
+        case .cushion_wbc: return "전신 수평 · 아치 보행 · 실험"
         case .legacy: return "기존 V16"
         case .crawl: return "크롤 · 한 발씩"
         case .cruise: return "크루즈 · 넓은 보폭"
@@ -133,6 +143,14 @@ extension SimulatorGaitProfile {
         case .joint: return 0.085797550
         case .jointfast: return 0.105461897
         case .jointsport: return 0.138690490
+        case .cushion_reach: return 0.045898422
+        case .cushion_j2lift: return 0.034639744
+        case .cushion_forward: return nil
+        case .cushion_wbc: return nil
+        case .cushion_support_shift_v2: return nil
+        case .cushion_v2_push: return nil
+        case .cushion_diagonal_sync_wide80: return nil
+        case .cushion_support_shift: return nil
         }
     }
 

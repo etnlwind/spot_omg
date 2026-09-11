@@ -544,3 +544,40 @@ V0.4.2 (14) / shared-locomotion-v20: `level15` (**수평 + 발 들기 · 15mm**)
 ## 스포츠 모드 / 전체 정책 속도 (v23)
 
 앱 V0.4.5 (17): `jointsport` (**J2 협응 · 스포츠**) 추가. 전체 정책 이름에 동일 조건 측정 속도를 표시하며 실패 시 `(검증실패)`로 표시합니다. `docs/J2-SPORT-AND-SPEED-LABELS-2026-09-10.md` 참고. 실제 폰 UJIN17만 사용합니다.
+
+## Upright 전진 실험 (2026-09-11)
+
+높이240mm·목표 발 들림30mm·주기1.8초의 별도 실험 정책을 추가했다.
+기존 정책은 변경하지 않으며 실제 펌웨어에 설치하지 않는다.
+
+```bash
+mjpython simulation/mujoco/preview_upright.py --viewer
+```
+
+자동 전진/정지 데모 및 검증 수치와 제한은 [Upright 기록](../../docs/UPRIGHT-GAIT-2026-09-11.md)을 참고한다.
+
+1cm 탄성 의자발 쿠션 가정은 다음과 같이 재생한다. 재질은 미실측 접촉 근사다.
+
+```bash
+mjpython simulation/mujoco/preview_upright.py --viewer \
+  --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+```
+
+비교 결과와 모델 한계: [쿠션 실험 기록](../../docs/FOOT-CUSHION-10MM-2026-09-11.md).
+
+원형37.3mm 쿠션의 어깨 앞 착지 실험은 [CUSHION-REACH-GAIT](../../docs/CUSHION-REACH-GAIT-2026-09-11.md)를 참고하십시오. 프로필 `cushion_reach`는 전진 검증용이며 후진/회전에는 발 끌림이 남습니다.
+# 큰 스텝 · 지지 전환 보정 (2026-09-11)
+
+`cushion_support_shift`는 140mm 보폭/4.8초 주기를 유지하는 **시뮬레이터 전용 실험 정책**이다.
+7초 구간의 기울기는 개선됐지만 60초 전체 기울기·뒷발 접촉·접지 이동 기준에 실패하여
+앱에 `(검증실패)`로 표시한다. 실물 펌웨어에는 적용하지 않았다.
+구현, 동일 조건 비교, 영상과 실행 명령은
+[지지 전환 검증 기록](../../docs/SUPPORT-SHIFT-GAIT-2026-09-11.md)을 참고한다.
+
+- [V2 J1 고정 보행: 변경 분리·60초 결과·미달 항목](../../docs/SUPPORT-SHIFT-V2-2026-09-11.md)
+
+### 80mm 동역학 지지력 예측 실험
+
+`cushion_dynamics_wbc80`은 질량중심 MPC, 전신 역동역학 QP와 위치 서보용 변환을 사용하는 별도 실험 정책이다. **검증실패** 상태이며 기본 보행과 실물 펌웨어를 대체하지 않는다. 지지력 해의 성공과 실제 보행 합격을 구분한다.
+
+추가 의존성은 `requirements-wbc.txt`에 있으며, 실행·검증 명령과 한계는 [동역학 제어 기록](../../docs/DYNAMICS-WBC-2026-09-11.md)에 정리했다.

@@ -135,7 +135,7 @@ struct ControlView: View {
                         Picker("보행 정책", selection: Binding(
                             get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
                             set: { bluetooth.send(.simulatorProfile($0)) })) {
-                            ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.titleWithSpeed).tag($0) }
+                            ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0) }
                         }.disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                         Text("괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -301,7 +301,7 @@ struct ControlView: View {
                     Picker("보행 정책", selection: Binding(
                         get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
                         set: { bluetooth.send(.simulatorProfile($0)) })) {
-                        ForEach(SimulatorGaitProfile.allCases, id: \.self) { Text($0.titleWithSpeed).tag($0) }
+                        ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0) }
                     }
                 } label: {
                     compactLabel("정책", icon: "figure.walk", selected: false)

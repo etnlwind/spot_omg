@@ -19,6 +19,29 @@ def render():
         if row['passed']:assert value is not None and math.isfinite(value) and value>=0
         else:assert value is None
         lines.append(f'        case .{name}: return '+(format(value,'.9f') if row['passed'] else 'nil'))
+    experiments=json.loads((ROOT/'simulation/mujoco/upright_profiles.json').read_text())['profiles']
+    cushion=json.loads((ROOT/'simulation/mujoco/foot_cushion_10mm.json').read_text())
+    for name,filename in [('cushion_reach','reach373-validation.json'),('cushion_j2lift','j2lift-validation.json'),('cushion_forward','forward-reach-validation.json')]:
+        rows=json.loads((ROOT/'artifacts/upright/2026-09-11/cushion'/filename).read_text())
+        row=next(r for r in rows if r.get('case')=='forward')
+        valid=row['safety']=='ok' and row.get('quality_passed',True) and row['profile']['params']==experiments[name]['params'] and row['cushion']==cushion
+        lines.append(f'        case .{name}: return '+(format(row['speed_m_s'],'.9f') if valid else 'nil'))
+    lines.append('        case .cushion_wbc: return nil')
+    # V2 remains experimental until the complete physical acceptance suite passes.
+    lines.append('        case .cushion_support_shift_v2: return nil')
+    lines.append('        case .cushion_v2_push: return nil')
+    lines.append('        case .cushion_diagonal_sync_wide80: return nil')
+    support_path=ROOT/'artifacts/upright/2026-09-11/cushion/support-shift-validation.json'
+    support_rows=json.loads(support_path.read_text()) if support_path.exists() else []
+    support=next((r for r in support_rows if r.get('case')=='forward'),{})
+    required={'forward','com_offset','servo_delay','motor_loss','cushion_soft_slippery','imu_delay','forward_stop'}
+    valid=(set(r['case'] for r in support_rows)==required and support.get('suite_passed',False)
+           and all(r.get('quality_passed',False) and all(r.get('gates',{}).values()) for r in support_rows)
+           and support.get('profile')==experiments['cushion_support_shift'] and support.get('cushion')==cushion
+           and bool(support.get('controller_sha256'))
+           and all(hashlib.sha256((ROOT/'simulation/mujoco'/name).read_bytes()).hexdigest()==digest
+                   for name,digest in support.get('controller_sha256',{}).items()))
+    lines.append('        case .cushion_support_shift: return '+(format(support['speed_m_s'],'.9f') if valid else 'nil'))
     lines += ['        }','    }','',
         '    static func speedSuffix(_ speed: Double?) -> String {',
         '        guard let speed, speed.isFinite, speed >= 0 else { return "(검증실패)" }',

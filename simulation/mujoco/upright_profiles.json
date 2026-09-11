@@ -1,0 +1,800 @@
+{
+  "status": "Experimental MuJoCo-only policy; estimated physics; not deployed to hardware",
+  "profiles": {
+    "upright": {
+      "label": "Upright / deliberate 30mm foot lift",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.8,
+        0.6,
+        0.04,
+        0.03,
+        0.24,
+        -0.025,
+        0.75
+      ]
+    },
+    "upright_reach": {
+      "label": "Upright reach / 20mm cushion",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.8,
+        0.6,
+        0.05,
+        0.03,
+        0.24,
+        -0.02,
+        0.75
+      ]
+    },
+    "cushion_reach": {
+      "label": "Cushion reach / 37.3mm round sole",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.8,
+        0.6,
+        0.05,
+        0.03,
+        0.24,
+        -0.01,
+        0.75
+      ]
+    },
+    "cushion_j2lift": {
+      "label": "Cushion reach / stronger J2 lift",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        2.2,
+        0.6,
+        0.05,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ]
+    },
+    "cushion_j1level": {
+      "label": "Cushion / J1 support leveling",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        2.2,
+        0.6,
+        0.05,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_j1": {
+        "gain": 1.5,
+        "damping": 0.0,
+        "limit_deg": 3.0,
+        "swing_weight": 0.85
+      }
+    },
+    "cushion_wbc": {
+      "label": "전신 수평 · 아치 보행 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        2.2,
+        0.6,
+        0.05,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "position_wbc": {
+        "gain": 0.15,
+        "joint_limit_deg": 4
+      },
+      "validation_status": "experimental_not_improved_over_baseline"
+    },
+    "cushion_forward": {
+      "label": "큰 전진 스텝 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.7,
+        0.14,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ]
+    },
+    "cushion_forward_small": {
+      "label": "쿠션 · 더 앞에 내딛기",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        2.2,
+        0.6,
+        0.06,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ]
+    },
+    "cushion_support_shift": {
+      "label": "큰 스텝 · 지지 전환 보정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.7,
+        0.14,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "validation_status": "experimental_validation_failed",
+      "footstep_tracking": {
+        "lower_m": 0.006
+      }
+    },
+    "cushion_support_shift_v1": {
+      "label": "지지 전환 보정 · 앞발 복사 전 보관",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.7,
+        0.14,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0.005,
+        "lower_m": 0.01,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            -0.021943915985511066,
+            -2.002451382348092,
+            2.6384868173802905,
+            0.007074309733967864,
+            0.0304992069894585,
+            -2.401157133638907,
+            -1.3346582607990478
+          ],
+          [
+            -0.7094423962108346,
+            0.09807746358534529,
+            -0.0729523609803782,
+            1.2425134429999503,
+            -0.07245458197977755,
+            0.06407016693276292,
+            -0.06564045838380124
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_rear_copy_phase": {
+      "label": "앞발 복사 · 위상 보정 실패 보관",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.7,
+        0.14,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0.005,
+        "lower_m": 0.01,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            -0.021943915985511066,
+            -2.002451382348092,
+            2.6384868173802905,
+            0.007074309733967864,
+            0.0304992069894585,
+            -2.401157133638907,
+            -1.3346582607990478
+          ],
+          [
+            -0.7094423962108346,
+            0.09807746358534529,
+            -0.0729523609803782,
+            1.2425134429999503,
+            -0.07245458197977755,
+            0.06407016693276292,
+            -0.06564045838380124
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "rear_swing_from_front": true
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_j1_fixed": {
+      "label": "J1 고정 · J2/J3 보행 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.7,
+        0.14,
+        0.04,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "validation_status": "experimental_validation_failed",
+      "footstep_tracking": {
+        "lower_m": 0.006,
+        "lock_j1": true
+      }
+    },
+    "cushion_support_shift_v2": {
+      "label": "V2 · J1 고정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.85,
+        0.14,
+        0.025,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": true,
+        "constant_body_height": true,
+        "height_feedback_gain": 2.0
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_v2_push": {
+      "label": "V2 · 공동 추진 보정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.85,
+        0.14,
+        0.025,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": true,
+        "push_bias": 0,
+        "forward_pulse_m": 0.01,
+        "forward_pulse_peak_phase": 0.8,
+        "forward_pulse_shape": "sine",
+        "constant_body_height": true,
+        "height_feedback_gain": 1.0
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_support_shift_v2_height_candidate": {
+      "label": "V2 · J1 고정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.85,
+        0.14,
+        0.025,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": true,
+        "constant_body_height": true,
+        "height_feedback_gain": 2.0
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_v2_push_height_candidate": {
+      "label": "V2 · 공동 추진 보정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.85,
+        0.14,
+        0.025,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": true,
+        "push_bias": 0,
+        "forward_pulse_m": 0.01,
+        "forward_pulse_peak_phase": 0.8,
+        "forward_pulse_shape": "sine",
+        "constant_body_height": true,
+        "height_feedback_gain": 1.0
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_support_shift_v2_height_before": {
+      "label": "V2 · J1 고정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.85,
+        0.14,
+        0.025,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.01,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": true
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_v2_push_height_before": {
+      "label": "V2 · 공동 추진 보정 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        4.8,
+        0.85,
+        0.14,
+        0.025,
+        0.24,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.01,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": true,
+        "push_bias": 0,
+        "forward_pulse_m": 0.01,
+        "forward_pulse_peak_phase": 0.8,
+        "forward_pulse_shape": "sine"
+      },
+      "validation_status": "experimental_validation_failed"
+    },
+    "cushion_diagonal_sync": {
+      "label": "대각선 · 지지/스윙 분리 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.44,
+        0.5,
+        0.06,
+        0.02,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": false,
+        "constant_body_height": true,
+        "height_feedback_gain": 0.5,
+        "kinematic_lead_s": 0.04,
+        "load_preload_gain": 1.0,
+        "split_residual_tasks": true,
+        "swing_residual_gain": 0.15,
+        "support_line_feedback": true
+      },
+      "validation_status": "experimental_validation_failed",
+      "validation_notes": "J1 enabled. 60 mm stride, 1.44 s period, 0.5 duty. 60 s survival, quality gates fail: max roll, RMS roll, swing contacts, rated torque. No firmware deployment."
+    },
+    "cushion_diagonal_sync_wide100": {
+      "label": "대각선 · 100mm 큰 스텝 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.44,
+        0.5,
+        0.1,
+        0.02,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": false,
+        "constant_body_height": true,
+        "height_feedback_gain": 0.5,
+        "kinematic_lead_s": 0.04,
+        "load_preload_gain": 1.0,
+        "split_residual_tasks": true,
+        "swing_residual_gain": 0.15,
+        "support_line_feedback": true
+      },
+      "validation_status": "experimental_validation_failed",
+      "validation_notes": "100 mm stride experiment derived from cushion_diagonal_sync; all other gait and physics settings unchanged. Not validated for physical robot or promoted to default."
+    },
+    "cushion_diagonal_sync_wide80": {
+      "label": "대각선 · 80mm 큰 스텝 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.44,
+        0.5,
+        0.08,
+        0.02,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": false,
+        "constant_body_height": true,
+        "height_feedback_gain": 0.5,
+        "kinematic_lead_s": 0.04,
+        "load_preload_gain": 1.0,
+        "split_residual_tasks": true,
+        "swing_residual_gain": 0.15,
+        "support_line_feedback": true
+      },
+      "validation_status": "experimental_validation_failed",
+      "validation_notes": "80 mm nominal stride. 60 s without safety stop, but diagonal synchronization FAILED: median touchdown gaps FL-RR 170 ms, FR-RL 200 ms (20 ms samples). Height and tilt quality also fail. Not promoted to default or physical robot.",
+      "diagonal_sync_validation": {
+        "passed": false,
+        "measurement_start_s": 5,
+        "duration_s": 20.02,
+        "pairs": {
+          "FL-RR": {
+            "touchdown_abs_median_ms": 170,
+            "touchdown_abs_max_ms": 220,
+            "measured_swings": 10,
+            "commanded_swing_flags_identical": true,
+            "mid_swing_contact_disagreement_fraction": 0.22413793103448276,
+            "mid_swing_clearance_difference_rms_mm": 16.3212864931744
+          },
+          "FR-RL": {
+            "touchdown_abs_median_ms": 200,
+            "touchdown_abs_max_ms": 220,
+            "measured_swings": 10,
+            "commanded_swing_flags_identical": true,
+            "mid_swing_contact_disagreement_fraction": 0.36,
+            "mid_swing_clearance_difference_rms_mm": 22.39414214734551
+          }
+        }
+      }
+    },
+    "cushion_dynamics_wbc80": {
+      "label": "80mm · 동역학 지지력 예측 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.44,
+        0.5,
+        0.08,
+        0.02,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "constant_body_height": true,
+        "lateral_m": 0,
+        "lower_m": 0,
+        "kinematic_lead_s": 0.04,
+        "dynamics_wbc": {
+          "rated_factor": 3.0,
+          "position_adapter": "bounded_trajectory",
+          "contact_patch_depth_m": 0.001,
+          "target_step_deg": 5.0,
+          "centroidal_preview": true
+        }
+      },
+      "validation_status": "experimental_validation_failed",
+      "validation_notes": "FAILED after 60 seconds without safety stop: max roll 9.91 deg, pitch 6.70 deg; height peak-to-peak 25.33 mm; diagonal mid-swing contact disagreements 67.7% and 44.0%. Worse than baseline on key measures. Do not promote. No hardware or app deployment.",
+      "validation_report": "docs/DYNAMICS-WBC-2026-09-11.md"
+    }
+  }
+}

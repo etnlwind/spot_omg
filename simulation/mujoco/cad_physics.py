@@ -25,6 +25,75 @@ def inertia(body, mass, center, size):
     ET.SubElement(body, 'inertial', pos=vec(center), mass=str(mass), diaginertia=vec(diagonal))
 
 
+def toe_base_frame(points):
+    """Frame of the planar lower edge of the triangular J3 opening in this CAD."""
+    triangles=points.reshape(-1,3,3)
+    centers=triangles.mean(1)
+    cross=np.cross(triangles[:,1]-triangles[:,0],triangles[:,2]-triangles[:,0])
+    area=np.linalg.norm(cross,axis=1)/2
+    normals=cross/np.maximum(2*area[:,None],1e-20)
+    normals[normals[:,2]<0]*=-1
+    candidate=(centers[:,2]<points[:,2].min()+.035)&(normals[:,2]>.85)&(area>40e-6)
+    if not candidate.any():
+        raise ValueError('Cannot identify CAD triangular opening base')
+    ids=np.flatnonzero(candidate)
+    seed=ids[np.argmax(area[ids])]
+    ids=ids[(normals[ids]@normals[seed])>.99999]
+    z=np.average(normals[ids],axis=0,weights=area[ids]);z/=np.linalg.norm(z)
+    x=np.array([1.,0,0]);x-=z*np.dot(x,z);x/=np.linalg.norm(x)
+    frame=np.column_stack((x,np.cross(z,x),z))
+    anchor=np.average(centers[ids],axis=0,weights=area[ids])
+    return frame,anchor
+
+
+def elastic_cap_vertices(size, circular=False):
+    """Closed, softly bulging cap; photo-based silhouette, not a deformable solid."""
+    size=np.asarray(size)
+    points=[]
+    def signed_power(value,power):
+        return np.sign(value)*abs(value)**power
+    for latitude in np.linspace(-np.pi/2,np.pi/2,33):
+        ring=abs(np.cos(latitude))**.5
+        z=size[2]*signed_power(np.sin(latitude),.5)
+        for angle in np.linspace(0,2*np.pi,64,endpoint=False):
+            points.append([size[0]*ring*signed_power(np.cos(angle),(1.0 if circular else 2/2.6)),
+                           size[1]*ring*signed_power(np.sin(angle),(1.0 if circular else 2/2.6)),z])
+    return np.unique(np.round(points,10),axis=0)
+
+
+def rounded_cap_vertices(size, radius):
+    """Convex rounded box with unchanged outer dimensions (metres)."""
+    size=np.asarray(size)
+    if not 0 < radius < min(size):
+        raise ValueError('Cushion corner radius must fit inside the cap')
+    points=[]
+    # Include cardinal directions so the specified outer dimensions are exact.
+    for theta in np.linspace(0, np.pi, 17):
+        for phi in np.linspace(0, 2*np.pi, 32, endpoint=False):
+            normal=np.array([np.sin(theta)*np.cos(phi),np.sin(theta)*np.sin(phi),np.cos(theta)])
+            for signs in ((x,y,z) for x in (-1,1) for y in (-1,1) for z in (-1,1)):
+                points.append(np.array(signs)*(size-radius)+radius*normal)
+    return np.unique(np.round(points,10),axis=0)
+
+
+def geom_extent_along(model, data, geom, direction):
+    local=data.geom_xmat[geom].reshape(3,3).T@np.asarray(direction)
+    if model.geom_type[geom] == mujoco.mjtGeom.mjGEOM_BOX:
+        return float(np.sum(np.abs(local)*model.geom_size[geom]))
+    if model.geom_type[geom] == mujoco.mjtGeom.mjGEOM_ELLIPSOID:
+        return float(np.linalg.norm(local*model.geom_size[geom]))
+    if model.geom_type[geom] == mujoco.mjtGeom.mjGEOM_MESH:
+        mesh=model.geom_dataid[geom]
+        start=model.mesh_vertadr[mesh];count=model.mesh_vertnum[mesh]
+        return float(np.max(model.mesh_vert[start:start+count]@local))
+    return float(model.geom_size[geom,0])
+
+
+def foot_clearance(model, data, foot):
+    """Lowest point of the rotated foot contact shape above z=0."""
+    return float(data.geom_xpos[foot,2]-geom_extent_along(model,data,foot,[0,0,1]))
+
+
 def build(parameters=None,write_scene=True):
     p = parameters or json.loads((CAD/'physics_parameters.json').read_text())
     root,mapping = build_rig(write_files=False)
@@ -71,7 +140,64 @@ def build(parameters=None,write_scene=True):
                 tip=points[points[:,2]<lo[2]+.008].mean(0)
                 tip[2]=lo[2]+p['foot_radius_m']
                 endpoint=tip
-                ET.SubElement(body,'geom',name=leg.lower()+'_foot',type='sphere',pos=vec(tip-pivot),size=str(p['foot_radius_m']),**attrs)
+                cushion=p.get('foot_cushion')
+                if cushion:
+                    thickness=float(cushion['thickness_m'])
+                    radius=float(cushion['radius_m'])
+                    if not (0<thickness<=.03 and radius>=p['foot_radius_m']):
+                        raise ValueError('Invalid foot cushion dimensions')
+                    shape=cushion.get('shape','ellipsoid')
+                    pad_rotation=np.eye(3)
+                    if shape in ('box','rounded_box','elastic_cap'):
+                        # Measured cap length includes both covered toe and bottom extension.
+                        wrap=(float(cushion['total_length_m'])-thickness
+                              if 'total_length_m' in cushion else float(cushion.get('wrap_height_m',.025)))
+                        wall=float(cushion.get('side_wall_m',.003))
+                        if not (.005<=wrap<=.05 and 0<wall<=.01):
+                            raise ValueError('Invalid cushion wrapping dimensions')
+                        toe=points[points[:,2]<=lo[2]+wrap]
+                        lower=toe.min(0)-np.array([wall,wall,0])
+                        upper=toe.max(0)+np.array([wall,wall,0])
+                        lower[2]=lo[2]-thickness;upper[2]=lo[2]+wrap
+                        if cushion.get('align_to_triangle_base',False):
+                            pad_rotation,anchor=toe_base_frame(points)
+                            local=points@pad_rotation
+                            top=float(anchor@pad_rotation[:,2])
+                            toe=local[local[:,2]<=top+1e-6]
+                            lower=toe.min(0)-np.array([wall,wall,0])
+                            upper=toe.max(0)+np.array([wall,wall,0])
+                            upper[2]=top
+                            lower[2]=top-float(cushion['total_length_m'])
+                            if lower[2]>=local[:,2].min():
+                                raise ValueError('Measured cap does not cover the CAD toe')
+                        center=pad_rotation@((lower+upper)/2)-pivot;size=(upper-lower)/2
+                        if shape=='elastic_cap' and 'sole_diameter_m' in cushion:
+                            diameter=float(cushion['sole_diameter_m'])
+                            if not 0 < diameter <= .1:
+                                raise ValueError('Invalid cushion sole diameter')
+                            size[:2]=diameter/2
+                    elif shape=='ellipsoid':
+                        center=tip-pivot-np.array([0,0,thickness/2])
+                        size=[radius,radius,p['foot_radius_m']+thickness/2]
+                    else: raise ValueError('Unsupported cushion shape')
+                    pad_quat=np.empty(4);mujoco.mju_mat2Quat(pad_quat,pad_rotation.ravel())
+                    pad=ET.SubElement(body,'body',name=leg.lower()+'_cushion',pos=vec(center),quat=vec(pad_quat))
+                    # Single outer contact envelope of a toe-covering cap.
+                    geometry=dict(type=shape,size=vec(size))
+                    if shape in ('rounded_box','elastic_cap'):
+                        mesh_name=leg.lower()+'_cushion_round'
+                        verts=(elastic_cap_vertices(size,circular='sole_diameter_m' in cushion) if shape=='elastic_cap' else
+                               rounded_cap_vertices(size,float(cushion.get('corner_radius_m',.004))))
+                        ET.SubElement(root.find('asset'),'mesh',name=mesh_name,
+                                      vertex=' '.join(vec(v) for v in verts))
+                        geometry=dict(type='mesh',mesh=mesh_name)
+                    ET.SubElement(pad,'geom',name=leg.lower()+'_foot',**geometry,
+                        mass=str(cushion['mass_kg']),rgba='.9 .9 .87 1',group='2',
+                        contype='1',conaffinity='1',priority='1',condim='4',
+                        friction=vec(cushion['friction']),
+                        solref=vec([cushion['contact_time_constant_s'],cushion['damping_ratio']]))
+                else:
+                    ET.SubElement(body,'geom',name=leg.lower()+'_foot',type='sphere',pos=vec(tip-pivot),size=str(p['foot_radius_m']),**attrs)
             # Slim link contact proxy; avoid spanning the full motor-case AABB.
             midpoint=(lo+hi)/2; start=pivot.copy();start[0]=midpoint[0];end=endpoint.copy();end[0]=midpoint[0]
             ET.SubElement(body,'geom',name=name+'_collision',type='capsule',fromto=vec(np.r_[start-pivot,end-pivot]),size='.012',**attrs)
@@ -122,7 +248,7 @@ class Simulation:
         self.data.qpos[self.q]=self.desired
         mujoco.mj_forward(self.model,self.data)
         feet=[self.model.geom(l.lower()+'_foot').id for l in ('FL','FR','RL','RR')]
-        floor=min(self.data.geom_xpos[i,2]-self.model.geom_size[i,0] for i in feet)
+        floor=min(foot_clearance(self.model,self.data,i) for i in feet)
         self.data.qpos[2] += .001-floor
         mujoco.mj_forward(self.model,self.data)
         self.filtered=self.desired.copy();self.target_velocity=np.zeros(12)

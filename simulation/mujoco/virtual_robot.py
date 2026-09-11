@@ -48,6 +48,13 @@ class RobotController:
         self.out = []
         self.profiles = load_profiles() if PROFILE_FILE.exists() else {}
         self.deployed_profiles = copy.deepcopy(self.profiles)
+        from support_j1 import SupportJ1
+        self.support_j1=SupportJ1()
+        from position_wbc import PositionWBC,EncoderChannel
+        self.position_wbc=PositionWBC(plant.model)
+        self.encoder_channel=EncoderChannel()
+        self.support_shift=None
+        self.footstep_tracker=None
         self.profile = json.loads(PROFILE_FILE.read_text()).get('default','legacy') if self.profiles else 'legacy'
         self.stopping_reason = None
         self.pending_profile = None
@@ -63,6 +70,18 @@ class RobotController:
         self.last_incident = None
         self.realtime_factor = None
         self.plant.sensor_observer = self.observe_imu
+
+    def load_experimental_profiles(self, path):
+        """Opt-in simulator experiments; never replace deployed profile names."""
+        profiles=json.loads(Path(path).read_text())['profiles']
+        for name, profile in profiles.items():
+            if name == 'legacy' or name in self.profiles:
+                raise ValueError('Experimental profile must have a new name: '+name)
+            if profile.get('balance_base') not in self.deployed_profiles:
+                raise ValueError('Experimental profile needs a deployed balance_base')
+            for phase in np.linspace(0,1,101):
+                foot_targets(profile['params'],phase*profile['params'][0],1,profile['family'])
+        self.profiles.update(profiles)
 
     def observe_imu(self, model, data):
         r = data.xmat[model.body('robot').id].reshape(3,3)
@@ -141,6 +160,11 @@ class RobotController:
         if self.motion or self.transition:
             raise ValueError('stop before changing profile')
         self.profile = name
+        self.support_j1.reset()
+        self.position_wbc.delta[:]=0;self.position_wbc.confidence[:]=0;self.position_wbc.scale=1.
+        self.encoder_channel.queue.clear()
+        if self.support_shift:self.support_shift.reset()
+        if self.footstep_tracker:self.footstep_tracker.reset()
 
     def disconnected(self):
         self.stop('disconnect')
@@ -277,7 +301,22 @@ class RobotController:
         policy=self.plant.policy; kind=self.motion[0]
         if kind in ('drive','profile') and self.profile != 'legacy':
             profile=self.profiles[self.profile]
-            params=self.active_profile_params()
+            params=self.active_profile_params().copy()
+            if profile.get('footstep_tracking'):
+                if self.footstep_tracker is None:
+                    from footstep_tracker import FootstepTracker
+                    self.footstep_tracker=FootstepTracker(self.plant.model)
+                values=self.footstep_tracker.plan(params,phase,amplitude,self.linear,self.yaw,profile['footstep_tracking'])
+                return dict(zip(KEYS,values))
+            if profile.get('support_shift'):
+                if self.support_shift is None:
+                    from support_shift import SupportShift
+                    self.support_shift=SupportShift(self.plant.model)
+                values=self.support_shift.plan(params,phase,amplitude,self.linear,self.yaw,profile['support_shift'])
+                return dict(zip(KEYS,values))
+            # Reduce stride without collapsing swing height and causing toe drag.
+            adaptive=self.position_wbc.scale if profile.get('position_wbc') else self.support_j1.scale if profile.get('support_j1') else 1.
+            params[2]*=adaptive
             values=foot_targets(params,phase*params[0],amplitude,
                                 profile['family'],self.linear,self.yaw)
             return dict(zip(KEYS,values))
@@ -339,7 +378,7 @@ class RobotController:
                         self.pose='stow-paused'
                     self.reply(completion)
         elif self.motion:
-            if self.motion[0]=='drive' and self.profiles==self.deployed_profiles:
+            if self.motion[0]=='drive' and (self.profile=='legacy' or (self.profile in self.deployed_profiles and self.profiles[self.profile]==self.deployed_profiles[self.profile])):
                 self.target=shared_drive_step(self)
             else:
                 self.elapsed+=.02
@@ -369,7 +408,7 @@ class RobotController:
         moving = self.motion is not None or self.transition is not None
         self.balance.kp,self.balance.kd,self.balance.ki = (.1,0.,.03) if moving else (.25,.015,.15)
         self.balance.standing = self.motion is None and self.transition is None and self.pose=='stand'
-        self.balance.profile=self.profile
+        self.balance.profile=self.profiles.get(self.profile,{}).get("balance_base",self.profile)
         self.balance.phase=self.phase
         self.balance.moving=self.motion is not None and self.transition is None
         self.balance.linear,self.balance.yaw=self.linear,self.yaw
@@ -382,6 +421,34 @@ class RobotController:
         else:
             self.command_target = self.balance.apply(self.target,self.attitude_filter,
                 self.imu_reading is not None and self.attitude_filter.failures==0,permitted)
+        wbc_config=self.profiles.get(self.profile,{}).get('position_wbc')
+        if wbc_config:
+            encoder_sample=self.encoder_channel.read(np.degrees(self.plant.data.qpos[self.plant.q]))
+            wbc_enabled=self.balance.enabled and self.balance.applied and self.balance.moving and permitted
+            wbc_target=self.position_wbc.apply(self.target,encoder_sample,self.attitude_filter,
+                self.phase,self.active_profile_params()[1],wbc_config,wbc_enabled)
+            if wbc_enabled and encoder_sample is not None:self.command_target=wbc_target
+        shift_config=self.profiles.get(self.profile,{}).get('support_shift')
+        if shift_config and self.support_shift:
+            encoder_sample=self.encoder_channel.read(np.degrees(self.plant.data.qpos[self.plant.q]))
+            enabled=self.balance.enabled and self.balance.applied and self.balance.moving and permitted
+            if enabled:
+                self.command_target=self.support_shift.feedback(self.target,encoder_sample,self.attitude_filter,
+                    self.active_profile_params(),shift_config,enabled)
+            else:self.support_shift.reset()
+        support_config=self.profiles.get(self.profile,{}).get('support_j1')
+        if support_config:
+            self.command_target=self.support_j1.apply(self.target,self.command_target,
+                self.attitude_filter,self.phase,self.active_profile_params()[1],support_config,
+                self.balance.enabled and self.balance.applied and self.balance.moving and permitted)
+        else:self.support_j1.reset()
+        tracker_config=self.profiles.get(self.profile,{}).get('footstep_tracking')
+        if tracker_config and self.footstep_tracker:
+            encoder_sample=self.encoder_channel.read(np.degrees(self.plant.data.qpos[self.plant.q]))
+            self.footstep_tracker.observe(encoder_sample,self.attitude_filter,self.imu_reading,
+                                         reset_contacts=not self.balance.moving)
+            if self.balance.moving and permitted and self.footstep_tracker.healthy:
+                self.command_target=self.target.copy()
         self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque)
         self.imu_reading = self.imu.read(float(self.plant.data.time))
         # Ignore configured sensor-entry warmup; subsequent missing reads fail
@@ -400,7 +467,9 @@ class RobotController:
             request=self.request,linear=self.linear,yaw=self.yaw,phase=self.phase,
             roll_deg=math.degrees(math.atan2(rotation[2,1],rotation[2,2])),
             pitch_deg=math.degrees(math.asin(float(np.clip(-rotation[2,0],-1,1)))),
-            imu=self.imu_reading,balance=self.balance.diagnostic(),
+            imu=self.imu_reading,balance=self.balance.diagnostic(),position_wbc=self.position_wbc.diagnostic,
+            support_shift=self.support_shift.diagnostic.copy() if self.support_shift else None,
+            footstep_tracking=self.footstep_tracker.diagnostic.copy() if self.footstep_tracker else None,
             nominal=self.target.tolist(),command=self.command_target.tolist(),
             voltage=self.plant.voltage,safety=self.safety))
         if previous_safety=='ok' and self.safety!='ok' and self.incident_directory:
@@ -472,8 +541,10 @@ def main():
     parser.add_argument('--no-video',action='store_true',help='Disable LAN phone video')
     parser.add_argument('--video-host',default='0.0.0.0')
     parser.add_argument('--video-port',type=int,default=8766)
-    parser.add_argument('--profile', choices=('legacy',*load_profiles()), help='Initial gait profile')
+    parser.add_argument('--profile', help='Initial gait profile (including optional experiments)')
+    parser.add_argument('--experimental-profiles',type=Path,help='Opt-in simulator-only profile manifest')
     parser.add_argument('--parameters',type=Path,default=CAD/'physics_parameters.json')
+    parser.add_argument('--foot-cushion',type=Path,help='Attached cushion parameters; estimated contact compliance')
     parser.add_argument('--heading',choices=('on','off'),default='on',help='Initial IMU heading hold state')
     parser.add_argument('--balance',choices=('on','off'),default='on',help='Initial IMU body leveling state')
     display=parser.add_mutually_exclusive_group()
@@ -491,7 +562,9 @@ def main():
         bridge_binary=build_bridge()
     parameters=json.loads(args.parameters.read_text()); parameters['timestep_s']=.0005
     parameters['experimental_stow']=True
+    if args.foot_cushion: parameters['foot_cushion']=json.loads(args.foot_cushion.read_text())
     plant=Simulation(parameters); controller=RobotController(plant)
+    if args.experimental_profiles: controller.load_experimental_profiles(args.experimental_profiles)
     if args.profile: controller.select_profile(args.profile)
     controller.heading.enabled=args.heading=='on'
     controller.balance.enabled=args.balance=='on'

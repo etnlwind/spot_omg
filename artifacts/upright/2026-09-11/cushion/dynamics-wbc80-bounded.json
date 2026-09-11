@@ -1,0 +1,182 @@
+{
+  "linear": 1000,
+  "yaw": 0,
+  "safety": "ok",
+  "estimated_physics": true,
+  "profile": {
+    "label": "\ub300\uac01\uc120 \u00b7 80mm \ud070 \uc2a4\ud15d \u00b7 \uc2e4\ud5d8",
+    "family": "trot",
+    "balance_base": "level",
+    "params": [
+      1.44,
+      0.5,
+      0.08,
+      0.02,
+      0.20175,
+      -0.01,
+      0.75
+    ],
+    "support_shift": {
+      "constant_body_height": true,
+      "lateral_m": 0,
+      "lower_m": 0,
+      "kinematic_lead_s": 0,
+      "dynamics_wbc": {
+        "rated_factor": 3.0,
+        "position_adapter": "bounded_trajectory",
+        "contact_patch_depth_m": 0.001
+      }
+    },
+    "validation_status": "experimental_validation_failed",
+    "validation_notes": "80 mm nominal stride. 60 s without safety stop, but diagonal synchronization FAILED: median touchdown gaps FL-RR 170 ms, FR-RL 200 ms (20 ms samples). Height and tilt quality also fail. Not promoted to default or physical robot.",
+    "diagonal_sync_validation": {
+      "passed": false,
+      "measurement_start_s": 5,
+      "duration_s": 20.02,
+      "pairs": {
+        "FL-RR": {
+          "touchdown_abs_median_ms": 170,
+          "touchdown_abs_max_ms": 220,
+          "measured_swings": 10,
+          "commanded_swing_flags_identical": true,
+          "mid_swing_contact_disagreement_fraction": 0.22413793103448276,
+          "mid_swing_clearance_difference_rms_mm": 16.3212864931744
+        },
+        "FR-RL": {
+          "touchdown_abs_median_ms": 200,
+          "touchdown_abs_max_ms": 220,
+          "measured_swings": 10,
+          "commanded_swing_flags_identical": true,
+          "mid_swing_contact_disagreement_fraction": 0.36,
+          "mid_swing_clearance_difference_rms_mm": 22.39414214734551
+        }
+      }
+    }
+  },
+  "scenario": "nominal",
+  "cushion": {
+    "thickness_m": 0.01,
+    "radius_m": 0.015,
+    "mass_kg": 0.005,
+    "friction": [
+      1.0,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.02,
+    "damping_ratio": 1.0,
+    "shape": "elastic_cap",
+    "side_wall_m": 0.003,
+    "total_length_m": 0.027,
+    "corner_radius_m": 0.004,
+    "align_to_triangle_base": true,
+    "sole_diameter_m": 0.0373
+  },
+  "speed_m_s": 0.05194401289546555,
+  "legs": {
+    "FL": {
+      "rms_roll_deg": 1.8813956510524774,
+      "rms_pitch_deg": 0.6715745201709549,
+      "stance_center_speed_m_s": 0.015906176011060553,
+      "max_j1_correction_deg": 4.6642838429151885,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -4.215521077238282,
+      "touchdown_forward_median_mm": -24.00106209777164,
+      "touchdown_forward_min_mm": -71.89341657929351,
+      "samples": 751,
+      "swing_samples": 379,
+      "swing_contact_fraction": 0.6226912928759895,
+      "middle_swing_contact_fraction": 0.3879310344827586,
+      "peak_clearance_mm": 15.988738856244217,
+      "peak_contact_compression_proxy_mm": 3.9328322982349824,
+      "peak_j1_error_deg": 3.338454682223582,
+      "peak_tilt_deg": 4.736497136013127
+    },
+    "FR": {
+      "rms_roll_deg": 1.8813956510524774,
+      "rms_pitch_deg": 0.6715745201709549,
+      "stance_center_speed_m_s": 0.024777438584285747,
+      "max_j1_correction_deg": 4.3868183969978265,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -32.54682727537994,
+      "touchdown_forward_median_mm": -52.06363847939778,
+      "touchdown_forward_min_mm": -72.97663694480579,
+      "samples": 751,
+      "swing_samples": 372,
+      "swing_contact_fraction": 0.49193548387096775,
+      "middle_swing_contact_fraction": 0.24888888888888888,
+      "peak_clearance_mm": 7.0927091742234545,
+      "peak_contact_compression_proxy_mm": 4.300946247365878,
+      "peak_j1_error_deg": 2.715404619867029,
+      "peak_tilt_deg": 4.736497136013127
+    },
+    "RL": {
+      "rms_roll_deg": 1.8813956510524774,
+      "rms_pitch_deg": 0.6715745201709549,
+      "stance_center_speed_m_s": 0.0156644327050484,
+      "max_j1_correction_deg": 4.463413107453801,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": 0.06351583202372169,
+      "touchdown_forward_median_mm": -19.743484574180943,
+      "touchdown_forward_min_mm": -65.44796792712066,
+      "samples": 751,
+      "swing_samples": 372,
+      "swing_contact_fraction": 0.41935483870967744,
+      "middle_swing_contact_fraction": 0.3288888888888889,
+      "peak_clearance_mm": 12.303446864660804,
+      "peak_contact_compression_proxy_mm": 4.148767955577403,
+      "peak_j1_error_deg": 2.9107732508499415,
+      "peak_tilt_deg": 4.736497136013127
+    },
+    "RR": {
+      "rms_roll_deg": 1.8813956510524774,
+      "rms_pitch_deg": 0.6715745201709549,
+      "stance_center_speed_m_s": 0.021645498360968834,
+      "max_j1_correction_deg": 4.8980587160293165,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -38.35843109994451,
+      "touchdown_forward_median_mm": -57.72448281448442,
+      "touchdown_forward_min_mm": -79.38167466641045,
+      "samples": 751,
+      "swing_samples": 379,
+      "swing_contact_fraction": 0.47757255936675463,
+      "middle_swing_contact_fraction": 0.3793103448275862,
+      "peak_clearance_mm": 17.950139013079724,
+      "peak_contact_compression_proxy_mm": 4.2962655669255385,
+      "peak_j1_error_deg": 3.1292007131034185,
+      "peak_tilt_deg": 4.736497136013127
+    }
+  },
+  "metrics": {
+    "max_roll_deg": 4.736497136013127,
+    "max_pitch_deg": 1.8641119867681593,
+    "rms_roll_deg": 1.8813956510524774,
+    "rms_pitch_deg": 0.6715745201709549,
+    "tracking_rms_deg": 3.1381365030071855,
+    "tracking_peak_deg": 16.13819284335989,
+    "stance_center_speed_proxy_m_s": 0.01949313369221545,
+    "max_command_speed_deg_s": 50.0,
+    "max_command_motor_speed_ratio": 0.18500000339130915,
+    "joint_ranges_ok": true,
+    "max_torque_nm": 2.6875256596412758,
+    "max_torque_envelope_ratio": 1.0,
+    "mean_motor_saturated_fraction": 0.04249889036839769,
+    "mean_above_rated_fraction": 0.24522858411007548,
+    "max_friction_utilization": 0.999999990910949,
+    "max_planned_ik_residual_m": 3.295842998381466e-05,
+    "max_stance_ik_residual_m": 2.2970914988079768e-05,
+    "max_reference_body_shift_m": 0.0,
+    "safety_faults": [],
+    "moving_fraction": 1.0
+  },
+  "height": {
+    "peak_to_peak_mm": 18.353005691329276,
+    "std_mm": 4.6652893529406665,
+    "rms_target_error_mm": 6.7306341028970955,
+    "mean_height_mm": 226.31763059558682,
+    "target_mm": 231.16907478061256
+  },
+  "first_fault_s": null,
+  "feedback_task_residual_max_mm": 0,
+  "applied_task_residual_max_mm": 0
+}

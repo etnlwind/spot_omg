@@ -413,7 +413,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 lastError = "균형 제어 설정은 지원되는 제어기에서만 가능합니다."; return
             }
         }
-        if case .simulatorProfile = command {
+        if case .simulatorProfile(let profile) = command {
+            guard !profile.simulatorOnly || target.isSimulator else {
+                lastError = "이 정책은 가상 로봇에서만 사용할 수 있습니다."; return
+            }
             guard runtimeState.capabilities.contains("gaitprofiles") || (target.isSimulator && runtimeState.capabilities.contains("simprofiles")) else {
                 lastError = "보행 정책 선택은 지원되는 제어기에서만 가능합니다."; return
             }
