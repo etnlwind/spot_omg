@@ -1,0 +1,233 @@
+{
+  "linear": 0,
+  "yaw": -1000,
+  "safety": "ok",
+  "estimated_physics": true,
+  "profile": {
+    "label": "\ub300\uac01\uc120 \u00b7 80mm \ud070 \uc2a4\ud15d \u00b7 \uc2e4\ud5d8",
+    "family": "trot",
+    "balance_base": "level",
+    "params": [
+      1.44,
+      0.5,
+      0.08,
+      0.02,
+      0.20175,
+      -0.01,
+      0.75
+    ],
+    "support_shift": {
+      "lateral_m": 0,
+      "lower_m": 0.0,
+      "feedback_gain": 0.15,
+      "ki": 0.0,
+      "lead_s": 0.1,
+      "feedforward_coefficients": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "lift_scale": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "lock_j1": false,
+      "constant_body_height": true,
+      "height_feedback_gain": 0.5,
+      "kinematic_lead_s": 0.04,
+      "load_preload_gain": 1.0,
+      "split_residual_tasks": true,
+      "swing_residual_gain": 0.15,
+      "support_line_feedback": true,
+      "turn_path": "arc",
+      "turn_sweep_rad": 0.18,
+      "turn_lift_m": 0.022,
+      "turn_input_limit": 1.0,
+      "turn_period_s": 1.3
+    },
+    "validation_status": "experimental_validation_failed",
+    "validation_notes": "80 mm nominal stride. 60 s without safety stop, but diagonal synchronization FAILED: median touchdown gaps FL-RR 170 ms, FR-RL 200 ms (20 ms samples). Height and tilt quality also fail. Not promoted to default or physical robot.",
+    "diagonal_sync_validation": {
+      "passed": false,
+      "measurement_start_s": 5,
+      "duration_s": 20.02,
+      "pairs": {
+        "FL-RR": {
+          "touchdown_abs_median_ms": 170,
+          "touchdown_abs_max_ms": 220,
+          "measured_swings": 10,
+          "commanded_swing_flags_identical": true,
+          "mid_swing_contact_disagreement_fraction": 0.22413793103448276,
+          "mid_swing_clearance_difference_rms_mm": 16.3212864931744
+        },
+        "FR-RL": {
+          "touchdown_abs_median_ms": 200,
+          "touchdown_abs_max_ms": 220,
+          "measured_swings": 10,
+          "commanded_swing_flags_identical": true,
+          "mid_swing_contact_disagreement_fraction": 0.36,
+          "mid_swing_clearance_difference_rms_mm": 22.39414214734551
+        }
+      }
+    }
+  },
+  "scenario": "nominal",
+  "cushion": {
+    "thickness_m": 0.01,
+    "radius_m": 0.015,
+    "mass_kg": 0.005,
+    "friction": [
+      1.0,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.02,
+    "damping_ratio": 1.0,
+    "shape": "elastic_cap",
+    "side_wall_m": 0.003,
+    "total_length_m": 0.027,
+    "corner_radius_m": 0.004,
+    "align_to_triangle_base": true,
+    "sole_diameter_m": 0.0373
+  },
+  "speed_m_s": 0.002962979015127463,
+  "legs": {
+    "FL": {
+      "rms_roll_deg": 3.005730790776976,
+      "rms_pitch_deg": 1.2641451455439605,
+      "stance_center_speed_m_s": 0.015373256776579925,
+      "max_j1_correction_deg": 2.909469219120383,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -16.492313305562696,
+      "touchdown_forward_median_mm": -36.114836054244634,
+      "touchdown_forward_min_mm": -39.31863258538725,
+      "samples": 774,
+      "swing_samples": 396,
+      "swing_contact_fraction": 0.41414141414141414,
+      "middle_swing_contact_fraction": 0.15789473684210525,
+      "peak_clearance_mm": 41.09589997970113,
+      "peak_contact_compression_proxy_mm": 4.331275154540179,
+      "peak_j1_error_deg": 4.062407016649193,
+      "peak_tilt_deg": 7.395255201538465,
+      "turn_peak_clearance_mm": 41.09589997970113,
+      "turn_middle_swing_contact_fraction": 0.15789473684210525
+    },
+    "FR": {
+      "rms_roll_deg": 3.005730790776976,
+      "rms_pitch_deg": 1.2641451455439605,
+      "stance_center_speed_m_s": 0.016822627588328372,
+      "max_j1_correction_deg": 3.481155073455656,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": 0.46865360921869836,
+      "touchdown_forward_median_mm": -19.303923848070482,
+      "touchdown_forward_min_mm": -37.30617205329728,
+      "samples": 774,
+      "swing_samples": 378,
+      "swing_contact_fraction": 0.3544973544973545,
+      "middle_swing_contact_fraction": 0.1134453781512605,
+      "peak_clearance_mm": 25.13440765478955,
+      "peak_contact_compression_proxy_mm": 4.688808145388829,
+      "peak_j1_error_deg": 2.685740134219639,
+      "peak_tilt_deg": 7.395255201538465,
+      "turn_peak_clearance_mm": 25.13440765478955,
+      "turn_middle_swing_contact_fraction": 0.11818181818181818
+    },
+    "RL": {
+      "rms_roll_deg": 3.005730790776976,
+      "rms_pitch_deg": 1.2641451455439605,
+      "stance_center_speed_m_s": 0.019101233819098958,
+      "max_j1_correction_deg": 3.502701859221938,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -4.152547593524229,
+      "touchdown_forward_median_mm": -23.952563699587756,
+      "touchdown_forward_min_mm": -37.092627714083676,
+      "samples": 774,
+      "swing_samples": 378,
+      "swing_contact_fraction": 0.3201058201058201,
+      "middle_swing_contact_fraction": 0.08403361344537816,
+      "peak_clearance_mm": 22.415367270736965,
+      "peak_contact_compression_proxy_mm": 4.648108933934081,
+      "peak_j1_error_deg": 2.988320893520651,
+      "peak_tilt_deg": 7.395255201538465,
+      "turn_peak_clearance_mm": 22.415367270736965,
+      "turn_middle_swing_contact_fraction": 0.09090909090909091
+    },
+    "RR": {
+      "rms_roll_deg": 3.005730790776976,
+      "rms_pitch_deg": 1.2641451455439605,
+      "stance_center_speed_m_s": 0.01369240367254997,
+      "max_j1_correction_deg": 3.2027870265227607,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": 4.21995732135094,
+      "touchdown_forward_median_mm": -15.534728696257407,
+      "touchdown_forward_min_mm": -31.088553239076944,
+      "samples": 774,
+      "swing_samples": 396,
+      "swing_contact_fraction": 0.5202020202020202,
+      "middle_swing_contact_fraction": 0.40350877192982454,
+      "peak_clearance_mm": 34.612146495190224,
+      "peak_contact_compression_proxy_mm": 4.303108644919548,
+      "peak_j1_error_deg": 4.4262380284998395,
+      "peak_tilt_deg": 7.395255201538465,
+      "turn_peak_clearance_mm": 34.612146495190224,
+      "turn_middle_swing_contact_fraction": 0.40350877192982454
+    }
+  },
+  "direction": "left",
+  "measurement_start_s": 5,
+  "measurement_end_s": 19.98,
+  "rotation_deg": 227.2384056708083,
+  "rotation_deg_s": 15.169452982029927,
+  "planar_displacement_mm": 77.05536162528114,
+  "max_radius_from_start_mm": 107.99798052006815,
+  "applied_yaw_range": [
+    -1.0,
+    -1.0
+  ],
+  "first_fault_s": null,
+  "metrics": {
+    "max_roll_deg": 7.395255201538465,
+    "max_pitch_deg": 3.0785945889655686,
+    "rms_roll_deg": 3.0377101233228787,
+    "rms_pitch_deg": 1.2827868762790062,
+    "tracking_rms_deg": 2.156586005582306,
+    "tracking_peak_deg": 11.450399972942776,
+    "stance_center_speed_proxy_m_s": 0.0163482178231976,
+    "max_command_speed_deg_s": 88.98279500589155,
+    "max_command_motor_speed_ratio": 0.329236347557162,
+    "joint_ranges_ok": true,
+    "max_torque_nm": 2.56886239391592,
+    "max_torque_envelope_ratio": 1.0,
+    "mean_motor_saturated_fraction": 0.02344444444444444,
+    "mean_above_rated_fraction": 0.20477777777777778,
+    "max_friction_utilization": 0.9999997000256466,
+    "max_planned_ik_residual_m": 9.493545539610238e-05,
+    "max_stance_ik_residual_m": 2.655951661033634e-05,
+    "max_reference_body_shift_m": 0.0,
+    "safety_faults": [],
+    "moving_fraction": 1.0
+  },
+  "stop_completed": true,
+  "source_hashes": {
+    "support_shift.py": "1fb2013da304d70c0be108d36e17717208ecd5412f67f271a3df8d640f13fafc",
+    "virtual_robot.py": "e4c2230c7cd9f93c6ffeaec2f77a1d910d69a303f7d66bd2219dfeadeef9957a",
+    "cad_physics.py": "8f76ac9ca3c1b4c7e817afdc59be2bb5c837ff64112e2792361bf495d1be6633"
+  }
+}

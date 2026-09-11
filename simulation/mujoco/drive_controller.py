@@ -1,4 +1,4 @@
-"""50 Hz deployed motion kernel, shared byte-for-byte with STM32."""
+"""50 Hz deployed motion kernel, using the same C source as STM32."""
 import ctypes
 import numpy as np
 

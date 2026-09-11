@@ -1,0 +1,26 @@
+> syncstate
+$SPOTSTATE pose=landing error=40 torque=off safety=ok balance=full rev=shared-locomotion-v38 caps=trot5,gaitprofiles,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+> read 1
+ID 1 pos=1925 speed=0 load=0 voltage=12100mV temp=32C current=0 moving=0 hw=0x00
+> stand
+Starting slow synchronized stand move
+SAFETY stall
+  leg=FL joint=J2 id=2
+  target=1565 actual=2867 error=1302
+  load=-632 current=39 temp=30C hw_error=0x00
+  duration=254ms gait_phase=0 action=TORQUE_OFF_ALL
+ERROR: safety fault; check obstruction/temperature and retry a new command
+Traceback (most recent call last):
+  File "/Users/etnlwind/project/spot_omg/tools/test_arc_turn_hardware.py", line 59, in <module>
+    if __name__=='__main__':main()
+  File "/Users/etnlwind/project/spot_omg/tools/test_arc_turn_hardware.py", line 32, in main
+    send('stand',30);send('gaitprofile arcturn');send('locomotiondiag')
+  File "/Users/etnlwind/project/spot_omg/tools/test_arc_turn_hardware.py", line 23, in send
+    if not response.ok:raise RuntimeError(response.text)
+RuntimeError: Starting slow synchronized stand move
+SAFETY stall
+  leg=FL joint=J2 id=2
+  target=1565 actual=2867 error=1302
+  load=-632 current=39 temp=30C hw_error=0x00
+  duration=254ms gait_phase=0 action=TORQUE_OFF_ALL
+ERROR: safety fault; check obstruction/temperature and retry a new command

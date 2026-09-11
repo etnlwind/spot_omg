@@ -98,7 +98,7 @@ int main(void) {
             assert drive(state,profile,linear,yaw,ctypes.c_float(frame*ctypes.c_float(.013).value).value,True,True,frame>=400,out)
             assert encode(out,ticks,decoded)
             rows.append(list(ticks))
-    # O0 vs O2 float math must not change the transmitted hardware commands.
+    # O0 vs O2 must use the current headers and emit identical servo ticks.
     np.testing.assert_array_equal(rows,expected)
 
 

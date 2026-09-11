@@ -1,0 +1,236 @@
+{
+  "linear": 0,
+  "yaw": -1000,
+  "safety": "tilt",
+  "estimated_physics": true,
+  "profile": {
+    "label": "\ub300\uac01\uc120 \u00b7 80mm \ud070 \uc2a4\ud15d \u00b7 \uc2e4\ud5d8",
+    "family": "trot",
+    "balance_base": "level",
+    "params": [
+      1.44,
+      0.5,
+      0.08,
+      0.02,
+      0.20175,
+      -0.01,
+      0.75
+    ],
+    "support_shift": {
+      "lateral_m": 0,
+      "lower_m": 0.0,
+      "feedback_gain": 0.15,
+      "ki": 0.0,
+      "lead_s": 0.1,
+      "feedforward_coefficients": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "lift_scale": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "lock_j1": false,
+      "constant_body_height": true,
+      "height_feedback_gain": 0.5,
+      "kinematic_lead_s": 0.04,
+      "load_preload_gain": 1.0,
+      "split_residual_tasks": true,
+      "swing_residual_gain": 0.15,
+      "support_line_feedback": true,
+      "turn_path": "arc",
+      "turn_sweep_rad": 0.2,
+      "turn_lift_m": 0.02,
+      "turn_input_limit": 1.0,
+      "turn_period_s": 1.2,
+      "turn_lift_ramp": 0.35
+    },
+    "validation_status": "experimental_validation_failed",
+    "validation_notes": "80 mm nominal stride. 60 s without safety stop, but diagonal synchronization FAILED: median touchdown gaps FL-RR 170 ms, FR-RL 200 ms (20 ms samples). Height and tilt quality also fail. Not promoted to default or physical robot.",
+    "diagonal_sync_validation": {
+      "passed": false,
+      "measurement_start_s": 5,
+      "duration_s": 20.02,
+      "pairs": {
+        "FL-RR": {
+          "touchdown_abs_median_ms": 170,
+          "touchdown_abs_max_ms": 220,
+          "measured_swings": 10,
+          "commanded_swing_flags_identical": true,
+          "mid_swing_contact_disagreement_fraction": 0.22413793103448276,
+          "mid_swing_clearance_difference_rms_mm": 16.3212864931744
+        },
+        "FR-RL": {
+          "touchdown_abs_median_ms": 200,
+          "touchdown_abs_max_ms": 220,
+          "measured_swings": 10,
+          "commanded_swing_flags_identical": true,
+          "mid_swing_contact_disagreement_fraction": 0.36,
+          "mid_swing_clearance_difference_rms_mm": 22.39414214734551
+        }
+      }
+    }
+  },
+  "scenario": "nominal",
+  "cushion": {
+    "thickness_m": 0.01,
+    "radius_m": 0.015,
+    "mass_kg": 0.005,
+    "friction": [
+      1.0,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.02,
+    "damping_ratio": 1.0,
+    "shape": "elastic_cap",
+    "side_wall_m": 0.003,
+    "total_length_m": 0.027,
+    "corner_radius_m": 0.004,
+    "align_to_triangle_base": true,
+    "sole_diameter_m": 0.0373
+  },
+  "speed_m_s": 0.002117633564304709,
+  "legs": {
+    "FL": {
+      "rms_roll_deg": 9.68208866179536,
+      "rms_pitch_deg": 3.3410834437385994,
+      "stance_center_speed_m_s": null,
+      "max_j1_correction_deg": 1.36503829164067,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": 1.461635316447527,
+      "touchdown_forward_median_mm": -18.35163817828588,
+      "touchdown_forward_min_mm": -18.35163817828588,
+      "samples": 13,
+      "swing_samples": 13,
+      "swing_contact_fraction": 1.0,
+      "middle_swing_contact_fraction": 1.0,
+      "peak_clearance_mm": -0.002781487555045259,
+      "peak_contact_compression_proxy_mm": 3.465415329727096,
+      "peak_j1_error_deg": 6.669248197130113,
+      "peak_tilt_deg": 12.928512982504635,
+      "turn_peak_clearance_mm": 31.38880384092649,
+      "turn_middle_swing_contact_fraction": 0.9613333333333334
+    },
+    "FR": {
+      "rms_roll_deg": 9.68208866179536,
+      "rms_pitch_deg": 3.3410834437385994,
+      "stance_center_speed_m_s": 0.02217667658883431,
+      "max_j1_correction_deg": 0.7702446361301162,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -3.0892187232701716,
+      "touchdown_forward_median_mm": -22.853792948454526,
+      "touchdown_forward_min_mm": -22.853792948454526,
+      "samples": 13,
+      "swing_samples": 0,
+      "swing_contact_fraction": null,
+      "middle_swing_contact_fraction": null,
+      "peak_clearance_mm": null,
+      "peak_contact_compression_proxy_mm": 3.2500883512055387,
+      "peak_j1_error_deg": 1.6806361385632758,
+      "peak_tilt_deg": 12.928512982504635,
+      "turn_peak_clearance_mm": null,
+      "turn_middle_swing_contact_fraction": null
+    },
+    "RL": {
+      "rms_roll_deg": 9.68208866179536,
+      "rms_pitch_deg": 3.3410834437385994,
+      "stance_center_speed_m_s": 0.012376172952139108,
+      "max_j1_correction_deg": 2.257520515340483,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -16.47158405876881,
+      "touchdown_forward_median_mm": -36.16386562423343,
+      "touchdown_forward_min_mm": -36.16386562423343,
+      "samples": 13,
+      "swing_samples": 0,
+      "swing_contact_fraction": null,
+      "middle_swing_contact_fraction": null,
+      "peak_clearance_mm": null,
+      "peak_contact_compression_proxy_mm": 4.444560744005746,
+      "peak_j1_error_deg": 0.9238245336304008,
+      "peak_tilt_deg": 12.928512982504635,
+      "turn_peak_clearance_mm": null,
+      "turn_middle_swing_contact_fraction": null
+    },
+    "RR": {
+      "rms_roll_deg": 9.68208866179536,
+      "rms_pitch_deg": 3.3410834437385994,
+      "stance_center_speed_m_s": null,
+      "max_j1_correction_deg": 1.3283749634418314,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": null,
+      "touchdown_forward_median_mm": null,
+      "touchdown_forward_min_mm": null,
+      "samples": 13,
+      "swing_samples": 13,
+      "swing_contact_fraction": 0.0,
+      "middle_swing_contact_fraction": 0.0,
+      "peak_clearance_mm": 70.12330264457519,
+      "peak_contact_compression_proxy_mm": 0.0,
+      "peak_j1_error_deg": 2.172145744874522,
+      "peak_tilt_deg": 12.928512982504635,
+      "turn_peak_clearance_mm": 70.12330264457519,
+      "turn_middle_swing_contact_fraction": 0.9666666666666667
+    }
+  },
+  "direction": "left",
+  "measurement_start_s": 5,
+  "measurement_end_s": 19.98,
+  "rotation_deg": -4.074083734489103,
+  "rotation_deg_s": -0.2719682065747065,
+  "planar_displacement_mm": 62.178699132398656,
+  "max_radius_from_start_mm": 104.6922420641604,
+  "applied_yaw_range": [
+    -1.0,
+    -1.0
+  ],
+  "first_fault_s": 5.26,
+  "metrics": {
+    "max_roll_deg": 13.397179149342923,
+    "max_pitch_deg": 4.91145640427745,
+    "rms_roll_deg": 2.137297608593862,
+    "rms_pitch_deg": 0.9424122024968816,
+    "tracking_rms_deg": 1.4261844504072232,
+    "tracking_peak_deg": 15.081019375117066,
+    "stance_center_speed_proxy_m_s": 0.016868070452291075,
+    "max_command_speed_deg_s": 198.0161008962213,
+    "max_command_motor_speed_ratio": 0.7326595867466951,
+    "joint_ranges_ok": true,
+    "max_torque_nm": 2.55449757988141,
+    "max_torque_envelope_ratio": 1.0,
+    "mean_motor_saturated_fraction": 0.0044444444444444444,
+    "mean_above_rated_fraction": 0.17755555555555558,
+    "max_friction_utilization": 0.9999996080498766,
+    "max_planned_ik_residual_m": 9.22399825641475e-05,
+    "max_stance_ik_residual_m": 1.3588535873744803e-05,
+    "max_reference_body_shift_m": 0.0,
+    "safety_faults": [
+      "tilt"
+    ],
+    "moving_fraction": 0.017333333333333333
+  },
+  "stop_completed": true,
+  "source_hashes": {
+    "support_shift.py": "304f6e013755f540c4419d65a3af2648fd8c9f27cab53750a3ad700a2348d9a0",
+    "virtual_robot.py": "e4c2230c7cd9f93c6ffeaec2f77a1d910d69a303f7d66bd2219dfeadeef9957a",
+    "cad_physics.py": "8f76ac9ca3c1b4c7e817afdc59be2bb5c837ff64112e2792361bf495d1be6633"
+  }
+}

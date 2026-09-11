@@ -28,6 +28,17 @@ def swing_path(q,duty,push_bias=0.):
     return -.5+(1+k)*smooth(u)-k*u,64*u**3*(1-u)**3
 
 
+def commanded_lift(base_height,linear,yaw,config):
+    activity=min(1.,abs(linear)+abs(yaw))
+    height=activity*base_height
+    turn_height=float(config.get('turn_lift_m',0.))
+    if not math.isfinite(turn_height) or not 0<=turn_height<=.06:
+        raise ValueError('turn_lift_m must be finite and within 0..60mm')
+    # The legacy shared yaw cap is 0.5. Full turn input must not halve foot clearance.
+    # Smooth ramp to zero preserves stopping and direction-change continuity.
+    return max(height,turn_height*smooth(abs(yaw)/.5))
+
+
 def transfer_gate(q,duty,window):
     if q<window:return 1-smooth(q/window)
     if q<duty-window:return 0.
@@ -175,6 +186,7 @@ class SupportShift:
         return angles,float(max_error)
 
     def plan(self,params,phase,amplitude,linear,yaw,config):
+        self.turn_fraction=abs(yaw)/max(abs(linear)+abs(yaw),1e-9)
         sensor_phase=phase
         lead=float(config.get('kinematic_lead_s',0.))
         if not math.isfinite(lead) or not 0<=lead<=.08:raise ValueError('Invalid trajectory lead')
@@ -190,10 +202,36 @@ class SupportShift:
             self.body_height_target=float(self.data.xipos[self.model.body('cad_base').id,2]-np.mean(self.reference[:,2]))
             self.key=key
         points=self.reference.copy();duty=params[1];activity=min(1,abs(linear)+abs(yaw))
+        lift_height=commanded_lift(params[3],linear,yaw,config)
+        turn_stride=float(config.get('turn_stride_m',params[2]))
+        if not math.isfinite(turn_stride) or not 0<turn_stride<=params[2]:
+            raise ValueError('turn_stride_m must be positive and no larger than forward stride')
         for i,q in enumerate((phase+OFFSETS)%1):
             x,z=swing_path(q,duty,float(config.get('push_bias',0.)));command=np.clip(linear+(yaw if i%2==0 else -yaw),-1,1)
-            points[i,0]+=amplitude*command*params[2]*x
-            points[i,2]+=amplitude*activity*params[3]*z*float(config.get('lift_scale',[1.,1.,1.,1.])[i])
+            travel=command*params[2] if 'turn_stride_m' not in config else np.clip(
+                linear*params[2]+(yaw if i%2==0 else -yaw)*turn_stride,-params[2],params[2])
+            if config.get('turn_path')=='arc':
+                # A stationary support foot follows R(-body_yaw) around the
+                # body center. All stance feet then agree on a single body
+                # rotation instead of demanding incompatible lateral slip.
+                sweep=float(config.get('turn_sweep_rad',.2))
+                if not math.isfinite(sweep) or not 0<sweep<=.5:
+                    raise ValueError('turn_sweep_rad must be within 0..0.5 rad')
+                theta=-amplitude*yaw*sweep*x
+                c,s=math.cos(theta),math.sin(theta)
+                radius=self.reference[i,:2]-self.center[:2]
+                points[i,:2]=self.center[:2]+np.array([[c,-s],[s,c]])@radius
+                points[i,0]+=amplitude*linear*params[2]*x
+            else:
+                points[i,0]+=amplitude*travel*x
+            if 'turn_lift_ramp' in config and q>=duty:
+                ramp=float(config['turn_lift_ramp'])
+                if not math.isfinite(ramp) or not .25<=ramp<=.5:
+                    raise ValueError('Turn lift ramp must be within 0.25..0.5 of swing')
+                u=(q-duty)/(1-duty)
+                held=smooth(u/ramp)*smooth((1-u)/ramp)
+                z+=(held-z)*self.turn_fraction
+            points[i,2]+=amplitude*lift_height*z*float(config.get('lift_scale',[1.,1.,1.,1.])[i])
         window=.2/params[0];shift=np.zeros(3)
         # Prepare before liftoff, retain through swing, release after touchdown.
         for pair,offset in [((0,3),0.),((1,2),.5)]:
@@ -247,7 +285,7 @@ class SupportShift:
         stance_error=max((np.linalg.norm(points[i]-self.foot(i)) for i in np.flatnonzero(stance)),default=0.)
         self.last_phase=sensor_phase
         self.diagnostic=dict(policy='cad-support-shift',j1_locked=locked is not None,body_height_target_m=self.body_height_target,constant_body_height=bool(config.get('constant_body_height',False)),body_shift_m=shift.tolist(),planned_residual_m=residual,
-                             commanded_stride_m=params[2],period_s=params[0],phase=phase,unreachable=residual>.001,
+                             commanded_stride_m=params[2],turn_stride_m=turn_stride,commanded_lift_m=float(amplitude*lift_height),period_s=params[0],phase=phase,unreachable=residual>.001,
                              stance_residual_m=float(stance_error),scheduled_stance=stance.tolist())
         return angles
 
@@ -301,7 +339,12 @@ class SupportShift:
             angles=np.clip(latest+.04*velocity,-.15,.15)
         self.integral=np.clip(self.integral+.02*angles*config.get('ki',.02),-.015,.015)
         rate=np.radians(np.asarray(getattr(attitude,'rate',[0.,0.]))/10.)
-        rotation=np.r_[config.get('feedback_gain',.15)*angles+
+        body_gain=float(config.get('feedback_gain',.15))
+        if 'turn_balance_gain' in config:
+            turn_gain=float(config['turn_balance_gain'])
+            if not math.isfinite(turn_gain) or not 0<=turn_gain<=1:raise ValueError('Invalid turn balance gain')
+            body_gain+=getattr(self,'turn_fraction',0.)*(turn_gain-body_gain)
+        rotation=np.r_[body_gain*angles+
                        config.get('feedback_damping_s',0.)*rate+self.integral,0.]
         rotation=np.clip(rotation,-.04,.04)
         height_delta=self.height_feedback(encoders,angles,params,config)
@@ -336,6 +379,10 @@ class SupportShift:
         desired[:,2]+=height_delta
         if config.get('split_residual_tasks',False):
             fraction=float(config.get('swing_residual_gain',.15))
+            if 'turn_swing_gain' in config:
+                turn_gain=float(config['turn_swing_gain'])
+                if not math.isfinite(turn_gain) or not 0<=turn_gain<=1:raise ValueError('Invalid turn swing gain')
+                fraction+=getattr(self,'turn_fraction',0.)*(turn_gain-fraction)
             if not np.isfinite(fraction) or not 0<=fraction<=1:raise ValueError('Invalid swing residual gain')
             swing=-fraction*np.r_[angles,0.]
             rotations=(1-self.swing_weights[:,None])*rotation+self.swing_weights[:,None]*swing

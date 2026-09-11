@@ -672,7 +672,7 @@ static void command_sync_state(AppConsole *console)
         console->robot->heading_reader ? ",headinghold" : "",
         locomotion_names[console->robot->locomotion_profile],
         console->robot->heading_reader ? (console->robot->heading_enabled ? "on":"off") : "unavailable",
-        console->robot->locomotion_profile>=3?600:1000,
+        (int)(-1000.f*locomotion_linear(console->robot->locomotion_profile,-1.f)),
         "new-command",
         (unsigned)console->robot->locomotion_fault_reason);
     write_text(console, message);
@@ -2536,13 +2536,26 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "locomotiondiag") == 0) {
         int16_t yaw=0; bool fresh=console->robot->heading_reader && console->robot->heading_reader(console->robot->attitude_context,&yaw);
         char state[240];
-        (void)snprintf(state,sizeof(state),"$LOCOMOTION profile=%s heading=%s yaw10=%d valid=%u error10=%d correction=%d late=%u fault=%u\r\n",
+        (void)snprintf(state,sizeof(state),"$LOCOMOTION profile=%s heading=%s yaw10=%d valid=%u error10=%d correction=%d late=%u fault=%u compute_max_ms=%u io_max_ms=%u\r\n",
             locomotion_names[console->robot->locomotion_profile],console->robot->heading_enabled?"on":"off",(int)yaw,(unsigned)fresh,
             (int)(console->robot->drive_control.heading.error*10),(int)(console->robot->drive_control.heading.correction*1000),
-            (unsigned)console->robot->balance_late_frames,(unsigned)console->robot->locomotion_fault);
+            (unsigned)console->robot->balance_late_frames,(unsigned)console->robot->locomotion_fault,
+            (unsigned)console->robot->drive_peak_compute_ms,(unsigned)console->robot->drive_peak_io_ms);
         write_text(console,state);
+    } else if (strcmp(command, "arctiming") == 0) {
+        if(robot_drive_is_active(console->robot)) {write_text(console,"ERROR: stop before timing check\r\n");return;}
+        uint32_t total=0,peak=0;unsigned failures=0;
+        robot_arc_timing(&total,&peak,&failures);
+        char result[180];
+        (void)snprintf(result,sizeof(result),"$ARCTIMING samples=128 max_ms=%lu mean_us=%lu failures=%u motor_commands=0\r\n",(unsigned long)peak,(unsigned long)(total*1000U/128U),failures);
+        write_text(console,result);
     } else if (strcmp(command, "gaitprofiles") == 0) {
-        write_text(console,"$GAITPROFILES legacy,crawl,cruise,trot,highstep,lift,imu,level,level15,joint,jointfast,jointsport\r\n");
+        write_text(console,"$GAITPROFILES ");
+        for(int profile=0;profile<LOCOMOTION_PROFILE_COUNT;profile++){
+            if(profile)write_text(console,",");
+            write_text(console,locomotion_names[profile]);
+        }
+        write_text(console,"\r\n");
     } else if (strcmp(command, "gaitprofile") == 0) {
         int profile=locomotion_profile_id(strtok(NULL," \t"));
         if(profile<0 || robot_drive_is_active(console->robot)) write_text(console,"ERROR: stop before selecting a valid gait profile\r\n");

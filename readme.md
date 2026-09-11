@@ -375,3 +375,18 @@ spotctl app connect --target robot
 앱의 일반 Relax 버튼은 Landing 완료 후 힘을 해제하며, Stop/오류 시 예약된 힘 해제를 취소합니다.
 
 검증 및 제한 사항은 [원격 연결 제어 기록](docs/APP-REMOTE-CONTROL-2026-09-10.md)을 참고하십시오.
+
+
+## V39 원호 턴 실물 시험
+
+앱 V0.5.0 (42)의 **원호 턴 · 실물 시험 (검증실패)**는 `arcturn` 정책이다.
+CAD/쿠션 원호 궤적을 STM32와 MuJoCo의 같은 C 코드로 계산한다.
+Python 전용 80mm 전신 보정 정책 전체와는 구분한다.
+실물 첫 시험은 회전 전에 Stand의 FL-J2 추종 보호 정지로 중단되었다.
+실물 좌·우 턴 성공으로 검증한 상태가 아니다.
+[구현·검증 및 실물 로그](docs/ARC-TURN-HARDWARE-2026-09-11.md)를 참고한다.
+
+보호 정지 후 모터를 다시 움직이지 않고 펌웨어만 업데이트해야 한다면
+`spotctl ... firmware stm32 <image.bin> --skip-landing`을 사용할 수 있다.
+이 옵션도 실제 상태 조회에서 `torque=off`가 확인되어야 진행한다.
+옵션을 생략한 기존 업데이트는 Landing을 먼저 시도한다.

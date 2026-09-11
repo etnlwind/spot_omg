@@ -8,7 +8,7 @@ static inline bool drive_control_step(DriveControl *s,int profile,float linear,f
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(linear) || !isfinite(yaw) || fabsf(linear)>1 || fabsf(yaw)>1)return false;
     s->elapsed+=.02f;
     linear=locomotion_linear(profile,linear);
-    yaw=gait_policy_drive_yaw_limit(lroundf(yaw*1000))*.001f;
+    if(profile!=locomotion_profile_id("arcturn"))yaw=gait_policy_drive_yaw_limit(lroundf(yaw*1000))*.001f;
     s->linear=gait_policy_drive_slew(lroundf(s->linear*1000),lroundf(linear*1000))*.001f;
     float correction=heading_update(&s->heading,heading,valid,heading_enabled && !stopping,linear,yaw,s->yaw,.02f);
     s->yaw=gait_policy_drive_slew(lroundf(s->yaw*1000),lroundf((yaw+correction)*1000))*.001f;

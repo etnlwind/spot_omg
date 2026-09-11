@@ -149,6 +149,13 @@ class RobotController:
         completion = f'$SPOTDRIVE stopped reason={reason}\r\nOK' if drive else ('OK' if reason=='complete' else 'STOPPED: '+reason)
         self.blend([0, 45, 90]*4, completion)
 
+    def limited_yaw(self, value):
+        profile=self.profiles.get(self.profile,{})
+        limit=float(profile.get('support_shift',{}).get('turn_input_limit',profile.get('turn_input_limit',.5)))
+        if not math.isfinite(limit) or not .5<=limit<=1:
+            raise ValueError('Invalid experimental turn input limit')
+        return float(np.clip(value,-limit,limit))
+
     def limited_linear(self, value):
         # Fast trot / high-step full reverse strides lost stability in the 60 s matrix.
         # Its validated reverse envelope is 60%; forward remains unrestricted.
@@ -203,7 +210,7 @@ class RobotController:
                 delta = (seq-self.sequence) & 0xffffffff
                 if self.motion and self.motion[0]=='drive' and not self.stopping_reason and 0 < delta < 0x80000000:
                     self.sequence=seq; self.last_packet=now
-                    self.request=(self.limited_linear(linear/1000), self.plant.policy.drive_yaw_limit(yaw)/1000)
+                    self.request=(self.limited_linear(linear/1000), self.limited_yaw(yaw/1000))
             elif cmd == '@S':
                 seq = int(words[1])
                 if len(words)!=2 or not 0 <= seq <= 0xffffffff:
@@ -270,7 +277,7 @@ class RobotController:
                     raise ValueError('invalid drive input')
                 self.begin(('drive',), now)
                 self.sequence=seq; self.last_packet=now
-                self.request=(self.limited_linear(linear/1000),self.plant.policy.drive_yaw_limit(yaw)/1000)
+                self.request=(self.limited_linear(linear/1000),self.limited_yaw(yaw/1000))
                 self.out.append(f'$SPOTDRIVE started seq={seq} watchdog=800ms\r\n')
             elif cmd in ('trot5','trot4','trot4back','turn','crab'):
                 direction=1
@@ -291,11 +298,19 @@ class RobotController:
     def active_profile_params(self):
         profile=self.profiles[self.profile]
         forward=np.asarray(profile['params'],dtype=float)
-        if 'turn_reverse_params' not in profile:return forward
-        # Blend continuously through low forward input; phase is never reset.
-        weight=self.plant.policy.smootherstep(float(np.clip(self.linear/.5,0,1)))
-        base=np.asarray(profile['turn_reverse_params'],dtype=float)
-        return base+(forward-base)*weight
+        if 'turn_reverse_params' in profile:
+            # Blend continuously through low forward input; phase is never reset.
+            weight=self.plant.policy.smootherstep(float(np.clip(self.linear/.5,0,1)))
+            base=np.asarray(profile['turn_reverse_params'],dtype=float)
+            forward=base+(forward-base)*weight
+        config=profile.get('support_shift',{})
+        if 'turn_period_s' in config:
+            period=float(config['turn_period_s'])
+            if not math.isfinite(period) or not .6<=period<=forward[0]:
+                raise ValueError('Turn period must be 0.6s or longer and no slower than forward')
+            fraction=abs(self.yaw)/max(abs(self.linear)+abs(self.yaw),1e-9)
+            forward=forward.copy();forward[0]+=fraction*(period-forward[0])
+        return forward
 
     def gait(self, phase, amplitude):
         policy=self.plant.policy; kind=self.motion[0]

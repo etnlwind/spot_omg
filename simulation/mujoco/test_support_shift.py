@@ -269,3 +269,80 @@ def test_split_residual_reduces_ground_height_gap_for_same_tilt(controller):
         out=controller.feedback(q,q,SimpleNamespace(filtered=[20,-10],failures=0),params,
             dict(cfg,split_residual_tasks=True),True)
     assert world_gap(out)<before*.95
+
+
+def test_turn_lift_independent_of_turn_speed_and_zero_at_stop():
+    from support_shift import commanded_lift
+    cfg={'turn_lift_m':.02}
+    assert commanded_lift(.02,0,.5,cfg)==pytest.approx(.02)
+    assert commanded_lift(.02,0,-.5,cfg)==pytest.approx(.02)
+    assert commanded_lift(.02,0,1,cfg)==pytest.approx(.02)
+    assert commanded_lift(.02,0,0,cfg)==0
+    for linear in np.linspace(-1,1,21):
+        assert commanded_lift(.02,linear,0,cfg)==pytest.approx(abs(linear)*.02)
+    assert commanded_lift(.02,0,1e-7,cfg)<1e-7
+    assert commanded_lift(.02,0,.5,{})==pytest.approx(.01)
+    with pytest.raises(ValueError):commanded_lift(.02,0,.5,{'turn_lift_m':float('nan')})
+
+
+def test_full_turn_request_reaches_controller_without_half_cap():
+    from types import SimpleNamespace
+    from virtual_robot import RobotController
+    robot=RobotController.__new__(RobotController)
+    robot.profile='turn_test'
+    robot.profiles={'turn_test':{'support_shift':{'turn_input_limit':1.}}}
+    assert robot.limited_yaw(1)==1
+    assert robot.limited_yaw(-1)==-1
+    assert robot.limited_yaw(.4)==.4
+    robot.profiles['turn_test']['support_shift']={}
+    assert robot.limited_yaw(1)==.5
+
+
+def test_arc_stance_matches_rigid_body_rotation_and_preserves_straight(controller):
+    params=[1.44,.5,.08,.02,.20175,-.01,.75]
+    baseline=dict(lateral_m=0,lower_m=0,constant_body_height=True)
+    cfg=dict(baseline,turn_path='arc',turn_sweep_rad=.2,turn_lift_m=.02,turn_input_limit=1.)
+    for yaw in (-1.,1.):
+        phase=.18;angles=controller.plan(params,phase,1.,0.,yaw,cfg)
+        controller.set_angles(angles)
+        x,_=swing_path(phase,.5);theta=-yaw*.2*x
+        R=np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+        for i in (0,3):
+            expected=controller.center[:2]+R@(controller.reference[i,:2]-controller.center[:2])
+            np.testing.assert_allclose(controller.foot(i)[:2],expected,atol=.00015)
+        assert controller.diagnostic['planned_residual_m']<.001
+    for phase in (.1,.35,.65,.8):
+        old=controller.plan(params,phase,1.,1.,0.,baseline)
+        new=controller.plan(params,phase,1.,1.,0.,cfg)
+        np.testing.assert_allclose(new,old,atol=1e-8)
+
+
+def test_full_turn_update_packet_does_not_reintroduce_half_cap():
+    from virtual_robot import RobotController
+    robot=RobotController.__new__(RobotController)
+    from types import SimpleNamespace
+    robot.plant=SimpleNamespace(data=SimpleNamespace(time=0.))
+    robot.flight_commands=[];robot.profile='turn_test'
+    robot.profiles={'turn_test':{'support_shift':{'turn_input_limit':1.}}}
+    robot.motion=('drive',);robot.stopping_reason=None;robot.sequence=1
+    robot.command('@D 2 0 1000',0.)
+    assert robot.request==(0.,1.)
+    robot.command('@D 3 0 -1000',.02)
+    assert robot.request==(0.,-1.)
+
+
+def test_turn_cadence_preserves_forward_parameters_and_blends():
+    from virtual_robot import RobotController
+    robot=RobotController.__new__(RobotController)
+    params=[1.44,.5,.08,.02,.20175,-.01,.75]
+    robot.profile='test';robot.profiles={'test':dict(params=params,support_shift={'turn_period_s':1.2})}
+    robot.linear=1.;robot.yaw=0.
+    np.testing.assert_array_equal(robot.active_profile_params(),params)
+    for yaw in (-1.,1.):
+        robot.linear=0.;robot.yaw=yaw
+        assert robot.active_profile_params()[0]==pytest.approx(1.2)
+        robot.linear=1.
+        assert robot.active_profile_params()[0]==pytest.approx(1.32)
+    assert params[0]==1.44
+    robot.profiles['test']['support_shift']['turn_period_s']=.1
+    with pytest.raises(ValueError):robot.active_profile_params()

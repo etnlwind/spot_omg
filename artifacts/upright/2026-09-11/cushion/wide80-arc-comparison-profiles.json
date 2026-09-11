@@ -1,0 +1,169 @@
+{
+  "profiles": {
+    "before": {
+      "label": "대각선 · 80mm 큰 스텝 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.44,
+        0.5,
+        0.08,
+        0.02,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": false,
+        "constant_body_height": true,
+        "height_feedback_gain": 0.5,
+        "kinematic_lead_s": 0.04,
+        "load_preload_gain": 1.0,
+        "split_residual_tasks": true,
+        "swing_residual_gain": 0.15,
+        "support_line_feedback": true
+      },
+      "validation_status": "experimental_validation_failed",
+      "validation_notes": "80 mm nominal stride. 60 s without safety stop, but diagonal synchronization FAILED: median touchdown gaps FL-RR 170 ms, FR-RL 200 ms (20 ms samples). Height and tilt quality also fail. Not promoted to default or physical robot.",
+      "diagonal_sync_validation": {
+        "passed": false,
+        "measurement_start_s": 5,
+        "duration_s": 20.02,
+        "pairs": {
+          "FL-RR": {
+            "touchdown_abs_median_ms": 170,
+            "touchdown_abs_max_ms": 220,
+            "measured_swings": 10,
+            "commanded_swing_flags_identical": true,
+            "mid_swing_contact_disagreement_fraction": 0.22413793103448276,
+            "mid_swing_clearance_difference_rms_mm": 16.3212864931744
+          },
+          "FR-RL": {
+            "touchdown_abs_median_ms": 200,
+            "touchdown_abs_max_ms": 220,
+            "measured_swings": 10,
+            "commanded_swing_flags_identical": true,
+            "mid_swing_contact_disagreement_fraction": 0.36,
+            "mid_swing_clearance_difference_rms_mm": 22.39414214734551
+          }
+        }
+      }
+    },
+    "after": {
+      "label": "대각선 · 80mm 큰 스텝 · 실험",
+      "family": "trot",
+      "balance_base": "level",
+      "params": [
+        1.44,
+        0.5,
+        0.08,
+        0.02,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "support_shift": {
+        "lateral_m": 0,
+        "lower_m": 0.0,
+        "feedback_gain": 0.15,
+        "ki": 0.0,
+        "lead_s": 0.1,
+        "feedforward_coefficients": [
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "lift_scale": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "lock_j1": false,
+        "constant_body_height": true,
+        "height_feedback_gain": 0.5,
+        "kinematic_lead_s": 0.04,
+        "load_preload_gain": 1.0,
+        "split_residual_tasks": true,
+        "swing_residual_gain": 0.15,
+        "support_line_feedback": true,
+        "turn_path": "arc",
+        "turn_sweep_rad": 0.2,
+        "turn_lift_m": 0.02,
+        "turn_input_limit": 1.0,
+        "turn_period_s": 1.2
+      },
+      "validation_status": "experimental_validation_failed",
+      "validation_notes": "80 mm nominal stride. 60 s without safety stop, but diagonal synchronization FAILED: median touchdown gaps FL-RR 170 ms, FR-RL 200 ms (20 ms samples). Height and tilt quality also fail. Not promoted to default or physical robot.",
+      "diagonal_sync_validation": {
+        "passed": false,
+        "measurement_start_s": 5,
+        "duration_s": 20.02,
+        "pairs": {
+          "FL-RR": {
+            "touchdown_abs_median_ms": 170,
+            "touchdown_abs_max_ms": 220,
+            "measured_swings": 10,
+            "commanded_swing_flags_identical": true,
+            "mid_swing_contact_disagreement_fraction": 0.22413793103448276,
+            "mid_swing_clearance_difference_rms_mm": 16.3212864931744
+          },
+          "FR-RL": {
+            "touchdown_abs_median_ms": 200,
+            "touchdown_abs_max_ms": 220,
+            "measured_swings": 10,
+            "commanded_swing_flags_identical": true,
+            "mid_swing_contact_disagreement_fraction": 0.36,
+            "mid_swing_clearance_difference_rms_mm": 22.39414214734551
+          }
+        }
+      }
+    }
+  }
+}

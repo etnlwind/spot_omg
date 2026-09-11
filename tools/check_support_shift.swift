@@ -14,6 +14,12 @@ import Foundation
         hardware.send(.simulatorProfile(.cushion_v2_push))
         hardware.send(.simulatorProfile(.cushion_diagonal_sync_wide80))
         precondition(sent.isEmpty, "Experimental policy must not reach real firmware")
+        hardware.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=shared-locomotion-v39 caps=gaitprofiles\r\n")
+        hardware.send(.simulatorProfile(.arcturn))
+        precondition(sent.last == "gaitprofile arcturn\n")
+        precondition(SimulatorGaitProfile.arcturn.benchmarkSpeedMetersPerSecond == nil)
+        precondition(!SimulatorGaitProfile.arcturn.simulatorOnly)
+        sent.removeAll()
         UserDefaults.standard.set("simulator", forKey: "robotTarget")
         let manager = RobotBluetoothManager(commandWriter: {
             sent.append(String(decoding: $0, as: UTF8.self))

@@ -1,0 +1,13 @@
+import copy,json
+from concurrent.futures import ProcessPoolExecutor
+from check_wide80_turns import trial,ROOT,OUT
+
+def check(job):
+    sweep,lift,direction=job
+    cfg=copy.deepcopy(json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_diagonal_sync_wide80'])
+    cfg['support_shift'].update(turn_path='arc',turn_sweep_rad=sweep,turn_lift_m=lift,turn_input_limit=1.)
+    return trial(direction,cfg,f'wide80-arc-a{round(sweep*100)}-h{round(lift*1000)}')
+
+if __name__=='__main__':
+    with ProcessPoolExecutor(max_workers=2) as pool:r=list(pool.map(check,[(s,h,d) for s in (.2,.3) for h in (.02,.025) for d in (-1,1)]))
+    (OUT/'wide80-arc-candidates.json').write_text(json.dumps(r,indent=2))

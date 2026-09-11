@@ -22,6 +22,9 @@ def main():
     parser.add_argument('--before-title')
     parser.add_argument('--after-title')
     parser.add_argument('--height-overlay',action='store_true')
+    parser.add_argument('--linear',type=int,default=1000)
+    parser.add_argument('--yaw',type=int,default=0)
+    parser.add_argument('--fixed-azimuth',action='store_true')
     parser.add_argument('--profiles',type=Path,default=ROOT/'upright_profiles.json')
     args=parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
@@ -44,7 +47,7 @@ def main():
             now=frame*.02
             for robot in robots:
                 if frame==100:robot.command('drive 0 0 1',now)
-                if frame>=100 and frame%10==0:robot.command(f'@D {frame} 1000 0',now)
+                if frame>=100 and frame%10==0:robot.command(f'@D {frame} {args.linear} {args.yaw}',now)
                 robot.tick(now);robot.drain()
             if frame%2:continue
             canvas=Image.new('RGB',(1280,960),'#172332');draw=ImageDraw.Draw(canvas)
@@ -62,10 +65,10 @@ def main():
                 stride_mm=1000*profiles[profile_name]['params'][2]
                 draw.text((12,y+5),f'{title}   t={now:.2f}s   stride={stride_mm:g}mm',font=font,fill='white')
                 for col,azimuth in enumerate((90,0)):
-                    camera.azimuth=yaw+azimuth
+                    camera.azimuth=azimuth if args.fixed_azimuth else yaw+azimuth
                     renderer.update_scene(d,camera=camera,scene_option=opt)
                     canvas.paste(Image.fromarray(renderer.render()),(col*640,y+30))
-                    draw.text((col*640+12,y+35),('SIDE','FRONT')[col],font=font,fill='black')
+                    draw.text((col*640+12,y+35),(('WORLD SIDE','WORLD FRONT') if args.fixed_azimuth else ('SIDE','FRONT'))[col],font=font,fill='black')
                 feet=[]
                 for leg in ('fl','fr','rl','rr'):
                     gid=m.geom(leg+'_foot').id

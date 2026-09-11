@@ -74,7 +74,8 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
-#define ROBOT_CONTROL_REV "shared-locomotion-v37"
+void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
+#define ROBOT_CONTROL_REV "shared-locomotion-v41"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -183,6 +184,8 @@ typedef struct
     int16_t balance_peak_j1_correction_tenths;
     int16_t balance_peak_knee_correction_tenths;
     uint16_t balance_late_frames;
+    uint16_t drive_peak_compute_ms;
+    uint16_t drive_peak_io_ms;
     uint16_t trot_step_sync_count;
     uint16_t trot_step_sync_miss_count;
     uint16_t trot_step_sync_wait_ms;

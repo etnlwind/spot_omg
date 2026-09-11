@@ -413,6 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
         "stm32", help="stage and flash a relocated STM32 application over BLE"
     )
     stm32_firmware.add_argument("image", type=Path)
+    stm32_firmware.add_argument("--skip-landing", action="store_true", help="Update without pose motion; requires verified torque off")
     stm32_firmware.add_argument(
         "--chunk-size", type=int, default=120,
         help="acknowledged BLE block size in bytes (default: 120)",
@@ -2172,7 +2173,15 @@ def update_esp32_firmware(args: argparse.Namespace) -> int:
     print(f"ESP32 image: {image} ({image_size} bytes, sha256={sha256})")
 
     with BleTransport(args.ble_name, timeout=0.5) as transport:
-        _land_before_update(transport, args.ble_name)
+        if getattr(args, "skip_landing", False):
+            console=Stm32Console(args.ble_name,transport=transport)
+            console.sync()
+            state=console.send("syncstate",timeout=15.)
+            if not state.ok or not any(line.startswith("$SPOTSTATE ") and "torque=off" in line.split() for line in state.lines):
+                raise RuntimeError("Refusing motion-free update: torque off was not confirmed")
+            print("Torque off confirmed; updating without pose motion",flush=True)
+        else:
+            _land_before_update(transport, args.ble_name)
         transport.reset_input_buffer()
         header = f"$ESPOTA BEGIN {image_size} {sha256}\n".encode("ascii")
         transport.write(header)
@@ -2263,6 +2272,15 @@ def _land_before_update(transport, name):
 
 
 
+def _confirm_update_torque_off(transport,name):
+    console=Stm32Console(name,transport=transport)
+    console.sync()
+    state=console.send("syncstate",timeout=15.)
+    if not state.ok or not any(line.startswith("$SPOTSTATE ") and "torque=off" in line.split() for line in state.lines):
+        raise RuntimeError("Refusing motion-free update: torque off was not confirmed")
+    print("Torque off confirmed; updating without pose motion",flush=True)
+
+
 def update_stm32_firmware(args: argparse.Namespace) -> int:
     """Stage a complete image on ESP32, then let its fixed bootloader flash it."""
     image = args.image.expanduser().resolve()
@@ -2279,7 +2297,10 @@ def update_stm32_firmware(args: argparse.Namespace) -> int:
     print(f"STM32 image: {image} ({image_size} bytes, sha256={digest})")
 
     with BleTransport(args.ble_name, timeout=0.5) as transport:
-        _land_before_update(transport, args.ble_name)
+        if getattr(args, "skip_landing", False):
+            _confirm_update_torque_off(transport,args.ble_name)
+        else:
+            _land_before_update(transport, args.ble_name)
         transport.reset_input_buffer()
         header = f"$STM32OTA BEGIN {image_size} {digest}\n".encode("ascii")
         transport.write(header)

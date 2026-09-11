@@ -2035,8 +2035,10 @@ static RobotResult robot_shared_drive(RobotController *robot)
     uint16_t previous_command[ROBOT_JOINT_COUNT]={0};
     bool have_previous_command=false;
     balance_trace_reset(robot);robot->balance_late_frames=0;
+    robot->drive_peak_compute_ms=0;robot->drive_peak_io_ms=0;
     robot->balance_peak_roll_error_tenths=0;robot->balance_peak_pitch_error_tenths=0;
     for(;;) {
+        uint32_t compute_started=HAL_GetTick();
         RobotDriveSnapshot request=drive_snapshot(robot);
         if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
         if(drive_watchdog_due(HAL_GetTick(),request.updated_at_ms,ROBOT_DRIVE_WATCHDOG_MS,stopping || request.stop_requested)) {stopping=true;watchdog=true;}
@@ -2068,6 +2070,9 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if(!shared_correct(robot,command,false,stage==2)) {result=ROBOT_CONFIG_ERROR;break;}
         uint16_t positions[12];
         if(!gait_policy_to_servo_targets(command,positions)) {result=ROBOT_CONFIG_ERROR;break;}
+        uint32_t compute_ms=HAL_GetTick()-compute_started;
+        if(compute_ms>robot->drive_peak_compute_ms)robot->drive_peak_compute_ms=(uint16_t)(compute_ms>65535U?65535U:compute_ms);
+        uint32_t io_started=HAL_GetTick();
         ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,ROBOT_JOINT_COUNT);
         if(sent!=SERVO_BUS_OK) {result=bus_failure(robot,FEETECH_BROADCAST_ID,sent);break;}
         /* Tag the existing safety read with this command, not stale legacy
@@ -2086,6 +2091,8 @@ static RobotResult robot_shared_drive(RobotController *robot)
         result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
         if(result!=ROBOT_OK)break;
         result=shared_observe(robot);
+        uint32_t io_ms=HAL_GetTick()-io_started;
+        if(io_ms>robot->drive_peak_io_ms)robot->drive_peak_io_ms=(uint16_t)(io_ms>65535U?65535U:io_ms);
         RobotBalanceTraceFrame trace={0};
         trace.phase=(uint16_t)(robot->drive_control.phase*1000);
         trace.support_mask=gait_policy_support_mask(nominal);
@@ -2457,4 +2464,14 @@ const char *robot_result_string(RobotResult result)
     default:
         return "unknown";
     }
+}
+
+/* Read-only computational check; never writes servo positions or torque. */
+void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures) {
+ *total_ms=0;*peak_ms=0;*failures=0;
+ for(unsigned i=0;i<128;i++) {
+  GaitPolicyLegTarget targets[4];uint32_t before=HAL_GetTick();
+  if(!arc_turn_targets((i%64)/64.f,1.f,0.f,i<64?-1.f:1.f,targets))(*failures)++;
+  uint32_t elapsed=HAL_GetTick()-before;*total_ms+=elapsed;if(elapsed>*peak_ms)*peak_ms=elapsed;
+ }
 }
