@@ -1,5 +1,7 @@
 # Spot OMG
 
+Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
+
 Spot Micro 기반의 12-DOF 4족 로봇 프로젝트입니다. 현재 STM32 실시간 제어,
 URT-2/STS3215 서보 버스, BNO086 자세 피드백, MuJoCo 공용 보행 정책을 구현했으며
 Jetson/ROS2와 RL 정책 연동은 다음 단계입니다.

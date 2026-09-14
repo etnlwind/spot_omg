@@ -12,6 +12,8 @@ import selectors
 import socket
 import subprocess
 import time
+import tempfile
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -716,6 +718,7 @@ def main():
     parser.add_argument('--profile', help='Initial gait profile (including optional experiments)')
     parser.add_argument('--experimental-profiles',type=Path,help='Opt-in simulator-only profile manifest')
     parser.add_argument('--parameters',type=Path,default=CAD/'physics_parameters.json')
+    parser.add_argument('--desktop-heartbeat',type=Path,help='Desktop-owned process: exit when the heartbeat file is removed or older than 5s')
     parser.add_argument('--foot-cushion',type=Path,help='Attached cushion parameters; estimated contact compliance')
     parser.add_argument('--heading',choices=('on','off'),default='on',help='Initial IMU heading hold state')
     parser.add_argument('--balance',choices=('on','off'),default='on',help='Initial IMU body leveling state')
@@ -726,7 +729,7 @@ def main():
     ble=parser.add_mutually_exclusive_group()
     ble.add_argument('--ble',dest='ble',action='store_true')
     ble.add_argument('--no-ble',dest='ble',action='store_false')
-    parser.set_defaults(ble=True)
+    parser.set_defaults(ble=sys.platform == 'darwin')
     args=parser.parse_args()
     bridge_binary=None
     if args.ble:
@@ -740,7 +743,7 @@ def main():
     if args.profile: controller.select_profile(args.profile)
     controller.heading.enabled=args.heading=='on'
     controller.balance.enabled=args.balance=='on'
-    controller.incident_directory=Path('/private/tmp/spot-omg-sim')
+    controller.incident_directory=Path(tempfile.gettempdir())/'spot-omg-sim'
     server=ConsoleServer(controller,args.host,args.port)
     bridge_process=None
     viewer=None
@@ -760,7 +763,15 @@ def main():
         print(f'Virtual robot: {server.listener.getsockname()} / physics=estimated / gait profiles + shared C balance',flush=True)
         pacer=PhysicsPacer(time.monotonic())
         rate_wall=time.monotonic();rate_sim=float(plant.data.time);realtime_factor=1.0;display_speed=0.0
+        desktop_check_at = 0.
         while viewer is None or viewer.is_running():
+            if args.desktop_heartbeat and time.monotonic() >= desktop_check_at:
+                desktop_check_at = time.monotonic() + .25
+                try:
+                    if time.time() - args.desktop_heartbeat.stat().st_mtime > 5:
+                        break
+                except FileNotFoundError:
+                    break
             while keys:
                 key=keys.popleft()
                 if key in profile_keys:

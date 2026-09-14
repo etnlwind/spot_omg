@@ -1,0 +1,126 @@
+# Spot OMG Windows Controller
+
+현재 iOS 조종기의 BLE 콘솔·조이스틱 프로토콜에 대응하는 Windows 데스크톱 앱입니다.
+Python / PySide6 / Bleak로 구현했으며 STM32 펌웨어와 관절 좌표·보행 수식은 변경하지 않습니다.
+
+## 이 컴퓨터에서 실행
+
+빌드된 `dist/SpotOMGController/SpotOMGController.exe`를 실행합니다.
+같은 폴더의 `_internal`도 필요하므로 배포할 때 폴더 전체를 복사합니다.
+
+- **MuJoCo 시작 + 연결**: 로컬 시뮬레이터를 시작하고 TCP identity 확인, 상태 동기화,
+  영상 표시를 수행합니다. 기본 포트는 제어 8765, 영상 8766입니다.
+- **별도 3D 뷰어도 열기**: MuJoCo의 카메라 조작 가능한 창도 함께 엽니다.
+  Windows에서는 일반 Python으로 실행하며 macOS 전용 `mjpython`이 필요하지 않습니다.
+- **실제 로봇 · BLE**: iPhone 앱에서 로봇 연결을 먼저 해제하고 연결하기를 누릅니다.
+  Windows의 Bluetooth가 켜져 있어야 하며 BLE를 지원하는 어댑터가 필요합니다.
+  `SpotOMG-Bridge`의 Nordic UART 서비스로 연결합니다. Bluetooth SPP COM 포트는 사용하지 않습니다.
+- **가상 로봇 · BLE**: 기존 Mac의 `SpotOMG-Sim` 브리지가 이미 실행 중일 때 접속할 수 있습니다.
+  Windows 로컬 MuJoCo는 TCP를 사용하고 Mac 전용 Swift BLE 브리지를 실행하지 않습니다.
+
+처음부터 로봇에 자동 연결하지 않습니다. 통신 오류 후에는 수동으로 재연결하며
+이전 조이스틱 입력이나 명령을 재생하지 않습니다. 실기 BLE 연결은 아직 검증하지 않았습니다.
+
+## 조작
+
+- 마우스로 스틱을 누른 채 드래그합니다. 놓으면 감속 정지를 요청합니다.
+- 키보드 조종을 켜면 WASD/방향키를 누른 동안 조작합니다. 마지막 키를 놓으면 정지합니다.
+  명령 입력창에는 조종 키가 적용되지 않습니다. `Esc` 또는 입력창 밖의 `Space`는 Stop입니다.
+- 창 비활성화, 마우스 해제, GUI 응답 지연 시 조종을 멈춥니다.
+- 자세: Landing, Stow, Stand, Stand11, Recover, Relax.
+- 정책 선택, IMU 수평 보정, 직진 유지, 단일 trot/crab, 진단, 로그 저장 및 콘솔을 제공합니다.
+- 표시되는 자세·안전·정책·전압은 제어기 응답입니다. 전압은 서보 전원선 추정값이며
+  15초가 지난 값에는 `이전`을 표시합니다. 시뮬레이터 전압과 영상은 실기 측정이 아닙니다.
+
+현재 화면은 Windows에 맞게 재배치했으며 iPhone의 CoreDevice 원격 앱 조작,
+Bonjour 영상 자동 검색은 포함하지 않습니다. 원격 MuJoCo 영상은 지정한 호스트/영상 포트로 조회합니다.
+
+## 실행 환경 / 새 컴퓨터 설정
+
+Windows x64, Python 3.10 이상. MuJoCo는 이 저장소 전체와 별도의 Python 환경이 필요합니다.
+독립 실행 파일에는 Qt/BLE 앱 런타임이 포함되며 큰 CAD 모델과 MuJoCo 환경은 포함하지 않습니다.
+왼쪽 패널에서 프로젝트 및 Python 실행 파일 경로를 바꿀 수 있습니다.
+
+저장소 공용 Conda `spot_omg` 환경을 사용합니다. 로컬 `.venv`는 만들지 않습니다.
+
+```powershell
+conda activate spot_omg
+./apps/windows/setup.ps1
+./apps/windows/run.ps1
+```
+
+Conda 활성화 없이 지정할 때:
+
+```powershell
+./apps/windows/setup.ps1 -Python C:/Users/etnlw/miniforge3/envs/spot_omg/python.exe
+./apps/windows/run.ps1 -Python C:/Users/etnlw/miniforge3/envs/spot_omg/python.exe
+```
+
+`setup.ps1`은 GUI/BLE/영상 의존성을 설치하고, 저장소 `.toolchain/zig`에
+Zig 0.15.2 x64를 SHA-256 검증 후 설치합니다. 시스템 PATH는 변경하지 않습니다.
+공용 보행 C와 IMU PD 코드를 Windows DLL로 빌드하여 로드까지 확인합니다.
+기존 GCC 호환 컴파일러는 `CC` 환경변수에 실행 파일 경로를 지정할 수 있습니다.
+Windows 헤더/프로파일의 CRLF는 설정 해시 검증 시 LF로 정규화합니다.
+
+MuJoCo를 앱 밖에서 직접 실행할 때:
+
+```powershell
+python -X utf8 simulation/mujoco/virtual_robot.py --viewer --no-ble --host 127.0.0.1 --video-host 127.0.0.1
+```
+
+앱이 시작한 MuJoCo 프로세스만 앱에서 종료합니다. 외부 서버 연결 해제는 그 서버를 종료하지 않습니다.
+앱이 종료되거나 응답을 잃으면 로컬 MuJoCo는 소유자 heartbeat 유실을 확인해 종료합니다.
+영상 프로세스도 부모 프로세스 종료를 감지합니다.
+
+## 프로토콜 / 동작 제한
+
+- 실제 BLE UUID: service `6e400001-b5a3-f393-e0a9-e50e24dcca9e`, RX `…0002…`, TX `…0003…`.
+  가상 BLE는 iOS와 동일한 `…0101…` / `…0102…` / `…0103…`입니다.
+- GATT 쓰기는 직렬 처리하며 Write-with-response를 우선합니다. 미지원 시 협상된
+  `max_write_without_response_size`로 분할합니다. ACK는 STM32 동작 완료가 아닙니다.
+- `drive LINEAR YAW SEQ` 시작 후 `@D SEQ LINEAR YAW`를 200ms마다 전송합니다.
+  iOS의 15% dead zone, 30% 최소 motion 및 축별 보정을 사용합니다.
+- 손을 놓으면 `@S SEQ`를 전송하고 heartbeat를 중단합니다. 종료 응답 뒤 `# `까지
+  확인해야 새 동작을 시작합니다. 정지 확인 5초 초과 시 Ctrl+C 후 연결을 해제합니다.
+- GUI pulse가 600ms 이상 끊기면 통신 스레드가 정지합니다. 제어기의 기존
+  800ms watchdog은 그대로 유지합니다. 오래된 UI 명령은 전송하지 않습니다.
+- Relax는 사용자 확인 → Landing 명령 완료 ACK → 새 `syncstate`의 Landing 확인 →
+  Relax 순서입니다. 실패·중단·timeout·잘못된 readback 시 토크 해제를 취소합니다.
+- Stow 상태에서는 Landing으로 먼저 펼칩니다. 중단된 Stow는 Stow 재시도가 가능합니다.
+  정책과 고급 기능은 `caps`로 확인하며 `cushion_*` 정책은 시뮬레이터에서만 허용합니다.
+- GUI 버튼 및 직접 콘솔 입력 모두 같은 제한을 통과합니다. 연속 drive와 realtime 패킷은
+  콘솔에서 수동 전송할 수 없습니다. 완전한 임의 명령 검증기는 아니며 그 밖의 콘솔
+  명령 범위 검증은 기존 STM32 콘솔에 맡깁니다.
+
+## 빌드 / 검증
+
+```powershell
+python -m pip install 'pyinstaller>=6,<7'
+./apps/windows/build.ps1
+python -X utf8 -m pytest apps/windows/tests -q -p no:cacheprovider
+python -X utf8 apps/windows/tests/qa_desktop.py
+# 선택: 실제 GLFW 3D 뷰어 창도 함께 검증
+python -X utf8 apps/windows/tests/qa_desktop.py --viewer
+```
+
+GUI 테스트는 실제 BLE 장치를 검색하거나 연결하지 않습니다. `qa_desktop.py`는 실제 MuJoCo를
+18875/18876에서 실행하고, PD 정책 readback, 전진·후진, 정지, GUI 지연, 영상,
+종료·재시작을 확인합니다. 결과는 Git에서 제외된 `test-output`에 저장합니다.
+
+배포 실행 파일 점검:
+
+```powershell
+./apps/windows/dist/SpotOMGController/SpotOMGController.exe --smoke-test ./apps/windows/test-output/packaged.png --smoke-mujoco
+```
+
+검증 수준은 구분합니다: 호스트 테스트 / 실제 MuJoCo 통합은 수행할 수 있지만,
+로봇 설정 readback·실제 위치 유지·전체 동작 시험은 실물 연결 후 별도 수행해야 합니다.
+시뮬레이션 통과는 실제 STS3250의 다회전 원점이나 하중 조건을 검증하지 않습니다.
+
+구현 참고: [Bleak Windows backend](https://bleak.readthedocs.io/en/latest/backends/windows.html),
+[Bleak GATT client](https://bleak.readthedocs.io/en/latest/api/client.html),
+[Qt for Python 배포](https://doc.qt.io/qtforpython-6/deployment/index.html).
+
+빌드 시 외부 도구의 ICU DLL이 섞이지 않도록 PATH를 제한합니다. 배포 앱에서 외부
+MuJoCo Python을 실행할 때는 [PyInstaller의 Windows DLL 검색 경로](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html#launching-external-programs-from-the-frozen-application)를 분리합니다.
+앱 시작 오류 로그는 `%LOCALAPPDATA%/SpotOMGController/error.log`에 기록합니다.

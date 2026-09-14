@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
-import os
 from pathlib import Path
-import platform
-import shutil
-import subprocess
 import tempfile
 
 from .attitude import ImuSample
+from .host_build import build_shared, library_suffix
 
 
 LEGS = ("FL", "FR", "RL", "RR")
@@ -143,48 +140,21 @@ class SharedGaitPolicy:
     def _build_library(cls) -> Path:
         wrapper, header = cls._paths()
         manifest=header.parents[3]/"config"/"locomotion_profiles.json"
-        manifest_hash=hashlib.sha256(manifest.read_bytes()).hexdigest()
+        manifest_hash=hashlib.sha256(manifest.read_bytes().replace(b'\r\n', b'\n')).hexdigest()
         if manifest_hash not in header.with_name("locomotion_profiles.h").read_text():
             raise RuntimeError("Stale deployed gait header: run tools/generate_locomotion_profiles.py")
         digest = hashlib.sha256(
             wrapper.read_bytes() + header.read_bytes() + b"".join(header.with_name(name).read_bytes() for name in ("heading_control.h", "gait_tracking.h", "arc_turn.h", "center_pivot.h", "arc_swing_shape.h", "arc_lift_first.h", "arc_balance.h", "arc_preload.h", "arc_support_shift.h", "arc_attitude.h", "arc_transfer.h", "arc_support.h", "arc_tripod_support.h", "arc_geometry.h", "locomotion.h", "locomotion_profiles.h", "balance_control.h", "drive_control.h", "attitude_control.h", "locomotion_servo.h", "robot_config.h", "motor_capability.h", "stow_control.h", "pose_control.h")) + (header.parent.parent / "Src" / "robot_config.c").read_bytes()
         ).hexdigest()[:16]
-        extension = ".dylib" if platform.system() == "Darwin" else ".so"
+        extension = library_suffix()
         build_dir = Path(tempfile.gettempdir()) / "spot-omg-gait-policy"
         build_dir.mkdir(parents=True, exist_ok=True)
         library = build_dir / f"libspot_gait_{digest}{extension}"
         if library.exists():
             return library
 
-        compiler = os.environ.get("CC") or shutil.which("cc")
-        if compiler is None:
-            raise RuntimeError("a C compiler is required for the shared gait policy")
-        link_mode = "-dynamiclib" if platform.system() == "Darwin" else "-shared"
-        command = [
-            compiler,
-            "-std=c11",
-            "-O2",
-            "-fPIC",
-            link_mode,
-            str(wrapper),
-            str(header.parent.parent / "Src" / "robot_config.c"),
-            "-I",
-            str(header.parent),
-            "-o",
-            str(library),
-            "-lm",
-        ]
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                "failed to compile shared gait policy:\n" + completed.stderr
-            )
-        return library
+        return build_shared([wrapper, header.parent.parent / "Src" / "robot_config.c"],
+                            header.parent, library)
 
     @staticmethod
     def _unpack(values) -> dict[tuple[str, int], float]:

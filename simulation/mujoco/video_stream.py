@@ -5,6 +5,7 @@ import multiprocessing as mp
 import queue
 import socket
 import subprocess
+import shutil
 import threading
 import time
 from urllib.parse import urlsplit, parse_qs
@@ -69,7 +70,7 @@ def handler_for(frames):
             self.send_header('X-Simulation-Time',str(sim_time))
             self.end_headers()
             try:self.wfile.write(data)
-            except (BrokenPipeError,ConnectionResetError):pass
+            except ConnectionError:pass
         def log_message(self,*args):pass
     return Handler
 
@@ -83,7 +84,8 @@ def serve(parameters,states,stop,host,port):
     try:
         server=ThreadingHTTPServer((host,port),handler_for(frames));server.daemon_threads=True
         threading.Thread(target=server.serve_forever,daemon=True).start()
-        advertisement=subprocess.Popen(['/usr/bin/dns-sd','-R','SpotOMG MuJoCo','_spotomg-video._tcp','local',str(port),'protocol=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        if shutil.which('dns-sd'):
+            advertisement=subprocess.Popen(['dns-sd','-R','SpotOMG MuJoCo','_spotomg-video._tcp','local',str(port),'protocol=1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         xml,_=build(parameters,write_scene=False)
         model=mujoco.MjModel.from_xml_string(xml);data=mujoco.MjData(model)
         model.vis.quality.offsamples=0
@@ -92,8 +94,9 @@ def serve(parameters,states,stop,host,port):
         renderer=mujoco.Renderer(model,height=270,width=480)
         camera=mujoco.MjvCamera();mujoco.mjv_defaultCamera(camera)
         option=mujoco.MjvOption();option.geomgroup[3]=0
-        print(f'MuJoCo video: http://{host}:{port}/frame.jpg / Bonjour / 480x270 at up to 50 fps',flush=True)
-        while not stop.is_set():
+        discovery = ' / Bonjour' if advertisement else ''
+        print(f'MuJoCo video: http://{host}:{port}/frame.jpg{discovery} / 480x270 at up to 50 fps',flush=True)
+        while not stop.is_set() and (mp.parent_process() is None or mp.parent_process().is_alive()):
             try:state=states.get(timeout=.2)
             except queue.Empty:continue
             if time.monotonic()-frames.requested>3:continue

@@ -4,10 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import subprocess
 import tempfile
 import importlib.util
 import numpy as np
+from servo.host_build import build_shared, library_suffix
 
 ROOT=Path(__file__).resolve().parents[2]
 INC=ROOT/'firmware/stm32-learning/Inc'
@@ -33,12 +33,9 @@ def library():
     source=Path(__file__).with_name('body_stabilizer_host.c')
     headers=sorted(INC.glob('*.h'))
     digest=hashlib.sha256(source.read_bytes()+b''.join(p.read_bytes() for p in headers)).hexdigest()[:16]
-    dest=Path(tempfile.gettempdir())/f'spot-body-pd-{digest}.so'
+    dest=Path(tempfile.gettempdir())/f'spot-body-pd-{digest}{library_suffix()}'
     if not dest.exists():
-        temporary=dest.with_suffix('.building.so')
-        subprocess.run(['cc','-std=c11','-O2','-ffp-contract=off','-shared','-fPIC',
-                        '-I',str(INC),str(source),'-o',str(temporary),'-lm'],check=True)
-        temporary.replace(dest)
+        build_shared([source], INC, dest, extra=['-ffp-contract=off'])
     return C.CDLL(str(dest))
 
 class BodyStabilizer:
