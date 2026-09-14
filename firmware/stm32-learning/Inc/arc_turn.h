@@ -75,7 +75,7 @@ static inline unsigned arc_lowest(const float direction[3]) {
  }
  return best;
 }
-static inline void arc_foot(int leg,const float q[3],float point[3],float jac[3][3]) {
+static inline void arc_foot_geometry(int leg,const float q[3],float point[3],float jac[3][3],float contact[3]) {
 #if defined(__clang__)
  #pragma STDC FP_CONTRACT OFF
 #endif
@@ -109,6 +109,7 @@ static inline void arc_foot(int leg,const float q[3],float point[3],float jac[3]
  for(int k=0;k<3;k++){
   bottom[k]=center[k];for(int j=0;j<3;j++)bottom[k]+=orientation[k][j]*arc_vertices[selected][j];
   point[k]=k==2?bottom[k]:center[k];
+  if(contact)contact[k]=bottom[k];
  }
  if(!jac)return;
  for(int j=0;j<3;j++){
@@ -126,6 +127,9 @@ static inline void arc_foot(int leg,const float q[3],float point[3],float jac[3]
   arc_cross(axis,v,b);
   for(int k=0;k<3;k++)jac[k][j]=k==2?b[k]:a[k];
  }
+}
+static inline void arc_foot(int leg,const float q[3],float point[3],float jac[3][3]) {
+ arc_foot_geometry(leg,q,point,jac,NULL);
 }
 static inline bool arc_solve3(float a[3][4],float out[3]) {
 #if defined(__clang__)
@@ -184,28 +188,45 @@ static inline void arc_seed(int leg,const float target[3],float q[3]) {
  }
 #endif
 }
-static inline bool arc_turn_targets(float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
+static inline bool arc_turn_targets_phased(float phase,float scale,float linear,float yaw,float height,float duty,float lead,float plateau,float period,float sweep,const float offsets[4],GaitPolicyLegTarget out[4]) {
 #if defined(__clang__)
  #pragma STDC FP_CONTRACT OFF
 #endif
  if(!isfinite(phase)||!isfinite(scale)||!isfinite(linear)||!isfinite(yaw)||scale<0||scale>1||fabsf(linear)>1||fabsf(yaw)>1)return false;
- float fraction=fabsf(yaw)/fmaxf(fabsf(linear)+fabsf(yaw),1.e-9f);
- float period=1.44f-.24f*fraction;
- phase+=.04f/period;
- float lift=fmaxf(.02f*fminf(1,fabsf(linear)+fabsf(yaw)),.02f*gait_policy_smootherstep(fminf(1,fabsf(yaw)/.5f)));
+ if(!isfinite(period)||period<.5f||period>2||!isfinite(sweep)||sweep<.05f||sweep>.4f)return false;
+ if(!isfinite(height)||height<.02f||height>.06f||!isfinite(duty)||duty<.5f||duty>.85f||!isfinite(lead)||lead<0||lead>.12f||!isfinite(plateau)||plateau<0||plateau>1)return false;
+ phase+=lead/period;
+ float lift=fmaxf(height*fminf(1,fabsf(linear)+fabsf(yaw)),height*gait_policy_smootherstep(fminf(1,fabsf(yaw)/.5f)));
  for(int i=0;i<4;i++){
-  float phase_i=phase+((i==1||i==2)?.5f:0);phase_i-=floorf(phase_i);
+  float phase_i=phase+offsets[i];phase_i-=floorf(phase_i);
   float x,z=0;
-  if(phase_i<.5f)x=.5f-2*phase_i;
-  else{float u=2*phase_i-1;x=-.5f+2*gait_policy_smootherstep(u)-u;z=64*u*u*u*(1-u)*(1-u)*(1-u);}
-  float angle=-scale*yaw*.2f*x,c=cosf(angle),s=sinf(angle);
+  if(phase_i<duty)x=.5f-phase_i/duty;
+  else{float u=(phase_i-duty)/(1-duty),k=(1-duty)/duty;
+   x=-.5f+(1+k)*gait_policy_smootherstep(u)-k*u;
+   float arch=64*u*u*u*(1-u)*(1-u)*(1-u);
+   float flat=gait_policy_smootherstep(fminf(1,u/.3f))*gait_policy_smootherstep(fminf(1,(1-u)/.3f));
+   z=arch+plateau*(flat-arch);
+  }
+  float angle=-scale*yaw*sweep*x,c=cosf(angle),s=sinf(angle);
   float dx=arc_reference[i][0]-arc_center[0],dy=arc_reference[i][1]-arc_center[1];
   float target[3]={arc_center[0]+c*dx-s*dy+scale*linear*.08f*x,arc_center[1]+s*dx+c*dy,arc_reference[i][2]+scale*lift*z};
   float q[3];arc_seed(i,target,q);
   if(!arc_ik(i,target,q))return false;
-  out[i]=(GaitPolicyLegTarget){q[0],q[1],q[2],phase_i<.5f};
+  out[i]=(GaitPolicyLegTarget){q[0],q[1],q[2],phase_i<duty};
  }
  return true;
+}
+static inline bool arc_turn_targets_trajectory(float phase,float scale,float linear,float yaw,float height,float duty,float lead,float plateau,float period,float sweep,GaitPolicyLegTarget out[4]) {
+ const float offsets[4]={0,.5f,.5f,0};
+ if(duty>.65f)return false;
+ return arc_turn_targets_phased(phase,scale,linear,yaw,height,duty,lead,plateau,period,sweep,offsets,out);
+}
+static inline bool arc_turn_targets_configured(float phase,float scale,float linear,float yaw,float height,float duty,float lead,float plateau,GaitPolicyLegTarget out[4]) {
+ float fraction=fabsf(yaw)/fmaxf(fabsf(linear)+fabsf(yaw),1.e-9f);
+ return arc_turn_targets_trajectory(phase,scale,linear,yaw,height,duty,lead,plateau,1.44f-.24f*fraction,.2f,out);
+}
+static inline bool arc_turn_targets(float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
+ return arc_turn_targets_configured(phase,scale,linear,yaw,.02f,.5f,.04f,0,out);
 }
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options

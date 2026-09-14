@@ -1,0 +1,35 @@
+{
+  "profiles": {
+    "measured_lift": {
+      "label": "실측 기반 · 선행 발 들기 · 실험 (검증실패)",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "validation": "artifacts/audits/measured-gait-2026-09-12/robust-validation.json",
+      "balance_base": "cruise",
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "measured_swing": {
+        "rise_fraction": 0.4,
+        "fall_fraction": 0.3,
+        "forward_only": true
+      },
+      "source_candidate": "turn_09",
+      "validation_status": "failed"
+    }
+  }
+}

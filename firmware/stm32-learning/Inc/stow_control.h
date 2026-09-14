@@ -56,16 +56,55 @@ static inline int32_t stow_feedback_error(int32_t actual,int32_t target) {
     if(error< -2048)error+=4096;
     return error;
 }
-static inline bool stow_frame(const float from[12],bool folded,uint32_t elapsed,
+/* Directional recovery, independent of synchronized fold progress. All four
+ * hips must agree; knees may settle independently after power removal. */
+static inline bool stow_folded_geometry(const float q[12]) {
+    if(!q)return false;
+    for(unsigned i=0;i<12;i++){int32_t raw;if(!stow_encode(i,q[i],&raw))return false;}
+    return q[1]<-90.f && q[4]<-90.f && q[7]<-20.f && q[10]<-20.f;
+}
+/* Tidy knees at the CURRENT hip angles, without folding hips farther into
+ * contact. Each leg gets its own fold fraction; J1 returns gently to neutral.
+ * These bounds describe a candidate recovery path, not collision clearance. */
+static inline void stow_prepare_target(const float from[12],float target[12]) {
+    for(unsigned leg=0;leg<4;leg++) {
+        unsigned j=leg*3;
+        float f=(from[j+1]-40.f)/(stow_endpoint(j+1,true)-40.f);
+        f=fmaxf(0.f,fminf(1.f,f));
+        target[j]=0.f;target[j+1]=from[j+1];
+        target[j+2]=130.f+(4.42f-130.f)*f;
+    }
+}
+static inline uint32_t stow_path_duration(const float from[12],bool folded) {
+    return STOW_DURATION_MS*((!folded && stow_folded_geometry(from))?2U:1U);
+}
+static inline bool stow_path_frame(const float from[12],bool folded,uint32_t elapsed,bool prepare,
                               int32_t ticks[12],float degrees[12]) {
     if(!from || !ticks || !degrees)return false;
+    float start[12],end[12];
+    for(unsigned i=0;i<12;i++){start[i]=from[i];end[i]=stow_endpoint(i,folded);}
+    if(prepare && !folded && stow_folded_geometry(from)) {
+        float ready[12];stow_prepare_target(from,ready);
+        if(elapsed<=STOW_DURATION_MS) {
+            for(unsigned i=0;i<12;i++)end[i]=ready[i];
+        } else {
+            for(unsigned i=0;i<12;i++)start[i]=ready[i];
+            elapsed-=STOW_DURATION_MS;
+        }
+    }
     float t=fminf(1.f,elapsed/(float)STOW_DURATION_MS);
     float w=t*t*t*(t*(6.f*t-15.f)+10.f);
     for(unsigned i=0;i<12;i++) {
-        float q=from[i]+(stow_endpoint(i,folded)-from[i])*w;
+        float q=start[i]+(end[i]-start[i])*w;
         if(!stow_encode(i,q,&ticks[i]))return false;
         degrees[i]=(ticks[i]-g_robot_joints[i].center)*g_robot_joints[i].direction*360.f/4096.f;
     }
     return true;
+}
+static inline bool stow_frame(const float from[12],bool folded,uint32_t elapsed,int32_t ticks[12],float degrees[12]) {
+    return stow_path_frame(from,folded,elapsed,true,ticks,degrees);
+}
+static inline bool stow_direct_frame(const float from[12],bool folded,uint32_t elapsed,int32_t ticks[12],float degrees[12]) {
+    return stow_path_frame(from,folded,elapsed,false,ticks,degrees);
 }
 #endif

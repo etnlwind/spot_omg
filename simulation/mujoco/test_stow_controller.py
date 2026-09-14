@@ -34,7 +34,7 @@ def test_stow_roundtrip_uses_physics_and_restores_encoding():
     assert not r.balance.applied
     r.command('drive 500 0 1',15)
     assert b'ERROR' in r.drain() and r.motion is None
-    r.command('landing',15);tick(r,1200)
+    r.command('landing',15);tick(r,1210)
     assert r.pose=='landing' and not r.stow_path and not r.plant.stow_active
     assert np.max(abs(np.degrees(r.plant.data.qpos[r.plant.q])-LANDING))<3
 
@@ -103,7 +103,7 @@ def test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque():
     np.testing.assert_allclose(r.transition[0],measured)
     assert r.torque
     for target in r.plant.delay:np.testing.assert_allclose(np.degrees(target),measured)
-    tick(r,1200)
+    tick(r,1210)
     assert r.pose=='landing' and not r.stow_path
 
 

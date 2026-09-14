@@ -97,11 +97,19 @@ enum RobotConnectionTarget: String, CaseIterable {
 
 
 enum SimulatorGaitProfile: String, CaseIterable {
-    case arcturn, legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
+    case attitudepd, centerpivot, arcsupport, arcturn, legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
     case cushion_reach, cushion_j2lift, cushion_wbc, cushion_forward, cushion_support_shift, cushion_support_shift_v2, cushion_v2_push, cushion_diagonal_sync_wide80
+    func isSupported(capabilities: Set<String>) -> Bool {
+        (self != .arcsupport || capabilities.contains("arcsupport")) &&
+        (self != .centerpivot || capabilities.contains("centerpivot")) &&
+        (self != .attitudepd || capabilities.contains("attitudepd"))
+    }
     var simulatorOnly: Bool { [.cushion_reach, .cushion_j2lift, .cushion_wbc, .cushion_forward, .cushion_support_shift, .cushion_support_shift_v2, .cushion_v2_push, .cushion_diagonal_sync_wide80].contains(self) }
     var title: String {
         switch self {
+        case .attitudepd: return "IMU 자세 안정화 · PD · 실험"
+        case .centerpivot: return "몸체 중심 회전 보정 · 실험"
+        case .arcsupport: return "원호 턴 · 지지 전환 보정 · 실험"
         case .arcturn: return "원호 턴 · 실물 시험"
         case .cushion_diagonal_sync_wide80: return "대각선 · 넓은 보폭 80mm"
         case .cushion_v2_push: return "V2 · 추진 타이밍 · 실험"
@@ -145,6 +153,9 @@ extension SimulatorGaitProfile {
         case .jointfast: return 0.105461897
         case .jointsport: return 0.138690490
         case .arcturn: return nil
+        case .arcsupport: return nil
+        case .centerpivot: return nil
+        case .attitudepd: return nil
         case .cushion_reach: return 0.045898422
         case .cushion_j2lift: return 0.034639744
         case .cushion_forward: return nil

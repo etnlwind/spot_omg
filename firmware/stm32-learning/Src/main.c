@@ -72,6 +72,14 @@ static ServoBus servo_bus;
 static RobotController robot;
 static AppConsole console;
 static AppConsole wifi_console;
+static void service_realtime_console(void) {
+  static bool prefer_wifi;
+  AppConsole *first=prefer_wifi?&wifi_console:&console;
+  AppConsole *second=prefer_wifi?&console:&wifi_console;
+  if(first->stabilize_reply_pending)app_console_service_realtime(first);
+  else app_console_service_realtime(second);
+  prefer_wifi=!prefer_wifi; /* At most one bounded ACK per motion frame. */
+}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -234,6 +242,7 @@ int main(void)
   flight_log_init(ROBOT_CONTROL_REV);
   app_console_init(&console, &huart2, &robot, &imu055, &imu086, &imu_log_enabled);
   app_console_init(&wifi_console, &huart3, &robot, &imu055, &imu086, &imu_log_enabled);
+  robot.realtime_service = service_realtime_console;
 
   uart_print("\r\nPROGRAM START\r\n");
   /*
@@ -263,6 +272,7 @@ int main(void)
     uart_print(message);
     robot_set_attitude_reader(&robot, bno055_read_attitude, &imu055);
     robot.heading_reader = bno055_read_heading;
+    robot.body_imu_reader = bno055_read_body_imu;
     uart_print("IMU balance default ON: full, absolute level target\r\n");
   }
   else
@@ -355,7 +365,7 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -363,7 +373,16 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  /* HSI 16 MHz / 16 * 336 / 4 = 84 MHz. No external crystal required.
+   * Keep APB1 at 42 MHz and APB2 at 84 MHz. Peripheral baud rates are
+   * initialized by HAL after this switch; the gait clock remains 50 Hz. */
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 16;
+  RCC_OscInitStruct.PLL.PLLN = 336;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
+  RCC_OscInitStruct.PLL.PLLR = 2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -373,12 +392,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -441,7 +460,8 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  /* 84 MHz / 128 = 656.25 kHz: do not accelerate the IMU SPI bus. */
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -478,7 +498,8 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 8399;
+  /* Preserve the previous unused timer period: 84 MHz / 44100 = 16 MHz / 8400. */
+  htim2.Init.Prescaler = 44099;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 9999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;

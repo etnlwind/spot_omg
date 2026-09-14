@@ -1,0 +1,1202 @@
+{
+  "linear": 0,
+  "yaw": -1000,
+  "safety": "ok",
+  "estimated_physics": true,
+  "profile": {
+    "label": "CAD arc turn / hardware experiment",
+    "family": "trot",
+    "params": [
+      1.44,
+      0.5,
+      0.08,
+      0.02,
+      0.20175,
+      -0.01,
+      0.75
+    ],
+    "validation": "Experimental shared-C port; not the Python support-shift feedback controller.",
+    "turn_input_limit": 1.0,
+    "experimental": true
+  },
+  "scenario": "nominal",
+  "cushion": {
+    "thickness_m": 0.01,
+    "radius_m": 0.015,
+    "mass_kg": 0.005,
+    "friction": [
+      1.0,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.02,
+    "damping_ratio": 1.0,
+    "shape": "elastic_cap",
+    "side_wall_m": 0.003,
+    "total_length_m": 0.027,
+    "corner_radius_m": 0.004,
+    "align_to_triangle_base": true,
+    "sole_diameter_m": 0.0373
+  },
+  "speed_m_s": 0.002293896863238551,
+  "legs": {
+    "FL": {
+      "rms_roll_deg": 0.8801233668218195,
+      "rms_pitch_deg": 0.42138334499379937,
+      "stance_center_speed_m_s": 0.010752822087541431,
+      "max_j1_correction_deg": 0.6597652435302734,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -17.681736464602302,
+      "touchdown_forward_median_mm": -37.249804985272284,
+      "touchdown_forward_min_mm": -37.81868437571274,
+      "samples": 374,
+      "swing_samples": 194,
+      "swing_contact_fraction": 0.36082474226804123,
+      "middle_swing_contact_fraction": 0.03305785123966942,
+      "peak_clearance_mm": 22.781552926668407,
+      "peak_contact_compression_proxy_mm": 4.176543454205387,
+      "peak_j1_error_deg": 3.1941964849062323,
+      "peak_tilt_deg": 3.574806025349268
+    },
+    "FR": {
+      "rms_roll_deg": 0.8801233668218195,
+      "rms_pitch_deg": 0.42138334499379937,
+      "stance_center_speed_m_s": 0.008905814443282102,
+      "max_j1_correction_deg": 0.638880729675293,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": 6.685262964871317,
+      "touchdown_forward_median_mm": -13.130114560028261,
+      "touchdown_forward_min_mm": -20.108140873872987,
+      "samples": 374,
+      "swing_samples": 180,
+      "swing_contact_fraction": 0.4222222222222222,
+      "middle_swing_contact_fraction": 0.046296296296296294,
+      "peak_clearance_mm": 12.81924536338817,
+      "peak_contact_compression_proxy_mm": 4.081266466501934,
+      "peak_j1_error_deg": 2.1901631008206124,
+      "peak_tilt_deg": 3.574806025349268
+    },
+    "RL": {
+      "rms_roll_deg": 0.8801233668218195,
+      "rms_pitch_deg": 0.42138334499379937,
+      "stance_center_speed_m_s": 0.008327413558668973,
+      "max_j1_correction_deg": 0.6250081062316895,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": -13.349015413313307,
+      "touchdown_forward_median_mm": -33.0975424374082,
+      "touchdown_forward_min_mm": -34.75562372504977,
+      "samples": 374,
+      "swing_samples": 180,
+      "swing_contact_fraction": 0.37777777777777777,
+      "middle_swing_contact_fraction": 0.009259259259259259,
+      "peak_clearance_mm": 19.24802005380794,
+      "peak_contact_compression_proxy_mm": 3.7986942523499865,
+      "peak_j1_error_deg": 2.173002006264079,
+      "peak_tilt_deg": 3.574806025349268
+    },
+    "RR": {
+      "rms_roll_deg": 0.8801233668218195,
+      "rms_pitch_deg": 0.42138334499379937,
+      "stance_center_speed_m_s": 0.00735906108615616,
+      "max_j1_correction_deg": 0.6080422401428223,
+      "minimum_adaptive_scale": 1.0,
+      "touchdown_front_edge_median_mm": 8.827126514297301,
+      "touchdown_forward_median_mm": -10.985544000588362,
+      "touchdown_forward_min_mm": -34.85047541365476,
+      "samples": 374,
+      "swing_samples": 194,
+      "swing_contact_fraction": 0.4639175257731959,
+      "middle_swing_contact_fraction": 0.1652892561983471,
+      "peak_clearance_mm": 18.11793728341542,
+      "peak_contact_compression_proxy_mm": 4.017530840149456,
+      "peak_j1_error_deg": 3.1265939991159,
+      "peak_tilt_deg": 3.574806025349268
+    }
+  },
+  "metrics": {
+    "max_roll_deg": 3.574806025349268,
+    "max_pitch_deg": 1.953941825826505,
+    "rms_roll_deg": 0.9056009389224385,
+    "rms_pitch_deg": 0.4315643928793678,
+    "tracking_rms_deg": 1.9799251995216538,
+    "tracking_peak_deg": 6.656479013288276,
+    "stance_center_speed_proxy_m_s": 0.008885847285276319,
+    "max_command_speed_deg_s": 92.03681945800781,
+    "max_command_motor_speed_ratio": 0.3405362382371351,
+    "joint_ranges_ok": true,
+    "max_torque_nm": 2.485726352630913,
+    "max_torque_envelope_ratio": 1.0,
+    "mean_motor_saturated_fraction": 0.0007142857142857143,
+    "mean_above_rated_fraction": 0.21357142857142858,
+    "max_friction_utilization": 0.9999998984925507,
+    "max_planned_ik_residual_m": 0.0,
+    "max_stance_ik_residual_m": 0.0,
+    "max_reference_body_shift_m": 0.0,
+    "safety_faults": [],
+    "moving_fraction": 1.0
+  },
+  "contact_metrics": {
+    "evaluation_only": true,
+    "start_s": 5,
+    "end_s": 12,
+    "sample_interval_s": 0.02,
+    "contact_threshold_n": 0.2,
+    "duty": 0.5,
+    "target_lead_s": 0.04,
+    "period_s": 1.2,
+    "invalid_rows": 0,
+    "duplicate_rows_excluded": 0,
+    "target_phase_source": {
+      "explicit_rows": 1400,
+      "inferred_rows": 0
+    },
+    "phase_bases": {
+      "raw": {
+        "legs": {
+          "FL": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 13.062861100165561,
+              "p10": 13.771577069895207,
+              "median": 15.719206489200097,
+              "max": 19.923424397732475
+            },
+            "swings_below_15mm": 2,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.6094321012496948,
+              "p10": 0.6094323873519898,
+              "median": 0.6094342470169067,
+              "max": 0.6261016130447388
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.8761013746261597,
+              "p10": 0.8894335508346558,
+              "median": 0.9094332456588745,
+              "max": 0.9427672624588013
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.6094321012496948,
+              "p10": 0.6094323873519898,
+              "median": 0.6094342470169067,
+              "max": 0.6261016130447388
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8594347238540649,
+              "p10": 0.8727669000625611,
+              "median": 0.8927665948867798,
+              "max": 0.9261006116867065
+            },
+            "middle_swing_samples": 108,
+            "middle_swing_contact_fraction": 0.037037037037037035,
+            "swings": [
+              {
+                "start_s": 6.08,
+                "end_s": 6.68,
+                "samples": 30,
+                "peak_clearance_mm": 13.062861100165561,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6261016130447388,
+                "last_airborne_phase": 0.8594347238540649,
+                "first_airborne_time_s": 6.22,
+                "last_airborne_time_s": 6.5,
+                "liftoff_phase": 0.6261016130447388,
+                "touchdown_phase": 0.8761013746261597
+              },
+              {
+                "start_s": 7.28,
+                "end_s": 7.88,
+                "samples": 30,
+                "peak_clearance_mm": 19.923424397732475,
+                "airborne_fraction": 0.6666666666666666,
+                "first_airborne_phase": 0.6094342470169067,
+                "last_airborne_phase": 0.9261006116867065,
+                "first_airborne_time_s": 7.4,
+                "last_airborne_time_s": 7.78,
+                "liftoff_phase": 0.6094342470169067,
+                "touchdown_phase": 0.9427672624588013
+              },
+              {
+                "start_s": 8.48,
+                "end_s": 9.08,
+                "samples": 30,
+                "peak_clearance_mm": 14.834651024489675,
+                "airborne_fraction": 0.5666666666666667,
+                "first_airborne_phase": 0.6261001825332642,
+                "last_airborne_phase": 0.8927665948867798,
+                "first_airborne_time_s": 8.620000000000001,
+                "last_airborne_time_s": 8.94,
+                "liftoff_phase": 0.6261001825332642,
+                "touchdown_phase": 0.9094332456588745
+              },
+              {
+                "start_s": 9.68,
+                "end_s": 10.28,
+                "samples": 30,
+                "peak_clearance_mm": 16.42280979742329,
+                "airborne_fraction": 0.6333333333333333,
+                "first_airborne_phase": 0.6094328165054321,
+                "last_airborne_phase": 0.9094325304031372,
+                "first_airborne_time_s": 9.8,
+                "last_airborne_time_s": 10.16,
+                "liftoff_phase": 0.6094328165054321,
+                "touchdown_phase": 0.9260991811752319
+              },
+              {
+                "start_s": 10.88,
+                "end_s": 11.48,
+                "samples": 30,
+                "peak_clearance_mm": 15.719206489200097,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6094321012496948,
+                "last_airborne_phase": 0.8927651643753052,
+                "first_airborne_time_s": 11.0,
+                "last_airborne_time_s": 11.34,
+                "liftoff_phase": 0.6094321012496948,
+                "touchdown_phase": 0.9094318151473999
+              }
+            ]
+          },
+          "FR": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 7.56651821985288,
+              "p10": 8.14741627162676,
+              "median": 9.858363198648423,
+              "max": 12.81924536338817
+            },
+            "swings_below_15mm": 5,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.6094324290752411,
+              "p10": 0.609432715177536,
+              "median": 0.609434574842453,
+              "max": 0.6261019557714462
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.8761018514633179,
+              "p10": 0.8827679395675659,
+              "median": 0.9094322919845581,
+              "max": 0.9261010885238647
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.6094324290752411,
+              "p10": 0.609432715177536,
+              "median": 0.609434574842453,
+              "max": 0.6261019557714462
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8594352006912231,
+              "p10": 0.8661012887954712,
+              "median": 0.8927656412124634,
+              "max": 0.90943443775177
+            },
+            "middle_swing_samples": 108,
+            "middle_swing_contact_fraction": 0.046296296296296294,
+            "swings": [
+              {
+                "start_s": 5.48,
+                "end_s": 6.08,
+                "samples": 30,
+                "peak_clearance_mm": 7.56651821985288,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6261019557714462,
+                "last_airborne_phase": 0.8594352006912231,
+                "first_airborne_time_s": 5.62,
+                "last_airborne_time_s": 5.9,
+                "liftoff_phase": 0.6261019557714462,
+                "touchdown_phase": 0.8761018514633179
+              },
+              {
+                "start_s": 6.68,
+                "end_s": 7.28,
+                "samples": 30,
+                "peak_clearance_mm": 12.81924536338817,
+                "airborne_fraction": 0.6333333333333333,
+                "first_airborne_phase": 0.609434574842453,
+                "last_airborne_phase": 0.90943443775177,
+                "first_airborne_time_s": 6.8,
+                "last_airborne_time_s": 7.16,
+                "liftoff_phase": 0.609434574842453,
+                "touchdown_phase": 0.9261010885238647
+              },
+              {
+                "start_s": 7.88,
+                "end_s": 8.48,
+                "samples": 30,
+                "peak_clearance_mm": 9.01876334928758,
+                "airborne_fraction": 0.5333333333333333,
+                "first_airborne_phase": 0.6261005252599716,
+                "last_airborne_phase": 0.8761004209518433,
+                "first_airborne_time_s": 8.02,
+                "last_airborne_time_s": 8.32,
+                "liftoff_phase": 0.6261005252599716,
+                "touchdown_phase": 0.892767071723938
+              },
+              {
+                "start_s": 9.08,
+                "end_s": 9.68,
+                "samples": 30,
+                "peak_clearance_mm": 10.402032147015468,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6094331443309784,
+                "last_airborne_phase": 0.8927663564682007,
+                "first_airborne_time_s": 9.200000000000001,
+                "last_airborne_time_s": 9.540000000000001,
+                "liftoff_phase": 0.6094331443309784,
+                "touchdown_phase": 0.9094330072402954
+              },
+              {
+                "start_s": 10.28,
+                "end_s": 10.88,
+                "samples": 30,
+                "peak_clearance_mm": 9.858363198648423,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6094324290752411,
+                "last_airborne_phase": 0.8927656412124634,
+                "first_airborne_time_s": 10.4,
+                "last_airborne_time_s": 10.74,
+                "liftoff_phase": 0.6094324290752411,
+                "touchdown_phase": 0.9094322919845581
+              }
+            ]
+          },
+          "RL": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 13.175072932545689,
+              "p10": 14.19420332956729,
+              "median": 16.448513590225858,
+              "max": 19.24802005380794
+            },
+            "swings_below_15mm": 1,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.5927657634019852,
+              "p10": 0.5994327157735825,
+              "median": 0.6094338595867157,
+              "max": 0.6094352900981903
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.8927677869796753,
+              "p10": 0.8994338750839234,
+              "median": 0.9260989427566528,
+              "max": 0.9427684545516968
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.5927657634019852,
+              "p10": 0.5994327157735825,
+              "median": 0.6094338595867157,
+              "max": 0.6094352900981903
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8761011362075806,
+              "p10": 0.8827672243118286,
+              "median": 0.9094322919845581,
+              "max": 0.926101803779602
+            },
+            "middle_swing_samples": 108,
+            "middle_swing_contact_fraction": 0.009259259259259259,
+            "swings": [
+              {
+                "start_s": 5.48,
+                "end_s": 6.08,
+                "samples": 30,
+                "peak_clearance_mm": 19.24802005380794,
+                "airborne_fraction": 0.6666666666666666,
+                "first_airborne_phase": 0.6094352900981903,
+                "last_airborne_phase": 0.926101803779602,
+                "first_airborne_time_s": 5.6000000000000005,
+                "last_airborne_time_s": 5.98,
+                "liftoff_phase": 0.6094352900981903,
+                "touchdown_phase": 0.9427684545516968
+              },
+              {
+                "start_s": 6.68,
+                "end_s": 7.28,
+                "samples": 30,
+                "peak_clearance_mm": 13.175072932545689,
+                "airborne_fraction": 0.5666666666666667,
+                "first_airborne_phase": 0.609434574842453,
+                "last_airborne_phase": 0.8761011362075806,
+                "first_airborne_time_s": 6.8,
+                "last_airborne_time_s": 7.12,
+                "liftoff_phase": 0.609434574842453,
+                "touchdown_phase": 0.8927677869796753
+              },
+              {
+                "start_s": 7.88,
+                "end_s": 8.48,
+                "samples": 30,
+                "peak_clearance_mm": 17.445908984354553,
+                "airborne_fraction": 0.6333333333333333,
+                "first_airborne_phase": 0.6094338595867157,
+                "last_airborne_phase": 0.9094337224960327,
+                "first_airborne_time_s": 8.0,
+                "last_airborne_time_s": 8.36,
+                "liftoff_phase": 0.6094338595867157,
+                "touchdown_phase": 0.9261003732681274
+              },
+              {
+                "start_s": 9.08,
+                "end_s": 9.68,
+                "samples": 30,
+                "peak_clearance_mm": 15.722898925099694,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6094331443309784,
+                "last_airborne_phase": 0.8927663564682007,
+                "first_airborne_time_s": 9.200000000000001,
+                "last_airborne_time_s": 9.540000000000001,
+                "liftoff_phase": 0.6094331443309784,
+                "touchdown_phase": 0.9094330072402954
+              },
+              {
+                "start_s": 10.28,
+                "end_s": 10.88,
+                "samples": 30,
+                "peak_clearance_mm": 16.448513590225858,
+                "airborne_fraction": 0.6666666666666666,
+                "first_airborne_phase": 0.5927657634019852,
+                "last_airborne_phase": 0.9094322919845581,
+                "first_airborne_time_s": 10.38,
+                "last_airborne_time_s": 10.76,
+                "liftoff_phase": 0.5927657634019852,
+                "touchdown_phase": 0.9260989427566528
+              }
+            ]
+          },
+          "RR": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 11.213893371197686,
+              "p10": 12.504188431587641,
+              "median": 15.170557170100695,
+              "max": 18.11793728341542
+            },
+            "swings_below_15mm": 2,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.5927683115005493,
+              "p10": 0.5994338274002076,
+              "median": 0.6094328165054321,
+              "max": 0.6094342470169067
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.8427673578262329,
+              "p10": 0.849433159828186,
+              "median": 0.859432578086853,
+              "max": 0.8927680253982544
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.5927683115005493,
+              "p10": 0.5994338274002076,
+              "median": 0.6094328165054321,
+              "max": 0.6094342470169067
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8261007070541382,
+              "p10": 0.8327665090560913,
+              "median": 0.8427659273147583,
+              "max": 0.8761013746261597
+            },
+            "middle_swing_samples": 108,
+            "middle_swing_contact_fraction": 0.17592592592592593,
+            "swings": [
+              {
+                "start_s": 6.08,
+                "end_s": 6.68,
+                "samples": 30,
+                "peak_clearance_mm": 18.11793728341542,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.5927683115005493,
+                "last_airborne_phase": 0.8761013746261597,
+                "first_airborne_time_s": 6.18,
+                "last_airborne_time_s": 6.5200000000000005,
+                "liftoff_phase": 0.5927683115005493,
+                "touchdown_phase": 0.8927680253982544
+              },
+              {
+                "start_s": 7.28,
+                "end_s": 7.88,
+                "samples": 30,
+                "peak_clearance_mm": 11.213893371197686,
+                "airborne_fraction": 0.4666666666666667,
+                "first_airborne_phase": 0.6094342470169067,
+                "last_airborne_phase": 0.8261007070541382,
+                "first_airborne_time_s": 7.4,
+                "last_airborne_time_s": 7.66,
+                "liftoff_phase": 0.6094342470169067,
+                "touchdown_phase": 0.8427673578262329
+              },
+              {
+                "start_s": 8.48,
+                "end_s": 9.08,
+                "samples": 30,
+                "peak_clearance_mm": 16.14464442490613,
+                "airborne_fraction": 0.5333333333333333,
+                "first_airborne_phase": 0.6094335317611694,
+                "last_airborne_phase": 0.8594332933425903,
+                "first_airborne_time_s": 8.6,
+                "last_airborne_time_s": 8.9,
+                "liftoff_phase": 0.6094335317611694,
+                "touchdown_phase": 0.8760999441146851
+              },
+              {
+                "start_s": 9.68,
+                "end_s": 10.28,
+                "samples": 30,
+                "peak_clearance_mm": 14.439631022172573,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6094328165054321,
+                "last_airborne_phase": 0.8427659273147583,
+                "first_airborne_time_s": 9.8,
+                "last_airborne_time_s": 10.08,
+                "liftoff_phase": 0.6094328165054321,
+                "touchdown_phase": 0.859432578086853
+              },
+              {
+                "start_s": 10.88,
+                "end_s": 11.48,
+                "samples": 30,
+                "peak_clearance_mm": 15.170557170100695,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6094321012496948,
+                "last_airborne_phase": 0.842765212059021,
+                "first_airborne_time_s": 11.0,
+                "last_airborne_time_s": 11.28,
+                "liftoff_phase": 0.6094321012496948,
+                "touchdown_phase": 0.8594318628311157
+              }
+            ]
+          }
+        },
+        "diagonal_sync": {
+          "FL-RR": {
+            "paired_swing_samples": 174,
+            "matched_complete_swings": 5,
+            "clearance_difference_rms_mm": 5.881844840387332,
+            "clearance_difference_max_mm": 21.790777121851455,
+            "one_foot_contact_fraction": 0.16091954022988506,
+            "first_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p10": 0.0,
+              "median": 0.0,
+              "max": 40.000000000000036
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 20.000000000000462,
+              "p10": 27.999999999999936,
+              "median": 60.0000000000005,
+              "max": 120.00000000000011
+            }
+          },
+          "FR-RL": {
+            "paired_swing_samples": 176,
+            "matched_complete_swings": 5,
+            "clearance_difference_rms_mm": 4.728541205272725,
+            "clearance_difference_max_mm": 14.048454155012815,
+            "one_foot_contact_fraction": 0.06818181818181818,
+            "first_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p10": 0.0,
+              "median": 19.999999999999574,
+              "max": 19.999999999999574
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p10": 7.9999999999998295,
+              "median": 39.99999999999915,
+              "max": 80.00000000000007
+            }
+          }
+        }
+      },
+      "target": {
+        "legs": {
+          "FL": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 13.062861100165561,
+              "p10": 13.771577069895207,
+              "median": 15.719206489200097,
+              "max": 19.923424397732475
+            },
+            "swings_below_15mm": 2,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.6427654345830282,
+              "p10": 0.6427657206853231,
+              "median": 0.6427675803502401,
+              "max": 0.6594349463780721
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.909434707959493,
+              "p10": 0.9227668841679891,
+              "median": 0.9427665789922078,
+              "max": 0.9761005957921346
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.6427654345830282,
+              "p10": 0.6427657206853231,
+              "median": 0.6427675803502401,
+              "max": 0.6594349463780721
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8927680571873983,
+              "p10": 0.9061002333958944,
+              "median": 0.9260999282201131,
+              "max": 0.9594339450200399
+            },
+            "middle_swing_samples": 106,
+            "middle_swing_contact_fraction": 0.11320754716981132,
+            "swings": [
+              {
+                "start_s": 6.04,
+                "end_s": 6.640000000000001,
+                "samples": 30,
+                "peak_clearance_mm": 13.062861100165561,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6594349463780721,
+                "last_airborne_phase": 0.8927680571873983,
+                "first_airborne_time_s": 6.22,
+                "last_airborne_time_s": 6.5,
+                "liftoff_phase": 0.6594349463780721,
+                "touchdown_phase": 0.909434707959493
+              },
+              {
+                "start_s": 7.24,
+                "end_s": 7.84,
+                "samples": 30,
+                "peak_clearance_mm": 19.923424397732475,
+                "airborne_fraction": 0.6666666666666666,
+                "first_airborne_phase": 0.6427675803502401,
+                "last_airborne_phase": 0.9594339450200399,
+                "first_airborne_time_s": 7.4,
+                "last_airborne_time_s": 7.78,
+                "liftoff_phase": 0.6427675803502401,
+                "touchdown_phase": 0.9761005957921346
+              },
+              {
+                "start_s": 8.44,
+                "end_s": 9.040000000000001,
+                "samples": 30,
+                "peak_clearance_mm": 14.834651024489675,
+                "airborne_fraction": 0.5666666666666667,
+                "first_airborne_phase": 0.6594335158665975,
+                "last_airborne_phase": 0.9260999282201131,
+                "first_airborne_time_s": 8.620000000000001,
+                "last_airborne_time_s": 8.94,
+                "liftoff_phase": 0.6594335158665975,
+                "touchdown_phase": 0.9427665789922078
+              },
+              {
+                "start_s": 9.64,
+                "end_s": 10.24,
+                "samples": 30,
+                "peak_clearance_mm": 16.42280979742329,
+                "airborne_fraction": 0.6333333333333333,
+                "first_airborne_phase": 0.6427661498387655,
+                "last_airborne_phase": 0.9427658637364705,
+                "first_airborne_time_s": 9.8,
+                "last_airborne_time_s": 10.16,
+                "liftoff_phase": 0.6427661498387655,
+                "touchdown_phase": 0.9594325145085653
+              },
+              {
+                "start_s": 10.84,
+                "end_s": 11.44,
+                "samples": 30,
+                "peak_clearance_mm": 15.719206489200097,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6427654345830282,
+                "last_airborne_phase": 0.9260984977086385,
+                "first_airborne_time_s": 11.0,
+                "last_airborne_time_s": 11.34,
+                "liftoff_phase": 0.6427654345830282,
+                "touchdown_phase": 0.9427651484807332
+              }
+            ]
+          },
+          "FR": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 7.56651821985288,
+              "p10": 8.14741627162676,
+              "median": 9.858363198648423,
+              "max": 12.81924536338817
+            },
+            "swings_below_15mm": 5,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.6427657624085744,
+              "p10": 0.6427660485108694,
+              "median": 0.6427679081757863,
+              "max": 0.6594352891047796
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.9094351847966512,
+              "p10": 0.9161012729008993,
+              "median": 0.9427656253178914,
+              "max": 0.9594344218571981
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.6427657624085744,
+              "p10": 0.6427660485108694,
+              "median": 0.6427679081757863,
+              "max": 0.6594352891047796
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8927685340245565,
+              "p10": 0.8994346221288045,
+              "median": 0.9260989745457967,
+              "max": 0.9427677710851033
+            },
+            "middle_swing_samples": 108,
+            "middle_swing_contact_fraction": 0.12962962962962962,
+            "swings": [
+              {
+                "start_s": 5.44,
+                "end_s": 6.04,
+                "samples": 30,
+                "peak_clearance_mm": 7.56651821985288,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6594352891047796,
+                "last_airborne_phase": 0.8927685340245565,
+                "first_airborne_time_s": 5.62,
+                "last_airborne_time_s": 5.9,
+                "liftoff_phase": 0.6594352891047796,
+                "touchdown_phase": 0.9094351847966512
+              },
+              {
+                "start_s": 6.640000000000001,
+                "end_s": 7.24,
+                "samples": 30,
+                "peak_clearance_mm": 12.81924536338817,
+                "airborne_fraction": 0.6333333333333333,
+                "first_airborne_phase": 0.6427679081757863,
+                "last_airborne_phase": 0.9427677710851033,
+                "first_airborne_time_s": 6.8,
+                "last_airborne_time_s": 7.16,
+                "liftoff_phase": 0.6427679081757863,
+                "touchdown_phase": 0.9594344218571981
+              },
+              {
+                "start_s": 7.84,
+                "end_s": 8.44,
+                "samples": 30,
+                "peak_clearance_mm": 9.01876334928758,
+                "airborne_fraction": 0.5333333333333333,
+                "first_airborne_phase": 0.659433858593305,
+                "last_airborne_phase": 0.9094337542851766,
+                "first_airborne_time_s": 8.02,
+                "last_airborne_time_s": 8.32,
+                "liftoff_phase": 0.659433858593305,
+                "touchdown_phase": 0.9261004050572713
+              },
+              {
+                "start_s": 9.040000000000001,
+                "end_s": 9.64,
+                "samples": 30,
+                "peak_clearance_mm": 10.402032147015468,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6427664776643117,
+                "last_airborne_phase": 0.926099689801534,
+                "first_airborne_time_s": 9.200000000000001,
+                "last_airborne_time_s": 9.540000000000001,
+                "liftoff_phase": 0.6427664776643117,
+                "touchdown_phase": 0.9427663405736287
+              },
+              {
+                "start_s": 10.24,
+                "end_s": 10.84,
+                "samples": 30,
+                "peak_clearance_mm": 9.858363198648423,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6427657624085744,
+                "last_airborne_phase": 0.9260989745457967,
+                "first_airborne_time_s": 10.4,
+                "last_airborne_time_s": 10.74,
+                "liftoff_phase": 0.6427657624085744,
+                "touchdown_phase": 0.9427656253178914
+              }
+            ]
+          },
+          "RL": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 13.175072932545689,
+              "p10": 14.19420332956729,
+              "median": 16.448513590225858,
+              "max": 19.24802005380794
+            },
+            "swings_below_15mm": 1,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.6260990967353185,
+              "p10": 0.6327660491069158,
+              "median": 0.642767192920049,
+              "max": 0.6427686234315236
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.9261011203130086,
+              "p10": 0.9327672084172567,
+              "median": 0.9594322760899862,
+              "max": 0.9761017878850301
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.6260990967353185,
+              "p10": 0.6327660491069158,
+              "median": 0.642767192920049,
+              "max": 0.6427686234315236
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.9094344695409139,
+              "p10": 0.916100557645162,
+              "median": 0.9427656253178914,
+              "max": 0.9594351371129354
+            },
+            "middle_swing_samples": 108,
+            "middle_swing_contact_fraction": 0.10185185185185185,
+            "swings": [
+              {
+                "start_s": 5.44,
+                "end_s": 6.04,
+                "samples": 30,
+                "peak_clearance_mm": 19.24802005380794,
+                "airborne_fraction": 0.6666666666666666,
+                "first_airborne_phase": 0.6427686234315236,
+                "last_airborne_phase": 0.9594351371129354,
+                "first_airborne_time_s": 5.6000000000000005,
+                "last_airborne_time_s": 5.98,
+                "liftoff_phase": 0.6427686234315236,
+                "touchdown_phase": 0.9761017878850301
+              },
+              {
+                "start_s": 6.640000000000001,
+                "end_s": 7.24,
+                "samples": 30,
+                "peak_clearance_mm": 13.175072932545689,
+                "airborne_fraction": 0.5666666666666667,
+                "first_airborne_phase": 0.6427679081757863,
+                "last_airborne_phase": 0.9094344695409139,
+                "first_airborne_time_s": 6.8,
+                "last_airborne_time_s": 7.12,
+                "liftoff_phase": 0.6427679081757863,
+                "touchdown_phase": 0.9261011203130086
+              },
+              {
+                "start_s": 7.84,
+                "end_s": 8.44,
+                "samples": 30,
+                "peak_clearance_mm": 17.445908984354553,
+                "airborne_fraction": 0.6333333333333333,
+                "first_airborne_phase": 0.642767192920049,
+                "last_airborne_phase": 0.942767055829366,
+                "first_airborne_time_s": 8.0,
+                "last_airborne_time_s": 8.36,
+                "liftoff_phase": 0.642767192920049,
+                "touchdown_phase": 0.9594337066014608
+              },
+              {
+                "start_s": 9.040000000000001,
+                "end_s": 9.64,
+                "samples": 30,
+                "peak_clearance_mm": 15.722898925099694,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6427664776643117,
+                "last_airborne_phase": 0.926099689801534,
+                "first_airborne_time_s": 9.200000000000001,
+                "last_airborne_time_s": 9.540000000000001,
+                "liftoff_phase": 0.6427664776643117,
+                "touchdown_phase": 0.9427663405736287
+              },
+              {
+                "start_s": 10.24,
+                "end_s": 10.84,
+                "samples": 30,
+                "peak_clearance_mm": 16.448513590225858,
+                "airborne_fraction": 0.6666666666666666,
+                "first_airborne_phase": 0.6260990967353185,
+                "last_airborne_phase": 0.9427656253178914,
+                "first_airborne_time_s": 10.38,
+                "last_airborne_time_s": 10.76,
+                "liftoff_phase": 0.6260990967353185,
+                "touchdown_phase": 0.9594322760899862
+              }
+            ]
+          },
+          "RR": {
+            "samples": 350,
+            "complete_swings": 5,
+            "excluded_partial_swings": 1,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 5,
+              "min": 11.213893371197686,
+              "p10": 12.504188431587641,
+              "median": 15.170557170100695,
+              "max": 18.11793728341542
+            },
+            "swings_below_15mm": 2,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 5,
+              "min": 0.6261016448338826,
+              "p10": 0.6327671607335409,
+              "median": 0.6427661498387655,
+              "max": 0.6427675803502401
+            },
+            "touchdown_phase": {
+              "count": 5,
+              "min": 0.8761006911595662,
+              "p10": 0.8827664931615193,
+              "median": 0.8927659114201864,
+              "max": 0.9261013587315877
+            },
+            "first_airborne_phase": {
+              "count": 5,
+              "min": 0.6261016448338826,
+              "p10": 0.6327671607335409,
+              "median": 0.6427661498387655,
+              "max": 0.6427675803502401
+            },
+            "last_airborne_phase": {
+              "count": 5,
+              "min": 0.8594340403874715,
+              "p10": 0.8660998423894246,
+              "median": 0.8760992606480916,
+              "max": 0.909434707959493
+            },
+            "middle_swing_samples": 106,
+            "middle_swing_contact_fraction": 0.16037735849056603,
+            "swings": [
+              {
+                "start_s": 6.04,
+                "end_s": 6.640000000000001,
+                "samples": 30,
+                "peak_clearance_mm": 18.11793728341542,
+                "airborne_fraction": 0.6,
+                "first_airborne_phase": 0.6261016448338826,
+                "last_airborne_phase": 0.909434707959493,
+                "first_airborne_time_s": 6.18,
+                "last_airborne_time_s": 6.5200000000000005,
+                "liftoff_phase": 0.6261016448338826,
+                "touchdown_phase": 0.9261013587315877
+              },
+              {
+                "start_s": 7.24,
+                "end_s": 7.84,
+                "samples": 30,
+                "peak_clearance_mm": 11.213893371197686,
+                "airborne_fraction": 0.4666666666666667,
+                "first_airborne_phase": 0.6427675803502401,
+                "last_airborne_phase": 0.8594340403874715,
+                "first_airborne_time_s": 7.4,
+                "last_airborne_time_s": 7.66,
+                "liftoff_phase": 0.6427675803502401,
+                "touchdown_phase": 0.8761006911595662
+              },
+              {
+                "start_s": 8.44,
+                "end_s": 9.040000000000001,
+                "samples": 30,
+                "peak_clearance_mm": 16.14464442490613,
+                "airborne_fraction": 0.5333333333333333,
+                "first_airborne_phase": 0.6427668650945028,
+                "last_airborne_phase": 0.8927666266759237,
+                "first_airborne_time_s": 8.6,
+                "last_airborne_time_s": 8.9,
+                "liftoff_phase": 0.6427668650945028,
+                "touchdown_phase": 0.9094332774480184
+              },
+              {
+                "start_s": 9.64,
+                "end_s": 10.24,
+                "samples": 30,
+                "peak_clearance_mm": 14.439631022172573,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6427661498387655,
+                "last_airborne_phase": 0.8760992606480916,
+                "first_airborne_time_s": 9.8,
+                "last_airborne_time_s": 10.08,
+                "liftoff_phase": 0.6427661498387655,
+                "touchdown_phase": 0.8927659114201864
+              },
+              {
+                "start_s": 10.84,
+                "end_s": 11.44,
+                "samples": 30,
+                "peak_clearance_mm": 15.170557170100695,
+                "airborne_fraction": 0.5,
+                "first_airborne_phase": 0.6427654345830282,
+                "last_airborne_phase": 0.8760985453923543,
+                "first_airborne_time_s": 11.0,
+                "last_airborne_time_s": 11.28,
+                "liftoff_phase": 0.6427654345830282,
+                "touchdown_phase": 0.892765196164449
+              }
+            ]
+          }
+        },
+        "diagonal_sync": {
+          "FL-RR": {
+            "paired_swing_samples": 172,
+            "matched_complete_swings": 5,
+            "clearance_difference_rms_mm": 5.911903013690727,
+            "clearance_difference_max_mm": 21.790777121851455,
+            "one_foot_contact_fraction": 0.16279069767441862,
+            "first_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p10": 0.0,
+              "median": 0.0,
+              "max": 40.000000000000036
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 20.000000000000462,
+              "p10": 27.999999999999936,
+              "median": 60.0000000000005,
+              "max": 120.00000000000011
+            }
+          },
+          "FR-RL": {
+            "paired_swing_samples": 178,
+            "matched_complete_swings": 5,
+            "clearance_difference_rms_mm": 4.70171581138427,
+            "clearance_difference_max_mm": 14.048454155012815,
+            "one_foot_contact_fraction": 0.06741573033707865,
+            "first_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p10": 0.0,
+              "median": 19.999999999999574,
+              "max": 19.999999999999574
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p10": 7.9999999999998295,
+              "median": 39.99999999999915,
+              "max": 80.00000000000007
+            }
+          }
+        }
+      }
+    },
+    "contact_count": {
+      "complete_frames": 350,
+      "incomplete_frames": 0,
+      "occupancy": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 0.5371428571428571,
+        "3": 0.11428571428571428,
+        "4": 0.3485714285714286
+      }
+    }
+  },
+  "rotation_deg_s": 18.293889317656642,
+  "stop_completed": true,
+  "case": {
+    "name": "wave2_edffc4bc28db",
+    "stop_at": 12,
+    "parameters": {
+      "arc_trial": [
+        0.022,
+        0.5,
+        0.04,
+        0
+      ],
+      "arc_transfer_trial": [
+        0.12,
+        0,
+        0.3
+      ],
+      "arc_attitude_trial": [
+        0,
+        0,
+        0,
+        0.006,
+        0.04,
+        0.08
+      ],
+      "arc_wave_trial": [
+        0.0010992843942677264,
+        0,
+        -0.0006632694061080122,
+        0.00014455942035347923,
+        -0.0011202802557833502,
+        0.00416907966303736
+      ]
+    }
+  },
+  "optimization_cost": 34.14759013336059,
+  "optimization_x": [
+    0.0010992843942677264,
+    -0.0006632694061080122,
+    0.00014455942035347923,
+    -0.0011202802557833502,
+    0.00416907966303736
+  ]
+}

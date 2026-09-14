@@ -4,6 +4,7 @@
 #include "locomotion_profiles.h"
 #include <string.h>
 #include "arc_turn.h"
+#include "arc_support.h"
 
 static inline int locomotion_profile_id(const char *name) {
     if (!name) return -1;
@@ -46,6 +47,8 @@ static inline bool locomotion_foot_targets(const float p[7],float phase,float sc
     }
     return true;
 }
+/* Uses the planar base above, then CAD cushion IK. */
+#include "center_pivot.h"
 static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(linear) || !isfinite(yaw))return 0;
     return locomotion_turn_lift_m[profile]>0?
@@ -56,8 +59,10 @@ static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
 static inline bool locomotion_targets_assisted(int profile,float phase,float scale,float linear,float yaw,float assist,GaitPolicyLegTarget out[4]) {
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(assist) || assist<0 || assist>1) return false;
     if(profile==locomotion_profile_id("arcturn"))return arc_turn_targets(phase,scale,linear,yaw,out);
+    if(profile==locomotion_profile_id("arcsupport"))return arc_support_targets(phase,scale,linear,yaw,out);
     if(profile==0) return gait_policy_drive_walk_targets(phase,scale,linear,yaw,out);
     float p[7];locomotion_params(profile,linear,p);
+    if(profile==locomotion_profile_id("centerpivot") || profile==locomotion_profile_id("attitudepd"))return center_pivot_targets(p,phase,scale,linear,yaw,out);
     /* Recenter the stance as the legs straighten: lift alone left the
      * front feet loaded against the floor in the estimated physical plant. */
     if(locomotion_turn_posture_m[profile][0]>0) {
@@ -96,7 +101,7 @@ static inline bool locomotion_targets(int profile,float phase,float scale,float 
 static inline float locomotion_period(int profile,float linear,float yaw) {
     if(profile==0) return gait_policy_drive_period_ms(lroundf(linear*1000),lroundf(yaw*1000))*.001f;
     float p[7];locomotion_params(profile,linear,p);
-    if(profile==locomotion_profile_id("arcturn"))p[0]-=.24f*fabsf(yaw)/fmaxf(fabsf(linear)+fabsf(yaw),1.e-9f);
+    if(profile==locomotion_profile_id("arcturn") || profile==locomotion_profile_id("arcsupport"))p[0]-=.24f*fabsf(yaw)/fmaxf(fabsf(linear)+fabsf(yaw),1.e-9f);
     return p[0]*(1.35f-.35f*fminf(1,fabsf(linear)+fabsf(yaw)));
 }
 #endif

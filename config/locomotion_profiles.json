@@ -223,6 +223,72 @@
       "validation": "Experimental shared-C port; not the Python support-shift feedback controller.",
       "turn_input_limit": 1.0,
       "experimental": true
+    },
+    "arcsupport": {
+      "label": "원호 턴 · 지지 전환 보정 · 실험",
+      "family": "trot",
+      "params": [
+        1.44,
+        0.5,
+        0.08,
+        0.022,
+        0.20175,
+        -0.01,
+        0.75
+      ],
+      "validation": "wave60_rank3 port: nominal left/right roll passes; clearance/contact/tracking fail. Not hardware validated.",
+      "turn_input_limit": 1.0,
+      "experimental": true
+    },
+    "centerpivot": {
+      "label": "몸체 중심 회전 보정 · 실험 (검증실패)",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "experimental": true,
+      "validation": "Recorded inside_60_4 shared-C port; experimental, not hardware gait validated.",
+      "turn_input_limit": 0.5
+    },
+    "attitudepd": {
+      "label": "IMU 자세 안정화 · PD · 실험 (검증실패)",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "experimental": true,
+      "validation": "Separate attitude-PD experiment using unchanged centerpivot nominal kinematics; physical gait validation pending.",
+      "turn_input_limit": 0.5
     }
   }
 }

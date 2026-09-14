@@ -77,6 +77,9 @@ static inline void balance_support_weights(float phase,float duty,float support[
 static inline bool balance_control_apply_policy(BalanceControl *s,GaitPolicyLegTarget target[4],
         const GaitPolicyImuSample *input,bool enabled,bool standing,float kp,float kd,float ki,
         int profile,float phase,bool moving,float linear,float yaw) {
+    /* This CAD feedforward experiment must not be distorted by the legacy
+     * two-link IK. This does not bypass attitude_update or its safety stop. */
+    if(profile==locomotion_profile_id("arcsupport") && moving){*s=(BalanceControl){0};return true;}
     bool level=profile==locomotion_profile_id("level") || profile==locomotion_profile_id("level15") || profile==locomotion_profile_id("joint") || profile==locomotion_profile_id("jointfast") || profile==locomotion_profile_id("jointsport");
     if((profile!=locomotion_profile_id("imu") && !level) || !moving)
         return balance_control_apply(s,target,input,enabled,standing,kp,kd,ki);

@@ -1,0 +1,56 @@
+[
+  {
+    "command": "syncstate",
+    "text": "$SPOTSTATE pose=stand error=57 torque=on safety=ok balance=full rev=shared-locomotion-v47 caps=trot5,gaitprofiles,arcsupport,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0",
+    "status": "info",
+    "host_time": 1789181985.254099
+  },
+  {
+    "command": "read 1",
+    "text": "ID 1 pos=1928 speed=0 load=0 voltage=11200mV temp=31C current=0 moving=0 hw=0x00",
+    "status": "info",
+    "host_time": 1789181985.343647
+  },
+  {
+    "command": "profile",
+    "text": "Profile: speed=3400 acceleration=254",
+    "status": "info",
+    "host_time": 1789181985.4027
+  },
+  {
+    "command": "locomotiondiag",
+    "text": "$LOCOMOTION profile=cruise heading=on yaw10=46 valid=1 error10=0 correction=0 late=0 fault=0 compute_max_ms=0 io_max_ms=0",
+    "status": "info",
+    "host_time": 1789181985.4626582
+  },
+  {
+    "command": "jointtrace arm",
+    "text": "OK jointtrace armed; no motion commanded",
+    "status": "info",
+    "host_time": 1789181985.522114
+  },
+  {
+    "command": "drive 1000 0 1",
+    "text": "$SPOTDRIVE started seq=1 linear=1000 yaw=0 watchdog=800ms rev=shared-locomotion-v47\n$SPOTDRIVE stopped reason=ok elapsed=5040ms\nOK\nGait diagnostics: samples=252 min_voltage=10800mV lag=2 lag+droop=0 derate=no fall=no late_frames=1 limited_frames=0\nBus read retries: attempts=1 recovered=1 failed=0\nGait timing: balance=off nominal=0ms elapsed=5040ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms\nStep sync monitor: transitions=0 misses=0 peak_recent_error=0ticks\n  ID1 FL J1 phase=776 cmd=1929 pos=1928 err=1 speed_raw=50 current=0 load=0 voltage=11200mV peak_err=8(0.7deg)@57 mean_err=4(0.4deg) peak_current=2 peak_load=72 min_v=10900mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=1920 pos=1928 err=-8 target_v=0deg/s target_a=0deg/s2 match_age=5fr(~100ms) match_err=-7ticks\n  ID2 FL J2 phase=776 cmd=1565 pos=1554 err=11 speed_raw=50 current=13 load=-88 voltage=11300mV peak_err=107(9.4deg)@872 mean_err=22(1.9deg) peak_current=209 peak_load=576 min_v=10900mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=1469 pos=1362 err=107 target_v=-131deg/s target_a=0deg/s2 match_age=4fr(~80ms) match_err=-2ticks\n  ID3 FL J3 phase=776 cmd=2986 pos=2994 err=-8 speed_raw=50 current=4 load=76 voltage=11400mV peak_err=74(6.5deg)@891 mean_err=19(1.7deg) peak_current=40 peak_load=336 min_v=10900mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=3056 pos=2982 err=74 target_v=-39deg/s target_a=-900deg/s2 match_age=8fr(~160ms) match_err=-2ticks\n  ID4 FR J1 phase=776 cmd=2089 pos=2091 err=-2 speed_raw=0 current=0 load=24 voltage=11300mV peak_err=9(0.8deg)@982 mean_err=4(0.4deg) peak_current=3 peak_load=80 min_v=11000mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=2098 pos=2089 err=9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=9ticks\n  ID5 FR J2 phase=776 cmd=2441 pos=2443 err=-2 speed_raw=0 current=0 load=16 voltage=11200mV peak_err=102(9.0deg)@387 mean_err=18(1.6deg) peak_current=276 peak_load=636 min_v=10900mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=2539 pos=2641 err=-102 target_v=-105deg/s target_a=-200deg/s2 match_age=5fr(~100ms) match_err=3ticks\n  ID6 FR J3 phase=776 cmd=1043 pos=1028 err=15 speed_raw=0 current=5 load=-128 voltage=11400mV peak_err=48(4.2deg)@248 mean_err=19(1.7deg) peak_current=29 peak_load=336 min_v=11000mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=1041 pos=1089 err=-48 target_v=109deg/s target_a=850deg/s2 match_age=11fr(~220ms) match_err=0ticks\n  ID7 RL J1 phase=776 cmd=2104 pos=2095 err=9 speed_raw=0 current=3 load=-80 voltage=11200mV peak_err=10(0.9deg)@776 mean_err=4(0.4deg) peak_current=4 peak_load=88 min_v=11100mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=2101 pos=2091 err=10 target_v=-8deg/s target_a=-400deg/s2 match_age=8fr(~160ms) match_err=6ticks\n  ID8 RL J2 phase=776 cmd=1427 pos=1431 err=-4 speed_raw=150 current=6 load=56 voltage=11300mV peak_err=67(5.9deg)@443 mean_err=15(1.3deg) peak_current=39 peak_load=308 min_v=10800mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=1410 pos=1343 err=67 target_v=-21deg/s target_a=3750deg/s2 match_age=3fr(~60ms) match_err=14ticks\n  ID9 RL J3 phase=776 cmd=2975 pos=3003 err=-28 speed_raw=0 current=24 load=232 voltage=11200mV peak_err=115(10.1deg)@306 mean_err=29(2.5deg) peak_current=193 peak_load=468 min_v=10800mV lag=1 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=3053 pos=2938 err=115 target_v=70deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=0ticks\n  ID10 RR J1 phase=776 cmd=1951 pos=1964 err=-13 speed_raw=0 current=6 load=116 voltage=11300mV peak_err=13(1.1deg)@776 mean_err=4(0.4deg) peak_current=6 peak_load=116 min_v=11100mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=1951 pos=1964 err=-13 target_v=0deg/s target_a=200deg/s2 match_age=8fr(~160ms) match_err=-11ticks\n  ID11 RR J2 phase=776 cmd=2773 pos=2774 err=-1 speed_raw=-100 current=0 load=4 voltage=11200mV peak_err=90(7.9deg)@887 mean_err=16(1.4deg) peak_current=56 peak_load=280 min_v=10900mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=2847 pos=2937 err=-90 target_v=-127deg/s target_a=450deg/s2 match_age=3fr(~60ms) match_err=-2ticks\n  ID12 RR J3 phase=776 cmd=1019 pos=996 err=23 speed_raw=0 current=12 load=-192 voltage=11200mV peak_err=110(9.7deg)@834 mean_err=31(2.7deg) peak_current=101 peak_load=552 min_v=10900mV lag=1 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=931 pos=1041 err=-110 target_v=35deg/s target_a=-850deg/s2 match_age=6fr(~120ms) match_err=-5ticks",
+    "status": "ok",
+    "host_time": 1789181993.265988
+  },
+  {
+    "command": "syncstate",
+    "text": "$SPOTSTATE pose=stand error=30 torque=on safety=ok balance=full rev=shared-locomotion-v47 caps=trot5,gaitprofiles,arcsupport,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0",
+    "status": "info",
+    "host_time": 1789181993.414241
+  },
+  {
+    "command": "locomotiondiag",
+    "text": "$LOCOMOTION profile=cruise heading=on yaw10=125 valid=1 error10=0 correction=0 late=1 fault=0 compute_max_ms=0 io_max_ms=34",
+    "status": "info",
+    "host_time": 1789181993.5335512
+  },
+  {
+    "command": "gaitdiag",
+    "text": "Gait diagnostics: samples=252 min_voltage=10800mV lag=2 lag+droop=0 derate=no fall=no late_frames=1 limited_frames=0\nBus read retries: attempts=4 recovered=4 failed=0\nGait timing: balance=off nominal=0ms elapsed=5040ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms\nStep sync monitor: transitions=0 misses=0 peak_recent_error=0ticks\n  ID1 FL J1 phase=776 cmd=1929 pos=1928 err=1 speed_raw=50 current=0 load=0 voltage=11200mV peak_err=8(0.7deg)@57 mean_err=4(0.4deg) peak_current=2 peak_load=72 min_v=10900mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=1920 pos=1928 err=-8 target_v=0deg/s target_a=0deg/s2 match_age=5fr(~100ms) match_err=-7ticks\n  ID2 FL J2 phase=776 cmd=1565 pos=1554 err=11 speed_raw=50 current=13 load=-88 voltage=11300mV peak_err=107(9.4deg)@872 mean_err=22(1.9deg) peak_current=209 peak_load=576 min_v=10900mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=1469 pos=1362 err=107 target_v=-131deg/s target_a=0deg/s2 match_age=4fr(~80ms) match_err=-2ticks\n  ID3 FL J3 phase=776 cmd=2986 pos=2994 err=-8 speed_raw=50 current=4 load=76 voltage=11400mV peak_err=74(6.5deg)@891 mean_err=19(1.7deg) peak_current=40 peak_load=336 min_v=10900mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=3056 pos=2982 err=74 target_v=-39deg/s target_a=-900deg/s2 match_age=8fr(~160ms) match_err=-2ticks\n  ID4 FR J1 phase=776 cmd=2089 pos=2091 err=-2 speed_raw=0 current=0 load=24 voltage=11300mV peak_err=9(0.8deg)@982 mean_err=4(0.4deg) peak_current=3 peak_load=80 min_v=11000mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=2098 pos=2089 err=9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=9ticks\n  ID5 FR J2 phase=776 cmd=2441 pos=2443 err=-2 speed_raw=0 current=0 load=16 voltage=11200mV peak_err=102(9.0deg)@387 mean_err=18(1.6deg) peak_current=276 peak_load=636 min_v=10900mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=2539 pos=2641 err=-102 target_v=-105deg/s target_a=-200deg/s2 match_age=5fr(~100ms) match_err=3ticks\n  ID6 FR J3 phase=776 cmd=1043 pos=1028 err=15 speed_raw=0 current=5 load=-128 voltage=11400mV peak_err=48(4.2deg)@248 mean_err=19(1.7deg) peak_current=29 peak_load=336 min_v=11000mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=1041 pos=1089 err=-48 target_v=109deg/s target_a=850deg/s2 match_age=11fr(~220ms) match_err=0ticks\n  ID7 RL J1 phase=776 cmd=2104 pos=2095 err=9 speed_raw=0 current=3 load=-80 voltage=11200mV peak_err=10(0.9deg)@776 mean_err=4(0.4deg) peak_current=4 peak_load=88 min_v=11100mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=2101 pos=2091 err=10 target_v=-8deg/s target_a=-400deg/s2 match_age=8fr(~160ms) match_err=6ticks\n  ID8 RL J2 phase=776 cmd=1427 pos=1431 err=-4 speed_raw=150 current=6 load=56 voltage=11300mV peak_err=67(5.9deg)@443 mean_err=15(1.3deg) peak_current=39 peak_load=308 min_v=10800mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=1410 pos=1343 err=67 target_v=-21deg/s target_a=3750deg/s2 match_age=3fr(~60ms) match_err=14ticks\n  ID9 RL J3 phase=776 cmd=2975 pos=3003 err=-28 speed_raw=0 current=24 load=232 voltage=11200mV peak_err=115(10.1deg)@306 mean_err=29(2.5deg) peak_current=193 peak_load=468 min_v=10800mV lag=1 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=3053 pos=2938 err=115 target_v=70deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=0ticks\n  ID10 RR J1 phase=776 cmd=1951 pos=1964 err=-13 speed_raw=0 current=6 load=116 voltage=11300mV peak_err=13(1.1deg)@776 mean_err=4(0.4deg) peak_current=6 peak_load=116 min_v=11100mV lag=0 lag_rule=96/2 samples=21\n    peak_ctx=stance cmd=1951 pos=1964 err=-13 target_v=0deg/s target_a=200deg/s2 match_age=8fr(~160ms) match_err=-11ticks\n  ID11 RR J2 phase=776 cmd=2773 pos=2774 err=-1 speed_raw=-100 current=0 load=4 voltage=11200mV peak_err=90(7.9deg)@887 mean_err=16(1.4deg) peak_current=56 peak_load=280 min_v=10900mV lag=0 lag_rule=144/3 samples=21\n    peak_ctx=swing cmd=2847 pos=2937 err=-90 target_v=-127deg/s target_a=450deg/s2 match_age=3fr(~60ms) match_err=-2ticks\n  ID12 RR J3 phase=776 cmd=1019 pos=996 err=23 speed_raw=0 current=12 load=-192 voltage=11200mV peak_err=110(9.7deg)@834 mean_err=31(2.7deg) peak_current=101 peak_load=552 min_v=10900mV lag=1 lag_rule=96/2 samples=21\n    peak_ctx=swing cmd=931 pos=1041 err=-110 target_v=35deg/s target_a=-850deg/s2 match_age=6fr(~120ms) match_err=-5ticks",
+    "status": "info",
+    "host_time": 1789182004.6341288
+  }
+]

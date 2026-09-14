@@ -199,6 +199,12 @@ def build_parser() -> argparse.ArgumentParser:
     contacts.add_argument(
         "--verbose", action="store_true", help="print every load sample"
     )
+    analyze_joints = commands.add_parser("analyze-joints", help="analyze a timed STM32 jointtrace dump without hardware I/O")
+    analyze_joints.add_argument("trace", type=Path)
+    analyze_joints.add_argument("--output", type=Path, required=True)
+    analyze_joints.add_argument("--compare", type=Path)
+    analyze_joints.add_argument("--start-ms", type=int, default=0)
+    analyze_joints.add_argument("--end-ms", type=int)
     analyze_loads = commands.add_parser(
         "analyze-loads",
         help="build a phase-aligned no-contact baseline from a gait CSV",
@@ -393,6 +399,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     balance.add_argument(
         "mode", nargs="?", choices=("full", "normal", "on", "off", "status")
+    )
+    stabilize = commands.add_parser(
+        "stabilize", help="control or inspect the IMU attitude PD stabilizer during motion"
+    )
+    stabilize.add_argument(
+        "mode", nargs="?", choices=("on", "off", "status"), default="status"
     )
 
     firmware = commands.add_parser(
@@ -802,7 +814,7 @@ def run_console_script(
 CONSOLE_ONLY_COMMANDS = frozenset(
     {
         "trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "trot5", "turn", "crab", "jump", "targets", "status",
-        "gaitdiag", "baldiag", "profile", "imu", "balance", "logs", "stow", "stowcheck"
+        "gaitdiag", "baldiag", "profile", "imu", "balance", "stabilize", "logs", "stow", "stowcheck"
     }
 )
 
@@ -943,6 +955,10 @@ def console_line_for(args: argparse.Namespace) -> str:
         return f"profile {args.speed} {args.accel}"
     if command in {"imu", "balance"}:
         return command if args.mode is None else f"{command} {args.mode}"
+    if command == "stabilize":
+        # Realtime lane remains responsive while the firmware motion loop owns
+        # the ordinary console. A bare command performs a read-only status query.
+        return f"@B { {'on': 1, 'off': 0, 'status': 2}[args.mode]}"
     if command in {"trot", "trotplace", "trot2", "trot3", "trot4", "trot4back", "trot5", "jump"}:
         if args.cycles is None and args.period_ms is not None:
             raise ValueError("PERIOD_MS requires CYCLES")
@@ -1001,8 +1017,9 @@ def run_routed_console_command(
             started = datetime.now().isoformat(timespec="seconds")
             log_file.write(f"\n=== {started} {port} ===\n")
         with open_console(args, kind, port) as console:
-            console.sync()
-            _synchronize_console_clock(console)
+            if args.command != "stabilize":
+                console.sync()
+                _synchronize_console_clock(console)
             if args.command == "logs":
                 output_file = None
                 try:
@@ -2357,6 +2374,11 @@ def _main(argv: list[str] | None = None) -> int:
             show_ports()
             return 0
 
+        if args.command == "analyze-joints":
+            from .joint_trace import write_report
+            print(write_report(args.trace,args.output,args.compare,args.start_ms,args.end_ms))
+            return 0
+
         if args.command == "analyze-loads":
             analyze_load_profile(args.profile, args.output)
             return 0
@@ -2619,7 +2641,7 @@ def main(argv: list[str] | None = None) -> int:
             manages_ble = True
         elif args.command == "console":
             manages_ble = not args.host and (args.via == "ble" or (args.via == "auto" and args.stm32_port is None))
-        elif args.command in {"ports", "analyze-loads", "configure-mapping", "configure-directions"}:
+        elif args.command in {"ports", "analyze-loads", "analyze-joints", "configure-mapping", "configure-directions"}:
             manages_ble = False
         else:
             manages_ble = resolve_transport(args)[0] == "ble"

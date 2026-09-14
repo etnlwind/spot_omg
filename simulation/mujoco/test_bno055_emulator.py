@@ -63,3 +63,30 @@ def test_noise_repeatable_and_yaw_wrap_short_path():
 @pytest.mark.parametrize('kw',[{'sample_hz':0},{'fusion_tau_s':-1},{'fusion_delay_s':math.nan}])
 def test_invalid_config(kw):
     with pytest.raises(ValueError): BNO055Config(**kw)
+
+
+def test_gyro_is_sampled_velocity_not_euler_difference():
+    s=sensor(gyro_noise_std_deg_s=0,gyro_delay_s=.003)
+    # Euler is fixed at zero while the gyro input says 30 and -15 deg/s.
+    s.advance(0,0,0,gyro_body_rad_s=[math.radians(30),math.radians(-15),0])
+    r=s.read(.021)
+    assert r['roll_tenths']==r['pitch_tenths']==0
+    assert r['gyro_body_rad_s']==pytest.approx([math.radians(30),math.radians(-15),0])
+    s.advance(.03,10,20,gyro_body_rad_s=[0,0,0])
+    assert s.read(.032)['gyro_sequence']==1
+    r=s.read(.034)
+    assert r['gyro_sequence']==2
+    assert r['gyro_body_rad_s']==[0,0,0]
+    assert r['gyro_sample_time_s']==.03 and r['sample_time_s']==0
+    assert s.read(.034)['gyro_sequence']==2  # polling never invents a new sample
+
+
+def test_gyro_missing_and_freeze_are_observable():
+    s=sensor(gyro_noise_std_deg_s=0)
+    s.advance(0,0,0)
+    assert 'gyro_body_rad_s' not in s.read(.04)
+    s.advance(.05,0,0,gyro_body_rad_s=[0,0,0])
+    r=s.read(.08);stamp=r['gyro_sample_time_s']
+    s.frozen=True;s.advance(.09,1,2,gyro_body_rad_s=[1,2,3])
+    assert s.read(.12)['gyro_sample_time_s']==stamp
+    assert s.read(.151) is None

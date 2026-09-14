@@ -1,0 +1,384 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project apps/ios/SpotOMGController/SpotOMGController.xcodeproj -scheme SpotOMGController -configuration Debug -destination generic/platform=iOS -derivedDataPath /private/tmp/spot-attitudepd-ios-build CODE_SIGNING_ALLOWED=NO build-for-testing
+
+Build settings from command line:
+    CODE_SIGNING_ALLOWED = NO
+
+2026-09-14 18:14:36.536 xcodebuild[62215:34430160] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (2 targets)
+    Target 'SpotOMGControllerTests' in project 'SpotOMGController'
+        ➜ Explicit dependency on target 'SpotOMGController' in project 'SpotOMGController'
+    Target 'SpotOMGController' in project 'SpotOMGController' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGController/Resources/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+Build description signature: bc2a9260a10e5bf288a6b67ac503ecf2
+Build description path: /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/XCBuildData/bc2a9260a10e5bf288a6b67ac503ecf2.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk /tmp/spot-attitudepd-ios-build/SDKStatCaches.noindex/iphoneos26.4-23E237-68a138bb55de9ba35ce6c8c40d12849e.sdkstatcache
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGController.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk -o /tmp/spot-attitudepd-ios-build/SDKStatCaches.noindex/iphoneos26.4-23E237-68a138bb55de9ba35ce6c8c40d12849e.sdkstatcache
+
+MkDir /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /bin/mkdir -p /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns
+
+MkDir /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /bin/mkdir -p /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-non-framework-target-headers.hmap (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-target-headers.hmap (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-target-headers.hmap
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-own-target-headers.hmap (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-own-target-headers.hmap
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-project-headers.hmap (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-project-headers.hmap
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.hmap (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.hmap
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/empty-SpotOMGControllerTests.plist (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/empty-SpotOMGControllerTests.plist
+
+MkDir /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /bin/mkdir -p /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-generated-files.hmap (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-generated-files.hmap
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_const_extract_protocols.json (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_const_extract_protocols.json
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyStaticMetadataFileList (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyMetadataFileList (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyMetadataFileList
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftFileList (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftFileList
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftConstValuesFileList (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.LinkFileList (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.LinkFileList
+
+WriteAuxiliaryFile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-OutputFileMap.json (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    write-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-OutputFileMap.json
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/libXCTestSwiftSupport.dylib /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/libXCTestBundleInject.dylib /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestBundleInject.dylib (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestBundleInject.dylib /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestBundleInject.dylib (in target 'SpotOMGController' from project 'SpotOMGController')
+
+ProcessInfoPlistFile /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Info.plist /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGController/Resources/Info.plist (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-infoPlistUtility /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGController/Resources/Info.plist -producttype com.apple.product-type.application -genpkginfo /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PkgInfo -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGController.build/assetcatalog_generated_info.plist -requiredArchitecture arm64 -o /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Info.plist
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/XCTestCore.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTestCore.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTestCore.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTestCore.framework/XCTestCore (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/XCTest.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCTest.framework/XCTest (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/XCUnit.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCUnit.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCUnit.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCUnit.framework/XCUnit (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/XCTestSupport.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTestSupport.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTestSupport.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTestSupport.framework/XCTestSupport (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/XCTAutomationSupport.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework/XCTAutomationSupport (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/XCUIAutomation.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCUIAutomation.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCUIAutomation.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/XCUIAutomation.framework/XCUIAutomation (in target 'SpotOMGController' from project 'SpotOMGController')
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks/Testing.framework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/Testing.framework (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/Testing.framework /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks
+warning: not stripping binary because it is signed: /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks/Testing.framework/Testing (in target 'SpotOMGController' from project 'SpotOMGController')
+
+CopySwiftLibs /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/SpotOMGController.debug.dylib --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/SystemExtensions --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGController.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+Ignoring --strip-bitcode because --sign was not passed
+
+SwiftDriver SpotOMGControllerTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name SpotOMGControllerTests -O @/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftFileList -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk -target arm64-apple-ios17.0 -g -module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -swift-version 5 -I /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk/Developer/Library/Frameworks -parse-as-library -c -j12 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /tmp/spot-attitudepd-ios-build/SDKStatCaches.noindex/iphoneos26.4-23E237-68a138bb55de9ba35ce6c8c40d12849e.sdkstatcache -output-file-map /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -sdk-module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftmodule -validate-clang-modules-once -clang-build-session-file /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_const_extract_protocols.json -Xcc -iquote -Xcc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-generated-files.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-own-target-headers.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-target-headers.hmap -Xcc -iquote -Xcc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-project-headers.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/include -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources-normal/arm64 -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources/arm64 -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources -emit-objc-header -emit-objc-header-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-Swift.h -working-directory /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController -experimental-emit-module-separately -disable-cmo
+
+ProcessInfoPlistFile /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Info.plist /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/empty-SpotOMGControllerTests.plist (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-infoPlistUtility /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/empty-SpotOMGControllerTests.plist -producttype com.apple.product-type.bundle.unit-test -expandbuildsettings -format binary -platform iphoneos -requiredArchitecture arm64 -o /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Info.plist
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/ptrauth-924O53MIZOSEQYLD0UCINGK6M.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_stdarg-8DBU3EVBMA2J21YP2QNKBHIIB.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/ptrcheck-CQE662WJ4WUCG1YKT5AELMNF4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/DeveloperToolsSupport-4RFF1N5JQ5R4WE1WP8BNN1INS.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_AvailabilityInternal-5SF1NHYC9F812O3R7LL93QVLT.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_stddef-J3MRICQXUGR0TYQKUI8VQLJ4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_SwiftConcurrencyShims-L277CE0NMAYC72TYYGT4570P.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_float-AP61I9R2CI9TEQU32E3E2SC42.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/SwiftShims-AHYWQEYL2AKD0A80YUJRKEF5U.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_stdbool-1A2SRW8Q58BXPVZZPG262875K.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_DarwinFoundation1-4SQXXX3Z5GNKVJCVSOCQ3SMWH.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_DarwinFoundation2-97ODQU67IUUJGCMOTK48WEHRH.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_limits-D7832A6D365JHE1OOI0PRAMXY.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_tgmath-E1ZBDIPNDTKDXOT6IG93X9VXD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/sys_types-EUUZBA8KJUEMW5E5RA7ZGIVQA.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_stdint-7GDSFF5XIR3BKKYCYQ7WG6PE2.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_stdatomic-1EXOQ5MKA185KUUE0DM9K58TD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_intrinsics-8BLQE7QQRFDTJO3WMY2OGAX6S.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_DarwinFoundation3-B8REN3BY1TDO7FEU973Q1I6CD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/_Builtin_inttypes-3MF929RIC7HLQKMIANGS1X3H9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Darwin-DD05AWVIMJZUG2NXJLN4MTSHI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/simd-1F6BD7Z23E1A0PMD6YHH19HAQ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/ObjectiveC-FF51UYGQRZULR7K3AKYF3QS0.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/MachO-E9GZ3ILFRN8ZF5US2I6M26U65.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/os_object-5Y9R145PBOLA8A3396OU7MYV1.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/os_workgroup-5RU2ON9I02LWWAOSKET73GHSI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Spatial-C958GFBLHY0FW6ON5SQEVOPUG.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Dispatch-3V9B8MF0UYSXMAIL2O3ES727E.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/dnssd-DHUPWB2DO924IHLIFMOXMLJW5.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreFoundation-1VXB8U0ECS319RWGIL7CTULFK.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/XPC-3AX9I19W89DIUGGPX6MLMEXEX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/os-E0NRPC9I5K5EUEYDEWG4IEP7T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreGraphics-BX1460064UBZ3Q3JMKSY6IETN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CFNetwork-5S65DQIC8ACR7IV37V6W7PKEB.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Security-49UMT2OZBYCXBBZF97DJSHDDP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Foundation-8H88ZCEPODD0MWC7U9BIHKGAZ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/ImageIO-4XL42GL54CU7EV8KUGNCIWOOX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreText-3WIVGI6A2X1K2FSWKZ0BCDVL3.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/IOSurface-2886NM1PUBH1FA37Q69S7IJTM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/DataDetection-9K7AKHLG5EN21HT1VCTFBZP41.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Accessibility-B85AJM1ZEDOWUT2BQTPYL2WU9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/UIUtilities-3ET6NGOJQ21WPJI9910XCK9PY.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreTransferable-3DKGTAOZ2UXFR4KVMJQNDFNBX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/FileProvider-D521GJPY105ZSJHKMBGIGJC54.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/UserNotifications-BELEH9YUOI7AD7PANV1NCTNFA.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/UniformTypeIdentifiers-5CIHEEQBVWVF80I3OFBNM1Y12.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreData-4SFP3B9TU5OIDIXW55JGVX4VO.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/OSLog-3TO2QADR09V73VIV5REI3KSD8.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Symbols-16CNAATH6B845J266GD8IXGIU.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Network-8CHB4IV5N4H5FYAQ7D728S5G7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreBluetooth-65ATCTLRB9UCBKWLDAS35XXIJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/OpenGLES-EAJ7LZZFVMR9L3YUSEW0OCGW4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Metal-C1JL8P5JSBCATXYOQHE2I31B7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreVideo-E75F05XQ2SY5CLL02GV04YB9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/QuartzCore-19SRUBRWI2JLBC1RCZSK2BLM4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/CoreImage-DFPLZ3PM7TU8D8ANBR9GHA7M2.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/SwiftUICore-3M08A38ITPD6FQAO74G2NEGJC.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/UIKit-AI4TBNL79EYSE4RULCOWCAUDW.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCUIAutomation-2145TAKO8KUGNL0QIXRKLIKMY.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/SwiftUI-2I9TW1NHUSUO80O957MPT8FU2.pcm
+
+SwiftExplicitDependencyCompileModuleFromInterface arm64 /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCUIAutomation-30O98QA673OA9.swiftmodule
+
+SwiftExplicitDependencyGeneratePcm arm64 /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCTest-73VZTY5K3MBDCA9VET7B4GTEK.pcm
+
+SwiftExplicitDependencyCompileModuleFromInterface arm64 /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCTest-2EM3YB7TR8NEM.swiftmodule
+
+SwiftCompile normal arm64 Compiling\ RobotCommandTests.swift /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGControllerTests/RobotCommandTests.swift (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+
+SwiftCompile normal arm64 /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGControllerTests/RobotCommandTests.swift (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ SpotOMGControllerTests (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+
+SwiftCompile normal arm64 /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController/SpotOMGControllerTests/RobotCommandTests.swift (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for SpotOMGControllerTests (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+
+SwiftDriver\ Compilation\ Requirements SpotOMGControllerTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name SpotOMGControllerTests -O @/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftFileList -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk -target arm64-apple-ios17.0 -g -module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -swift-version 5 -I /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk/Developer/Library/Frameworks -parse-as-library -c -j12 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /tmp/spot-attitudepd-ios-build/SDKStatCaches.noindex/iphoneos26.4-23E237-68a138bb55de9ba35ce6c8c40d12849e.sdkstatcache -output-file-map /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -sdk-module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftmodule -validate-clang-modules-once -clang-build-session-file /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_const_extract_protocols.json -Xcc -iquote -Xcc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-generated-files.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-own-target-headers.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-target-headers.hmap -Xcc -iquote -Xcc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-project-headers.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/include -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources-normal/arm64 -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources/arm64 -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources -emit-objc-header -emit-objc-header-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-Swift.h -working-directory /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController -experimental-emit-module-separately -disable-cmo
+
+SwiftMergeGeneratedHeaders /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources/SpotOMGControllerTests-Swift.h /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-Swift.h (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-swiftHeaderTool -arch arm64 /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-Swift.h -o /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources/SpotOMGControllerTests-Swift.h
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/arm64-apple-ios.swiftdoc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftdoc (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftdoc /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/arm64-apple-ios.swiftdoc
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/arm64-apple-ios.swiftmodule /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftmodule (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftmodule /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/arm64-apple-ios.swiftmodule
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/arm64-apple-ios.abi.json /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.abi.json (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.abi.json /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/arm64-apple-ios.abi.json
+
+Copy /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftsourceinfo (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -strip-unsigned-binaries -strip-deterministic -strip-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip -resolve-src-symlinks -rename /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftsourceinfo /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGControllerTests.swiftmodule/Project/arm64-apple-ios.swiftsourceinfo
+
+SwiftDriverJobDiscovery normal arm64 Compiling RobotCommandTests.swift (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+
+SwiftDriver\ Compilation SpotOMGControllerTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name SpotOMGControllerTests -O @/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftFileList -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk -target arm64-apple-ios17.0 -g -module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -swift-version 5 -I /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -F /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk/Developer/Library/Frameworks -parse-as-library -c -j12 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /tmp/spot-attitudepd-ios-build/SDKStatCaches.noindex/iphoneos26.4-23E237-68a138bb55de9ba35ce6c8c40d12849e.sdkstatcache -output-file-map /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -sdk-module-cache-path /tmp/spot-attitudepd-ios-build/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftmodule -validate-clang-modules-once -clang-build-session-file /tmp/spot-attitudepd-ios-build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_const_extract_protocols.json -Xcc -iquote -Xcc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-generated-files.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-own-target-headers.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-all-target-headers.hmap -Xcc -iquote -Xcc /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests-project-headers.hmap -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/include -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources-normal/arm64 -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources/arm64 -Xcc -I/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/DerivedSources -emit-objc-header -emit-objc-header-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-Swift.h -working-directory /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController -experimental-emit-module-separately -disable-cmo
+
+Ld /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SpotOMGControllerTests normal (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0 -bundle -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk -Os -L/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -L/tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -F/tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk/Developer/Library/Frameworks -filelist /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -dead_strip -bundle_loader /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/SpotOMGController -Xlinker -object_path_lto -Xlinker /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_lto.o -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_dependency_info.dat -fobjc-link-runtime -fprofile-instr-generate -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.swiftmodule @/tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests-linker-args.resp -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/SpotOMGController.debug.dylib -o /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SpotOMGControllerTests
+
+CopySwiftLibs /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SpotOMGControllerTests --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Frameworks --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/PlugIns --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SystemExtensions --scan-folder /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Extensions --platform iphoneos --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+Ignoring --strip-bitcode because --sign was not passed
+
+ExtractAppIntentsMetadata (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name SpotOMGControllerTests --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk --xcode-version 17E192 --platform-family iOS --deployment-target 17.0 --bundle-identifier com.etnlwind.spotomg.controller.tests --output /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest --target-triple arm64-apple-ios17.0 --binary-file /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SpotOMGControllerTests --dependency-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests_dependency_info.dat --stringsdata-file /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftFileList --metadata-file-list /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyMetadataFileList --static-metadata-file-list /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyStaticMetadataFileList --swift-const-vals-list /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/Objects-normal/arm64/SpotOMGControllerTests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-14 18:15:31.954 appintentsmetadataprocessor[62355:34431817] Starting appintentsmetadataprocessor export
+2026-09-14 18:15:31.959 appintentsmetadataprocessor[62355:34431817] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+GenerateDSYMFile /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest.dSYM /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SpotOMGControllerTests (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/SpotOMGControllerTests -o /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest.dSYM
+
+AppIntentsSSUTraining (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Info.plist --temp-dir-path /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/ssu --bundle-id com.etnlwind.spotomg.controller.tests --product-path /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest --extracted-metadata-path /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Metadata.appintents --metadata-file-list /tmp/spot-attitudepd-ios-build/Build/Intermediates.noindex/SpotOMGController.build/Debug-iphoneos/SpotOMGControllerTests.build/SpotOMGControllerTests.DependencyMetadataFileList --source-file /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest/Info.plist --archive-ssu-assets
+2026-09-14 18:15:31.995 appintentsnltrainingprocessor[62357:34431823] Parsing options for appintentsnltrainingprocessor
+2026-09-14 18:15:31.996 appintentsnltrainingprocessor[62357:34431823] Starting AppIntents SSU YAML Generation
+2026-09-14 18:15:31.999 appintentsnltrainingprocessor[62357:34431823] No AppShortcuts found - Skipping.
+
+RegisterExecutionPolicyException /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-RegisterExecutionPolicyException /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest
+
+Touch /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest (in target 'SpotOMGControllerTests' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    /usr/bin/touch -c /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app/PlugIns/SpotOMGControllerTests.xctest
+
+Validate /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app (in target 'SpotOMGController' from project 'SpotOMGController')
+    cd /Users/etnlwind/project/spot_omg/apps/ios/SpotOMGController
+    builtin-validationUtility /tmp/spot-attitudepd-ios-build/Build/Products/Debug-iphoneos/SpotOMGController.app -shallow-bundle -infoplist-subpath Info.plist
+
+** TEST BUILD SUCCEEDED **
+

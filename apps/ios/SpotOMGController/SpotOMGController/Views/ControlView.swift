@@ -135,7 +135,7 @@ struct ControlView: View {
                         Picker("보행 정책", selection: Binding(
                             get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
                             set: { bluetooth.send(.simulatorProfile($0)) })) {
-                            ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0) }
+                            ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0).disabled(!$0.isSupported(capabilities: bluetooth.runtimeState.capabilities)) }
                         }.disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                         Text("괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -301,7 +301,7 @@ struct ControlView: View {
                     Picker("보행 정책", selection: Binding(
                         get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
                         set: { bluetooth.send(.simulatorProfile($0)) })) {
-                        ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0) }
+                        ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0).disabled(!$0.isSupported(capabilities: bluetooth.runtimeState.capabilities)) }
                     }
                 } label: {
                     compactLabel("정책", icon: "figure.walk", selected: false)
@@ -380,8 +380,7 @@ struct ControlView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(bluetooth.consoleText.isEmpty ?
-                         "READY. WAITING FOR SPOTOMG-BRIDGE..." : bluetooth.consoleText)
+                    Text(coloredTerminalText)
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(terminalGreen)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -429,6 +428,29 @@ struct ControlView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color(white: 0.12).opacity(1.0))
+    }
+
+    private var coloredTerminalText: AttributedString {
+        let output = bluetooth.consoleText.isEmpty
+            ? "READY. WAITING FOR SPOTOMG-BRIDGE..." : bluetooth.consoleText
+        var result = AttributedString()
+        let lines = output.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            var part = AttributedString(line + (index < lines.count - 1 ? "\n" : ""))
+            let trimmed = line.trimmingCharacters(in: .whitespaces).lowercased()
+            // Numeric position error in SPOTSTATE is telemetry, not a fault.
+            let error = !trimmed.hasPrefix(">") && (
+                trimmed.hasPrefix("error") || trimmed.hasPrefix("[error]") ||
+                trimmed.contains("오류") || trimmed.contains("실패") ||
+                trimmed.contains("보행명령거부") ||
+                (trimmed.hasPrefix("pose ") && ["no-progress", "obstruction-suspected",
+                    "feedback-lost", "write-failed", "encoder-invalid", "low-voltage",
+                    "servo-fault", "imu-unavailable", "unstable", "hold-failed"]
+                    .contains(where: { trimmed.contains("reason=" + $0) })))
+            part.foregroundColor = error ? Color.red : terminalGreen
+            result.append(part)
+        }
+        return result
     }
 
     private var terminalGreen: Color {

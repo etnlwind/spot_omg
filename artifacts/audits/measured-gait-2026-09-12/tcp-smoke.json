@@ -1,0 +1,26 @@
+{
+  "local_tcp_only": true,
+  "passed": true,
+  "exchanges": [
+    {
+      "command": "gaitprofile measured_lift",
+      "response": "OK profile=measured_lift\r\n# "
+    },
+    {
+      "command": "drive 1000 0 1",
+      "response": "$SPOTDRIVE started seq=1 watchdog=800ms\r\n"
+    },
+    {
+      "command": "gaitprofile cruise",
+      "response": "ERROR: busy; stop and wait for prompt\r\n# "
+    },
+    {
+      "command": "@S 10000",
+      "response": ""
+    },
+    {
+      "command": "gaitprofile cruise",
+      "response": "OK profile=cruise\r\n# "
+    }
+  ]
+}

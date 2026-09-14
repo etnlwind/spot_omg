@@ -58,6 +58,10 @@ def run(linear, yaw, seconds, capture=None, profile='jointsport', override=None,
             travel_time = now
         p = robot.active_profile_params()
         offsets = np.array([0.,.5,.5,0.])
+        pivot_config=robot.profiles.get(robot.profile,{}).get('pivot_turn',{})
+        if 'offsets' in pivot_config:offsets=np.asarray(pivot_config['offsets'],dtype=float)
+        if robot.profile in ('arcturn','arcsupport') and hasattr(robot,'arc_frame'):
+            offsets=np.array(robot.arc_frame.get('offsets',offsets));p[1]=robot.arc_frame['duty']
         state = robot.plant.row()
         fr_u = (((phase + .5) % 1) - p[1]) / (1-p[1])
         if now >= seconds-2 and abs(fr_u-.5) < capture_distance:
@@ -89,6 +93,7 @@ def run(linear, yaw, seconds, capture=None, profile='jointsport', override=None,
                 contact_center_speed_m_s=speed, j1_correction_deg=robot.command_target[3*leg]-robot.target[3*leg],
                 adaptive_scale=(robot.position_wbc.scale if robot.profiles[robot.profile].get("position_wbc") else robot.support_j1.scale), time_s=now, leg=('FL', 'FR', 'RL', 'RR')[leg],
                 phase=q, swing=bool(q >= p[1]), middle_swing=bool(.2 <= u <= .8),
+                target_phase=(robot.arc_frame['target_phase']+offsets[leg])%1 if robot.profile in ('arcturn','arcsupport') and hasattr(robot,'arc_frame') else q,
                 clearance_mm=1000*(foot_clearance(model,robot.plant.data,foot)),
                 forward_from_j1_mm=forward_center,
                 front_edge_from_j1_mm=forward_center+1000*front_extent,

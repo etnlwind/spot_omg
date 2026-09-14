@@ -1,0 +1,33 @@
+ports:[SpotOMG-Bridge] link=ble
+# syncstate
+$SPOTSTATE pose=landing error=76 torque=off safety=ok balance=full rev=shared-locomotion-v45 caps=trot5,gaitprofiles,arcsupport,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+# status
+Servo status (12 configured IDs):
+ID 1 pos=1860 speed=0 load=0 voltage=11200mV temp=30C current=0 moving=0 hw=0x00
+ID 2 pos=1583 speed=0 load=0 voltage=11300mV temp=28C current=0 moving=0 hw=0x00
+ID 3 pos=3506 speed=0 load=0 voltage=11400mV temp=32C current=0 moving=0 hw=0x00
+ID 4 pos=2112 speed=0 load=0 voltage=11300mV temp=31C current=0 moving=0 hw=0x00
+ID 5 pos=2429 speed=0 load=0 voltage=11300mV temp=28C current=0 moving=0 hw=0x00
+ID 6 pos=526 speed=0 load=0 voltage=11400mV temp=31C current=0 moving=0 hw=0x00
+ID 7 pos=2062 speed=0 load=0 voltage=11300mV temp=32C current=0 moving=0 hw=0x00
+ID 8 pos=1484 speed=0 load=0 voltage=11300mV temp=28C current=0 moving=0 hw=0x00
+ID 9 pos=3483 speed=0 load=0 voltage=11300mV temp=33C current=0 moving=0 hw=0x00
+ID 10 pos=1968 speed=0 load=0 voltage=11300mV temp=32C current=0 moving=0 hw=0x00
+ID 11 pos=2738 speed=0 load=0 voltage=11300mV temp=30C current=0 moving=0 hw=0x00
+ID 12 pos=511 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+Bus read retries: attempts=0 recovered=0 failed=0
+# imucal status
+IMUCAL device: sys=0 gyro=3 accel=3 mag=0 saved=yes restored=yes
+IMUCAL logic: axis=(Roll<-sensorPitch, Pitch<-sensorRoll) level=saved zero=(3.5,0.4)deg
+# locomotiondiag
+$LOCOMOTION profile=cruise heading=on yaw10=0 valid=0 error10=0 correction=0 late=0 fault=0 compute_max_ms=0 io_max_ms=0
+# gaitprofiles
+$GAITPROFILES legacy,crawl,cruise,trot,highstep,lift,imu,level,level15,joint,jointfast,jointsport,arcturn,arcsupport
+# gaitprofile arcsupport
+OK
+# syncstate
+$SPOTSTATE pose=landing error=76 torque=off safety=ok balance=full rev=shared-locomotion-v45 caps=trot5,gaitprofiles,arcsupport,balancecontrol,commandretry,stow,headinghold profile=arcsupport heading=on reverse_limit=1000 recovery=new-command fault_code=0
+# gaitprofile cruise
+OK
+# syncstate
+$SPOTSTATE pose=landing error=76 torque=off safety=ok balance=full rev=shared-locomotion-v45 caps=trot5,gaitprofiles,arcsupport,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0

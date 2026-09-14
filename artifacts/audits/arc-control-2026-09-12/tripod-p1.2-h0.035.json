@@ -1,0 +1,649 @@
+{
+  "linear": 0,
+  "yaw": -1000,
+  "safety": "tilt",
+  "estimated_physics": true,
+  "profile": {
+    "label": "CAD arc turn / hardware experiment",
+    "family": "trot",
+    "params": [
+      1.44,
+      0.5,
+      0.08,
+      0.02,
+      0.20175,
+      -0.01,
+      0.75
+    ],
+    "validation": "Experimental shared-C port; not the Python support-shift feedback controller.",
+    "turn_input_limit": 1.0,
+    "experimental": true
+  },
+  "scenario": "nominal",
+  "cushion": {
+    "thickness_m": 0.01,
+    "radius_m": 0.015,
+    "mass_kg": 0.005,
+    "friction": [
+      1.0,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.02,
+    "damping_ratio": 1.0,
+    "shape": "elastic_cap",
+    "side_wall_m": 0.003,
+    "total_length_m": 0.027,
+    "corner_radius_m": 0.004,
+    "align_to_triangle_base": true,
+    "sole_diameter_m": 0.0373
+  },
+  "speed_m_s": 0.0001712550511527979,
+  "legs": {
+    "FL": {
+      "rms_roll_deg": null,
+      "rms_pitch_deg": null,
+      "stance_center_speed_m_s": null,
+      "max_j1_correction_deg": null,
+      "minimum_adaptive_scale": null,
+      "touchdown_front_edge_median_mm": null,
+      "touchdown_forward_median_mm": null,
+      "touchdown_forward_min_mm": null,
+      "samples": 0,
+      "swing_samples": 0,
+      "swing_contact_fraction": null,
+      "middle_swing_contact_fraction": null,
+      "peak_clearance_mm": null,
+      "peak_contact_compression_proxy_mm": null,
+      "peak_j1_error_deg": null,
+      "peak_tilt_deg": null
+    },
+    "FR": {
+      "rms_roll_deg": null,
+      "rms_pitch_deg": null,
+      "stance_center_speed_m_s": null,
+      "max_j1_correction_deg": null,
+      "minimum_adaptive_scale": null,
+      "touchdown_front_edge_median_mm": null,
+      "touchdown_forward_median_mm": null,
+      "touchdown_forward_min_mm": null,
+      "samples": 0,
+      "swing_samples": 0,
+      "swing_contact_fraction": null,
+      "middle_swing_contact_fraction": null,
+      "peak_clearance_mm": null,
+      "peak_contact_compression_proxy_mm": null,
+      "peak_j1_error_deg": null,
+      "peak_tilt_deg": null
+    },
+    "RL": {
+      "rms_roll_deg": null,
+      "rms_pitch_deg": null,
+      "stance_center_speed_m_s": null,
+      "max_j1_correction_deg": null,
+      "minimum_adaptive_scale": null,
+      "touchdown_front_edge_median_mm": null,
+      "touchdown_forward_median_mm": null,
+      "touchdown_forward_min_mm": null,
+      "samples": 0,
+      "swing_samples": 0,
+      "swing_contact_fraction": null,
+      "middle_swing_contact_fraction": null,
+      "peak_clearance_mm": null,
+      "peak_contact_compression_proxy_mm": null,
+      "peak_j1_error_deg": null,
+      "peak_tilt_deg": null
+    },
+    "RR": {
+      "rms_roll_deg": null,
+      "rms_pitch_deg": null,
+      "stance_center_speed_m_s": null,
+      "max_j1_correction_deg": null,
+      "minimum_adaptive_scale": null,
+      "touchdown_front_edge_median_mm": null,
+      "touchdown_forward_median_mm": null,
+      "touchdown_forward_min_mm": null,
+      "samples": 0,
+      "swing_samples": 0,
+      "swing_contact_fraction": null,
+      "middle_swing_contact_fraction": null,
+      "peak_clearance_mm": null,
+      "peak_contact_compression_proxy_mm": null,
+      "peak_j1_error_deg": null,
+      "peak_tilt_deg": null
+    }
+  },
+  "metrics": {
+    "max_roll_deg": 25.61008828053263,
+    "max_pitch_deg": 11.03434083851877,
+    "rms_roll_deg": 25.52175958425541,
+    "rms_pitch_deg": 10.715524470230438,
+    "tracking_rms_deg": 10.105305804498196,
+    "tracking_peak_deg": 34.769693092226504,
+    "stance_center_speed_proxy_m_s": null,
+    "max_command_speed_deg_s": 1.8060684204101562,
+    "max_command_motor_speed_ratio": 0.005645752056619542,
+    "joint_ranges_ok": true,
+    "max_torque_nm": 2.5619802982006674,
+    "max_torque_envelope_ratio": 1.0,
+    "mean_motor_saturated_fraction": 0.08333333333333333,
+    "mean_above_rated_fraction": 0.17296296296296293,
+    "max_friction_utilization": 0.9996127885725419,
+    "max_planned_ik_residual_m": 0.0,
+    "max_stance_ik_residual_m": 0.0,
+    "max_reference_body_shift_m": 0.0,
+    "safety_faults": [
+      "tilt"
+    ],
+    "moving_fraction": 0.0
+  },
+  "contact_metrics": {
+    "evaluation_only": true,
+    "start_s": 5,
+    "end_s": 14,
+    "sample_interval_s": 0.02,
+    "contact_threshold_n": 0.2,
+    "duty": 0.5,
+    "target_lead_s": 0.04,
+    "period_s": 1.2,
+    "invalid_rows": 0,
+    "duplicate_rows_excluded": 0,
+    "target_phase_source": {
+      "explicit_rows": 0,
+      "inferred_rows": 0
+    },
+    "phase_bases": {
+      "raw": {
+        "legs": {
+          "FL": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          },
+          "FR": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          },
+          "RL": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          },
+          "RR": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          }
+        },
+        "diagonal_sync": {
+          "FL-RR": {
+            "paired_swing_samples": 0,
+            "matched_complete_swings": 0,
+            "clearance_difference_rms_mm": null,
+            "clearance_difference_max_mm": null,
+            "one_foot_contact_fraction": null,
+            "first_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            }
+          },
+          "FR-RL": {
+            "paired_swing_samples": 0,
+            "matched_complete_swings": 0,
+            "clearance_difference_rms_mm": null,
+            "clearance_difference_max_mm": null,
+            "one_foot_contact_fraction": null,
+            "first_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            }
+          }
+        }
+      },
+      "target": {
+        "legs": {
+          "FL": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          },
+          "FR": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          },
+          "RL": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          },
+          "RR": {
+            "samples": 0,
+            "complete_swings": 0,
+            "excluded_partial_swings": 0,
+            "excluded_gap_swings": 0,
+            "swing_peak_clearance_mm": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "swings_below_15mm": 0,
+            "swings_without_airborne_sample": 0,
+            "liftoff_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "touchdown_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "first_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_phase": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "middle_swing_samples": 0,
+            "middle_swing_contact_fraction": null,
+            "swings": []
+          }
+        },
+        "diagonal_sync": {
+          "FL-RR": {
+            "paired_swing_samples": 0,
+            "matched_complete_swings": 0,
+            "clearance_difference_rms_mm": null,
+            "clearance_difference_max_mm": null,
+            "one_foot_contact_fraction": null,
+            "first_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            }
+          },
+          "FR-RL": {
+            "paired_swing_samples": 0,
+            "matched_complete_swings": 0,
+            "clearance_difference_rms_mm": null,
+            "clearance_difference_max_mm": null,
+            "one_foot_contact_fraction": null,
+            "first_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            },
+            "last_airborne_time_difference_ms": {
+              "count": 0,
+              "min": null,
+              "p10": null,
+              "median": null,
+              "max": null
+            }
+          }
+        }
+      }
+    },
+    "contact_count": {
+      "complete_frames": 0,
+      "incomplete_frames": 0,
+      "occupancy": {
+        "0": null,
+        "1": null,
+        "2": null,
+        "3": null,
+        "4": null
+      }
+    }
+  },
+  "rotation_deg_s": 0.015019037785590524,
+  "stop_completed": true,
+  "case": {
+    "name": "tripod-p1.2-h0.035",
+    "parameters": {
+      "arc_trial": [
+        0.035,
+        0.75,
+        0.04,
+        0,
+        1.2,
+        0.3
+      ],
+      "arc_tripod_trial": true
+    }
+  }
+}

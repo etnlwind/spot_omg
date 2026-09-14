@@ -1,0 +1,77 @@
+{
+  "profiles": {
+    "measured_lift": {
+      "label": "실측 기반 · 선행 발 들기 · 실험 (검증실패)",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "validation": "artifacts/audits/measured-gait-2026-09-12/robust-validation.json",
+      "balance_base": "cruise",
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "measured_swing": {
+        "rise_fraction": 0.4,
+        "fall_fraction": 0.3,
+        "forward_only": true
+      },
+      "source_candidate": "turn_09",
+      "validation_status": "failed"
+    },
+    "measured_front_lift": {
+      "label": "실측 기반 · 앞발 높이 보강 · 실험 (검증실패)",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "validation": "artifacts/audits/front-turn-lift-2026-09-12/long-selection.json",
+      "balance_base": "cruise",
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.21,
+        0.005,
+        0.75
+      ],
+      "measured_swing": {
+        "rise_fraction": 0.4,
+        "fall_fraction": 0.3,
+        "forward_only": true,
+        "cad_turn_lift_m": [
+          0.006,
+          0.006,
+          0.0,
+          0.0
+        ]
+      },
+      "source_candidate": "refine_6_20",
+      "validation_status": "failed",
+      "position_wbc": {
+        "gain": 0.2,
+        "joint_limit_deg": 6.0,
+        "turn_only": true
+      }
+    }
+  }
+}

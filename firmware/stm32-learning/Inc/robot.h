@@ -1,3 +1,7 @@
+#include "joint_trace.h"
+#include "pose_supervisor.h"
+#include "load_support.h"
+#include "gait_tracking.h"
 #ifndef ROBOT_H
 #define ROBOT_H
 
@@ -12,6 +16,7 @@ extern "C" {
 #include "drive_control.h"
 #include "balance_control.h"
 #include "attitude_control.h"
+#include "attitude_pd.h"
 
 #include <stdint.h>
 
@@ -38,6 +43,7 @@ typedef enum
 } RobotResult;
 
 typedef bool (*RobotHeadingReader)(void *context, int16_t *yaw_tenths);
+typedef bool (*RobotBodyImuReader)(void *context, BodyImuState *sample);
 
 typedef bool (*RobotAttitudeReader)(void *context,
                                     int16_t *roll_tenths,
@@ -74,8 +80,16 @@ typedef enum
 #define ROBOT_BALANCE_TRACE_CAPACITY 32U
 #define ROBOT_LEG_COUNT 4U
 #define ROBOT_GAIT_TARGET_HISTORY_CAPACITY 12U
+#define ROBOT_STABILIZE_TRACE_CAPACITY 32U
+typedef struct {
+    uint32_t time_ms,sample_ms;
+    float raw[4],filtered[4],error[2],u[2],dz[4],weights[4];
+    uint8_t status,axis_clamp,foot_clamp,ik_failed;
+} RobotStabilizeTrace;
 void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
-#define ROBOT_CONTROL_REV "shared-locomotion-v41"
+void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
+void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
+#define ROBOT_CONTROL_REV "shared-locomotion-v58"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -169,6 +183,15 @@ typedef struct
     DriveControl drive_control;
     BalanceControl shared_balance;
     AttitudeControl shared_attitude;
+    AttitudePd attitude_pd;
+    BodyStabilizerConfig stabilization_config;
+    BodyImuState body_imu;
+    RobotBodyImuReader body_imu_reader;
+    volatile bool stabilization_enabled;
+    /* Frame-boundary service only; never formats telemetry in the UART ISR. */
+    void (*realtime_service)(void);
+    RobotStabilizeTrace stabilization_trace[ROBOT_STABILIZE_TRACE_CAPACITY];
+    uint8_t stabilization_trace_write,stabilization_trace_count;
     RobotAttitudeReader attitude_reader;
     void *attitude_context;
     bool balance_enabled;
@@ -184,6 +207,8 @@ typedef struct
     int16_t balance_peak_j1_correction_tenths;
     int16_t balance_peak_knee_correction_tenths;
     uint16_t balance_late_frames;
+    bool tracking_enabled;
+    GaitTracking tracking;
     uint16_t drive_peak_compute_ms;
     uint16_t drive_peak_io_ms;
     uint16_t trot_step_sync_count;
@@ -197,6 +222,14 @@ typedef struct
     bool gait_balance_was_enabled;
     RobotBalanceTrace balance_trace;
     RobotTiltSnapshot tilt_snapshot;
+    PoseDiagnostics pose_diagnostics;
+    SupportWindow support_windows[12];
+    uint16_t support_targets[12],support_stable_mask;
+    uint8_t support_index,support_id;
+    bool support_targets_valid,drive_pose_entry;
+    SupportDecision support_decision;
+    uint32_t support_event;
+
     volatile bool motion_abort_requested;
 
     /*
@@ -225,6 +258,7 @@ typedef struct
      * as the safety monitor.  They observe ordinary lag and rail droop; they
      * never cut torque, which remains exclusively the safety monitor's job.
      */
+    JointTrace joint_trace;
     ActuatorDiagnostics gait_diagnostics;
     bool gait_diagnostics_active;
 
@@ -290,6 +324,7 @@ RobotResult robot_hold(RobotController *robot);
 RobotResult robot_relax(RobotController *robot);
 RobotResult robot_relax_servo(RobotController *robot, uint8_t servo_id);
 RobotResult robot_stand(RobotController *robot);
+RobotResult robot_supervised_pose(RobotController *robot, const uint16_t targets[12]);
 RobotResult robot_landing(RobotController *robot);
 RobotResult robot_stand_straight(RobotController *robot);
 /* From stand only: synchronized J2=-90/J3=0 transition (24 s).
@@ -339,6 +374,9 @@ RobotResult robot_move_single_safe(RobotController *robot,
 void robot_latch_locomotion_fault(RobotController *robot, RobotResult reason);
 RobotResult robot_prepare_new_command(RobotController *robot);
 RobotResult robot_stow(RobotController *robot, bool folded);
+bool robot_support_observe(RobotController *robot,const uint16_t targets[12]);
+void robot_support_reset(RobotController *robot);
+RobotResult robot_reference_pose(RobotController *robot);
 RobotResult robot_stow_probe(RobotController *robot);
 RobotResult robot_stow_check(RobotController *robot);
 RobotResult robot_stow_check_modes(RobotController *robot);

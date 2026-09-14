@@ -9,9 +9,12 @@ def test_free_body_falls_under_gravity_with_motors_off():
     d.qpos[2]+=.5
     mujoco.mj_forward(m,d)
     before=d.subtree_com[m.body('robot').id,2]
-    for _ in range(50):mujoco.mj_step(m,d)
+    start_time=float(d.time)
+    for _ in range(round(.1/m.opt.timestep)):mujoco.mj_step(m,d)
     after=d.subtree_com[m.body('robot').id,2]
-    assert abs((before-after)-.5*9.81*.1**2)<.003
+    elapsed=float(d.time)-start_time
+    assert abs(elapsed-.1)<=m.opt.timestep
+    assert abs((before-after)-.5*9.81*elapsed**2)<.003
     assert m.nv==18 and m.nu==12
     assert np.all(m.body_inertia[m.body_mass>0]>0)
 

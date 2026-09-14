@@ -1,0 +1,37 @@
+{
+  "status": "experimental_validation_failed",
+  "name": "지지 전환 · 반복 보정 · 실험",
+  "mass_kg": 2.754,
+  "scope": "isolated simulator full-forward experiment; not deployed firmware or app policy",
+  "config": {
+    "legacy_balance": true,
+    "roll_feedforward": [
+      0.015363415412404595,
+      -0.023182001013974197,
+      0.02982025189616867,
+      -0.011233294736715214,
+      0.021124487131672556,
+      0.002996125561973697,
+      0.015617394608422668,
+      0.00884600950054705
+    ],
+    "feedforward_lead_s": 0.12,
+    "feedforward_ramp_s": 3,
+    "period_s": 3.2,
+    "duty": 0.7,
+    "cartesian_stride_m": 0.096,
+    "foothold_transfer": true,
+    "touchdown_x_offset_m": 0.02,
+    "max_foothold_y_m": 0.01,
+    "anticipate_full_amplitude": true,
+    "startup_s": 4
+  },
+  "limitations": [
+    "Cadence reduced from 1.35 s to 3.2 s; same nominal 96 mm X travel parameter and 32 mm lift",
+    "Max roll/pitch <=3 deg not passed in 30 s screening",
+    "Full-forward only; reverse, steering and absolute centerline tracking not validated",
+    "Periodic feedforward fitted offline in estimated dynamics; not a full WBC/MPC implementation",
+    "Contact-event audit: liftoff medians match but rear-front touchdown medians remain160/180ms in60s trial; not synchronized contact",
+    "60s full-forward roll RMS1.260deg, max3.680deg; pitch RMS0.822deg,max3.139deg; ground/absolute centerline goal not passed"
+  ]
+}

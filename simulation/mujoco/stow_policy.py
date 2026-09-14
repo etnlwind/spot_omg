@@ -55,3 +55,24 @@ def pose_frame(start,end,elapsed_s=0):
     duration=fn((ctypes.c_float*12)(*start),(ctypes.c_float*12)(*end),round(elapsed_s*1000),values)
     if duration<0:raise ValueError('Pose outside physical encoder range')
     return list(values),duration/1000
+
+
+def duration(start, folded=False):
+    fn=_library().spot_stow_duration
+    fn.argtypes=[ctypes.POINTER(ctypes.c_float),ctypes.c_int];fn.restype=ctypes.c_uint
+    return fn((ctypes.c_float*12)(*start),folded)/1000.
+
+def folded_geometry(start):
+    fn=_library().spot_stow_geometry
+    fn.argtypes=[ctypes.POINTER(ctypes.c_float)];fn.restype=ctypes.c_int
+    return bool(fn((ctypes.c_float*12)(*start)))
+
+
+def direct_unfold(start, elapsed_s):
+    fn=_library().spot_stow_direct
+    fn.argtypes=[ctypes.POINTER(ctypes.c_float),ctypes.c_uint,ctypes.POINTER(ctypes.c_int32),ctypes.POINTER(ctypes.c_float)]
+    fn.restype=ctypes.c_int
+    ticks=(ctypes.c_int32*12)();values=(ctypes.c_float*12)()
+    if not fn((ctypes.c_float*12)(*start),round(elapsed_s*1000),ticks,values):
+        raise ValueError('Unfold outside actuator envelope')
+    return list(values),list(ticks)

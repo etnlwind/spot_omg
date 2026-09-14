@@ -128,6 +128,8 @@ def estimate_timeout(command: str) -> float | None:
     name = tokens[0]
     if name in {"landing", "stand", "stand11", "stow"}:
         return 75.0
+    if tokens[:2] == ["jointtrace", "dump"]:
+        return 60.0
     if name == "scan":
         return 30.0
     if name not in _TIMED_COMMANDS:
@@ -212,6 +214,7 @@ class Stm32Console:
         self,
         deadline: float | None,
         on_line: Callable[[str], None] | None = None,
+        required_prefix: str | None = None,
     ) -> list[str]:
         """Collect lines until the firmware writes its ``"# "`` prompt."""
         lines: list[str] = []
@@ -233,7 +236,13 @@ class Stm32Console:
                     if on_line is not None:
                         on_line(line)
             if buffer.endswith(PROMPT):
-                return lines
+                if (required_prefix is None
+                        or any(line.startswith(required_prefix) for line in lines)
+                        or classify(lines) == "error"):
+                    return lines
+                # A running drive can have an old prompt still in flight.
+                # Realtime stabilization is acknowledged by its own record.
+                buffer = ""
         raise ConsoleError(
             "timed out waiting for the STM32 console prompt; "
             f"received {len(lines)} line(s)"
@@ -316,9 +325,15 @@ class Stm32Console:
         deadline = None if timeout is None else time.monotonic() + timeout
 
         with self._lock:
+            realtime_stabilizer = command.startswith("@B ")
+            if realtime_stabilizer:
+                self._serial.reset_input_buffer()
             self._write_line(command)
             try:
-                lines = self._read_until_prompt(deadline, on_line)
+                lines = self._read_until_prompt(
+                    deadline, on_line,
+                    required_prefix="$STABILIZE " if realtime_stabilizer else None,
+                )
             except KeyboardInterrupt:
                 self.abort()
                 # The firmware still owes us "STOPPED:" and a prompt.

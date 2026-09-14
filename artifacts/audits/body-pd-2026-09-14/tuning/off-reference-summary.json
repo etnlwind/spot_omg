@@ -1,0 +1,67 @@
+{
+  "path": "/Users/etnlwind/project/spot_omg/artifacts/audits/body-pd-2026-09-14/off.json",
+  "sha256": "5ec48c379e2dc34b17c1cf12c760051f16bb36c2cb4b879d40f83aaa8bc9eb7b",
+  "summary": {
+    "mode": "body-pd-off",
+    "fault": null,
+    "duration_s": 30,
+    "requested_forward_s": 20,
+    "mass_kg": 2.7540000000000004,
+    "observed": {
+      "samples": 1000,
+      "start_s": 10,
+      "end_s": 30,
+      "roll_pitch_pp_deg": [
+        8.29360374615091,
+        5.8720231533130605
+      ],
+      "roll_pitch_rms_deg": [
+        3.2800369173358797,
+        1.5254464442681155
+      ],
+      "roll_pitch_max_deg": [
+        6.328004878236731,
+        3.171702613519483
+      ],
+      "gyro_xy_rms_deg_s": [
+        26.901655202865175,
+        13.393067684102155
+      ],
+      "forward_m": 2.149115366513304,
+      "tracking_max_deg": 8.784370206474811,
+      "correction_peak_mm": 0.0
+    },
+    "host_simulation_step_p95_ms": 4.113506223075092,
+    "validation_passed": false,
+    "validation_note": "OFF/ON comparison; physical robot not tested"
+  },
+  "config": {
+    "schema_version": 1,
+    "target_roll_rad": 0.0,
+    "target_pitch_rad": 0.0,
+    "kp_roll": 0.2,
+    "kp_pitch": 0.2,
+    "kd_roll_s": 0.03,
+    "kd_pitch_s": 0.03,
+    "angle_alpha": 0.5,
+    "gyro_alpha": 0.2,
+    "max_roll_rad": 0.05,
+    "max_pitch_rad": 0.05,
+    "max_foot_offset_m": 0.005,
+    "max_error_rad": 0.1745329252,
+    "max_gyro_rad_s": 3.141592654,
+    "timeout_ms": 100,
+    "slew_rad_s": 0.15,
+    "stance_transition_s": 0.08
+  },
+  "gait": {
+    "period_s": 1.35,
+    "duty": 0.52,
+    "stride_m": 0.08,
+    "lift_m": 0.024,
+    "profile": "attitudepd",
+    "base": "centerpivot",
+    "linear": 1,
+    "yaw": 0
+  }
+}

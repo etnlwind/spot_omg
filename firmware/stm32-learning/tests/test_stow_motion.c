@@ -90,6 +90,23 @@ int main(void){
  reset();assert(robot_stow_probe(&r)==ROBOT_OK && !r.stow_active);
  for(unsigned i=0;i<12;i++)assert(stow_encode(i,i%3==0?0:(i%3==1?45:90),actual+i));
  assert(robot_stow_probe(&r)==ROBOT_OK && !r.stow_active);
+ /* Asymmetric power-off geometry: hips folded, independently settled knees.
+  * Previously rejected because no common 12-joint fraction fits. */
+ reset();
+ float loose[12]={8,-120,75,-7,-130,25,6,-55,70,-8,-65,15};
+ for(unsigned i=0;i<12;i++)assert(stow_encode(i,loose[i],actual+i));
+ assert(stow_folded_geometry(loose));
+ assert(stow_path_duration(loose,false)==24000);
+ int32_t frame_ticks[12];float frame_q[12],ready[12];
+ stow_prepare_target(loose,ready);
+ assert(stow_frame(loose,false,12000,frame_ticks,frame_q));
+ for(unsigned i=0;i<12;i++)assert(fabsf(frame_q[i]-ready[i])<.1f);
+ assert(fabsf(frame_q[1]-loose[1])<.1f && fabsf(frame_q[4]-loose[4])<.1f);
+ assert(robot_stow_probe(&r)==ROBOT_OK && r.stow_active);
+ landing_calls=0;check_unfold=1;
+ assert(robot_stow(&r,false)==ROBOT_OK && !r.stow_active && landing_calls==0);
+ check_unfold=0;
+ reset();
  /* Actual hand-folded readback, off the nominal interpolation line. */
  const int32_t manual[12]={1926,858,2369,2091,3161,1662,2105,2708,2408,1949,1469,1610};
  memcpy(actual,manual,sizeof actual);landing_calls=0;
@@ -138,5 +155,12 @@ int main(void){
  r.stow_active=false;memset(&fake_bus,0,sizeof fake_bus);
  assert(robot_stow_probe(&r)==ROBOT_OK && r.stow_active);
  assert(robot_stow(&r,false)==ROBOT_OK);
+ /* Reboot after a completed unfold while servos retain offset turns. */
+ reset();modulo_feedback=true;
+ actual[1]-=4096;actual[4]+=4096;
+ assert(robot_reference_pose(&r)==ROBOT_OK);
+ assert(fake_bus.front_origin_valid[0] && fake_bus.front_origin_valid[1]);
+ assert(fake_bus.front_position_bias[0]==-4096 && fake_bus.front_position_bias[1]==4096);
+ int prior_writes=writes;assert(robot_reference_pose(&r)==ROBOT_OK && writes==prior_writes);
  puts("stow transport, signed boundary, resume, rejection, reboot detection passed");return 0;
 }

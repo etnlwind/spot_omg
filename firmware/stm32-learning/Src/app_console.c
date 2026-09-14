@@ -149,6 +149,13 @@ static void print_robot_result(AppConsole *console, RobotResult result)
         write_text(console, "OK\r\n");
         return;
     }
+    if (result == ROBOT_SAFETY_FAULT &&
+        !safety_is_faulted(&console->robot->safety) &&
+        (console->robot->pose_diagnostics.reason==POSE_SERVO_FAULT ||
+         console->robot->pose_diagnostics.reason==POSE_LOW_VOLTAGE)) {
+        write_text(console,"ERROR: pose suspended; see POSE diagnostics; no torque-off commanded\r\n");
+        return;
+    }
     if (result == ROBOT_SAFETY_FAULT) {
         print_safety_fault(console);
         write_text(console,
@@ -581,6 +588,16 @@ static void command_stow_diagnostics(AppConsole *console)
     }
 }
 
+/* Read-only register snapshot; never writes PID, limits, torque or EEPROM. */
+static void command_servo_config(AppConsole *console,char *id_text) {
+    uint32_t id;if(!parse_u32(id_text,1,253,&id)) {write_text(console,"usage: servoconfig ID\r\n");return;}
+    uint8_t data[50];ServoBusResult b=servo_bus_read(console->robot->bus,id,0,data,sizeof data);
+    if(b!=SERVO_BUS_OK){print_bus_result(console,id,b);return;}
+    char line[192];int used=snprintf(line,sizeof line,"SERVO_CONFIG id=%lu addr=0:",(unsigned long)id);
+    for(unsigned k=0;k<sizeof data;k++)used+=snprintf(line+used,sizeof line-(size_t)used," %02X",data[k]);
+    snprintf(line+used,sizeof line-(size_t)used,"\r\n");write_text(console,line);
+}
+
 static void command_status(AppConsole *console)
 {
     servo_bus_clear_retry_diagnostics(console->robot->bus);
@@ -661,20 +678,23 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,jointtrace,jointtracepage,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
         safety_is_faulted(&console->robot->safety) ? "fault" : console->robot->locomotion_fault ? (console->robot->locomotion_fault_reason==ROBOT_TILT_LIMIT ? "tilt":"fault") : "ok",
-        console->robot->balance_enabled ?
-            robot_balance_mode_string(console->robot->balance_mode) : "off",
+        console->robot->locomotion_profile==locomotion_profile_id("attitudepd") ?
+            (console->robot->stabilization_enabled ?
+                (console->robot->attitude_pd.body.diagnostics.status==BODY_STABILIZER_ACTIVE ? "active" : "suspended") : "off") :
+            (console->robot->balance_enabled ? robot_balance_mode_string(console->robot->balance_mode) : "off"),
         ROBOT_CONTROL_REV,
         console->robot->heading_reader ? ",headinghold" : "",
         locomotion_names[console->robot->locomotion_profile],
         console->robot->heading_reader ? (console->robot->heading_enabled ? "on":"off") : "unavailable",
         (int)(-1000.f*locomotion_linear(console->robot->locomotion_profile,-1.f)),
         "new-command",
-        (unsigned)console->robot->locomotion_fault_reason);
+        (unsigned)console->robot->locomotion_fault_reason,
+        support_name(console->robot->support_decision));
     write_text(console, message);
 }
 
@@ -974,8 +994,39 @@ static void command_mechanical_capture(AppConsole *console, const char *label)
 
 static void finish_mechanical_pose(AppConsole *console, RobotResult result, const char *label)
 {
+    const PoseDiagnostics *d=&console->robot->pose_diagnostics;
+    char line[200];
+    snprintf(line,sizeof(line),"POSE %s reason=%s elapsed=%lu nominal=%lu retries=%u waits=%u hold=%u\r\n",
+        label,pose_decision_name(d->reason),(unsigned long)d->elapsed_ms,
+        (unsigned long)d->nominal_ms,d->retries,d->waits,d->hold_verified);
+    write_text(console,line);
+    (void)flight_log_appendf("POSE %s %s elapsed=%lu nominal=%lu hold=%u",label,
+        pose_decision_name(d->reason),(unsigned long)d->elapsed_ms,(unsigned long)d->nominal_ms,d->hold_verified);
+    snprintf(line,sizeof(line),"POSE_HEALTH id=%u temp=%u hw=0x%02X transient=%u\r\n",
+        d->suspect_id,d->suspect_temperature,d->suspect_hardware,d->health_recovered);
+    write_text(console,line);(void)flight_log_append(line);
+    snprintf(line,sizeof(line),"POSE_PROBE count=%u mask=0x%03X max_lead=120\r\n",d->effort_probes,d->probe_mask);
+    write_text(console,line);(void)flight_log_append(line);
+    /* RAM ring is frozen before flash writes: flash erase must not stall motion. */
+    for(unsigned n=0;n<d->count;n++) {
+        unsigned k=(d->next+POSE_TRACE_COUNT-d->count+n)%POSE_TRACE_COUNT;
+        const PoseObservation *o=&d->trace[k];
+        (void)flight_log_appendf("PT t=%lu id=%u a=%u t=%u e=%u v=%u l=%d c=%d r=%d p=%d d=%u",
+            (unsigned long)o->ms,o->id,o->actual,o->target,o->error,o->voltage_mv,
+            o->load,o->current,o->roll,o->pitch,o->reason);
+    }
     print_robot_result(console,result);
     if(result==ROBOT_OK)command_mechanical_capture(console,label);
+}
+
+static void run_mechanical_pose(AppConsole *console,
+                               RobotResult (*move)(RobotController *),const char *label)
+{
+    RobotAttitudeReader saved=console->robot->attitude_reader;
+    if(saved==bno086_read_attitude)console->robot->attitude_reader=bno086_read_fresh_attitude;
+    RobotResult result=move(console->robot);
+    console->robot->attitude_reader=saved;
+    finish_mechanical_pose(console,result,label);
 }
 
 static void command_gait_diagnostics(AppConsole *console)
@@ -1583,8 +1634,13 @@ static void command_imucal(AppConsole *console, char *mode)
     }
 }
 
+static void command_stabilize(AppConsole *console,char *mode);
 static void command_balance(AppConsole *console, char *mode)
 {
+    if(console->robot->locomotion_profile==locomotion_profile_id("attitudepd") &&
+       (!mode || !strcmp(mode,"on") || !strcmp(mode,"off") || !strcmp(mode,"status"))) {
+        command_stabilize(console,mode);return;
+    }
     RobotController *robot = console->robot;
 
     if (mode == NULL || strcmp(mode, "status") == 0) {
@@ -1692,6 +1748,44 @@ static void command_balance(AppConsole *console, char *mode)
     } else {
         write_text(console,
                    "usage: balance full|normal|on|off|status\r\n");
+    }
+}
+
+void app_console_service_realtime(AppConsole *console) {
+    if(!console || !console->robot || !console->stabilize_reply_pending)return;
+    console->stabilize_reply_pending=false;
+    RobotController *r=console->robot;
+    char message[128];
+    const char *state=r->locomotion_profile!=locomotion_profile_id("attitudepd")?"other-policy":
+        attitude_pd_status_name(&r->attitude_pd);
+    int n=snprintf(message,sizeof(message),"$STABILIZE enabled=%u status=%s rate_hz=50\r\n# ",r->stabilization_enabled?1:0,state);
+    /* Foreground only, bounded service budget; no printf or bus I/O in ISR. */
+    if(console->uart)(void)HAL_UART_Transmit(console->uart,(uint8_t*)message,(uint16_t)n,10U);
+}
+
+static void command_stabilize(AppConsole *console,char *mode) {
+    RobotController *r=console->robot;
+    if(!mode || !strcmp(mode,"status") || !strcmp(mode,"on") || !strcmp(mode,"off")) {
+        if(mode && strcmp(mode,"status"))r->stabilization_enabled=!strcmp(mode,"on");
+        console->stabilize_reply_pending=true;app_console_service_realtime(console);return;
+    }
+    if(strcmp(mode,"log")){write_text(console,"usage: stabilize on|off|status|log\r\n");return;}
+    /* Snapshot after Stop. Never stream verbose CSV in the motion loop. Units
+     * stay explicit integers because nano printf has no floating point support. */
+    write_text(console,"time_ms,sample_ms,roll_urad,pitch_urad,gx_urad_s,gy_urad_s,filtered_roll_urad,filtered_pitch_urad,filtered_gx_urad_s,filtered_gy_urad_s,roll_error_urad,pitch_error_urad,roll_u_urad,pitch_u_urad,fl_z_um,fr_z_um,rl_z_um,rr_z_um,fl_weight_ppm,fr_weight_ppm,rl_weight_ppm,rr_weight_ppm,status,axis_clamp,foot_clamp,ik_failed\r\n");
+    unsigned start=(r->stabilization_trace_write+ROBOT_STABILIZE_TRACE_CAPACITY-r->stabilization_trace_count)%ROBOT_STABILIZE_TRACE_CAPACITY;
+    for(unsigned i=0;i<r->stabilization_trace_count;i++) {
+        const RobotStabilizeTrace *t=&r->stabilization_trace[(start+i)%ROBOT_STABILIZE_TRACE_CAPACITY];
+        char line[512];int n=snprintf(line,sizeof(line),"%lu,%lu",(unsigned long)t->time_ms,(unsigned long)t->sample_ms);
+        const float *groups[]={t->raw,t->filtered,t->error,t->u,t->dz,t->weights};
+        const int sizes[]={4,4,2,2,4,4};
+        for(int g=0;g<6;g++)for(int j=0;j<sizes[g];j++) {
+            float v=groups[g][j];
+            if(isfinite(v))n+=snprintf(line+n,sizeof(line)-n,",%ld",(long)lroundf(v*1000000.f));
+            else n+=snprintf(line+n,sizeof(line)-n,",nan");
+        }
+        snprintf(line+n,sizeof(line)-n,",%s,%u,%u,%u\r\n",body_stabilizer_status_name((BodyStabilizerStatus)t->status),t->axis_clamp,t->foot_clamp,t->ik_failed);
+        write_text(console,line);
     }
 }
 
@@ -2391,6 +2485,8 @@ static void execute_line(AppConsole *console)
         if(action && !strcmp(action,"capture") && label && !strtok(NULL," \t"))
             command_mechanical_capture(console,label);
         else write_text(console,"usage: mechdiag capture LABEL (1-16 letters/digits/_/-); idle read-only\r\n");
+    } else if (strcmp(command, "servoconfig") == 0) {
+        command_servo_config(console,strtok(NULL," \t"));
     } else if (strcmp(command, "status") == 0) {
         command_status(console);
     } else if (strcmp(command, "syncstate") == 0) {
@@ -2403,7 +2499,7 @@ static void execute_line(AppConsole *console)
         print_robot_result(console, (console->robot->stow_active ? robot_stow_hold(console->robot) : robot_hold(console->robot)));
     } else if (strcmp(command, "stand11") == 0) {
         write_text(console, "Slowly straightening all four legs\r\n");
-        finish_mechanical_pose(console, robot_stand_straight(console->robot), "stand11");
+        run_mechanical_pose(console, robot_stand_straight, "stand11");
     } else if (strcmp(command, "forward11") == 0) {
         if (strtok(NULL, " \t") != NULL) {
             write_text(console, "usage: forward11 (from stand, 24s nominal)\r\n");
@@ -2420,7 +2516,7 @@ static void execute_line(AppConsole *console)
         }
     } else if (strcmp(command, "stand") == 0) {
         write_text(console, "Starting slow synchronized stand move\r\n");
-        finish_mechanical_pose(console, robot_stand(console->robot), "stand");
+        run_mechanical_pose(console, robot_stand, "stand");
     } else if (strcmp(command, "stowdiag") == 0) {
         command_stow_diagnostics(console);
     } else if (strcmp(command, "stowholdcheck") == 0) {
@@ -2451,7 +2547,7 @@ static void execute_line(AppConsole *console)
         else print_robot_result(console,result);
     } else if (strcmp(command, "landing") == 0) {
         write_text(console, "Starting slow synchronized landing move\r\n");
-        finish_mechanical_pose(console, robot_landing(console->robot), "landing");
+        run_mechanical_pose(console, robot_landing, "landing");
     } else if (strcmp(command, "trot") == 0) {
         char *cycles = strtok(NULL, " \t");
         char *period = strtok(NULL, " \t");
@@ -2513,6 +2609,56 @@ static void execute_line(AppConsole *console)
         command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "safety") == 0) {
         command_safety(console);
+    } else if (strcmp(command, "jointtrace") == 0) {
+        char *action=strtok(NULL," \t");JointTrace *t=&console->robot->joint_trace;
+        if(!action || (strcmp(action,"arm") && strcmp(action,"dump") && strcmp(action,"status") && strcmp(action,"off"))) {
+            write_text(console,"usage: jointtrace arm|off|status|dump\r\n");return;
+        }
+        if(strcmp(action,"status") && (robot_drive_is_active(console->robot)||console->robot->stow_active||console->robot->gait_diagnostics_active)) {
+            write_text(console,"ERROR: stop before changing or dumping jointtrace\r\n");return;
+        }
+        if(!strcmp(action,"arm")){joint_trace_arm(t);write_text(console,"OK jointtrace armed; no motion commanded\r\n");return;}
+        if(!strcmp(action,"off"))t->armed=false;
+        uint32_t first=0,count=12;
+        bool dumping=!strcmp(action,"dump");
+        if(dumping){
+            char *start_text=strtok(NULL," \t"),*count_text=strtok(NULL," \t");
+            if((start_text&&!parse_u32(start_text,0,512,&first)) ||
+               (count_text&&!parse_u32(count_text,1,12,&count))){write_text(console,"ERROR: jointtrace dump OFFSET COUNT; COUNT=1..12\r\n");return;}
+            t->armed=false;
+        }
+        char line[300];unsigned total=t->command_count+t->sample_count;
+        if(!dumping || first==0){
+            snprintf(line,sizeof(line),"$JT,M,1,%u,%u,%u,%u,%u,%u,%u\r\n",(unsigned)t->command_count,(unsigned)t->sample_count,
+                (unsigned)t->armed,(unsigned)t->full,(unsigned)t->profile,(unsigned)t->speed,(unsigned)t->acceleration);
+            write_text(console,line);
+        }
+        if(dumping){
+            if(first>total){write_text(console,"ERROR: jointtrace offset beyond capture\r\n");return;}
+            if(first==0){
+                write_text(console,"$JT,R," ROBOT_CONTROL_REV "\r\n");
+                for(unsigned j=0;j<12;j++){
+                    snprintf(line,sizeof(line),"$JT,J,%u,%u,%u,%d\r\n",j,(unsigned)g_robot_joints[j].servo_id,(unsigned)g_robot_joints[j].center,(int)g_robot_joints[j].direction);write_text(console,line);
+                }
+            }
+            unsigned end=first+count;if(end>total)end=total;
+            snprintf(line,sizeof(line),"$JT,P,%lu,%u,%u\r\n",(unsigned long)first,end-(unsigned)first,total);write_text(console,line);
+            for(unsigned n=first;n<end;n++){
+                if(n<t->command_count){
+                    const JointTraceCommand *c=&t->commands[n];
+                    unsigned used=(unsigned)snprintf(line,sizeof(line),"$JT,C,%u,%lu,%lu",n,(unsigned long)c->begin_ms,(unsigned long)c->end_ms);
+                    for(unsigned j=0;j<12;j++)used+=(unsigned)snprintf(line+used,sizeof(line)-used,",%u",(unsigned)c->target[j]);
+                    snprintf(line+used,sizeof(line)-used,"\r\n");write_text(console,line);
+                }else{
+                    const JointTraceSample *v=&t->samples[n-t->command_count];
+                    snprintf(line,sizeof(line),"$JT,S,%lu,%lu,%u,%u,%u,%u,%d,%d,%d,%u,%u,%u\r\n",
+                        (unsigned long)v->begin_ms,(unsigned long)v->end_ms,(unsigned)v->command_index,(unsigned)v->joint,
+                        (unsigned)v->status,(unsigned)v->position,(int)v->speed,(int)v->load,(int)v->current,
+                        (unsigned)v->voltage_mv,(unsigned)v->temperature,(unsigned)v->hardware_error);write_text(console,line);
+                }
+            }
+            if(end==total)write_text(console,"$JT,END\r\n");
+        }
     } else if (strcmp(command, "gaitdiag") == 0) {
         command_gait_diagnostics(console);
     } else if (strcmp(command, "baldiag") == 0) {
@@ -2542,12 +2688,34 @@ static void execute_line(AppConsole *console)
             (unsigned)console->robot->balance_late_frames,(unsigned)console->robot->locomotion_fault,
             (unsigned)console->robot->drive_peak_compute_ms,(unsigned)console->robot->drive_peak_io_ms);
         write_text(console,state);
-    } else if (strcmp(command, "arctiming") == 0) {
+    } else if (strcmp(command, "tracking") == 0) {
+        char *value=strtok(NULL," \t");
+        if(!value || (strcmp(value,"on") && strcmp(value,"off")) || robot_drive_is_active(console->robot))
+            write_text(console,"ERROR: tracking on|off requires idle\r\n");
+        else {console->robot->tracking_enabled=!strcmp(value,"on");write_text(console,"OK tracking experimental\r\n");}
+    } else if (strcmp(command, "trackingdiag") == 0) {
+        GaitTracking *t=&console->robot->tracking;char text[220];
+        snprintf(text,sizeof(text),"$TRACKING enabled=%u rate=%u error10=%u oldest_ms=%lu blocked_ms=%lu fault=%u contact=unobserved\r\n",
+            (unsigned)console->robot->tracking_enabled,(unsigned)(t->rate*1000),(unsigned)(t->peak_error*10),(unsigned long)t->oldest_ms,
+            (unsigned long)t->blocked_ms,(unsigned)t->fault);
+        write_text(console,text);
+    } else if (strcmp(command, "clockdiag") == 0) {
+        char result[192];
+        (void)snprintf(result,sizeof(result),"$CLOCK hclk=%lu pclk1=%lu pclk2=%lu systick_reload=%lu pll_ready=%u flash_wait=%lu motor_commands=0\r\n",
+            (unsigned long)HAL_RCC_GetHCLKFreq(),(unsigned long)HAL_RCC_GetPCLK1Freq(),
+            (unsigned long)HAL_RCC_GetPCLK2Freq(),(unsigned long)SysTick->LOAD,
+            __HAL_RCC_GET_FLAG(RCC_FLAG_PLLRDY)?1U:0U,(unsigned long)__HAL_FLASH_GET_LATENCY());
+        write_text(console,result);
+    } else if (strcmp(command, "arctiming") == 0 || strcmp(command,"arcsupporttiming")==0 || strcmp(command,"centerpivottiming")==0) {
         if(robot_drive_is_active(console->robot)) {write_text(console,"ERROR: stop before timing check\r\n");return;}
         uint32_t total=0,peak=0;unsigned failures=0;
-        robot_arc_timing(&total,&peak,&failures);
+        bool support=strcmp(command,"arcsupporttiming")==0;
+        bool center=strcmp(command,"centerpivottiming")==0;
+        if(center)robot_center_pivot_timing(&total,&peak,&failures);
+        else if(support)robot_arc_support_timing(&total,&peak,&failures);
+        else robot_arc_timing(&total,&peak,&failures);
         char result[180];
-        (void)snprintf(result,sizeof(result),"$ARCTIMING samples=128 max_ms=%lu mean_us=%lu failures=%u motor_commands=0\r\n",(unsigned long)peak,(unsigned long)(total*1000U/128U),failures);
+        (void)snprintf(result,sizeof(result),"$%s samples=128 max_ms=%lu mean_us=%lu failures=%u motor_commands=0\r\n",center?"CENTERPIVOTTIMING":support?"ARCSUPPORTTIMING":"ARCTIMING",(unsigned long)peak,(unsigned long)(total*1000U/128U),failures);
         write_text(console,result);
     } else if (strcmp(command, "gaitprofiles") == 0) {
         write_text(console,"$GAITPROFILES ");
@@ -2567,6 +2735,8 @@ static void execute_line(AppConsole *console)
         else if(!console->robot->heading_reader && !strcmp(value,"on"))
             write_text(console,"ERROR: heading sensor unavailable\r\n");
         else {console->robot->heading_enabled=!strcmp(value,"on");memset(&console->robot->drive_control.heading,0,sizeof(console->robot->drive_control.heading));write_text(console,"OK\r\n");}
+    } else if (strcmp(command, "stabilize") == 0) {
+        command_stabilize(console, strtok(NULL," \t"));
     } else if (strcmp(command, "balance") == 0) {
         command_balance(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "log") == 0) {
@@ -2650,7 +2820,13 @@ static void process_realtime_line(AppConsole *console)
     if (console->realtime_overflow || console->realtime_length < 3U) {
         return;
     }
-    if (console->realtime_line[0] == '@' &&
+    if (console->realtime_line[0]=='@' && console->realtime_line[1]=='B') {
+        int32_t action;
+        if(realtime_next_i32(&cursor,&action) && realtime_at_end(cursor) && action>=0 && action<=2) {
+            if(action!=2)console->robot->stabilization_enabled=action==1;
+            console->stabilize_reply_pending=true;
+        }
+    } else if (console->realtime_line[0] == '@' &&
         console->realtime_line[1] == 'D') {
         int32_t linear = 0;
         int32_t yaw = 0;
@@ -2688,6 +2864,7 @@ void app_console_init(AppConsole *console,
         return;
     }
 
+    console->support_event_seen=0;
     console->uart = uart;
     console->robot = robot;
     console->imu055 = imu055;
@@ -2702,6 +2879,7 @@ void app_console_init(AppConsole *console,
     console->realtime_line[0] = '\0';
     console->realtime_length = 0U;
     console->realtime_overflow = false;
+    console->stabilize_reply_pending = false;
 
     if (uart != NULL) {
         (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
@@ -2726,6 +2904,9 @@ void app_console_on_rx_complete(AppConsole *console,
             process_realtime_line(console);
             console->realtime_length = 0U;
             console->realtime_overflow = false;
+        } else if ((byte<32U && byte!='\t') || byte>=127U) {
+            /* Embedded NUL must not turn an invalid payload into a valid prefix. */
+            console->realtime_overflow=true;
         } else if (console->realtime_length <
                    APP_CONSOLE_REALTIME_CAPACITY - 1U) {
             console->realtime_line[console->realtime_length++] = (char)byte;
@@ -2790,9 +2971,14 @@ void app_console_on_uart_error(AppConsole *console,
 
 void app_console_poll(AppConsole *console)
 {
-    if (console == NULL || !console->line_ready) {
-        return;
+    app_console_service_realtime(console);
+    if(console && console->robot && console->support_event_seen!=console->robot->support_event) {
+        console->support_event_seen=console->robot->support_event;
+        char line[160];snprintf(line,sizeof line,"ERROR: support monitoring reason=%s servo=%u; corrections paused; torque preserved\r\n",
+            support_name(console->robot->support_decision),console->robot->support_id);
+        write_text(console,line);
     }
+    if (console == NULL || !console->line_ready) return;
 
     if (console->overflow) {
         write_text(console, "ERROR: command line too long\r\n");
@@ -2833,6 +3019,8 @@ void app_console_print_help(AppConsole *console)
                "  syncstate        compact mobile-app state snapshot\r\n"
                "  gaitprofile NAME legacy|crawl|cruise|trot|highstep|lift|imu|level|level15|joint|jointfast|jointsport (idle)\r\n"
                "  heading on|off   IMU forward heading hold (idle)\r\n"
+               "  tracking on|off  experimental tracking governor (idle; default off)\r\n"
+               "  trackingdiag    tracking error, age and phase rate\r\n"
                "  profile [S A]   show/set speed 1..3400, acceleration 0..254\r\n"
                "  echo on|off     STM32 input echo control (default off)\r\n"
                "  hold             torque on at all current positions\r\n"
@@ -2854,6 +3042,7 @@ void app_console_print_help(AppConsole *console)
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
+               "  jointtrace arm|off|status|dump  raw timed gait feedback (RAM)\r\n"
                "  gaitdiag         last gait tracking/current/voltage report\r\n"
                "  baldiag          recent balance frames and tilt snapshot\r\n"
                "  baltest          preview static balance correction; no servo motion\r\n"

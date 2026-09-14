@@ -3,14 +3,17 @@
 #include <stdint.h>
 #include "robot_config.h"
 #include <math.h>
-static inline uint32_t pose_duration(const uint16_t from[12],const uint16_t to[12]) {
+static inline bool pose_fast_stand(const uint16_t from[12],const uint16_t to[12]) {
     uint16_t landing[12],stand[12];
-    bool fast=robot_landing_targets(landing) && robot_stand_targets(stand);
-    for(unsigned i=0;i<12 && fast;i++) {
+    if(!from || !to || !robot_landing_targets(landing) || !robot_stand_targets(stand))return false;
+    for(unsigned i=0;i<12;i++) {
         int error=(int)from[i]-landing[i];
-        if(error< -120 || error>120 || to[i]!=stand[i])fast=false;
+        if(error< -120 || error>120 || to[i]!=stand[i])return false;
     }
-    if(fast)return 0; /* Preserve the original Landing -> Stand response. */
+    return true;
+}
+static inline uint32_t pose_duration(const uint16_t from[12],const uint16_t to[12]) {
+    if(pose_fast_stand(from,to))return 0;
     unsigned maximum=0;
     for(unsigned i=0;i<12;i++){unsigned d=from[i]>to[i]?from[i]-to[i]:to[i]-from[i];if(d>maximum)maximum=d;}
     if(maximum<=12)return 0;

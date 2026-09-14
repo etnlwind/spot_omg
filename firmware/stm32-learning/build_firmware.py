@@ -6,6 +6,7 @@ parser = argparse.ArgumentParser(description='Build STM32 application in a clean
 parser.add_argument('--output', type=Path, default=Path('/private/tmp/spot-v13-build'))
 args = parser.parse_args()
 subprocess.run([sys.executable,str(root.parents[1]/'tools/generate_locomotion_profiles.py'),'--check'],check=True)
+subprocess.run([sys.executable,str(root.parents[1]/'tools/generate_body_stabilization_config.py'),'--check'],check=True)
 out = args.output.resolve()
 revision = re.search(r'#define ROBOT_CONTROL_REV "([^"]+)"', (root/'Inc/robot.h').read_text()).group(1)
 out.mkdir(parents=True, exist_ok=True)

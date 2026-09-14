@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "main.h"
+#include "bno_imu_sample.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -45,6 +46,13 @@ typedef struct
     bool device_profile_restored;
     bool level_valid;
     bool present;
+    /* New PD sample path only; legacy Euler/calibration/safety are preserved. */
+    Bno055BodyFrame body_frame;
+    BodyImuState cached_body_imu;
+    float body_gyro_rad_s[3];
+    uint32_t body_sequence;
+    uint8_t body_metadata[8];
+    bool body_metadata_valid;
 } Bno055;
 
 typedef struct
@@ -70,6 +78,21 @@ bool bno055_read_heading(void *context, int16_t *yaw_tenths);
 bool bno055_read_attitude(void *context,
                           int16_t *roll_tenths,
                           int16_t *pitch_tenths);
+
+/* Actual gyro+Euler observation in SI, compatible with BodyImuState.
+ * true/valid means a successful read+decode, even when axis_verified=false.
+ * Default mounting verification is false: only the new PD must be disabled.
+ * timestamp_ms is receipt completion, not sensor generation time. sequence
+ * advances per successful uncached burst; reads inside 10ms reuse both values.
+ * On failure the output is invalid and no sequence is invented.
+ */
+bool bno055_read_body_imu(void *context, BodyImuState *sample);
+
+/* Software RAM config only. Use a torque-off axis bench record before setting
+ * axis_verified=true. Invalid rotations are rejected. No sensor register,
+ * servo configuration, legacy mapping or persistent calibration is changed.
+ */
+bool bno055_set_body_frame(Bno055 *imu, const Bno055BodyFrame *frame);
 
 /*
  * Walk the 7-bit address space and report what answers.  This is the I2C

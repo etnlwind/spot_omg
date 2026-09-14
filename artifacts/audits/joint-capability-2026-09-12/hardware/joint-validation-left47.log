@@ -1,0 +1,8 @@
+> syncstate
+$SPOTSTATE pose=custom error=93 torque=on safety=ok balance=full rev=shared-locomotion-v47 caps=trot5,gaitprofiles,arcsupport,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+Traceback (most recent call last):
+  File "/Users/etnlwind/project/spot_omg/tools/capture_joint_response.py", line 68, in <module>
+    if __name__=='__main__':main()
+  File "/Users/etnlwind/project/spot_omg/tools/capture_joint_response.py", line 35, in main
+    if 'pose=stand ' not in state or 'torque=on ' not in state:raise RuntimeError('Prepare and verify Stand before executing this capture')
+RuntimeError: Prepare and verify Stand before executing this capture

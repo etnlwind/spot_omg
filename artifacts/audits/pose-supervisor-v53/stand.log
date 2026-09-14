@@ -1,0 +1,27 @@
+> syncstate
+$SPOTSTATE pose=landing error=56 torque=off safety=ok balance=full rev=shared-locomotion-v53 caps=trot5,gaitprofiles,arcsupport,centerpivot,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+> servoconfig 9
+SERVO_CONFIG id=9 addr=0: 03 0A 00 09 03 09 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 73 0D 00 00 2C 01 E8 03
+> servoconfig 3
+SERVO_CONFIG id=3 addr=0: 03 0A 00 09 03 03 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 74 0D 00 00 2C 01 E8 03
+> status
+Servo status (12 configured IDs):
+ID 1 pos=1935 speed=0 load=0 voltage=11200mV temp=33C current=0 moving=0 hw=0x00
+ID 2 pos=1606 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 3 pos=3479 speed=0 load=0 voltage=11400mV temp=37C current=0 moving=0 hw=0x00
+ID 4 pos=2081 speed=0 load=0 voltage=11300mV temp=35C current=0 moving=0 hw=0x00
+ID 5 pos=2410 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 6 pos=546 speed=0 load=0 voltage=11400mV temp=35C current=0 moving=0 hw=0x00
+ID 7 pos=2075 speed=0 load=0 voltage=11200mV temp=36C current=0 moving=0 hw=0x00
+ID 8 pos=1458 speed=0 load=0 voltage=11300mV temp=31C current=0 moving=0 hw=0x00
+ID 9 pos=3491 speed=0 load=0 voltage=11300mV temp=38C current=0 moving=0 hw=0x00
+ID 10 pos=1956 speed=0 load=0 voltage=11400mV temp=35C current=0 moving=0 hw=0x00
+ID 11 pos=2736 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 12 pos=520 speed=0 load=0 voltage=11300mV temp=37C current=0 moving=0 hw=0x00
+Bus read retries: attempts=0 recovered=0 failed=0
+> landing
+Starting slow synchronized landing move
+POSE landing reason=no-progress elapsed=1963 nominal=1500 retries=0 waits=38 hold=1
+POSE_HEALTH id=0 temp=0 hw=0x00 transient=0
+POSE_PROBE count=2 mask=0x012 max_lead=60
+ERROR: final position verification failed; servo=2, bus=ok, servo_error=0x00

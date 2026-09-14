@@ -1,0 +1,92 @@
+{
+  "source": "contact-geometry-decomposition.json: causal-nocorrection.json @ 10.80 s",
+  "mass_kg": 2.7540000000000004,
+  "weight_N": 27.016740000000006,
+  "COM_mm": [
+    -4.244537634403819,
+    0.9649250363246598
+  ],
+  "FR_before_mm": [
+    241.74617332418978,
+    -93.40841407038015
+  ],
+  "RL_before_mm": [
+    -156.92231052749693,
+    95.23064994677074
+  ],
+  "support_line_offset_mm": 19.906741298025537,
+  "gravity_moment_proxy_Nm": 0.5378152538960186,
+  "options": {
+    "minimum_xy": {
+      "common_shift_mm": [
+        -8.514286745464856,
+        -17.994034298136615
+      ],
+      "distance_mm": 19.906741298025537,
+      "FR_after_mm": [
+        233.23188657872493,
+        -111.40244836851676
+      ],
+      "RL_after_mm": [
+        -165.43659727296182,
+        77.23661564863413
+      ],
+      "FR_force_N": 10.923572195236599,
+      "RL_force_N": 16.093167804763407,
+      "fraction_FR_to_RL": 0.595673934189077,
+      "moment_balance_residual_Nm": 0.0
+    },
+    "x_only": {
+      "common_shift_mm": [
+        -46.5427534863789,
+        0.0
+      ],
+      "distance_mm": 46.5427534863789,
+      "FR_after_mm": [
+        195.20341983781088,
+        -93.40841407038015
+      ],
+      "RL_after_mm": [
+        -203.46506401387583,
+        95.23064994677074
+      ],
+      "FR_force_N": 13.500663789264232,
+      "RL_force_N": 13.516076210735774,
+      "fraction_FR_to_RL": 0.5002852383646499,
+      "moment_balance_residual_Nm": 1.4043333874306805e-15
+    },
+    "y_only": {
+      "common_shift_mm": [
+        0.0,
+        -22.02276279686502
+      ],
+      "distance_mm": 22.02276279686502,
+      "FR_after_mm": [
+        241.74617332418978,
+        -115.43117686724516
+      ],
+      "RL_after_mm": [
+        -156.92231052749693,
+        73.20788714990573
+      ],
+      "FR_force_N": 10.346580833729213,
+      "RL_force_N": 16.670159166270793,
+      "fraction_FR_to_RL": 0.6170307433935697,
+      "moment_balance_residual_Nm": 1.1102230246251565e-15
+    }
+  },
+  "assumptions": [
+    "COM held at recorded position; CAD mass distribution remains estimated",
+    "Only FR/RL vertical point reactions; other two feet removed counterfactually",
+    "Zero linear acceleration and angular-momentum rate",
+    "No finite cushion patch, COP shift, friction, IK, or motor feasibility validation"
+  ],
+  "recorded_all_four_forces_N": [
+    1.929527272492114,
+    15.866271689979634,
+    12.78657655696598,
+    1.6934767520094256
+  ],
+  "coordinate_frame": "Recorded yaw removed; X forward, Y left, projected onto horizontal plane",
+  "status": "snapshot_geometric_equilibrium_only_not_a_validated_gait"
+}

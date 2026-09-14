@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1280" viewBox="0 0 1600 1280"><rect width="1600" height="1280" fill="#f5f7fa"/>
+<text x="45" y="62" font-family="Apple SD Gothic Neo, sans-serif" font-size="34" fill="#152b43">Spot OMG · 전체 전원 및 제어 구성</text>
+<text x="45" y="100" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">설계안 R1 | 빨강: 전원 흐름 · 파랑: 통신 · 모든 로봇 GND는 DALY P-에 연결</text>
+<rect x="45" y="145" width="380" height="140" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="63" y="181" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">DXF 3S + DALY 60A</text>
+<text x="63" y="217" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">배터리 11.1V / 최대 12.6V</text>
+<text x="63" y="246" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">BMS가 셀 감지와 충·방전 보호</text>
+<rect x="45" y="370" width="380" height="140" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="63" y="406" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">주 퓨즈 → K1 릴레이</text>
+<text x="63" y="442" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">S1 로커 → 12V 코일 ON/OFF</text>
+<text x="63" y="471" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">30 → 87 · 87a 절연</text>
+<polyline points="230,285 230,370" fill="none" stroke="#c84335" stroke-width="5"/>
+<rect x="45" y="595" width="380" height="150" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="63" y="631" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">Matek PDB-HEX</text>
+<text x="63" y="667" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">원전압 → 서보 전력 분배</text>
+<text x="63" y="696" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">5V BEC → 로직 전력 분배</text>
+<text x="63" y="725" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">출력단에서 다리별 병렬 분기</text>
+<polyline points="230,510 230,595" fill="none" stroke="#c84335" stroke-width="5"/>
+<rect x="45" y="825" width="380" height="140" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="63" y="861" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">외장 충전기 12.6V / 2A</text>
+<text x="63" y="897" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">K1 앞의 충전 분기에 연결</text>
+<text x="63" y="926" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">로봇 OFF 상태에서 충전</text>
+<text x="45" y="1010" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#152b43">OFF: 로직·서보 꺼짐 / BMS는 남음</text>
+<text x="45" y="1045" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#152b43">완전 분리: 주전원 + 셀 감지선 4개</text>
+<rect x="1140" y="145" width="405" height="260" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="1158" y="181" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">장기 보관 · 외부 소비 0</text>
+<text x="1158" y="217" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">S1 OFF / 충전기·USB 분리</text>
+<text x="1158" y="246" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">배터리 주전원 2선 분리</text>
+<text x="1158" y="275" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">BMS 셀 감지선 4개 분리</text>
+<text x="1158" y="304" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">실제 BMS 분리 순서 준수</text>
+<text x="1158" y="333" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">배터리 자체 자연 방전은 남음</text>
+<rect x="580" y="145" width="400" height="130" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="598" y="181" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">iPhone / Mac 앱</text>
+<text x="598" y="217" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">BLE → 실물 ESP32</text>
+<text x="598" y="246" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">시뮬레이터 TCP 경로와 구분</text>
+<rect x="580" y="350" width="400" height="145" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="598" y="386" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">ESP32-WROOM 브리지</text>
+<text x="598" y="422" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">5V 입력은 개발보드 VIN 기준</text>
+<text x="598" y="451" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">TX17 → STM32 PC11</text>
+<text x="598" y="480" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">RX16 ← STM32 PC10</text>
+<polyline points="780,275 780,350" fill="none" stroke="#247ba0" stroke-width="4"/>
+<text x="800" y="317" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#247ba0">BLE</text>
+<rect x="580" y="575" width="400" height="155" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="598" y="611" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">STM32F446RE / NUCLEO</text>
+<text x="598" y="647" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">USART3 : 브리지 115200bps</text>
+<text x="598" y="676" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">USART1 : 서보 버스 1Mbps</text>
+<text x="598" y="705" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">외부 5V 입력 / USB 점퍼 확인</text>
+<polyline points="780,495 780,575" fill="none" stroke="#247ba0" stroke-width="4"/>
+<text x="800" y="537" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#247ba0">3.3V UART</text>
+<polyline points="425,640 515,640 515,425 580,425" fill="none" stroke="#c84335" stroke-width="4"/>
+<circle cx="515" cy="640" r="5" fill="#c84335"/>
+<polyline points="515,640 580,640" fill="none" stroke="#c84335" stroke-width="4"/>
+<text x="440" y="618" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#c84335">5V</text>
+<rect x="1140" y="575" width="405" height="155" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="1158" y="611" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">IMU 보드</text>
+<text x="1158" y="647" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">BNO055 / BNO086 구성에 맞춤</text>
+<text x="1158" y="676" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">I²C / SPI · 3.3V 신호</text>
+<text x="1158" y="705" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">전원은 실제 보드 정격 확인</text>
+<polyline points="980,650 1140,650" fill="none" stroke="#247ba0" stroke-width="4"/>
+<rect x="580" y="825" width="400" height="130" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="598" y="861" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">URT-2 · TTL 버스 변환</text>
+<text x="598" y="897" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">STM32 USART1 ↔ 반이중 DATA</text>
+<text x="598" y="926" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">전원 / 로직 레벨은 보드별 확인</text>
+<polyline points="780,730 780,825" fill="none" stroke="#247ba0" stroke-width="4"/>
+<rect x="1140" y="825" width="405" height="260" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="1158" y="861" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">서보 12개 · 다리별 전력 분기</text>
+<text x="1158" y="897" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">FL : 1 / 2 / 3</text>
+<text x="1158" y="926" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">FR : 4 / 5 / 6</text>
+<text x="1158" y="955" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">RL : 7 / 8 / 9</text>
+<text x="1158" y="984" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">RR : 10 / 11 / 12</text>
+<text x="1158" y="1013" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">J1·J3 STS3215 ×8</text>
+<text x="1158" y="1042" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#526577">J2 STS3250 ×4</text>
+<polyline points="980,890 1140,890" fill="none" stroke="#247ba0" stroke-width="4"/>
+<text x="998" y="869" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#247ba0">DATA</text>
+<polyline points="425,705 470,705 470,1130 1340,1130 1340,1085" fill="none" stroke="#c84335" stroke-width="5"/>
+<text x="580" y="1112" font-family="Apple SD Gothic Neo, sans-serif" font-size="20" fill="#c84335">배터리 전압 전력선 · 다리별 퓨즈 / 분배 하네스 · MCU와 URT-2 경유 금지</text>
+<rect x="45" y="1180" width="1500" height="65" fill="white" stroke="#c7d2de" stroke-width="2"/>
+<text x="63" y="1216" font-family="Apple SD Gothic Neo, sans-serif" font-size="24" fill="#152b43">앱 Stop은 소프트웨어 정지 · S1 OFF는 전원 차단으로 서보의 자세 유지 토크도 사라집니다.</text>
+</svg>

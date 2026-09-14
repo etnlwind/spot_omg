@@ -189,6 +189,20 @@ static RobotResult reference_front(RobotController *r,unsigned i,int32_t *origin
     }
     r->last_failed_servo_id=id;return ROBOT_VERIFY_ERROR;
 }
+/* Ordinary poses also need a verified command origin after STM32 reboot.
+ * Servo power may have remained on with a nonzero internal turn count. */
+RobotResult robot_reference_pose(RobotController *r) {
+    if(!r || !r->bus)return ROBOT_INVALID_ARGUMENT;
+    if(r->bus->front_origin_valid[0] && r->bus->front_origin_valid[1])return ROBOT_OK;
+    RobotResult result=robot_stow_check(r);if(result!=ROBOT_OK)return result;
+    result=limits(r,true);if(result!=ROBOT_OK)return result;
+    for(unsigned i=1;i<=4;i+=3) {
+        if(r->bus->front_origin_valid[i==1?0:1])continue;
+        int32_t origin;result=reference_front(r,i,&origin);if(result!=ROBOT_OK)return result;
+    }
+    return ROBOT_OK;
+}
+
 static RobotResult write_targets(RobotController *r,const int32_t pos[12]) {
     uint8_t items[12*7];
     for(unsigned i=0;i<12;i++) {
@@ -222,19 +236,19 @@ RobotResult robot_stow_probe(RobotController *r) {
      * unfold path even when knees/rear hips settled independently. Snapshot
      * already validated every joint against the bounded Stow envelope. This
      * is a recovery classification, never an assertion of completed Stow. */
-    if(q[1]<-150.f || q[4]<-150.f)folded=true;
+    if(stow_folded_geometry(q) || q[1]<-150.f || q[4]<-150.f)folded=true;
     if(folded) {r->stow_active=true;r->stow_complete=false;r->shared_idle=false;}
     return ROBOT_OK;
 }
 RobotResult robot_stow_hold(RobotController *r) {
     Sts3215State state[12];float q[12];int32_t bias[12],target[12];
     RobotResult result=snapshot(r,state,q,bias);
-    if(result!=ROBOT_OK) {(void)robot_relax(r);return result;}
+    if(result!=ROBOT_OK) return result;
     for(unsigned i=0;i<12;i++) {
         target[i]=state[i].position;
         if(stow_front(i)) {
             unsigned slot=i==1?0:1;
-            if(!r->bus->front_origin_valid[slot]){(void)robot_relax(r);return ROBOT_POSITION_LIMIT;}
+            if(!r->bus->front_origin_valid[slot])return ROBOT_POSITION_LIMIT;
             if(!stow_encode(i,q[i],&target[i]))return ROBOT_POSITION_LIMIT;
             target[i]+=r->bus->front_stow_origin[slot];
         }
@@ -273,13 +287,28 @@ RobotResult robot_stow(RobotController *r,bool folded) {
     }
     safety_clear(&r->safety);
     r->locomotion_fault=false;r->locomotion_fault_reason=ROBOT_OK;
-    for(unsigned elapsed=20;elapsed<=STOW_DURATION_MS;elapsed+=20) {
+    bool prepared=false;
+    uint32_t duration=stow_path_duration(from,folded);
+    for(unsigned elapsed=20;elapsed<=duration;elapsed+=20) {
+        /* Do not begin the hip sweep until the preparation target is reached.
+         * Rebase on fresh measured positions instead of assuming perfect tracking. */
+        if(duration>STOW_DURATION_MS && elapsed==STOW_DURATION_MS+20U) {
+            float ready[12];stow_prepare_target(from,ready);
+            result=snapshot(r,state,actual,new_bias);if(result!=ROBOT_OK)goto failed;
+            for(unsigned k=0;k<12;k++)if(fabsf(actual[k]-ready[k])>5.f) {
+                r->last_failed_servo_id=g_robot_servo_ids[k];result=ROBOT_VERIFY_ERROR;goto failed;
+            }
+            /* The second stage starts at the physical position, not ready[]. */
+            memcpy(from,actual,sizeof from);
+            duration=STOW_DURATION_MS;elapsed=20;prepared=true;
+            /* Use direct unfold after explicit preparation below. */
+        }
         uint32_t start=HAL_GetTick();
         if(r->motion_abort_requested){result=ROBOT_MOTION_ABORTED;goto failed;}
         int16_t roll=0,pitch=0;
         bool valid=r->attitude_reader && r->attitude_reader(r->attitude_context,&roll,&pitch);
         if(!stow_attitude_ok(valid,roll,pitch)){result=valid?ROBOT_TILT_LIMIT:ROBOT_IMU_ERROR;goto failed;}
-        if(!stow_frame(from,folded,elapsed,pos,degrees)){result=ROBOT_POSITION_LIMIT;goto failed;}
+        if(!(prepared?stow_direct_frame(from,folded,elapsed,pos,degrees):stow_frame(from,folded,elapsed,pos,degrees))){result=ROBOT_POSITION_LIMIT;goto failed;}
         for(unsigned i=0;i<12;i++)pos[i]+=bias[i];
         result=write_targets(r,pos);if(result!=ROBOT_OK)goto failed;
         /* One joint per frame; a developing stall is watched every frame. */
@@ -322,7 +351,7 @@ RobotResult robot_stow(RobotController *r,bool folded) {
     return robot_hold(r);
 failed:
     r->stow_complete=false;
-    if(result==ROBOT_MOTION_ABORTED) (void)robot_stow_hold(r);
+    if(result==ROBOT_MOTION_ABORTED || !folded) (void)robot_stow_hold(r);
     else {(void)robot_relax(r);robot_latch_locomotion_fault(r,result);}
     return result;
 }

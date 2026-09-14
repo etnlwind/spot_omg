@@ -37,6 +37,26 @@ for g in gids:
 rows=['/* Generated from CAD + measured cushion. Canonical radians; no servo ticks. */','#ifndef ARC_GEOMETRY_H','#define ARC_GEOMETRY_H']
 for name,v,shape in [('axes',axes,'[4][3][3]'),('anchors',anchors,'[4][3][3]'),('centers',centers,'[4][3]'),('orientations',d.geom_xmat[gids].reshape(4,3,3),'[4][3][3]'),('vertices',local,f'[{n}][3]'),('neutral',neutral,'[12]'),('reference',control.reference,'[4][3]'),('center',control.center,'[3]')]:
  rows.append(f'static const float arc_{name}{shape}='+array(v)+';')
+# Fixed-model gravity data: each link COM at canonical zero.
+link_ids=[[m.body(f'{leg}_j{j}_link').id for j in (1,2,3)] for leg in ('fl','fr','rl','rr')]
+link_ids=np.array(link_ids)
+groups=[[[] for _ in range(3)] for _ in range(4)];fixed=[]
+for body in range(m.nbody):
+ ancestor=body
+ while ancestor and ancestor not in link_ids.ravel():ancestor=int(m.body_parentid[ancestor])
+ if ancestor:
+  leg,joint=np.argwhere(link_ids==ancestor)[0];groups[leg][joint].append(body)
+ else:fixed.append(body)
+link_mass=np.zeros((4,3));link_com=np.zeros((4,3,3))
+for leg in range(4):
+ for joint in range(3):
+  ids=groups[leg][joint];link_mass[leg,joint]=m.body_mass[ids].sum()
+  link_com[leg,joint]=np.average(d.xipos[ids],axis=0,weights=m.body_mass[ids])
+rows.append('static const float arc_link_mass[4][3]='+array(link_mass)+';')
+rows.append('static const float arc_link_com[4][3][3]='+array(link_com)+';')
+rows.append('static const float arc_fixed_moment[3]='+array((d.xipos[fixed]*m.body_mass[fixed,None]).sum(axis=0))+';')
+rows.append('static const float arc_total_mass='+array(m.body_mass.sum())+';')
+rows.append('#define ARC_HAS_GRAVITY 1')
 # Balanced spatial tree for exact minimum projection, including flat faces.
 nodes=[];order=[]
 def tree(ids):

@@ -91,11 +91,15 @@ int main(void) {
     rows=[]
     for profile in range(1+len(load_profiles())):
         state=(ctypes.c_float*11)()
+        preload=(ctypes.c_float*12)()
+        stateful=policy._library.spot_drive_step_stateful
+        stateful.argtypes=(fp,fp,ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_float,ctypes.c_float,fp)
+        stateful.restype=ctypes.c_int
         for frame in range(500):
             linear=.8 if frame<200 else .4 if frame<300 else -.6 if frame<400 else 0
             yaw=.4 if 100<=frame<300 else 0
             out=(ctypes.c_float*12)();ticks=(ctypes.c_uint16*12)();decoded=(ctypes.c_float*12)()
-            assert drive(state,profile,linear,yaw,ctypes.c_float(frame*ctypes.c_float(.013).value).value,True,True,frame>=400,out)
+            assert stateful(state,preload,profile,linear,yaw,ctypes.c_float(frame*ctypes.c_float(.013).value).value,True,True,frame>=400,.02,1,out)
             assert encode(out,ticks,decoded)
             rows.append(list(ticks))
     # O0 vs O2 must use the current headers and emit identical servo ticks.

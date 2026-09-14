@@ -1,0 +1,96 @@
+{
+  "status": "Measured total mass; estimated distribution, inertia, motor and contact dynamics",
+  "mass_kg": {
+    "chassis_without_battery_or_leg_groups": 1.1189631650750342,
+    "battery": 0.3729877216916781,
+    "j1_group": 0.07459754433833561,
+    "j2_group": 0.13955957253296955,
+    "j3_group": 0.09635516143701683
+  },
+  "mass_notes": "User-measured total robot mass, including battery and cushions: 2.754 kg. Non-cushion group masses were uniformly scaled from prior estimates; individual battery/chassis/leg masses and COM remain estimated.",
+  "battery_center_cad_m": [
+    0.05225,
+    0.1495,
+    0.06
+  ],
+  "battery_size_m": [
+    0.045,
+    0.14,
+    0.04
+  ],
+  "gravity_m_s2": 9.81,
+  "timestep_s": 0.002,
+  "friction": [
+    0.8,
+    0.005,
+    0.0001
+  ],
+  "contact_time_constant_s": 0.01,
+  "contact_damping_ratio": 1.0,
+  "foot_radius_m": 0.015,
+  "joint_damping": 0.05,
+  "joint_friction_nm": 0.02,
+  "rotor_armature_kg_m2": 0.0001,
+  "servo_kp": 35.0,
+  "servo_kd": 0.8,
+  "command_delay_s": 0.02,
+  "target_acceleration_rad_s2": 25.0,
+  "pack_open_circuit_voltage": 11.1,
+  "pack_and_wiring_resistance_ohm": 0.06,
+  "electronics_current_a": 0.5,
+  "motor_3215": {
+    "stall_nm": 2.941995,
+    "rated_nm": 0.980665,
+    "speed_rad_s": 4.717106,
+    "stall_current_a": 2.7,
+    "idle_current_a": 0.18
+  },
+  "motor_3250": {
+    "stall_nm": 4.903325,
+    "rated_nm": 1.569064,
+    "speed_rad_s": 7.873666,
+    "stall_current_a": 4.2,
+    "idle_current_a": 0.28
+  },
+  "sources": [
+    "https://www.feetechrc.com/525603.html",
+    "https://www.feetechrc.com/en/562636.html"
+  ],
+  "limitations": [
+    "Rigid bodies only; no PLA/PETG bending, fracture or layer anisotropy",
+    "Collision primitives approximate CAD; no exact concave mesh contacts",
+    "Joint axes and exported zero remain provisional",
+    "PD gains, delays, armature, friction, battery resistance, COM and motor curve are estimates",
+    "No thermal protection, firmware watchdog, exact firmware actuator limiter, gear backlash or battery discharge chemistry",
+    "Rated torque is reported as overload exposure, not enforced as a peak torque limit; long runs are not thermally validated"
+  ],
+  "battery_pack": {
+    "chemistry": "LiPo",
+    "series_cells": 3,
+    "nominal_voltage_v": 11.1,
+    "source": "User confirmed 11.1V 3S; simulated source voltage is a reference operating point, not measured present voltage"
+  },
+  "foot_cushion": {
+    "thickness_m": 0.01,
+    "radius_m": 0.015,
+    "mass_kg": 0.005,
+    "friction": [
+      1.0,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.02,
+    "damping_ratio": 1.0,
+    "shape": "elastic_cap",
+    "side_wall_m": 0.003,
+    "total_length_m": 0.027,
+    "corner_radius_m": 0.004,
+    "align_to_triangle_base": true,
+    "sole_diameter_m": 0.0373
+  },
+  "mass_measurement": {
+    "total_kg": 2.754,
+    "includes_battery_and_cushions": true,
+    "distribution": "Estimated: non-cushion groups scaled uniformly; not individually measured"
+  }
+}

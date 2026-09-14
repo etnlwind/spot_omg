@@ -1,3 +1,5 @@
+> 2026-09-13 사용자 확인: 현재 실물은 **Waveshare Bus Servo Adapter (A), SKU 25514**를 사용합니다. STM32 USART1 ↔ Adapter (A) ↔ 서보 버스 구성입니다. 아래 URT-2 표기는 과거 구성으로만 읽습니다. 공식 UART 예제는 보드 표기 기준 TX-TX, RX-RX 및 점퍼 A를 안내합니다. 실물 결선은 아직 직접 확인하지 않았으며, 정상 작동 중인 배선을 이 문서만 보고 변경하지 않습니다. [공식 문서](https://www.waveshare.com/wiki/Bus_Servo_Adapter_%28A%29)
+
 # Spot OMG 펌웨어 및 무선 업데이트 아키텍처
 
 이 문서는 Spot OMG 로봇에서 호스트, ESP32 브리지, STM32 실시간 제어기, IMU와

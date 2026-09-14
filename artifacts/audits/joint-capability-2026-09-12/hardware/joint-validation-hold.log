@@ -1,0 +1,20 @@
+
+=== 2026-09-12T11:50:34 SpotOMG-Bridge ===
+# syncstate
+$SPOTSTATE pose=stand error=66 torque=on safety=ok balance=full rev=shared-locomotion-v46 caps=trot5,gaitprofiles,arcsupport,jointtrace,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+# locomotiondiag
+$LOCOMOTION profile=cruise heading=on yaw10=3576 valid=1 error10=0 correction=0 late=0 fault=0 compute_max_ms=0 io_max_ms=0
+# imuprobe
+IMUPROBE INT float=100% pulldown=0% in_reset=0%
+IMUPROBE blind read (24 tries): blank 00 00 00 00
+IMUPROBE in-reset read   : 00 00 00 00
+  Holding RST low changes nothing, so the reset pulse never reaches the part: check PB2 against the sensor RST pin
+IMUPROBE deselected read: 00 00 00 00
+  CS makes no difference to MISO: the D12/PA6 wire is not reaching a driven output. Suspect MISO wiring or sensor power before anything protocol related
+IMUPROBE mode 0 (CPOL=0 CPHA=0): 00 00 00 00
+IMUPROBE mode 1 (CPOL=0 CPHA=1): 00 00 00 00
+IMUPROBE mode 2 (CPOL=1 CPHA=0): 00 00 00 00
+IMUPROBE mode 3 (CPOL=1 CPHA=1): 00 00 00 00
+IMUPROBE FAIL: H_INTN never went low after reset
+  SPI returned no data either, so the sensor is not speaking SPI at all
+  INT follows the pull-down even when running: nothing drives it. Check the D7 wire, 3V3 and GND

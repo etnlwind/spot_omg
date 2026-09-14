@@ -24,6 +24,8 @@ class BNO055Config:
     startup_s: float = .030  # configured IMUPLUS entry, not power-on boot
     stale_s: float = .100
     seed: int = 55
+    gyro_delay_s: float = .003  # assumed register/filter + transfer delay
+    gyro_noise_std_deg_s: float = .15
 
     def __post_init__(self):
         for name, value in asdict(self).items():
@@ -31,7 +33,8 @@ class BNO055Config:
                 raise ValueError(name+' must be finite')
         if self.sample_hz <= 0 or self.i2c_hz <= 0 or self.stale_s <= 0:
             raise ValueError('rates and stale timeout must be positive')
-        if min(self.fusion_delay_s, self.fusion_tau_s, self.noise_std_deg, self.startup_s) < 0:
+        if min(self.fusion_delay_s, self.fusion_tau_s, self.noise_std_deg, self.startup_s,
+               self.gyro_delay_s, self.gyro_noise_std_deg_s) < 0:
             raise ValueError('delays and noise must be nonnegative')
 
 
@@ -47,8 +50,11 @@ class BNO055Emulator:
         self.frozen = False
         self.level = (0, 0)
         self.samples = 0
+        self.gyro_rng = random.Random(self.config.seed + 1)
+        self.gyro_queue = deque(maxlen=self.queue.maxlen)
+        self.latest_gyro = None
 
-    def advance(self, now, roll_deg, pitch_deg, yaw_deg=0.0):
+    def advance(self, now, roll_deg, pitch_deg, yaw_deg=0.0, gyro_body_rad_s=None):
         """Called before every physics step: never sample a future orientation."""
         c = self.config
         if now + 1e-9 < self.next_sample:
@@ -79,18 +85,35 @@ class BNO055Emulator:
         available = now+c.fusion_delay_s+81/c.i2c_hz
         self.queue.append((available, now, packet))
         self.samples += 1
+        # This channel samples body angular velocity, NEVER Euler differences.
+        # Independent RNG preserves existing Euler-only reproducibility.
+        if gyro_body_rad_s is not None:
+            if len(gyro_body_rad_s) != 3 or not all(math.isfinite(v) for v in gyro_body_rad_s):
+                raise ValueError('gyro requires three finite body-frame rad/s values')
+            gyro = [round(max(-2048, min(2047.9375, math.degrees(v) +
+                    self.gyro_rng.gauss(0, c.gyro_noise_std_deg_s))) * 16)
+                    for v in gyro_body_rad_s]
+            self.gyro_queue.append((now+c.gyro_delay_s, now, self.samples, gyro))
 
     def read(self, now):
+        while self.gyro_queue and self.gyro_queue[0][0] <= now+1e-9:
+            self.latest_gyro = self.gyro_queue.popleft()
         while self.queue and self.queue[0][0] <= now+1e-9:
             self.latest = self.queue.popleft()
         if not self.online or self.latest is None or now-self.latest[1] > self.config.stale_s:
             return None
         _, sampled, packet = self.latest
         yaw, sensor_roll, sensor_pitch = [math.trunc(x*10/16) for x in struct.unpack('<hhh',packet)]
-        return dict(roll_tenths=sensor_pitch-self.level[0],
+        result = dict(roll_tenths=sensor_pitch-self.level[0],
                     pitch_tenths=sensor_roll-self.level[1], yaw_tenths=yaw,
                     sample_time_s=sampled, age_ms=(now-sampled)*1000,
                     euler_register_hex=packet.hex())
+        gyro = self.latest_gyro
+        if gyro is not None and now-gyro[1] <= self.config.stale_s:
+            result.update(gyro_body_rad_s=[math.radians(v/16) for v in gyro[3]],
+                          gyro_sample_time_s=gyro[1], gyro_age_ms=(now-gyro[1])*1000,
+                          gyro_sequence=gyro[2], gyro_axis_verified=True)
+        return result
 
 
 class FirmwareAttitudeFilter:

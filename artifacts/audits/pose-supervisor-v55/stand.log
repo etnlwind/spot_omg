@@ -1,0 +1,135 @@
+> syncstate
+$SPOTSTATE pose=custom error=84 torque=off safety=ok balance=full rev=shared-locomotion-v55 caps=trot5,gaitprofiles,arcsupport,centerpivot,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+> servoconfig 9
+SERVO_CONFIG id=9 addr=0: 03 0A 00 09 03 09 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 32 44 0D 00 00 48 0D E8 03
+> servoconfig 3
+SERVO_CONFIG id=3 addr=0: 03 0A 00 09 03 03 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 32 12 0D 00 00 48 0D E8 03
+> status
+Servo status (12 configured IDs):
+ID 1 pos=1936 speed=0 load=0 voltage=11200mV temp=33C current=0 moving=0 hw=0x00
+ID 2 pos=1603 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 3 pos=3485 speed=0 load=0 voltage=11400mV temp=39C current=0 moving=0 hw=0x00
+ID 4 pos=2076 speed=0 load=0 voltage=11300mV temp=35C current=0 moving=0 hw=0x00
+ID 5 pos=2426 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 6 pos=518 speed=0 load=0 voltage=11400mV temp=37C current=0 moving=0 hw=0x00
+ID 7 pos=2079 speed=0 load=0 voltage=11200mV temp=35C current=0 moving=0 hw=0x00
+ID 8 pos=1460 speed=0 load=0 voltage=11300mV temp=32C current=0 moving=0 hw=0x00
+ID 9 pos=3497 speed=0 load=0 voltage=11300mV temp=41C current=0 moving=0 hw=0x00
+ID 10 pos=1959 speed=0 load=0 voltage=11400mV temp=35C current=0 moving=0 hw=0x00
+ID 11 pos=2760 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 12 pos=497 speed=0 load=0 voltage=11300mV temp=38C current=0 moving=0 hw=0x00
+Bus read retries: attempts=0 recovered=0 failed=0
+> landing
+Starting slow synchronized landing move
+POSE landing reason=complete-residual elapsed=2217 nominal=1500 retries=0 waits=28 hold=0
+POSE_HEALTH id=6 temp=100 hw=0x00 transient=1
+POSE_PROBE count=0 mask=0x000 max_lead=120
+OK
+$MECHLOG label=landing complete=1; saved: log show 64
+> stand
+Starting slow synchronized stand move
+POSE stand reason=complete-residual elapsed=6225 nominal=300 retries=0 waits=129 hold=0
+POSE_HEALTH id=7 temp=79 hw=0x00 transient=2
+POSE_PROBE count=2 mask=0x900 max_lead=120
+OK
+$MECHLOG label=stand complete=1; saved: log show 64
+> syncstate
+$SPOTSTATE pose=stand error=32 torque=on safety=ok balance=full rev=shared-locomotion-v55 caps=trot5,gaitprofiles,arcsupport,centerpivot,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=cruise heading=on reverse_limit=1000 recovery=new-command fault_code=0
+> status
+Servo status (12 configured IDs):
+ID 1 pos=1935 speed=0 load=56 voltage=11200mV temp=33C current=1 moving=0 hw=0x00
+ID 2 pos=1570 speed=0 load=16 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 3 pos=2998 speed=-50 load=136 voltage=11300mV temp=39C current=11 moving=1 hw=0x00
+ID 4 pos=2084 speed=0 load=-48 voltage=11200mV temp=35C current=1 moving=0 hw=0x00
+ID 5 pos=2437 speed=0 load=-32 voltage=11200mV temp=34C current=1 moving=0 hw=0x00
+ID 6 pos=1038 speed=0 load=-48 voltage=11400mV temp=37C current=1 moving=0 hw=0x00
+ID 7 pos=2099 speed=0 load=-48 voltage=11200mV temp=35C current=1 moving=0 hw=0x00
+ID 8 pos=1440 speed=0 load=24 voltage=11200mV temp=32C current=1 moving=0 hw=0x00
+ID 9 pos=3020 speed=0 load=376 voltage=11000mV temp=42C current=100 moving=0 hw=0x00
+ID 10 pos=1958 speed=0 load=64 voltage=11300mV temp=35C current=2 moving=0 hw=0x00
+ID 11 pos=2766 speed=0 load=-32 voltage=11200mV temp=34C current=2 moving=0 hw=0x00
+ID 12 pos=995 speed=0 load=-160 voltage=11200mV temp=38C current=8 moving=0 hw=0x00
+Bus read retries: attempts=0 recovered=0 failed=0
+> log show 80
+$SPOTLOG BEGIN total=579 returned=80 time=uptime-only
+$SPOTLOG seq=20446 boot=99 uptime_ms=16693 epoch_ms=0000 text=CMD link=ble stand
+$SPOTLOG seq=20447 boot=99 uptime_ms=22979 epoch_ms=0000 text=POSE stand complete-residual elapsed=6225 nominal=300 hold=0
+$SPOTLOG seq=20448 boot=99 uptime_ms=22983 epoch_ms=0000 text=POSE_HEALTH id=7 temp=79 hw=0x00 transient=2
+$SPOTLOG seq=20449 boot=99 uptime_ms=22988 epoch_ms=0000 text=POSE_PROBE count=2 mask=0x900 max_lead=120
+$SPOTLOG seq=20450 boot=99 uptime_ms=22989 epoch_ms=0000 text=PT t=5153 id=9 a=3043 t=2988 e=55 v=11200 l=448 c=17 r=-35 p=-12 d=2
+$SPOTLOG seq=20451 boot=99 uptime_ms=22989 epoch_ms=0000 text=PT t=5200 id=9 a=3043 t=2988 e=55 v=11200 l=448 c=18 r=-35 p=-12 d=2
+$SPOTLOG seq=20452 boot=99 uptime_ms=22990 epoch_ms=0000 text=PT t=5246 id=9 a=3043 t=2988 e=55 v=11200 l=448 c=17 r=-35 p=-12 d=2
+$SPOTLOG seq=20453 boot=99 uptime_ms=22991 epoch_ms=0000 text=PT t=5293 id=9 a=3043 t=2988 e=55 v=11100 l=448 c=96 r=-35 p=-12 d=2
+$SPOTLOG seq=20454 boot=99 uptime_ms=22992 epoch_ms=0000 text=PT t=5339 id=9 a=3043 t=2988 e=55 v=11200 l=448 c=16 r=-35 p=-12 d=2
+$SPOTLOG seq=20455 boot=99 uptime_ms=22992 epoch_ms=0000 text=PT t=5386 id=9 a=3043 t=2988 e=55 v=11200 l=448 c=16 r=-35 p=-12 d=2
+$SPOTLOG seq=20456 boot=99 uptime_ms=22993 epoch_ms=0000 text=PT t=5433 id=9 a=3043 t=2988 e=55 v=10900 l=448 c=106 r=-35 p=-12 d=2
+$SPOTLOG seq=20457 boot=99 uptime_ms=22994 epoch_ms=0000 text=PT t=5479 id=9 a=3043 t=2988 e=55 v=11000 l=448 c=90 r=-35 p=-12 d=2
+$SPOTLOG seq=20458 boot=99 uptime_ms=22995 epoch_ms=0000 text=PT t=5526 id=9 a=3030 t=2988 e=42 v=11100 l=320 c=35 r=-34 p=-11 d=2
+$SPOTLOG seq=20459 boot=99 uptime_ms=22995 epoch_ms=0000 text=PT t=5572 id=9 a=3025 t=2988 e=37 v=11100 l=300 c=45 r=-32 p=-10 d=2
+$SPOTLOG seq=20460 boot=99 uptime_ms=22996 epoch_ms=0000 text=PT t=5619 id=9 a=3022 t=2988 e=34 v=11100 l=272 c=39 r=-31 p=-10 d=2
+$SPOTLOG seq=20461 boot=99 uptime_ms=22997 epoch_ms=0000 text=PT t=5666 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=39 r=-30 p=-9 d=2
+$SPOTLOG seq=20462 boot=99 uptime_ms=22998 epoch_ms=0000 text=PT t=5712 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=35 r=-29 p=-10 d=2
+$SPOTLOG seq=20463 boot=99 uptime_ms=22998 epoch_ms=0000 text=PT t=5759 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=33 r=-29 p=-9 d=2
+$SPOTLOG seq=20464 boot=99 uptime_ms=22999 epoch_ms=0000 text=PT t=5806 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=34 r=-29 p=-9 d=2
+$SPOTLOG seq=20465 boot=99 uptime_ms=23000 epoch_ms=0000 text=PT t=5852 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=34 r=-29 p=-9 d=2
+$SPOTLOG seq=20466 boot=99 uptime_ms=23001 epoch_ms=0000 text=PT t=5899 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=37 r=-30 p=-9 d=2
+$SPOTLOG seq=20467 boot=99 uptime_ms=23001 epoch_ms=0000 text=PT t=5945 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=41 r=-30 p=-10 d=2
+$SPOTLOG seq=20468 boot=99 uptime_ms=23002 epoch_ms=0000 text=PT t=5992 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=41 r=-30 p=-10 d=2
+$SPOTLOG seq=20469 boot=99 uptime_ms=23003 epoch_ms=0000 text=PT t=6039 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=39 r=-30 p=-10 d=2
+$SPOTLOG seq=20470 boot=99 uptime_ms=23004 epoch_ms=0000 text=PT t=6085 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=39 r=-30 p=-10 d=2
+$SPOTLOG seq=20471 boot=99 uptime_ms=23004 epoch_ms=0000 text=PT t=6132 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=38 r=-30 p=-9 d=2
+$SPOTLOG seq=20472 boot=99 uptime_ms=23005 epoch_ms=0000 text=PT t=6178 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=41 r=-30 p=-9 d=2
+$SPOTLOG seq=20473 boot=99 uptime_ms=23006 epoch_ms=0000 text=PT t=6225 id=9 a=3022 t=2988 e=34 v=11100 l=280 c=41 r=-30 p=-10 d=15
+$SPOTLOG seq=20474 boot=99 uptime_ms=23006 epoch_ms=0000 text=RESULT result=ok servo=0 bus=ok error=0x00
+$SPOTLOG seq=20475 boot=99 uptime_ms=23007 epoch_ms=0000 text=MECH_BEGIN mode=pose label=stand units=angle10,current_raw
+$SPOTLOG seq=20476 boot=99 uptime_ms=23012 epoch_ms=0000 text=MECH_POS id=1 leg=0 j=1 pos=1935 angle10=-5 moving=0
+$SPOTLOG seq=20477 boot=99 uptime_ms=23013 epoch_ms=0000 text=MECH_PWR id=1 speed=0 load=56 current_raw=2 mv=11100 temp=33 hw=0
+$SPOTLOG seq=20478 boot=99 uptime_ms=23013 epoch_ms=0000 text=MECH_CAL id=1 ctr=1929 dir=-1 min=0 max=4095
+$SPOTLOG seq=20479 boot=99 uptime_ms=23014 epoch_ms=0000 text=MECH_GOAL id=1 goal=1929 err10=5 torque=1
+$SPOTLOG seq=20480 boot=99 uptime_ms=23019 epoch_ms=0000 text=MECH_POS id=2 leg=0 j=2 pos=1569 angle10=446 moving=0
+$SPOTLOG seq=20481 boot=99 uptime_ms=23020 epoch_ms=0000 text=MECH_PWR id=2 speed=0 load=32 current_raw=2 mv=11300 temp=34 hw=0
+$SPOTLOG seq=20482 boot=99 uptime_ms=23020 epoch_ms=0000 text=MECH_CAL id=2 ctr=2077 dir=-1 min=0 max=4095
+$SPOTLOG seq=20483 boot=99 uptime_ms=23021 epoch_ms=0000 text=MECH_GOAL id=2 goal=1565 err10=3 torque=1
+$SPOTLOG seq=20484 boot=99 uptime_ms=23026 epoch_ms=0000 text=MECH_POS id=3 leg=0 j=3 pos=3003 angle10=912 moving=0
+$SPOTLOG seq=20485 boot=99 uptime_ms=23027 epoch_ms=0000 text=MECH_PWR id=3 speed=0 load=120 current_raw=12 mv=11300 temp=39 hw=0
+$SPOTLOG seq=20486 boot=99 uptime_ms=23027 epoch_ms=0000 text=MECH_CAL id=3 ctr=1965 dir=1 min=0 max=4095
+$SPOTLOG seq=20487 boot=99 uptime_ms=23028 epoch_ms=0000 text=MECH_GOAL id=3 goal=2989 err10=-12 torque=1
+$SPOTLOG seq=20488 boot=99 uptime_ms=23033 epoch_ms=0000 text=MECH_POS id=4 leg=1 j=1 pos=2084 angle10=-4 moving=0
+$SPOTLOG seq=20489 boot=99 uptime_ms=23034 epoch_ms=0000 text=MECH_PWR id=4 speed=0 load=-48 current_raw=1 mv=11300 temp=35 hw=0
+$SPOTLOG seq=20490 boot=99 uptime_ms=23034 epoch_ms=0000 text=MECH_CAL id=4 ctr=2089 dir=1 min=0 max=4095
+$SPOTLOG seq=20491 boot=99 uptime_ms=23035 epoch_ms=0000 text=MECH_GOAL id=4 goal=2089 err10=4 torque=1
+$SPOTLOG seq=20492 boot=99 uptime_ms=23040 epoch_ms=0000 text=MECH_POS id=5 leg=1 j=2 pos=2432 angle10=448 moving=0
+$SPOTLOG seq=20493 boot=99 uptime_ms=23041 epoch_ms=0000 text=MECH_PWR id=5 speed=0 load=-16 current_raw=0 mv=11200 temp=34 hw=0
+$SPOTLOG seq=20494 boot=99 uptime_ms=23041 epoch_ms=0000 text=MECH_CAL id=5 ctr=1922 dir=1 min=0 max=4095
+$SPOTLOG seq=20495 boot=99 uptime_ms=23042 epoch_ms=0000 text=MECH_GOAL id=5 goal=2434 err10=1 torque=1
+$SPOTLOG seq=20496 boot=99 uptime_ms=23047 epoch_ms=0000 text=MECH_POS id=6 leg=1 j=3 pos=1038 angle10=916 moving=0
+$SPOTLOG seq=20497 boot=99 uptime_ms=23048 epoch_ms=0000 text=MECH_PWR id=6 speed=0 load=-160 current_raw=8 mv=11400 temp=37 hw=0
+$SPOTLOG seq=20498 boot=99 uptime_ms=23048 epoch_ms=0000 text=MECH_CAL id=6 ctr=2081 dir=-1 min=0 max=4095
+$SPOTLOG seq=20499 boot=99 uptime_ms=23049 epoch_ms=0000 text=MECH_GOAL id=6 goal=1057 err10=-16 torque=1
+$SPOTLOG seq=20500 boot=99 uptime_ms=23054 epoch_ms=0000 text=MECH_POS id=7 leg=2 j=1 pos=2099 angle10=4 moving=0
+$SPOTLOG seq=20501 boot=99 uptime_ms=23055 epoch_ms=0000 text=MECH_PWR id=7 speed=0 load=-48 current_raw=1 mv=11200 temp=35 hw=0
+$SPOTLOG seq=20502 boot=99 uptime_ms=23055 epoch_ms=0000 text=MECH_CAL id=7 ctr=2104 dir=-1 min=0 max=4095
+$SPOTLOG seq=20503 boot=99 uptime_ms=23056 epoch_ms=0000 text=MECH_GOAL id=7 goal=2104 err10=-4 torque=1
+$SPOTLOG seq=20504 boot=99 uptime_ms=23061 epoch_ms=0000 text=MECH_POS id=8 leg=2 j=2 pos=1434 angle10=446 moving=0
+$SPOTLOG seq=20505 boot=99 uptime_ms=23062 epoch_ms=0000 text=MECH_PWR id=8 speed=0 load=32 current_raw=1 mv=11200 temp=32 hw=0
+$SPOTLOG seq=20506 boot=99 uptime_ms=23062 epoch_ms=0000 text=MECH_CAL id=8 ctr=1942 dir=-1 min=0 max=4095
+$SPOTLOG seq=20507 boot=99 uptime_ms=23063 epoch_ms=0000 text=MECH_GOAL id=8 goal=1430 err10=3 torque=1
+$SPOTLOG seq=20508 boot=99 uptime_ms=23068 epoch_ms=0000 text=MECH_POS id=9 leg=2 j=3 pos=3022 angle10=929 moving=0
+$SPOTLOG seq=20509 boot=99 uptime_ms=23069 epoch_ms=0000 text=MECH_PWR id=9 speed=0 load=280 current_raw=38 mv=11100 temp=42 hw=0
+$SPOTLOG seq=20510 boot=99 uptime_ms=23069 epoch_ms=0000 text=MECH_CAL id=9 ctr=1964 dir=1 min=0 max=4095
+$SPOTLOG seq=20511 boot=99 uptime_ms=23070 epoch_ms=0000 text=MECH_GOAL id=9 goal=2988 err10=-29 torque=1
+$SPOTLOG seq=20512 boot=99 uptime_ms=23075 epoch_ms=0000 text=MECH_POS id=10 leg=3 j=1 pos=1958 angle10=6 moving=0
+$SPOTLOG seq=20513 boot=99 uptime_ms=23076 epoch_ms=0000 text=MECH_PWR id=10 speed=0 load=64 current_raw=2 mv=11300 temp=35 hw=0
+$SPOTLOG seq=20514 boot=99 uptime_ms=23076 epoch_ms=0000 text=MECH_CAL id=10 ctr=1951 dir=1 min=0 max=4095
+$SPOTLOG seq=20515 boot=99 uptime_ms=23077 epoch_ms=0000 text=MECH_GOAL id=10 goal=1951 err10=-6 torque=1
+$SPOTLOG seq=20516 boot=99 uptime_ms=23082 epoch_ms=0000 text=MECH_POS id=11 leg=3 j=2 pos=2765 angle10=448 moving=0
+$SPOTLOG seq=20517 boot=99 uptime_ms=23083 epoch_ms=0000 text=MECH_PWR id=11 speed=0 load=-16 current_raw=0 mv=11200 temp=34 hw=0
+$SPOTLOG seq=20518 boot=99 uptime_ms=23083 epoch_ms=0000 text=MECH_CAL id=11 ctr=2255 dir=1 min=0 max=4095
+$SPOTLOG seq=20519 boot=99 uptime_ms=23084 epoch_ms=0000 text=MECH_GOAL id=11 goal=2767 err10=1 torque=1
+$SPOTLOG seq=20520 boot=99 uptime_ms=23089 epoch_ms=0000 text=MECH_POS id=12 leg=3 j=3 pos=995 angle10=923 moving=0
+$SPOTLOG seq=20521 boot=99 uptime_ms=23090 epoch_ms=0000 text=MECH_PWR id=12 speed=0 load=-224 current_raw=13 mv=11200 temp=38 hw=0
+$SPOTLOG seq=20522 boot=99 uptime_ms=23090 epoch_ms=0000 text=MECH_CAL id=12 ctr=2046 dir=-1 min=0 max=4095
+$SPOTLOG seq=20523 boot=99 uptime_ms=23091 epoch_ms=0000 text=MECH_GOAL id=12 goal=1022 err10=-23 torque=1
+$SPOTLOG seq=20524 boot=99 uptime_ms=23092 epoch_ms=0000 text=MECH_END mode=pose valid=12 missing=0 stored=1
+$SPOTLOG seq=20525 boot=99 uptime_ms=23308 epoch_ms=0000 text=CMD link=ble status
+$SPOTLOG END

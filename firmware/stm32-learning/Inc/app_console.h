@@ -24,6 +24,7 @@ typedef struct
     Bno055 *imu055;
     Bno086 *imu;
     bool *imu_log_enabled;
+    uint32_t support_event_seen;
     uint8_t rx_byte;
     char line[APP_CONSOLE_LINE_CAPACITY];
     volatile size_t line_length;
@@ -33,6 +34,7 @@ typedef struct
     char realtime_line[APP_CONSOLE_REALTIME_CAPACITY];
     uint8_t realtime_length;
     bool realtime_overflow;
+    volatile bool stabilize_reply_pending;
 } AppConsole;
 
 void app_console_init(AppConsole *console,
@@ -48,6 +50,7 @@ void app_console_on_uart_error(AppConsole *console,
                                UART_HandleTypeDef *uart);
 
 void app_console_poll(AppConsole *console);
+void app_console_service_realtime(AppConsole *console);
 void app_console_print_help(AppConsole *console);
 void app_console_print_prompt(AppConsole *console);
 

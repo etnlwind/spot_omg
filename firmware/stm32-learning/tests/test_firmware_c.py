@@ -11,6 +11,7 @@ Python suite instead of being a separate step someone has to remember.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 CFLAGS = ["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror", f"-I{PROJECT/'Inc'}"]
 
 CASES = [
+    ("joint_trace", ["tests/test_joint_trace.c"]),
     ("drive_watchdog", ["tests/test_drive_watchdog.c"]),
     ("safety", ["Src/safety.c", "tests/test_safety.c"]),
     ("actuator_control",
@@ -152,12 +154,18 @@ def test_bno086_bringup_keeps_cubemx_and_transport_in_sync() -> None:
 
     assert "SPI1.CLKPolarity=SPI_POLARITY_HIGH" in ioc
     assert "SPI1.CLKPhase=SPI_PHASE_2EDGE" in ioc
-    assert "SPI1.BaudRatePrescaler=SPI_BAUDRATEPRESCALER_16" in ioc
+    # Check the actual SPI rate: raising the CPU clock must not silently
+    # raise the BNO086 bus above the established 1 MHz bring-up limit.
+    settings = dict(line.split("=", 1) for line in ioc.splitlines() if "=" in line)
+    divider = int(settings["SPI1.BaudRatePrescaler"].rsplit("_", 1)[1])
+    pclk2 = int(settings["RCC.APB2Freq_Value"])
+    assert 0 < pclk2 / divider <= 1_000_000
+    actual_divider = int(re.search(r"hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_(\d+)", main)[1])
+    assert actual_divider == divider
     assert "PB2.GPIO_Label=IMU_RST" in ioc
     assert "PB2.PinState=GPIO_PIN_SET" in ioc
     assert "hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH" in main
     assert "hspi1.Init.CLKPhase = SPI_PHASE_2EDGE" in main
-    assert "hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16" in main
 
     # Production reads are interrupt-gated; only imuprobe performs blind reads.
     hal_read_start = driver.index("static int hal_read(")
@@ -421,3 +429,20 @@ def test_stow_servo_coordinates_runtime():
         binary = Path(workdir) / "coordinates"
         subprocess.run([compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"), *[str(PROJECT / s) for s in sources], "-o", str(binary), "-lm"], check=True)
         subprocess.run([str(binary)], check=True)
+
+
+def test_pose_supervisor_runtime() -> None:
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("no host C compiler")
+    sources = ["Src/pose_supervisor.c", "Src/robot_config.c", "Src/safety.c",
+               "tests/test_pose_supervisor.c"]
+    with tempfile.TemporaryDirectory() as workdir:
+        binary = Path(workdir) / "pose_supervisor"
+        build = subprocess.run(
+            [compiler, *CFLAGS, "-include", str(PROJECT / "tests/host_hal.h"),
+             *[str(PROJECT / s) for s in sources], "-o", str(binary), "-lm"],
+            capture_output=True, text=True)
+        assert build.returncode == 0, build.stderr
+        run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=15)
+        assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"

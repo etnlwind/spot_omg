@@ -21,8 +21,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var remotePhase = ""
     private var remoteReleaseID: UUID?
     private var remoteStopConfirmed = false
+    private let remoteMailboxOverride: URL?
     private var remoteDirectory: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("RemoteControl")
+        remoteMailboxOverride ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("RemoteControl")
     }
 
     func pollRemoteControl() {
@@ -31,19 +32,21 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         let file = directory.appendingPathComponent("request.json")
         if let data = try? Data(contentsOf: file), data.count <= 4096,
            let request = try? JSONDecoder().decode(AppRemoteRequest.self, from: data) {
-            try? FileManager.default.removeItem(at: file)
+            // CoreDevice verifies the destination after copying it. Removing
+            // the mailbox here races that verification and reports a failed
+            // write even when we have already executed the request. Keep the
+            // file and consume its ID once; the next writer overwrites it.
             let now = Date().timeIntervalSince1970
-            guard request.isValid(now: now) else {
-                if UUID(uuidString: request.id) != nil { remoteReply(request, error: "invalid_or_expired_request") }
-                return
-            }
             var consumed = UserDefaults.standard.stringArray(forKey: "remoteConsumedRequests") ?? []
-            if consumed.contains(request.id) { return }
-            consumed.append(request.id)
-            UserDefaults.standard.set(Array(consumed.suffix(64)), forKey: "remoteConsumedRequests")
-            beginRemoteRequest(request)
+            if !consumed.contains(request.id) {
+                consumed.append(request.id)
+                UserDefaults.standard.set(Array(consumed.suffix(64)), forKey: "remoteConsumedRequests")
+                if request.isValid(now: now) { beginRemoteRequest(request) }
+                else if UUID(uuidString: request.id) != nil { remoteReply(request, error: "invalid_or_expired_request") }
+            }
         }
         advanceRemoteRequest()
+        selectDefaultValidationProfileIfIdle()
     }
 
     func beginRemoteRequest(_ request: AppRemoteRequest) {
@@ -236,6 +239,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var stateRefreshWorkItem: DispatchWorkItem?
     private var initialSyncTimeout: DispatchWorkItem?
     private var initialSyncAttempts = 0
+    private var defaultValidationProfilePending = true
     private var driveHeartbeat: Timer?
     private var driveVector: RobotDriveVector?
     private var driveRequiresRelease = false
@@ -261,7 +265,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // and timer paths without connecting to (or moving) a robot.
     private let commandWriter: ((Data) -> Void)?
 
-    init(commandWriter: ((Data) -> Void)? = nil) {
+    init(commandWriter: ((Data) -> Void)? = nil, remoteMailbox: URL? = nil) {
+        self.remoteMailboxOverride = remoteMailbox
         self.commandWriter = commandWriter
         super.init()
         // Explicit launch mode used for virtual-only device validation.
@@ -414,12 +419,16 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             }
         }
         if case .simulatorProfile(let profile) = command {
+            guard profile.isSupported(capabilities: runtimeState.capabilities) else {
+                lastError = "이 실험 정책은 해당 기능을 지원하는 로봇·시뮬레이터 업데이트 후 사용할 수 있습니다."; return
+            }
             guard !profile.simulatorOnly || target.isSimulator else {
                 lastError = "이 정책은 가상 로봇에서만 사용할 수 있습니다."; return
             }
             guard runtimeState.capabilities.contains("gaitprofiles") || (target.isSimulator && runtimeState.capabilities.contains("simprofiles")) else {
                 lastError = "보행 정책 선택은 지원되는 제어기에서만 가능합니다."; return
             }
+            defaultValidationProfilePending = false
         }
         if case .trot5 = command, !runtimeState.supportsTrot5 {
             lastError = "개선 보행은 로봇 V13 업데이트 후 사용할 수 있습니다."
@@ -635,6 +644,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         initialSyncTimeout?.cancel()
         initialSyncTimeout = nil
         initialSyncAttempts = 0
+        defaultValidationProfilePending = true
         supplyVoltageMillivolts = nil
         lastVoltageRead = nil
         peripheral = nil
@@ -658,6 +668,22 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         runtimeState = RobotRuntimeState()
         lastStateSync = nil
         if !keepingState { state = .disconnected }
+    }
+
+    // Select once per connection, only from a confirmed idle state. The UI
+    // continues to show readback, never a locally invented firmware selection.
+    private func selectDefaultValidationProfileIfIdle() {
+        let profile = SimulatorGaitProfile.centerpivot
+        guard defaultValidationProfilePending, state.isReady,
+              lastStateSync != nil, !driveSessionActive, !motionControlsLocked,
+              ["landing", "stand", "stand11"].contains(runtimeState.pose),
+              runtimeState.safety == "ok", profile.isSupported(capabilities: runtimeState.capabilities),
+              runtimeState.capabilities.contains("gaitprofiles") else { return }
+        if runtimeState.simulationProfile == profile.rawValue {
+            defaultValidationProfilePending = false
+            return
+        }
+        send(.simulatorProfile(profile))
     }
 
     private func appendConsole(_ text: String) {
@@ -912,6 +938,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 driveSafetyLatched = true
             }
             if !driveSafetyLatched { lastError = nil }
+            selectDefaultValidationProfileIfIdle()
             // Existing firmware exposes voltage via a read-only servo snapshot.
             // Never enqueue a console read while realtime drive is active.
             if !driveSessionActive {

@@ -1,4 +1,5 @@
 #include "bno055.h"
+#include "bno_imu_config.h"
 #include "flight_log.h"
 
 #include <stddef.h>
@@ -8,6 +9,8 @@
 #define BNO055_CHIP_ID_ADDR       0x00U
 #define BNO055_PAGE_ID_ADDR       0x07U
 #define BNO055_EULER_H_LSB_ADDR   0x1AU
+#define BNO055_GYRO_X_LSB_ADDR    0x14U
+#define BNO055_UNIT_SEL_ADDR      0x3BU
 #define BNO055_CALIB_STAT_ADDR     0x35U
 #define BNO055_OPR_MODE_ADDR      0x3DU
 #define BNO055_PWR_MODE_ADDR      0x3EU
@@ -68,6 +71,76 @@ static HAL_StatusTypeDef write8(Bno055 *imu, uint8_t reg, uint8_t value)
                              &value,
                              1U,
                              BNO055_TIMEOUT_MS);
+}
+
+/* STM32 HAL has a separate 25ms pre-transfer BUSY wait, regardless of Timeout.
+ * This single-master driver rejects an already busy bus before entering HAL.
+ * A healthy 100kHz bus needs about 3ms total for metadata and 12-byte payload.
+ * The timeout assumes SysTick runs and no concurrent ISR owns/reconfigures I2C.
+ * It is not a timing proof for a multi-master arbitration race.
+ */
+static bool read_body_bytes(Bno055 *imu,uint8_t reg,uint8_t *bytes,uint16_t size)
+{
+    if (imu->i2c==NULL || HAL_I2C_GetState(imu->i2c)!=HAL_I2C_STATE_READY ||
+        __HAL_I2C_GET_FLAG(imu->i2c,I2C_FLAG_BUSY)!=RESET) return false;
+    return HAL_I2C_Mem_Read(imu->i2c,imu->address,reg,I2C_MEMADD_SIZE_8BIT,
+                           bytes,size,BNO055_BODY_READ_TIMEOUT_MS)==HAL_OK;
+}
+
+bool bno055_set_body_frame(Bno055 *imu,const Bno055BodyFrame *frame)
+{
+    if (imu==NULL || !bno_imu_frame_valid(frame)) return false;
+    imu->body_frame=*frame;
+    imu->cached_body_imu.valid=false;
+    return true;
+}
+
+bool bno055_read_body_imu(void *context,BodyImuState *sample)
+{
+    Bno055 *imu=context;
+    if (sample==NULL) return false;
+    memset(sample,0,sizeof(*sample));
+    if (imu==NULL) return false;
+    sample->sequence=imu->body_sequence;
+    sample->timestamp_ms=imu->cached_body_imu.timestamp_ms;
+    if (!imu->present || imu->i2c==NULL) return false;
+    const uint32_t now=HAL_GetTick();
+    if (imu->cached_body_imu.valid &&
+        (uint32_t)(now-imu->cached_body_imu.timestamp_ms)<BNO055_BODY_CACHE_MS) {
+        *sample=imu->cached_body_imu;
+        return true;
+    }
+    imu->cached_body_imu.valid=false;
+    imu->body_metadata_valid=false;
+    /* Read units and remap on every uncached observation. A sensor reset or
+     * changed configuration must not silently reuse stale SI scales/axes.
+     * These read-only checks do not change legacy init success or registers.
+     */
+    if (!read_body_bytes(imu,BNO055_UNIT_SEL_ADDR,imu->body_metadata,8U) ||
+        !bno_imu_metadata_valid(imu->body_metadata)) return false;
+    imu->body_metadata_valid=true;
+    uint8_t bytes[12];
+    if (!read_body_bytes(imu,BNO055_GYRO_X_LSB_ADDR,bytes,sizeof(bytes))) return false;
+    float yaw_rad=0.f;
+    if (!bno_imu_decode(bytes,imu->body_metadata,&imu->body_frame,
+                        imu->level_valid ? imu->level_roll_tenths : 0,
+                        imu->level_valid ? imu->level_pitch_tenths : 0,
+                        HAL_GetTick(),imu->body_sequence+1U,sample,
+                        imu->body_gyro_rad_s,&yaw_rad)) {
+        sample->sequence=imu->body_sequence;
+        sample->timestamp_ms=imu->cached_body_imu.timestamp_ms;
+        return false;
+    }
+    imu->body_sequence=sample->sequence;
+    imu->cached_body_imu=*sample;
+    /* Keep the existing heading callback usable without a second Euler read.
+     * The legacy Euler callback itself remains byte-for-byte unchanged.
+     */
+    const float yaw_tenths=yaw_rad*(10.f/BNO_IMU_DEG_TO_RAD);
+    imu->cached_yaw_tenths=(int16_t)(BNO055_YAW_SIGN*yaw_tenths);
+    imu->cached_yaw_at=sample->timestamp_ms;
+    imu->cached_yaw_valid=true;
+    return true;
 }
 
 static uint32_t record_checksum(const Bno055CalibrationRecord *record)
@@ -193,6 +266,15 @@ bool bno055_init(Bno055 *imu, I2C_HandleTypeDef *i2c)
 
     memset(imu, 0, sizeof(*imu));
     imu->i2c = i2c;
+    const Bno055BodyFrame body_frame={
+        .gyro_axis={BNO055_BODY_GYRO_X_AXIS,BNO055_BODY_GYRO_Y_AXIS,
+                    BNO055_BODY_GYRO_Z_AXIS},
+        .expected_axis_config=BNO055_BODY_EXPECT_AXIS_CONFIG,
+        .expected_axis_sign=BNO055_BODY_EXPECT_AXIS_SIGN,
+        .expected_orientation=BNO055_BODY_EXPECT_ORIENTATION,
+        .axis_verified=BNO055_BODY_AXES_VERIFIED!=0
+    };
+    (void)bno055_set_body_frame(imu,&body_frame);
     load_record(imu);
     imu->address = detect(imu);
     if (imu->address == 0U) {
@@ -234,6 +316,10 @@ bool bno055_init(Bno055 *imu, I2C_HandleTypeDef *i2c)
     HAL_Delay(30);
 
     imu->present = true;
+    /* A failed new-path metadata read never changes legacy init success. */
+    imu->body_metadata_valid=
+        read_body_bytes(imu,BNO055_UNIT_SEL_ADDR,imu->body_metadata,8U) &&
+        bno_imu_metadata_valid(imu->body_metadata);
     return true;
 }
 
@@ -384,6 +470,7 @@ bool bno055_save_level_calibration(Bno055 *imu, uint16_t samples)
     imu->level_roll_tenths = (int16_t)(roll_sum / samples);
     imu->level_pitch_tenths = (int16_t)(pitch_sum / samples);
     imu->level_valid = true;
+    imu->cached_body_imu.valid = false;
     return save_record(imu);
 }
 
@@ -397,6 +484,7 @@ bool bno055_clear_calibration(Bno055 *imu)
     imu->level_valid = false;
     imu->level_roll_tenths = 0;
     imu->level_pitch_tenths = 0;
+    imu->cached_body_imu.valid = false;
     memset(imu->device_profile, 0, sizeof(imu->device_profile));
     return save_record(imu);
 }

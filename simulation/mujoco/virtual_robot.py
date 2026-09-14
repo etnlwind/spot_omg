@@ -3,7 +3,7 @@
 Run with mjpython for --viewer. No hardware transport is imported or opened.
 The protocol adapter is intentionally separate from the physics plant.
 """
-from stow_policy import LANDING, FOLDED, FOLD_SECONDS, RELEASE_TORQUE_AT_STOW, frame as stow_frame, attitude_ok as stow_attitude_ok, pose_frame as shared_pose_frame
+from stow_policy import LANDING, FOLDED, FOLD_SECONDS, RELEASE_TORQUE_AT_STOW, direct_unfold, duration as stow_duration, folded_geometry, frame as stow_frame, attitude_ok as stow_attitude_ok, pose_frame as shared_pose_frame
 import argparse
 import collections
 import json
@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import mujoco
 from cad_gait import CAD, KEYS
 from cad_physics import Simulation
 from realtime_pacer import PhysicsPacer
@@ -36,6 +37,7 @@ class RobotController:
         self.safety = 'ok'
         self.motion = None
         self.transition = None
+        self.stow_prepared = False
         self.stow_path = False
         self.stow_queue = []
         self.phase = 0.
@@ -53,6 +55,9 @@ class RobotController:
         from position_wbc import PositionWBC,EncoderChannel
         self.position_wbc=PositionWBC(plant.model)
         self.encoder_channel=EncoderChannel()
+        from gait_tracking import GaitTracking
+        self.tracking=GaitTracking(plant.policy)
+        self.tracking_enabled=plant.p.get('tracking_feedback_enabled',False)
         self.support_shift=None
         self.footstep_tracker=None
         self.profile = json.loads(PROFILE_FILE.read_text()).get('default','legacy') if self.profiles else 'legacy'
@@ -81,14 +86,23 @@ class RobotController:
                 raise ValueError('Experimental profile needs a deployed balance_base')
             for phase in np.linspace(0,1,101):
                 foot_targets(profile['params'],phase*profile['params'][0],1,profile['family'])
+                if profile.get('measured_swing'):
+                    from measured_swing import targets as measured_targets
+                    for linear,yaw in ((1,0),(0,-1),(0,1)):
+                        params=profile.get('turn_reverse_params',profile['params']) if yaw else profile['params']
+                        measured_targets(params,phase,1,linear,yaw,profile['measured_swing'])
         self.profiles.update(profiles)
 
     def observe_imu(self, model, data):
         r = data.xmat[model.body('robot').id].reshape(3,3)
+        velocity = np.zeros(6)
+        # XBODY uses the robot frame, BODY would use its inertia principal axes.
+        mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_XBODY,
+                                model.body('robot').id, velocity, 1)
         self.imu.advance(float(data.time),
             math.degrees(math.atan2(r[2,1],r[2,2])),
             math.degrees(math.asin(float(np.clip(-r[2,0],-1,1)))),
-            math.degrees(math.atan2(r[1,0],r[0,0])))
+            math.degrees(math.atan2(r[1,0],r[0,0])), gyro_body_rad_s=velocity[:3])
 
     def imu_diagnostic(self):
         return dict(sensor='BNO055', mode='IMUPLUS', emulated=True,
@@ -100,6 +114,12 @@ class RobotController:
 
     def reply(self, text='OK'):
         self.out.append(text + '\r\n# ')
+
+    def balance_state(self):
+        if self.profile=='attitudepd':
+            if not self.body_stabilizer.enabled:return 'off'
+            return 'active' if self.body_stabilizer.diagnostic.get('status')=='active' else 'suspended'
+        return 'active' if self.balance.applied else 'suspended' if self.balance.enabled else 'off'
 
     def drain(self):
         result = ''.join(self.out).encode()
@@ -143,6 +163,14 @@ class RobotController:
 
     def finish_stop(self, reason):
         drive = self.motion[0] == 'drive'
+        if self.profile=='attitudepd':
+            self.target=self.command_target.copy()
+            self.body_stabilizer.reset()
+        if self.profile=='arcturn' and any(value is not None and value is not False
+                for key,value in self.plant.p.items() if key.startswith('arc_')):
+            # Experimental residuals are applied after nominal IK. Blend from
+            # the last commanded pose, never jump back to uncorrected nominal.
+            self.target=self.command_target.copy()
         self.motion = None
         self.stopping_reason = None
         self.request = (0., 0.)
@@ -167,6 +195,12 @@ class RobotController:
         if self.motion or self.transition:
             raise ValueError('stop before changing profile')
         self.profile = name
+        if name=='attitudepd':
+            from body_stabilizer import BodyStabilizer
+            if not hasattr(self,'body_stabilizer'):
+                self.body_stabilizer=BodyStabilizer(self.plant.p.get('body_stabilizer'))
+            self.body_stabilizer.reset()
+        self.balance.integral[:]=0;self.balance.correction[:]=0
         self.support_j1.reset()
         self.position_wbc.delta[:]=0;self.position_wbc.confidence[:]=0;self.position_wbc.scale=1.
         self.encoder_channel.queue.clear()
@@ -191,11 +225,28 @@ class RobotController:
                 if line not in ('echo off', 'echo on') and not (len(words)==3 and words[:2]==['log','time'] and words[2].isdigit()):
                     raise ValueError('unsupported simulator command')
                 self.reply()
+            elif cmd=='stabilize' or cmd=='@B':
+                modes={'0':'off','1':'on','2':'status'} if cmd=='@B' else {'on':'on','off':'off','status':'status'}
+                if len(words)!=2 or words[1] not in modes:raise ValueError('stabilize on|off|status')
+                if not hasattr(self,'body_stabilizer'):
+                    from body_stabilizer import BodyStabilizer
+                    self.body_stabilizer=BodyStabilizer(self.plant.p.get('body_stabilizer'))
+                action=modes[words[1]]
+                if action!='status':self.body_stabilizer.enabled=action=='on'
+                status=self.body_stabilizer.diagnostic.get('status','idle')
+                self.reply(f'$STABILIZE enabled={int(self.body_stabilizer.enabled)} status={status} policy={self.profile} rate_hz=50')
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={"active" if self.balance.applied else "suspended" if self.balance.enabled else "off"} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v27-sim caps=trot5,simprofiles,gaitprofiles,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v58-sim caps=trot5,simprofiles,gaitprofiles,arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
+            elif cmd == 'tracking':
+                if len(words)!=2 or words[1] not in ('on','off') or self.motion or self.transition:
+                    raise ValueError('tracking on|off requires idle')
+                self.tracking_enabled=words[1]=='on';self.reply('OK tracking experimental')
+            elif cmd == 'trackingdiag':
+                d=self.tracking.diagnostic
+                self.reply(f"$TRACKING enabled={int(self.tracking_enabled)} rate={round(self.tracking.rate*1000)} error10={round(d.get('peak_error_deg',0)*10)} oldest_ms={int(d.get('oldest_ms',0))} blocked_ms={int(d.get('blocked_ms',0))} fault={d.get('fault',0)} contact=unobserved")
             elif cmd == 'locomotiondiag':
                 h=self.heading.diagnostic();reading=self.imu_reading
                 self.reply(f"$LOCOMOTION profile={self.profile} heading={'on' if h['enabled'] else 'off'} yaw10={reading['yaw_tenths'] if reading else 0} valid={int(reading is not None)} error10={round(h['error_deg']*10)} correction={round(h['correction']*1000)} late=0 fault={int(self.safety!='ok')}")
@@ -240,14 +291,18 @@ class RobotController:
                 else:
                     self.stow_queue=[(FOLDED,'OK stow',FOLD_SECONDS)]
                     self.blend_pose(LANDING,'STOW landing')
-            elif cmd=='landing' and self.stow_path and len(words)==1:
+            elif cmd=='landing' and len(words)==1 and (self.stow_path or folded_geometry(np.degrees(self.plant.data.qpos[self.plant.q]))):
                 self.capture_current_target()
                 self.torque=True
-                self.blend(LANDING,'OK landing',FOLD_SECONDS)
+                self.stow_path=True;self.plant.stow_active=True
+                self.stow_prepared=False
+                self.blend(LANDING,'OK landing',stow_duration(self.target))
             elif cmd == 'heading' and len(words)==2 and words[1] in ('on','off'):
                 self.heading.enabled=words[1]=='on'; self.heading.update(None,0,0,0); self.reply()
             elif cmd in ('balance','simbalance') and len(words)==2 and words[1] in ('on','off'):
-                self.balance.enabled=words[1]=='on'; self.reply()
+                if self.profile=='attitudepd':self.body_stabilizer.enabled=words[1]=='on'
+                else:self.balance.enabled=words[1]=='on'
+                self.reply()
             elif cmd in ('gaitprofile','simprofile') and len(words)==2:
                 self.select_profile(words[1]); self.reply('OK profile='+self.profile)
             elif cmd in ('gaitprofiles','simprofiles') and len(words)==1:
@@ -317,6 +372,18 @@ class RobotController:
         if kind in ('drive','profile') and self.profile != 'legacy':
             profile=self.profiles[self.profile]
             params=self.active_profile_params().copy()
+            if profile.get('measured_swing'):
+                from measured_swing import targets as measured_targets
+                values=measured_targets(params,phase,amplitude,self.linear,self.yaw,profile['measured_swing'])
+                if profile.get('pivot_turn'):
+                    from pivot_turn import PivotTurn
+                    weight=policy.smootherstep(float(np.clip(1-abs(self.linear)/.6,0,1)))
+                    if not profile['pivot_turn'].get('retain_entry_foot_xy',False):weight*=policy.smootherstep(min(1.,abs(self.yaw)/.25))
+                    if weight>0:
+                        if not hasattr(self,'pivot_turn'):self.pivot_turn=PivotTurn(self.plant.model)
+                        pivot=self.pivot_turn.plan(params,phase,amplitude,self.yaw,profile['pivot_turn'],nominal=values)
+                        values+=weight*(pivot-values)
+                return dict(zip(KEYS,values))
             if profile.get('footstep_tracking'):
                 if self.footstep_tracker is None:
                     from footstep_tracker import FootstepTracker
@@ -349,6 +416,13 @@ class RobotController:
         self.attitude_filter = FirmwareAttitudeFilter()
         self.balance.integral[:]=0; self.balance.correction[:]=0
         self.balance.saturated=False
+        if self.profile=='attitudepd':self.body_stabilizer.reset()
+        for name in ('arc_frame','arc_attitude','arc_preload','arc_transfer','arc_dynamic','arc_support_state','arc_shift_state',
+                     'arc_com_state','arc_tripod_state','arc_observer','arc_sensor','arc_sensor_available'):
+            if hasattr(self,name):delattr(self,name)
+        if self.profiles.get(self.profile,{}).get('pivot_turn',{}).get('retain_entry_foot_xy',False):
+            from pivot_turn import PivotTurn
+            self.pivot_turn=PivotTurn(self.plant.model);self.pivot_turn.set_entry(self.command_target)
         self.motion=motion; self.elapsed=self.phase=self.linear=self.yaw=0.
         self.turn_assist=0.
         self.stopping_reason=None
@@ -365,7 +439,15 @@ class RobotController:
             elapsed=min(duration,elapsed+.02)
             t=self.plant.policy.smootherstep(elapsed/duration)
             if self.stow_path and completion in ('OK stow','OK landing'):
-                self.target=np.asarray(stow_frame(start,completion=='OK stow',elapsed)[0])
+                if completion=='OK landing' and duration>FOLD_SECONDS and elapsed>FOLD_SECONDS:
+                    ready=np.asarray(stow_frame(start,False,FOLD_SECONDS)[0])
+                    measured=np.degrees(self.plant.data.qpos[self.plant.q]).copy()
+                    if np.max(abs(measured-ready))>5:
+                        self.stop('unfold preparation tracking error')
+                        return
+                    start=measured;duration=FOLD_SECONDS;elapsed=.02
+                    self.stow_prepared=True
+                self.target=np.asarray((direct_unfold(start,elapsed) if completion=='OK landing' and self.stow_prepared else stow_frame(start,completion=='OK stow',elapsed))[0])
             elif completion in ('OK stand','OK stand11','OK landing','STOW landing'):
                 self.target=np.asarray(shared_pose_frame(start,end,elapsed)[0])
             else:
@@ -393,6 +475,7 @@ class RobotController:
                         self.pose='stow-paused'
                     self.reply(completion)
         elif self.motion:
+            self.nominal_phase=self.phase  # target time, before the gait advances
             if self.motion[0]=='drive' and (self.profile=='legacy' or (self.profile in self.deployed_profiles and self.profiles[self.profile]==self.deployed_profiles[self.profile])):
                 self.target=shared_drive_step(self)
             else:
@@ -409,7 +492,7 @@ class RobotController:
                 self.phase=(self.phase+.02/period)%1
             if self.stopping_reason and max(abs(self.linear),abs(self.yaw))<=.008:
                 self.finish_stop(self.stopping_reason)
-            elif self.motion[0]!='drive' and self.elapsed>=self.motion[1]:
+            elif self.motion and self.motion[0]!='drive' and self.elapsed>=self.motion[1]:
                 if self.motion[0]=='profile': self.stop('complete')
                 else: self.motion=None; self.blend([0,45,90]*4,'OK')
         if self.pending_profile and not self.motion and not self.transition:
@@ -433,16 +516,78 @@ class RobotController:
             self.balance.integral[:]=0;self.balance.correction[:]=0
             self.balance.applied=False;self.balance.saturated=False
             self.command_target=self.target.copy()
+        elif self.profile=='attitudepd':
+            self.balance.integral[:]=0;self.balance.correction[:]=0
+            self.balance.applied=False;self.balance.saturated=False
+            gait_moving=self.motion is not None and self.transition is None
+            params=self.active_profile_params()
+            period=params[0]*(1.35-.35*min(1,abs(self.linear)+abs(self.yaw)))
+            frame=dict(phase=getattr(self,'nominal_phase',self.phase),period_s=period,duty=params[1],moving=gait_moving)
+            try:
+                self.command_target=self.body_stabilizer.apply(self.target,frame,self.imu_reading,
+                    float(self.plant.data.time),permitted=permitted and gait_moving)
+            except ValueError as error:
+                # Retain the entire last valid command; never publish partial IK
+                # or cut torque merely because a correction is infeasible.
+                self.motion=None;self.transition=None;self.request=(0.,0.)
+                self.target=self.command_target.copy();self.safety='planner';self.pose='custom'
+                self.reply('ERROR: '+str(error)+'; command held, torque preserved')
+        elif self.plant.p.get('arc_attitude_trial') and self.profile=='arcturn' and self.motion and not self.transition and hasattr(self,'arc_frame'):
+            # The CAD gait must not pass through the legacy two-link IK balance.
+            self.balance.integral[:]=0;self.balance.correction[:]=0
+            self.balance.applied=False;self.balance.saturated=False
+            if not hasattr(self,'arc_attitude'):
+                from arc_attitude import ArcAttitude
+                self.arc_attitude=ArcAttitude(self.plant.policy)
+            available=bool(permitted and self.balance.enabled and self.imu_reading is not None
+                and self.imu_reading['age_ms']<=100 and self.attitude_filter.failures==0)
+            available=available and max(abs(self.linear),abs(self.yaw))>.001
+            self.command_target=self.arc_attitude.apply(self.target,self.arc_frame,getattr(self,'arc_sensor',self.attitude_filter),
+                available and getattr(self,'arc_sensor_available',True),self.plant.p['arc_attitude_trial'])
         else:
             self.command_target = self.balance.apply(self.target,self.attitude_filter,
                 self.imu_reading is not None and self.attitude_filter.failures==0,permitted)
+        if self.plant.p.get('arc_balance_trial') and self.profile=='arcturn' and self.motion and not self.transition and permitted:
+            import ctypes
+            fp=ctypes.POINTER(ctypes.c_float);fn=self.plant.policy._library.spot_arc_balance
+            fn.argtypes=(fp,*([ctypes.c_float]*6),fp);fn.restype=ctypes.c_int
+            out=(ctypes.c_float*12)();config=self.plant.p.get('arc_trial',[.02,.5,.04,0])
+            phase=self.phase-.02/(1.44-.24*abs(self.yaw)/max(abs(self.linear)+abs(self.yaw),1e-9))
+            gain,swing_gain=self.plant.p['arc_balance_trial']
+            roll,pitch=np.radians(np.array(self.attitude_filter.filtered)/10)
+            if not fn((ctypes.c_float*12)(*self.target),roll,pitch,phase,config[1],gain,swing_gain,out):
+                raise ValueError('Cartesian balance target infeasible')
+            self.command_target=np.array(out)
+        if self.plant.p.get('arc_transfer_trial') and self.profile=='arcturn' and self.motion and not self.transition and permitted and hasattr(self,'arc_frame'):
+            if not hasattr(self,'arc_transfer'):
+                from arc_preload import ArcTransfer
+                self.arc_transfer=ArcTransfer(self.plant.policy)
+            transfer_config=list(self.plant.p['arc_transfer_trial'])
+            transfer_config[2]*=min(1.,abs(self.linear)+abs(self.yaw))
+            self.command_target+=self.arc_transfer.correction(self.target,self.arc_frame,transfer_config)
+        elif hasattr(self,'arc_transfer'):
+            self.arc_transfer.reset()
+        if self.plant.p.get('arc_preload_trial') and self.profile=='arcturn' and self.motion and not self.transition and permitted:
+            if not hasattr(self,'arc_preload'):
+                from arc_preload import ArcPreload
+                self.arc_preload=ArcPreload(self.plant.policy)
+            gain,lead=self.plant.p['arc_preload_trial']
+            duty=self.plant.p.get('arc_trial',[.02,.5,.04,0])[1]
+            self.command_target+=self.arc_preload.correction(self.target,self.phase+lead/1.2,duty,gain)
+        elif hasattr(self,'arc_preload'):
+            self.arc_preload.reset()
         wbc_config=self.profiles.get(self.profile,{}).get('position_wbc')
         if wbc_config:
             encoder_sample=self.encoder_channel.read(np.degrees(self.plant.data.qpos[self.plant.q]))
             wbc_enabled=self.balance.enabled and self.balance.applied and self.balance.moving and permitted
+            wbc_weight=1.
+            if wbc_config.get('turn_only',False):
+                smooth=self.plant.policy.smootherstep
+                wbc_weight=smooth(min(1.,abs(self.yaw)/.25))*smooth(float(np.clip(1-abs(self.linear)/.6,0,1)))
             wbc_target=self.position_wbc.apply(self.target,encoder_sample,self.attitude_filter,
-                self.phase,self.active_profile_params()[1],wbc_config,wbc_enabled)
-            if wbc_enabled and encoder_sample is not None:self.command_target=wbc_target
+                self.phase,self.active_profile_params()[1],wbc_config,wbc_enabled and wbc_weight>0)
+            if wbc_enabled and encoder_sample is not None:
+                self.command_target+=wbc_weight*(wbc_target-self.command_target)
         shift_config=self.profiles.get(self.profile,{}).get('support_shift')
         if shift_config and self.support_shift:
             encoder_sample=self.encoder_channel.read(np.degrees(self.plant.data.qpos[self.plant.q]))
@@ -464,6 +609,17 @@ class RobotController:
                                          reset_contacts=not self.balance.moving)
             if self.balance.moving and permitted and self.footstep_tracker.healthy:
                 self.command_target=self.target.copy()
+        hold_config=self.profiles.get(self.profile,{}).get('pivot_hold')
+        if hold_config:
+            from pivot_hold import PivotHold
+            if not hasattr(self,'pivot_hold'):self.pivot_hold=PivotHold(self.plant.model)
+            encoders=self.encoder_channel.read(np.degrees(self.plant.data.qpos[self.plant.q]))
+            enabled=permitted and self.motion is not None and abs(self.request[0])<.05 and abs(self.request[1])>.01
+            self.command_target=self.pivot_hold.apply(self.command_target,encoders,self.attitude_filter,self.imu_reading,
+                self.phase,self.active_profile_params()[1],hold_config,enabled)
+        if not self.stow_path:
+            self.tracking.sample(float(self.plant.data.time),self.command_target,
+                np.degrees(self.plant.data.qpos[self.plant.q]),drop=self.plant.p.get('tracking_feedback_drop',False))
         self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque)
         self.imu_reading = self.imu.read(float(self.plant.data.time))
         # Ignore configured sensor-entry warmup; subsequent missing reads fail
@@ -483,6 +639,7 @@ class RobotController:
             roll_deg=math.degrees(math.atan2(rotation[2,1],rotation[2,2])),
             pitch_deg=math.degrees(math.asin(float(np.clip(-rotation[2,0],-1,1)))),
             imu=self.imu_reading,balance=self.balance.diagnostic(),position_wbc=self.position_wbc.diagnostic,
+            stabilization=self.body_stabilizer.diagnostic.copy() if self.profile=='attitudepd' else None,
             support_shift=self.support_shift.diagnostic.copy() if self.support_shift else None,
             footstep_tracking=self.footstep_tracker.diagnostic.copy() if self.footstep_tracker else None,
             nominal=self.target.tolist(),command=self.command_target.tolist(),

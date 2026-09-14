@@ -4,6 +4,55 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testAttitudePDProfileIsExperimentalAndCapabilityGated() {
+        XCTAssertEqual(SimulatorGaitProfile.attitudepd.titleWithSpeed,
+                       "IMU 자세 안정화 · PD · 실험 (검증실패)")
+        XCTAssertNil(SimulatorGaitProfile.attitudepd.benchmarkSpeedMetersPerSecond)
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd.simulatorOnly)
+        XCTAssertTrue(SimulatorGaitProfile.allCases.contains(.attitudepd))
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd.isSupported(capabilities: ["gaitprofiles", "centerpivot"]))
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd.isSupported(capabilities: ["gaitprofiles", "attitudepd"]))
+    }
+
+    func testAttitudePDRequiresExplicitSelectionAndSupportedFirmware() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand rev=shared-locomotion-v41 caps=gaitprofiles\r\n")
+        sent.removeAll()
+        manager.send(.simulatorProfile(.attitudepd))
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertTrue(manager.lastError?.contains("업데이트") == true)
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitude-pd caps=gaitprofiles,attitudepd\r\n")
+        XCTAssertFalse(sent.contains("gaitprofile attitudepd\n"), "Advertising a profile must not select it automatically")
+        sent.removeAll()
+        manager.send(.simulatorProfile(.attitudepd))
+        XCTAssertEqual(sent, ["gaitprofile attitudepd\n"])
+        manager.disconnect()
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd.isSupported(capabilities: manager.runtimeState.capabilities))
+    }
+
+    func testSupportTransitionProfileIsExperimentalAndCapabilityGated() {
+        XCTAssertEqual(SimulatorGaitProfile.arcsupport.titleWithSpeed,
+                       "원호 턴 · 지지 전환 보정 · 실험 (검증실패)")
+        XCTAssertFalse(SimulatorGaitProfile.arcsupport.simulatorOnly)
+        XCTAssertFalse(SimulatorGaitProfile.arcsupport.isSupported(capabilities: ["gaitprofiles"]))
+        XCTAssertTrue(SimulatorGaitProfile.arcsupport.isSupported(capabilities: ["gaitprofiles", "arcsupport"]))
+    }
+
+    func testSupportTransitionCannotBeSentToOldFirmware() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand rev=shared-locomotion-v41 caps=gaitprofiles\r\n")
+        sent.removeAll()
+        manager.send(.simulatorProfile(.arcsupport))
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertTrue(manager.lastError?.contains("업데이트") == true)
+        manager.receiveConsoleText("$SPOTSTATE pose=stand rev=shared-locomotion-v43 caps=gaitprofiles,arcsupport\r\n")
+        sent.removeAll()
+        manager.send(.simulatorProfile(.arcsupport))
+        XCTAssertEqual(sent, ["gaitprofile arcsupport\n"])
+        manager.disconnect()
+    }
     func testMissingInitialReplyRetriesReadOnlyAndReportsTimeout() {
         var sent: [String] = []
         let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }

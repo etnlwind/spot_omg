@@ -65,6 +65,8 @@ void robot_init(RobotController *robot, ServoBus *bus)
         return;
     }
 
+    robot->support_event=0;robot->drive_pose_entry=false;robot_support_reset(robot);
+    memset(&robot->joint_trace,0,sizeof(robot->joint_trace));
     robot->locomotion_profile = LOCOMOTION_DEFAULT_PROFILE;
     robot->heading_enabled = true;
     robot->heading_reader = NULL;
@@ -84,9 +86,18 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->bus = bus;
     robot->last_bus_result = SERVO_BUS_OK;
     robot->last_failed_servo_id = 0U;
+    robot->tracking_enabled = false; /* Experimental until contact/tilt quality is validated. */
     robot->profile_speed = ROBOT_PROFILE_SPEED_DEFAULT;
     robot->profile_acceleration = ROBOT_PROFILE_ACCELERATION_DEFAULT;
     robot->attitude_reader = NULL;
+    robot->body_imu_reader = NULL;
+    robot->realtime_service = NULL;
+    robot->stabilization_enabled = true;
+    robot->stabilization_config = body_stabilizer_default_config();
+    memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
+    body_stabilizer_reset(&robot->attitude_pd.body);
+    memset(&robot->body_imu,0,sizeof(robot->body_imu));
+    robot->stabilization_trace_write=robot->stabilization_trace_count=0;
     robot->attitude_context = NULL;
     robot->balance_enabled = false;
 #if ROBOT_IMU_BALANCE_DEFAULT_ENABLED
@@ -431,21 +442,8 @@ static RobotResult sample_joint(RobotController *robot,
                                 uint16_t *position,
                                 bool *tripped);
 
-/*
- * Straighten every leg: both links in line, foot below the hip.
- *
- * This commands whatever the calibration currently calls zero, which is the
- * point -- seeing where the robot actually goes is how a wrong zero becomes
- * visible.  It does not refuse a pose that sits near a limit, because that
- * pose is exactly the one worth looking at.
- *
- * It does watch.  A joint whose zero is past its mechanical stop cannot arrive,
- * and will sit there pushing at stall current until the supply gives out, so
- * every joint is polled through the stall detector and torque is cut on all
- * twelve the moment one of them is straining without progress.  Joints that
- * simply run out of time are reported too, with torque off, since not arriving
- * means still pushing.
- */
+/* Stand11/Stand/Landing share measured-progress supervision. Errors do not
+ * imply a blanket torque release; load-support monitoring continues in Stand. */
 typedef bool (*RobotPoseTargets)(uint16_t targets[ROBOT_JOINT_COUNT]);
 static RobotResult robot_move_to_pose(RobotController *, RobotPoseTargets);
 static RobotResult sample_next_joint(RobotController *,const uint16_t [ROBOT_JOINT_COUNT],uint16_t);
@@ -454,90 +452,14 @@ RobotResult robot_stand_straight(RobotController *robot)
     return robot_move_to_pose(robot,robot_straight_targets);
 }
 
-static RobotResult robot_move_to_pose(RobotController *robot,
-                                      RobotPoseTargets build_targets)
+static RobotResult robot_move_to_pose(RobotController *robot, RobotPoseTargets build_targets)
 {
-    if(robot) robot->shared_idle=false;
-    /*
-     * Gated because it commands positions.  robot_relax() deliberately is not:
-     * cutting torque is the safe direction and must work in any state.
-     * robot_recover() clears the latch before it holds, so it is unaffected.
-     */
-    if (robot != NULL && (safety_is_faulted(&robot->safety) || robot->locomotion_fault)) {
-        return ROBOT_SAFETY_FAULT;
-    }
-    uint16_t target[ROBOT_JOINT_COUNT];
-    uint16_t measured_positions[ROBOT_JOINT_COUNT];
-
-    if (robot == NULL || robot->bus == NULL || build_targets == NULL) {
-        return ROBOT_INVALID_ARGUMENT;
-    }
-    if (!build_targets(target)) {
-        return ROBOT_CONFIG_ERROR;
-    }
-
-    robot->motion_abort_requested=false;
-    RobotResult result = robot_hold(robot);
-    if (result != ROBOT_OK) {
-        return result;
-    }
-
-    uint16_t from[12],frame[12];
-    result=robot_read_positions(robot,from);
-    if(result!=ROBOT_OK)return result;
-    uint32_t duration=pose_duration(from,target);
-    if(duration==0) {
-        ServoBusResult sent=sts3215_sync_move(robot->bus,g_robot_servo_ids,target,12,robot->profile_speed,robot->profile_acceleration);
-        if(sent!=SERVO_BUS_OK)return bus_failure(robot,254,sent);
-    }
-    for(uint32_t elapsed=20;elapsed<=duration;elapsed+=20) {
-        uint32_t started=HAL_GetTick();
-        if(robot->motion_abort_requested) {
-            (void)robot_hold(robot);return ROBOT_MOTION_ABORTED;
-        }
-        pose_frame(from,target,duration,elapsed,frame);
-        ServoBusResult bus_result=sts3215_sync_move(robot->bus,g_robot_servo_ids,frame,12,300,30);
-        if(bus_result!=SERVO_BUS_OK){(void)robot_relax(robot);return bus_failure(robot,254,bus_result);}
-        result=sample_next_joint(robot,frame,0);
-        if(result!=ROBOT_OK){(void)robot_relax(robot);return result;}
-        uint32_t spent=HAL_GetTick()-started;if(spent<20)HAL_Delay(20-spent);
-    }
-
-    const uint32_t verify_started_at = HAL_GetTick();
-    for (;;) {
-        if(robot->motion_abort_requested){(void)robot_hold(robot);return ROBOT_MOTION_ABORTED;}
-        result = robot_read_positions(robot, measured_positions);
-        if (result != ROBOT_OK) {
-            return result;
-        }
-
-        bool all_within_tolerance = true;
-        for (size_t joint = 0U; joint < ROBOT_JOINT_COUNT; ++joint) {
-            int32_t error = (int32_t)measured_positions[joint] -
-                            (int32_t)target[joint];
-            if (error < 0) {
-                error = -error;
-            }
-            if ((uint32_t)error > ROBOT_VERIFY_TOLERANCE) {
-                if (all_within_tolerance) {
-                    robot->last_failed_servo_id = g_robot_servo_ids[joint];
-                }
-                all_within_tolerance = false;
-            }
-        }
-
-        if (all_within_tolerance) {
-            ServoBusResult restored=sts3215_sync_move(robot->bus,g_robot_servo_ids,target,12,robot->profile_speed,robot->profile_acceleration);
-            return restored==SERVO_BUS_OK?ROBOT_OK:bus_failure(robot,254,restored);
-        }
-        result=sample_next_joint(robot,target,0);
-        if(result!=ROBOT_OK){(void)robot_relax(robot);return result;}
-        if ((uint32_t)(HAL_GetTick() - verify_started_at) >=
-            ROBOT_VERIFY_TIMEOUT_MS) {
-            (void)robot_relax(robot);return ROBOT_VERIFY_ERROR;
-        }
-        HAL_Delay(ROBOT_VERIFY_POLL_MS);
-    }
+    if(!robot || !build_targets)return ROBOT_INVALID_ARGUMENT;
+    memset(&robot->pose_diagnostics,0,sizeof(robot->pose_diagnostics));
+    if(safety_is_faulted(&robot->safety) || robot->locomotion_fault)return ROBOT_SAFETY_FAULT;
+    uint16_t target[12];
+    if(!build_targets(target))return ROBOT_CONFIG_ERROR;
+    return robot_supervised_pose(robot,target);
 }
 
 RobotResult robot_stand(RobotController *robot)
@@ -925,14 +847,20 @@ static RobotResult sample_joint(RobotController *robot,
                                 uint16_t *position,
                                 bool *tripped)
 {
-    Sts3215State state;
+    Sts3215State state = {0};
     const uint8_t id = g_robot_servo_ids[index];
 
     if (tripped != NULL) {
         *tripped = false;
     }
 
+    uint32_t read_begin=HAL_GetTick();
     ServoBusResult bus_result = sts3215_read_state(robot->bus, id, &state);
+    JointTraceSample captured={.begin_ms=read_begin,.end_ms=HAL_GetTick(),
+        .joint=(uint8_t)index,.status=(uint8_t)bus_result,.position=state.position,
+        .speed=state.speed,.load=state.load,.current=state.current,
+        .voltage_mv=state.voltage_mv,.temperature=state.temperature_c,.hardware_error=state.hardware_error};
+    if(robot->gait_diagnostics_active)joint_trace_sample(&robot->joint_trace,captured);
     if (bus_result != SERVO_BUS_OK) {
         return bus_failure(robot, id, bus_result);
     }
@@ -941,6 +869,8 @@ static RobotResult sample_joint(RobotController *robot,
     }
 
     if (robot->gait_diagnostics_active) {
+        gait_tracking_sample(&robot->tracking,index,
+            ((int32_t)state.position-targets[index])*g_robot_joints[index].direction*360.f/4096.f,HAL_GetTick());
         const int32_t signed_error =
             (int32_t)targets[index] - (int32_t)state.position;
         uint8_t matched_age = 0U;
@@ -1008,6 +938,15 @@ static RobotResult sample_joint(RobotController *robot,
         return ROBOT_SAFETY_FAULT;
     }
     return ROBOT_OK;
+}
+
+static void capture_joint_command(RobotController *robot,uint32_t begin,uint32_t end,const uint16_t targets[12]) {
+    JointTrace *t=&robot->joint_trace;
+    if(t->armed && !t->command_count){
+        t->profile=(uint8_t)robot->locomotion_profile;
+        t->speed=robot->profile_speed;t->acceleration=robot->profile_acceleration;
+    }
+    joint_trace_command(t,begin,end,targets);
 }
 
 static void gait_target_history_push(
@@ -1781,6 +1720,7 @@ static RobotResult robot_trot_scaled(RobotController *robot,
         }
 
         gait_target_history_push(robot, targets);
+        uint32_t trace_send_begin=HAL_GetTick();
         bus_result = sts3215_sync_positions(robot->bus,
                                             g_robot_servo_ids,
                                             targets,
@@ -1790,6 +1730,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             return_to_stand_best_effort(robot);
             return bus_failure(robot, FEETECH_BROADCAST_ID, bus_result);
         }
+
+        capture_joint_command(robot,trace_send_begin,HAL_GetTick(),targets);
 
         /*
          * Sample inside the frame's own slack: the deadline below is absolute,
@@ -1981,7 +1923,16 @@ RobotResult robot_turn(RobotController *robot,
 static RobotResult shared_observe(RobotController *robot)
 {
     int16_t roll=0,pitch=0;
-    bool valid=robot->attitude_reader && robot->attitude_reader(robot->attitude_context,&roll,&pitch);
+    bool valid=false;
+    if(robot->locomotion_profile==locomotion_profile_id("attitudepd") && robot->body_imu_reader) {
+        robot->body_imu.valid=false;
+        valid=robot->body_imu_reader(robot->attitude_context,&robot->body_imu);
+        if(valid) {
+            roll=(int16_t)lroundf(robot->body_imu.roll*1800.f/GAIT_POLICY_PI);
+            pitch=(int16_t)lroundf(robot->body_imu.pitch*1800.f/GAIT_POLICY_PI);
+        }
+    }
+    if(!valid)valid=robot->attitude_reader && robot->attitude_reader(robot->attitude_context,&roll,&pitch);
     int fault=attitude_update(&robot->shared_attitude,valid,roll,pitch);
     robot->balance_last_roll_error_tenths=robot->shared_attitude.filtered[0];
     robot->balance_last_pitch_error_tenths=robot->shared_attitude.filtered[1];
@@ -1993,6 +1944,12 @@ static RobotResult shared_observe(RobotController *robot)
 }
 static bool shared_correct(RobotController *robot,GaitPolicyLegTarget out[4],bool standing,bool moving)
 {
+    /* This policy owns its Cartesian residual. OFF must not pass through the
+     * legacy balance implementation, which can also clamp or decay joints. */
+    if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
+        memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
+        return true;
+    }
     const float k=GAIT_POLICY_PI/1800.f;
     GaitPolicyImuSample sample={robot->shared_attitude.filtered[0]*k,robot->shared_attitude.filtered[1]*k,
         robot->shared_attitude.rate[0]*k,robot->shared_attitude.rate[1]*k};
@@ -2010,24 +1967,43 @@ static void shared_blend(const GaitPolicyLegTarget from[4],const GaitPolicyLegTa
         from[i].j2_deg+(to[i].j2_deg-from[i].j2_deg)*w,
         from[i].j3_deg+(to[i].j3_deg-from[i].j3_deg)*w,true};
 }
+static void stabilization_trace_push(RobotController *robot,uint32_t now) {
+    BodyStabilizerDiagnostics *d=&robot->attitude_pd.body.diagnostics;
+    RobotStabilizeTrace *t=&robot->stabilization_trace[robot->stabilization_trace_write];
+    t->time_ms=now;t->sample_ms=d->sample_timestamp_ms;t->status=(uint8_t)d->status;
+    t->axis_clamp=d->axis_clamp_mask;t->foot_clamp=d->foot_clamp_mask;
+    t->ik_failed=robot->attitude_pd.ik_failed;
+    memcpy(t->raw,d->raw,sizeof(t->raw));memcpy(t->filtered,d->filtered,sizeof(t->filtered));
+    memcpy(t->error,d->error,sizeof(t->error));memcpy(t->u,d->u_applied,sizeof(t->u));
+    memcpy(t->dz,d->applied_dz,sizeof(t->dz));memcpy(t->weights,d->stance_weights,sizeof(t->weights));
+    robot->stabilization_trace_write=(robot->stabilization_trace_write+1U)%ROBOT_STABILIZE_TRACE_CAPACITY;
+    if(robot->stabilization_trace_count<ROBOT_STABILIZE_TRACE_CAPACITY)robot->stabilization_trace_count++;
+}
 static RobotResult robot_shared_drive(RobotController *robot)
 {
     if(robot->locomotion_fault || safety_is_faulted(&robot->safety)) return ROBOT_SAFETY_FAULT;
     if(!robot->attitude_reader) return ROBOT_IMU_ERROR;
     if(!actuator_profile_supports_limited_gait(robot->profile_speed,robot->profile_acceleration)) return ROBOT_ACTUATOR_PROFILE_ERROR;
     robot->motion_abort_requested=false;
+    robot->drive_pose_entry=true;
     RobotResult result=robot_stand(robot);
+    robot->drive_pose_entry=false;
     robot->shared_idle=false;
     if(result!=ROBOT_OK)return result;
     memset(&robot->drive_control,0,sizeof(robot->drive_control));
     memset(&robot->shared_attitude,0,sizeof(robot->shared_attitude));
     memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
+    memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
+    body_stabilizer_reset(&robot->attitude_pd.body);
+    robot->stabilization_trace_write=robot->stabilization_trace_count=0;
     GaitPolicyLegTarget stand[4],neutral[4],nominal[4],from[4],command[4];
     for(int i=0;i<4;i++)stand[i]=nominal[i]=from[i]=(GaitPolicyLegTarget){0,45,90,true};
     if(!locomotion_targets(robot->locomotion_profile,0,0,0,0,neutral))return ROBOT_CONFIG_ERROR;
     result=shared_observe(robot);if(result!=ROBOT_OK)return result;
     bool stopping=false,watchdog=false;int stage=1;float transition=0;
     uint32_t started=HAL_GetTick(),deadline=started;
+    gait_tracking_reset(&robot->tracking,started);
+    uint32_t previous_frame=started;
     robot->gait_diagnostics_active=true;actuator_diagnostics_reset(&robot->gait_diagnostics);
     robot->gait_target_history_write_index=robot->gait_target_history_count=0;
     memset(robot->gait_command_velocity_deg_s,0,sizeof(robot->gait_command_velocity_deg_s));
@@ -2039,6 +2015,10 @@ static RobotResult robot_shared_drive(RobotController *robot)
     robot->balance_peak_roll_error_tenths=0;robot->balance_peak_pitch_error_tenths=0;
     for(;;) {
         uint32_t compute_started=HAL_GetTick();
+        float frame_dt=compute_started==started?.02f:(compute_started-previous_frame)*.001f;
+        previous_frame=compute_started;
+        const float target_phase=robot->drive_control.phase;
+        if(frame_dt>.06f){result=ROBOT_MOTION_ABORTED;robot_latch_locomotion_fault(robot,result);break;}
         RobotDriveSnapshot request=drive_snapshot(robot);
         if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
         if(drive_watchdog_due(HAL_GetTick(),request.updated_at_ms,ROBOT_DRIVE_WATCHDOG_MS,stopping || request.stop_requested)) {stopping=true;watchdog=true;}
@@ -2058,16 +2038,33 @@ static RobotResult robot_shared_drive(RobotController *robot)
         } else if(stage==2) {
             int16_t yaw=0;
             bool yaw_valid=robot->heading_reader && robot->shared_attitude.failures==0 && robot->heading_reader(robot->attitude_context,&yaw);
-            if(!drive_control_step(&robot->drive_control,robot->locomotion_profile,
+            float phase_rate=robot->tracking_enabled?gait_tracking_step(&robot->tracking,compute_started,frame_dt,stopping):1;
+            if(robot->tracking_enabled && robot->tracking.fault){result=ROBOT_MOTION_ABORTED;robot_latch_locomotion_fault(robot,result);break;}
+            if(!drive_control_step_timed(&robot->drive_control,robot->locomotion_profile,
                     stopping?0:request.linear*.001f,stopping?0:request.yaw*.001f,
-                    yaw*.1f,yaw_valid,robot->heading_enabled,stopping,nominal)) {result=ROBOT_CONFIG_ERROR;break;}
+                    yaw*.1f,yaw_valid,robot->heading_enabled,stopping,frame_dt,phase_rate,nominal)) {result=ROBOT_CONFIG_ERROR;break;}
             if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f) {
-                for(int i=0;i<4;i++) {from[i]=nominal[i];}
+                for(int i=0;i<4;i++) {from[i]=robot->locomotion_profile==locomotion_profile_id("attitudepd")?command[i]:nominal[i];}
+                if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
+                    memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
+    body_stabilizer_reset(&robot->attitude_pd.body);
+                    for(int i=0;i<4;i++)nominal[i]=from[i];
+                }
             stage=3;transition=0;
             }
         }
         for(int i=0;i<4;i++)command[i]=nominal[i];
         if(!shared_correct(robot,command,false,stage==2)) {result=ROBOT_CONFIG_ERROR;break;}
+        if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
+            float p[7];locomotion_params(robot->locomotion_profile,robot->drive_control.linear,p);
+            if(!attitude_pd_apply(&robot->attitude_pd,&robot->stabilization_config,
+                    &robot->body_imu,compute_started,frame_dt,robot->stabilization_enabled,
+                    target_phase,locomotion_period(robot->locomotion_profile,robot->drive_control.linear,robot->drive_control.yaw),
+                    p[1],stage==2,nominal,command)) {
+                stabilization_trace_push(robot,compute_started);result=ROBOT_CONFIG_ERROR;break;
+            }
+            stabilization_trace_push(robot,compute_started);
+        }
         uint16_t positions[12];
         if(!gait_policy_to_servo_targets(command,positions)) {result=ROBOT_CONFIG_ERROR;break;}
         uint32_t compute_ms=HAL_GetTick()-compute_started;
@@ -2075,13 +2072,15 @@ static RobotResult robot_shared_drive(RobotController *robot)
         uint32_t io_started=HAL_GetTick();
         ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,ROBOT_JOINT_COUNT);
         if(sent!=SERVO_BUS_OK) {result=bus_failure(robot,FEETECH_BROADCAST_ID,sent);break;}
+        capture_joint_command(robot,io_started,HAL_GetTick(),positions);
         /* Tag the existing safety read with this command, not stale legacy
          * gait history. No additional bus transaction is added. */
         robot->gait_support_mask=gait_policy_support_mask(nominal);
+        int32_t frame_ms=(int32_t)(frame_dt*1000+.5f);if(frame_ms<1)frame_ms=1;
         for(size_t j=0;j<ROBOT_JOINT_COUNT;j++) {
             int32_t velocity=have_previous_command ?
-                ((int32_t)positions[j]-previous_command[j])*g_robot_joints[j].direction*18000/4096 : 0;
-            int32_t acceleration=(velocity-robot->gait_command_velocity_deg_s[j])*50;
+                ((int32_t)positions[j]-previous_command[j])*g_robot_joints[j].direction*360000/4096/frame_ms : 0;
+            int32_t acceleration=(velocity-robot->gait_command_velocity_deg_s[j])*1000/frame_ms;
             robot->gait_command_acceleration_deg_s2[j]=clamp_i16(acceleration,INT16_MAX);
             robot->gait_command_velocity_deg_s[j]=clamp_i16(velocity,INT16_MAX);
             previous_command[j]=positions[j];
@@ -2109,6 +2108,8 @@ static RobotResult robot_shared_drive(RobotController *robot)
         balance_trace_push(robot,&trace);
         if(result!=ROBOT_OK)break;
         if(stage==0)break;
+        if(robot->realtime_service && (int32_t)(deadline+ROBOT_TROT_FRAME_MS-HAL_GetTick())>=10)
+            robot->realtime_service();
         deadline+=ROBOT_TROT_FRAME_MS;
         uint32_t now=HAL_GetTick();
         if((int32_t)(deadline-now)>0) HAL_Delay(deadline-now);
@@ -2134,9 +2135,12 @@ void robot_control_idle(RobotController *robot)
     GaitPolicyLegTarget out[4];for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
     uint16_t positions[12];
     if(!shared_correct(robot,out,true,false) || !gait_policy_to_servo_targets(out,positions)) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
+    if(!robot_support_observe(robot,positions))return;
     ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,12);
-    RobotResult result=sent==SERVO_BUS_OK ? sample_next_joint(robot,positions,0) : bus_failure(robot,FEETECH_BROADCAST_ID,sent);
-    if(result!=ROBOT_OK) robot_latch_locomotion_fault(robot,result);
+    if(sent!=SERVO_BUS_OK) {
+        robot->support_decision=SUPPORT_FEEDBACK;robot->support_event++;
+        robot->shared_idle=false; /* No blanket torque release on telemetry/write loss. */
+    }
 }
 
 RobotResult robot_drive(RobotController *robot,
@@ -2472,6 +2476,28 @@ void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures) {
  for(unsigned i=0;i<128;i++) {
   GaitPolicyLegTarget targets[4];uint32_t before=HAL_GetTick();
   if(!arc_turn_targets((i%64)/64.f,1.f,0.f,i<64?-1.f:1.f,targets))(*failures)++;
+  uint32_t elapsed=HAL_GetTick()-before;*total_ms+=elapsed;if(elapsed>*peak_ms)*peak_ms=elapsed;
+ }
+}
+
+void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures) {
+ *total_ms=0;*peak_ms=0;*failures=0;
+ DriveControl state={0};state.elapsed=1.f;
+ for(unsigned i=0;i<128;i++) {
+  state.phase=(i%64)/64.f;state.yaw=i<64?-1.f:1.f;
+  GaitPolicyLegTarget targets[4];uint32_t before=HAL_GetTick();
+  if(!drive_control_step(&state,locomotion_profile_id("arcsupport"),0.f,state.yaw,0.f,false,false,false,targets))(*failures)++;
+  uint32_t elapsed=HAL_GetTick()-before;*total_ms+=elapsed;if(elapsed>*peak_ms)*peak_ms=elapsed;
+ }
+}
+
+void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures) {
+ *total_ms=0;*peak_ms=0;*failures=0;
+ DriveControl state={0};state.elapsed=1.f;
+ for(unsigned i=0;i<128;i++) {
+  state.phase=(i%64)/64.f;state.yaw=i<64?-.5f:.5f;
+  GaitPolicyLegTarget targets[4];uint32_t before=HAL_GetTick();
+  if(!drive_control_step(&state,locomotion_profile_id("centerpivot"),0.f,state.yaw,0.f,false,false,false,targets))(*failures)++;
   uint32_t elapsed=HAL_GetTick()-before;*total_ms+=elapsed;if(elapsed>*peak_ms)*peak_ms=elapsed;
  }
 }
