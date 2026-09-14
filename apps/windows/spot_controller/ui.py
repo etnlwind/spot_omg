@@ -151,7 +151,7 @@ class Window(QMainWindow):
         self.setWindowTitle("Spot OMG · Windows Controller")
         self.setMinimumSize(960, 650)
         available = self.screen().availableGeometry()
-        self.resize(min(1240, available.width()-40), min(980, available.height()-60))
+        self.resize(min(1240, available.width()-40), available.height()-40)
         self.settings = QSettings("SpotOMG", "WindowsController")
         self.connection = Connection()
         self.connection.changed.connect(self.on_state)
@@ -512,6 +512,8 @@ class Window(QMainWindow):
         if vector is None:
             self.keys.clear()
         self.input_vector = vector
+        self.joystick.vector = vector if vector is not None else (0., 0.)
+        self.joystick.update()
         self.connection.pulse(vector)
 
     def release_input(self):
@@ -542,9 +544,7 @@ class Window(QMainWindow):
                 self.connection.stop()
 
     def eventFilter(self, watched, event):
-        if event.type() in {QEvent.Type.KeyPress, QEvent.Type.KeyRelease} and self.isActiveWindow():
-            if event.isAutoRepeat():
-                return False
+        if event.type() in {QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress, QEvent.Type.KeyRelease} and self.isActiveWindow():
             key = event.key()
             typing = isinstance(QApplication.focusWidget(), (QLineEdit, QPlainTextEdit, QSpinBox, QComboBox))
             if event.type() == QEvent.Type.KeyPress and (key == Qt.Key.Key_Escape or (key == Qt.Key.Key_Space and not typing)):
@@ -553,6 +553,16 @@ class Window(QMainWindow):
             directions = {Qt.Key.Key_W: (0, 1), Qt.Key.Key_Up: (0, 1), Qt.Key.Key_S: (0, -1), Qt.Key.Key_Down: (0, -1),
                           Qt.Key.Key_A: (-1, 0), Qt.Key.Key_Left: (-1, 0), Qt.Key.Key_D: (1, 0), Qt.Key.Key_Right: (1, 0)}
             if key in directions and self.keyboard.isChecked():
+                controls_robot = key in self.keys or (not typing and self.snapshot.get("can_drive"))
+                if event.type() == QEvent.Type.ShortcutOverride:
+                    if controls_robot:
+                        event.accept()
+                        return True
+                    return False
+                if event.isAutoRepeat():
+                    # Qt sends repeated press/release pairs while a key is held.
+                    # Consume them without releasing motion or scrolling widgets.
+                    return bool(controls_robot)
                 if event.type() == QEvent.Type.KeyRelease:
                     self.keys.discard(key)
                 elif typing or not self.snapshot.get("can_drive"):
