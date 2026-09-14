@@ -20,7 +20,7 @@ MuJoCo GUI와 앱 조이스틱에서 같은 정책을 사용한다. iPhone 앱�
 크루즈는 이 비교에서 기존 V16 대비 약 2.5배, 빠른 트롯은 약 3배이다.
 앱 스틱을 끝까지 밀지 않으면 보폭과 주기가 함께 줄어 속도가 낮아진다.
 
-![속도 및 계획된 발 디딤 비교](../simulation/mujoco/gait_search/profiles/comparison.png)
+![속도 및 계획된 발 디딤 비교](../artifacts/simulation/mujoco/gait_search/profiles/comparison.png)
 
 ## 조작
 
@@ -86,7 +86,7 @@ TCP 콘솔 명령은 `simprofiles`, `simprofile cruise`, `simwalk 8`이다.
 - `check_profile_convergence.py`
 - `plot_gait_profiles.py` (matplotlib이 있는 Python 환경)
 
-자료: `simulation/mujoco/gait_search/profiles/`의 search/refined/validation/runtime/convergence/selected JSON.
+자료: `artifacts/simulation/mujoco/gait_search/profiles/`의 search/refined/validation/runtime/convergence/selected JSON.
 
 ## Spot과의 관계 및 한계
 

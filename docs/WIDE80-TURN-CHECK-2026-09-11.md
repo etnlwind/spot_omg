@@ -61,7 +61,7 @@
 
 ### 재현
 
-- 장시간 턴/전환: `/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/verify_arc_turns.py`
+- 장시간 턴/전환: `/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/verify_arc_turns.py`
 - 전후 영상: `preview_support_shift.py --profiles artifacts/upright/2026-09-11/cushion/wide80-arc-comparison-profiles.json --baseline before --candidate after --prefix wide80-arc-turn --linear 0 --yaw 1000 --fixed-azimuth`
 - 기존/신규 설정 스냅샷: `artifacts/upright/2026-09-11/cushion/wide80-arc-comparison-profiles.json`.
 

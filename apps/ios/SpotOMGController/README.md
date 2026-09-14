@@ -1,4 +1,4 @@
-> 사용자 실행 원칙 (2026-09-10): 앱은 실제 폰 UJIN17에서만 실행합니다. iOS Simulator를 실행하지 마십시오. MuJoCo 로봇 시뮬레이터는 사용합니다.
+> 현재 작업(2026-09-15)은 사용자 요청에 따라 Mac Catalyst 앱과 MuJoCo 가상 로봇에서 진행했습니다. 새 Mac의 빌드/연결 방법과 V5 결과는 [최신 인수인계](../../../docs/HANDOFF-2026-09-15-S-NATIVE-V5.md)를 확인하세요. 실제 iPhone 대상은 UJIN17이며 iOS Simulator는 실행하지 않습니다.
 
 # SpotOMGController for iOS
 
@@ -27,7 +27,7 @@
 - 새 명령/기능 감지와 기존 초기 화면·BLE·조이스틱·전압 표시 XCTest 26개 통과.
 
 새 컴퓨터에서 작업을 재개할 때는
-[작업 인수인계](../../../docs/HANDOFF-2026-09-08.md)를 먼저 참고하세요.
+[최신 작업 인수인계](../../../docs/HANDOFF-2026-09-15-S-NATIVE-V5.md)를 먼저 참고하세요.
 
 SwiftUI와 CoreBluetooth로 `SpotOMG-Bridge`에 직접 연결하는 iPhone 앱입니다.
 자세·진단 버튼은 기존 STM32 text console을 사용하고, 조이스틱은 console prompt와
@@ -256,7 +256,7 @@ V0.4.2 (14) / shared-locomotion-v20: `level15` (**수평 + 발 들기 · 15mm**)
 - 상단 로그 영역을 좌우로 스와이프하면 터미널과 MuJoCo 화면을 전환합니다. 터미널 크기와 하단 조종기 배치는 유지합니다.
 - Mac과 실제 폰을 같은 Wi-Fi에 연결하고, 앱의 로컬 네트워크 접근을 허용하십시오. 영상 페이지가 Bonjour로 Mac을 자동 검색합니다.
 - 자동 검색이 안 되면 영상 헤더의 네트워크 버튼에서 Mac의 IP만 입력하십시오. 빈 값으로 연결하면 자동 검색으로 복귀합니다.
-- 기존 `virtual_robot.py --viewer` 실행 시 영상 서버도 시작합니다. 먼저 Mac의 `spot_omg` Python 환경에서 `python -m pip install -r simulation/mujoco/requirements-video.txt`로 영상 의존성을 설치하십시오.
+- 기존 `virtual_robot.py --viewer` 실행 시 영상 서버도 시작합니다. 먼저 Mac의 `spot_omg` Python 환경에서 `python -m pip install -r simulation/mujoco/config/requirements-video.txt`로 영상 의존성을 설치하십시오.
 - 영상은 LAN TCP 8766 포트의 읽기 전용 JPEG 전송(640×360, 최대 10fps)입니다. BLE 제어와 별개이며, LAN에서 해당 포트 접근이 가능해야 합니다. 네트워크 지연이 있는 모니터 영상입니다.
 - Mac 뷰어의 카메라 시점과 로봇 상태를 별도 프로세스에서 렌더링합니다. 화면 수신이 없으면 렌더링을 쉬며, 오래된 영상은 표시하지 않습니다. 앱에서 터미널로 돌아가거나 백그라운드로 가면 수신을 중지합니다.
 - 영상 서버 비활성화: `--no-video`. 바인딩 주소/포트: `--video-host` / `--video-port` (수동 앱 주소는 기본 8766, Bonjour는 공지된 포트 사용).

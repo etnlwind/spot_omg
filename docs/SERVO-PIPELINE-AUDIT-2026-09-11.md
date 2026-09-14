@@ -15,7 +15,7 @@
 
 ## 수치 검사
 
-`simulation/mujoco/test_servo_pipeline.py` 추가:
+`simulation/mujoco/tests/test_servo_pipeline.py` 추가:
 - −120..120°를0.005° 간격48,001개 ×12축으로 인코딩. 양방향 단조성, ID별 중심/부호 일치, 역변환 오차 검사.
 - NaN/±Inf/과대 각도는 모든 축에서 거부.
 - arcturn 좌/우/전진/후진/혼합6조건 ×128위상에서 인코딩 전후 CAD 발 중심XY/쿠션 최저점Z 비교.

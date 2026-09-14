@@ -21,7 +21,7 @@
 | 크루즈 | 약 7.9° | 약 0.4–0.8° |
 | 트롯 | 약 12° | 약 0.9–2.0° |
 
-8개 A/B 사례에서 안전 상태 정상, 발 이외의 접촉 없음, 정지 완료를 확인했다. 상세 결과는 `simulation/mujoco/heading_hold_validation.json`, 재현은 `validate_heading_hold.py`이다. 더 작은 ±0.02Nm 외력 결과도 `diagnostics/heading-small-disturbance.json`에 보존했다. 작은 외력에서는 보행 주기 진동이 오차에서 차지하는 비중이 커서 RMS 개선은 약 25–47%였다.
+8개 A/B 사례에서 안전 상태 정상, 발 이외의 접촉 없음, 정지 완료를 확인했다. 상세 결과는 `artifacts/simulation/mujoco/heading_hold_validation.json`, 재현은 `validate_heading_hold.py`이다. 더 작은 ±0.02Nm 외력 결과도 `diagnostics/heading-small-disturbance.json`에 보존했다. 작은 외력에서는 보행 주기 진동이 오차에서 차지하는 비중이 커서 RMS 개선은 약 25–47%였다.
 
 방향 유지는 위치 경로 추종과 다르다. 옆으로 미끄러진 위치까지 원래 선으로 복귀시키지는 않는다. IMUPLUS의 상대 yaw 드리프트도 남으므로 장시간 절대 방향 유지나 실제 기구 편차 보상을 보장하는 결과는 아니다.
 

@@ -673,7 +673,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // Select once per connection, only from a confirmed idle state. The UI
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
-        let profile = SimulatorGaitProfile.centerpivot
+        let profile: SimulatorGaitProfile = target == .robot ? .centerpivot : .newest
         guard defaultValidationProfilePending, state.isReady,
               lastStateSync != nil, !driveSessionActive, !motionControlsLocked,
               ["landing", "stand", "stand11"].contains(runtimeState.pose),

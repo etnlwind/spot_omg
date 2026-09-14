@@ -52,11 +52,11 @@ V15 전진 궤적(보폭 1.6배, 기존 2400~1800ms 주기)에서 발 X 위치�
 
 ```sh
 cd /Users/etnlwind/project/spot_omg
-PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/compare_stance.py --validate
+PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/compare_stance.py --validate
 ```
 
 `--timestep 0.00025`로 더 작은 간격을 비교할 수 있다. 이 비교 명령은 시뮬레이터만 실행하며 로봇에 연결하지 않는다. GUI 재생 기능은 없다.
 
-결과: `simulation/mujoco/gait_search/stance/`의 `refined_validation.json`, `convergence.json`. `coarse_search.json`과 `coarse_validation.json`은 초기 시간 간격 비교 기록이며 최종 순위 자료가 아니다.
+결과: `artifacts/simulation/mujoco/gait_search/stance/`의 `refined_validation.json`, `convergence.json`. `coarse_search.json`과 `coarse_validation.json`은 초기 시간 간격 비교 기록이며 최종 순위 자료가 아니다.
 
 검사: 중립 각도 결합, 발 X 보존, 높이 변화량, 기존 45° 항등성 및 도달 범위 초과 검사를 포함한 관련 테스트 9개 통과. 펌웨어/앱 변경 및 설치 없음.

@@ -46,7 +46,7 @@
 재촬영:
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/record_gait_video.py --profile level15
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/record_gait_video.py --profile level15
 ```
 
 MuJoCo UI:
@@ -59,7 +59,7 @@ UI 숫자 8은 기존 Level, 9는 Level15. 원격 연결이 없을 때 W로 8초
 
 ## 검증 산출물
 
-- `simulation/mujoco/level15_gait_validation.json`, `level15_turn_validation.json`
+- `artifacts/simulation/mujoco/level15_gait_validation.json`, `level15_turn_validation.json`
 - Python 제어/프로토콜 테스트 56개 통과. Level/Level15 J1 양자화 이상 보정 테스트 통과.
 - iOS XCTest 45개 통과. UJIN17에 V0.4.2 (14) 설치/실행 확인.
 - STM32 빌드 성공, 153028 bytes. SHA256 `e36e37db60a6ac4ad3868f045ce7d79e78374183c6a240368d2b36274531deb7`.

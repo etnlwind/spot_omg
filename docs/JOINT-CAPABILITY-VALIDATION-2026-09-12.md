@@ -92,7 +92,7 @@ J2 목표 범위는 전진21.01~21.62°, 좌회전17.67~18.54°, 우회전18.02~
 ```sh
 python tools/download_joint_trace.py --output 새기록.log
 spotctl analyze-joints 새기록.log --output 결과폴더
-python simulation/mujoco/replay_joint_trace.py 새기록.log --output 재생결과폴더
+python simulation/mujoco/scripts/visualization/replay_joint_trace.py 새기록.log --output 재생결과폴더
 ```
 
 실물 실행 도구 `tools/capture_joint_response.py`는 `--execute` 없이는 모션을 시작하지 않는다. `--prepare-stand`는 실제 Stand 전환을 수행한다. 원본 폴더가 이미 있으면 덮어쓰지 않는다.

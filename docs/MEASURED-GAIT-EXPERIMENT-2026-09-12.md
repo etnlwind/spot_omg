@@ -60,21 +60,21 @@ V47의 전진 252명령/252표본, 좌·우회전 각각 241명령/241표본을 
 
 ```sh
 /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py \
-  --parameters simulation/mujoco/measured_response_plant.json \
-  --experimental-profiles simulation/mujoco/measured_response_profiles.json \
+  --parameters simulation/mujoco/config/measured_response_plant.json \
+  --experimental-profiles simulation/mujoco/config/measured_response_profiles.json \
   --profile measured_lift --host 127.0.0.1 --port 8875 --no-ble --no-video
 ```
 
 MuJoCo 창에서 W는 8초 전진, Space는 Stop이다. 시뮬레이터 TCP 127.0.0.1:8875에서 `gaitprofile measured_lift`, `drive 0 -1000 1`(좌회전), `drive 0 1000 1`(우회전)을 사용할 수 있다. drive는 기존 watchdog 규약에 따라 0.8초 이내 간격의 @D 갱신이 필요하다. 동작 중 정책 변경은 거부하고 Stop 후 변경한다. 실제 iPhone/Bluetooth 설치·연결 검증은 이번 작업의 완료 항목에 포함하지 않는다.
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/calibrate_joint_response.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/search_measured_gait.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/refine_measured_gait.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/search_measured_cad.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/search_measured_turn.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/validate_measured_gait.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/preview_measured_gait.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/calibrate_joint_response.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/tuning/search_measured_gait.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/tuning/refine_measured_gait.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/tuning/search_measured_cad.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/tuning/search_measured_turn.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/validate_measured_gait.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/preview_measured_gait.py
 ```
 
 탐색 JSON에는 실패·넘어짐을 포함한 모든 후보가 저장된다. 재탐색은 artifacts의 결과를 갱신하며, 배포용 실험 JSON을 자동 승격하지 않는다.

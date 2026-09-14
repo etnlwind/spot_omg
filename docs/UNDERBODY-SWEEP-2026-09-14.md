@@ -67,8 +67,8 @@
 - 실물 설정 readback, 위치 유지, 전체 동작 시험은 수행하지 않았다. 앱·실물 펌웨어에 반영한 정책이 아니다.
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/run_calculated_placement.py underbody
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/render_calculated_placement.py artifacts/audits/sway-2026-09-14/calculated-underbody.json artifacts/gait-videos/2026-09-14/underbody-sweep-four-views-30s.mp4
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/run_calculated_placement.py underbody
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/render_calculated_placement.py artifacts/audits/sway-2026-09-14/calculated-underbody.json artifacts/gait-videos/2026-09-14/underbody-sweep-four-views-30s.mp4
 ```
 
 ## 후순위로 보류한 다리 모으기

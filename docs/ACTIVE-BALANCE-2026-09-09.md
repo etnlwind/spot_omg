@@ -27,9 +27,9 @@ Stand 및 보행과 정상 정지 후 Stand 복귀에서 보정을 유지한다.
 
 ## 검증과 재현
 
-`simulation/mujoco/check_balance_matrix.py`: 다섯 정책 × 세 물성 조건 × 네 방향/전환(60건), 센서 융합 지연 60ms 전환(5건). 안전 상태, 발 이외 지면 접촉, 정지 완료 확인. `balance_matrix.json` 참조.
+`simulation/mujoco/scripts/validation/check_balance_matrix.py`: 다섯 정책 × 세 물성 조건 × 네 방향/전환(60건), 센서 융합 지연 60ms 전환(5건). 안전 상태, 발 이외 지면 접촉, 정지 완료 확인. `balance_matrix.json` 참조.
 
-`simulation/mujoco/validate_balance.py`: ON/OFF × 정지/보행 × roll/pitch × 평지/4도 경사(16건). 5초에 몸체에 2Nm 토크를 0.4초간 적용하고 18초까지 관찰한다. 자세를 강제로 바꾸지 않는다. 경사면은 XML 컴파일 시 실제 충돌 평면을 회전시킨다. `balance_validation.json` 참조.
+`simulation/mujoco/scripts/validation/validate_balance.py`: ON/OFF × 정지/보행 × roll/pitch × 평지/4도 경사(16건). 5초에 몸체에 2Nm 토크를 0.4초간 적용하고 18초까지 관찰한다. 자세를 강제로 바꾸지 않는다. 경사면은 XML 컴파일 시 실제 충돌 평면을 회전시킨다. `balance_validation.json` 참조.
 
 센서·포화·전환·프로토콜 Python 테스트 및 iOS 명령·상태·실물 대상 차단 테스트를 포함한다. 실물과 공유하는 것은 C 다리 보정 함수이며, 이번에 추가한 적분·보행별 이득·상태 관리는 가상 어댑터에 구현했다. **실물 STM32 제어기 전체와 동일한 바이너리/동작이라는 의미는 아니다.**
 
@@ -44,6 +44,6 @@ Stand 및 보행과 정상 정지 후 Stand 복귀에서 보정을 유지한다.
 - 실행 중인 MuJoCo 재시작 후 TCP에서 `balance=active`, IMUPLUS, 샘플 나이 30ms, 센서 오류 0을 확인했다.
 - iPhone V0.3.2 (8) 설치 완료. 기기 잠금 때문에 원격 앱 실행은 거절되었으며, 잠금을 해제하고 앱을 열어 가상 BLE로 연결하면 된다.
 
-![경사면 수평 보정 비교](../simulation/mujoco/balance_comparison.png)
+![경사면 수평 보정 비교](../artifacts/simulation/mujoco/balance_comparison.png)
 
 후속 고속 보행 수정: 현재 보행 이득 및 제한은 [BALANCE-V3-2026-09-09.md](BALANCE-V3-2026-09-09.md)를 따른다. 이 문서의 초기 보행 이득은 사건 재현 후 교체했다.

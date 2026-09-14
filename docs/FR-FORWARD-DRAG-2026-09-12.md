@@ -23,7 +23,7 @@ FR은 다른 발보다 낮지만 최대값만으로 매 스텝 들린다고 판�
 
 관절 추종과 몸체 자세를 분리하기 위해 평가용 MjData에 현재 몸체 자세를 유지한 채 명령 관절각만 대입했다. 제어기에는 이 정보를 공급하지 않는다. 중간 스윙에서 실제 여유가 1mm 미만인 FR 표본의 '완전 추종 시 같은 몸체 자세에서의 여유' 중앙값은 -3.53mm였다. 따라서 **이 모델에서는 단순히 모터를 더 빨리 따라오게 하는 것만으로 해당 접촉을 없앨 수 없다.** 발끝 목표와 몸체 자세 관계도 점검해야 한다. 이는 실물 원인 확정이 아니다. FL에도 유사한 문제가 나타났다.
 
-원본: `artifacts/audits/fr-forward-2026-09-12/`의 `simulation.json`, `feet.json`, `tracking-counterfactual.json`. 재현 스크립트 `simulation/mujoco/audit_fr_forward.py`.
+원본: `artifacts/audits/fr-forward-2026-09-12/`의 `simulation.json`, `feet.json`, `tracking-counterfactual.json`. 재현 스크립트 `simulation/mujoco/scripts/analysis/audit_fr_forward.py`.
 
 ## 다음 실측
 

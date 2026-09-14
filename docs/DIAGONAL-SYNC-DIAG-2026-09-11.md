@@ -30,8 +30,8 @@ FL과 RR의 명령 위상/스윙 시작은 동일하다. 그러나 실제 발 �
 ## 재현 및 자료
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/diagnose_diagonal_sync.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/plot_diagonal_sync.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/diagnose_diagonal_sync.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/plot_diagonal_sync.py
 ```
 
 `artifacts/upright/2026-09-11/cushion/` 아래에 `*-sync.json`, `*-sync.csv`, `*-sync-joints.json`, `diagonal-sync.png`를 저장했다. 그래프의 음영은 FL/RR 중 한 발만 바닥에 닿은 시점이다. 제어 코드 변경/실기 readback/실제 위치 유지 시험/실기 전체 동작 시험은 이번 진단에서 수행하지 않았다.

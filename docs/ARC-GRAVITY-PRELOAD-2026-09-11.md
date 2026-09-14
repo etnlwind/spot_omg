@@ -45,8 +45,8 @@
 
 ## 재현 / 산출물
 
-- `python -m pytest -q simulation/mujoco/test_arc_preload.py`
-- `python simulation/mujoco/search_arc_clearance.py --refine`
-- `python simulation/mujoco/validate_arc_preload.py`
-- `mjpython simulation/mujoco/preview_arc_preload.py`
+- `python -m pytest -q simulation/mujoco/tests/test_arc_preload.py`
+- `python simulation/mujoco/scripts/tuning/search_arc_clearance.py --refine`
+- `python simulation/mujoco/scripts/validation/validate_arc_preload.py`
+- `mjpython simulation/mujoco/scripts/visualization/preview_arc_preload.py`
 - `artifacts/audits/arc-preload-validation/`: 조건별 JSON, 원시 발 상태 CSV, 14초 비교 MP4와7초 스냅샷. 영상은 정상 지연20ms 좌회전이며 위60초 전체 실행을 담은 영상은 아니다.

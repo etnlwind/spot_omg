@@ -42,7 +42,7 @@
 - `height-hold-comparison.mp4`: 추진 타이밍 정책 전후 실제 물리 영상. 위 이전 / 아래 수정. 카메라의 Z를 고정하고 실제 몸체 높이·참조 높이를 표시해 추적 카메라가 상하 움직임을 숨기지 않도록 했다.
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_support_shift.py --baseline cushion_v2_push_height_before --candidate cushion_v2_push --prefix height-hold --before-title 'BEFORE: torso lowering/recovery each step' --after-title 'AFTER: constant reference + sensed height correction' --height-overlay
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_support_shift.py --baseline cushion_v2_push_height_before --candidate cushion_v2_push --prefix height-hold --before-title 'BEFORE: torso lowering/recovery each step' --after-title 'AFTER: constant reference + sensed height correction' --height-overlay
 ```
 
 기존 iPhone 앱의 두 정책 메뉴 이름을 그대로 사용한다. 서버 측 제어 변경이므로 앱 재설치는 필요하지 않다. 라이브 시뮬레이터를 수정된 코드로 재시작했으며 실제 로봇 펌웨어는 변경하지 않았다.

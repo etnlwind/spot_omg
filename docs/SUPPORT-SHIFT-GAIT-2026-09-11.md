@@ -78,15 +78,15 @@
 ## 재현 및 결과 파일
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/validate_support_shift.py
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/preview_support_shift.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/validate_support_shift.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/preview_support_shift.py
 /opt/anaconda3/envs/spot_omg/bin/python tools/generate_gait_speed_labels.py
 ```
 
 GUI / iPhone TCP·Bluetooth·영상:
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --host 0.0.0.0 --port 8765 --video-host 0.0.0.0 --video-port 8766 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_support_shift --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --host 0.0.0.0 --port 8765 --video-host 0.0.0.0 --video-port 8766 --experimental-profiles simulation/mujoco/config/upright_profiles.json --profile cushion_support_shift --foot-cushion simulation/mujoco/config/foot_cushion_d37p3_l27mm.json
 ```
 
 - [동시 측면·정면 비교 영상](../artifacts/upright/2026-09-11/cushion/support-shift-comparison.mp4)

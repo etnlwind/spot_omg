@@ -1,0 +1,142 @@
+{
+  "profile": "s_native_v3",
+  "parameters": {
+    "family": "trot",
+    "params": [
+      0.8,
+      0.5,
+      0.08,
+      0.025
+    ],
+    "balance_base": "cruise",
+    "s_native": true,
+    "experimental": true,
+    "transfer_fraction": 0.0,
+    "support_transfer": true,
+    "lift_exponent": 0.5,
+    "body_transfer_x_m": 0.006,
+    "rear_extension_m": 0.04
+  },
+  "command": 1000,
+  "allow_fall": true,
+  "wait_s": 2,
+  "walk_s": 10,
+  "video_s": 12,
+  "fps": 25,
+  "selection": "First >=5 degree roll/pitch sustained for four 20ms samples; an observation marker, not a stability pass/fail definition.",
+  "tilt_growth_detected": true,
+  "tipping_video_s": 5.12,
+  "toppled_video_s": 5.62,
+  "selected": [
+    {
+      "label": "Before",
+      "time_s": 2.64,
+      "since_drive_s": 0.6400000000000001,
+      "phase": 0.9642901530318598,
+      "roll_deg": 0.5537576472774083,
+      "pitch_deg": -0.21432643191402503,
+      "tilt_deg": 0.5537576472774083,
+      "clearance_mm": [
+        -2.4954742321956074,
+        4.35353335351793,
+        4.882530374475308,
+        -4.439713919322235
+      ],
+      "normal_force_n": [
+        12.388070851278302,
+        0.0,
+        0.0,
+        15.742646620613353
+      ],
+      "body_relative_x_from_s_mm": [
+        -25.100648637901596,
+        12.139104317923255,
+        12.593851294968594,
+        -22.375785700316563
+      ],
+      "safety": "ok",
+      "moving": true,
+      "controller_reply": ""
+    },
+    {
+      "label": "Tilt growth",
+      "time_s": 2.84,
+      "since_drive_s": 0.8399999999999999,
+      "phase": 0.21429015303185972,
+      "roll_deg": -5.435765721553589,
+      "pitch_deg": 2.939032224958994,
+      "tilt_deg": 5.435765721553589,
+      "clearance_mm": [
+        5.892524774324996,
+        -3.346851680886328,
+        -2.558189050025323,
+        38.167102078816434
+      ],
+      "normal_force_n": [
+        0.0,
+        8.104759091077275,
+        12.193199059542811,
+        0.0
+      ],
+      "body_relative_x_from_s_mm": [
+        -55.02877208386614,
+        13.405217053261698,
+        13.849832429158493,
+        -62.971055145670526
+      ],
+      "safety": "ok",
+      "moving": true,
+      "controller_reply": ""
+    },
+    {
+      "label": "Peak within 1s",
+      "time_s": 3.54,
+      "since_drive_s": 1.54,
+      "phase": 0.08929015303186019,
+      "roll_deg": 25.64151326913432,
+      "pitch_deg": 9.629046626790895,
+      "tilt_deg": 25.64151326913432,
+      "clearance_mm": [
+        14.16513365415921,
+        -6.860521863718841,
+        135.53789924371762,
+        6.813652090497124
+      ],
+      "normal_force_n": [
+        0.0,
+        21.35832249791422,
+        0.0,
+        0.0
+      ],
+      "body_relative_x_from_s_mm": [
+        -90.03239031792515,
+        61.58059316648817,
+        75.01606741903964,
+        -74.36013896834592
+      ],
+      "safety": "ok",
+      "moving": true,
+      "controller_reply": ""
+    }
+  ],
+  "actual_body_relative_x_mm": {
+    "FL": {
+      "min": -224.44637562379177,
+      "max": 184.1488150719967
+    },
+    "FR": {
+      "min": -234.83895881853218,
+      "max": 176.6706656958717
+    },
+    "RL": {
+      "min": -151.93728564668808,
+      "max": 85.50987694732646
+    },
+    "RR": {
+      "min": -223.24892491862335,
+      "max": 181.29319258862057
+    }
+  },
+  "peak_tilt_during_drive_deg": 179.99996134094312,
+  "note": "Estimated physical simulation; all four views render the same physical state. Underside rendering hides the floor only. Contact forces and foot heights are measured, distinct from command timing. Static COM projection alone does not establish dynamic stability."
+}

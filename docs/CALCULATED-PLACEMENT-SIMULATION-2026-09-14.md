@@ -96,9 +96,9 @@ Py = Cy − h ay/(g + az) + τx/Fz
 - 실기 설정 readback, 실물 위치 유지 시험, 실물 전체 동작 시험은 수행하지 않았다. 이번 변경은 시뮬레이션 실험 도구이며 실물·앱 정책으로 적용하지 않았다.
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/run_calculated_placement.py static
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/run_calculated_placement.py acceleration
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/render_calculated_placement.py artifacts/audits/sway-2026-09-14/calculated-acceleration.json artifacts/gait-videos/2026-09-14/calculated-acceleration-four-views-30s.mp4
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/run_calculated_placement.py static
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/run_calculated_placement.py acceleration
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/render_calculated_placement.py artifacts/audits/sway-2026-09-14/calculated-acceleration.json artifacts/gait-videos/2026-09-14/calculated-acceleration-four-views-30s.mp4
 ```
 
-주요 코드: `simulation/mujoco/acceleration_support_targets.py`, `calculated_placement_preview.py`, `run_calculated_placement.py`, `render_calculated_placement.py`.
+주요 코드: `simulation/mujoco/runtime/acceleration_support_targets.py`, `calculated_placement_preview.py`, `run_calculated_placement.py`, `render_calculated_placement.py`.

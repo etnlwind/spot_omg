@@ -63,7 +63,7 @@ COM 이동, 서보80ms 지연, 모터 성능 저하, 부드럽고 미끄러운 �
 ## 재생 및 검사
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_support_shift.py --baseline cushion_support_shift_v1 --candidate cushion_support_shift_v2 --prefix support-v2
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_support_shift.py --baseline cushion_support_shift_v1 --candidate cushion_support_shift_v2 --prefix support-v2
 ```
 
 영상: `artifacts/upright/2026-09-11/cushion/support-v2-comparison.mp4`. 위 V1 / 아래 V2, 좌측면 / 우정면. 몸체는 자유 상태로 실제 물리를 적분했다. 지지비율이 다르므로 같은 시각의 스윙/지지 단계가 같지는 않다.

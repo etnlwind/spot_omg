@@ -1,5 +1,7 @@
 # Spot OMG
 
+다른 컴퓨터에서 최신 S 보행 V5 작업을 이어갈 때는 [2026-09-15 인수인계](docs/HANDOFF-2026-09-15-S-NATIVE-V5.md)를 먼저 확인하세요. 실행 환경, 맥 앱 빌드, 시험 영상과 미해결 착지/전도 문제를 정리했습니다.
+
 Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
 
 Spot Micro 기반의 12-DOF 4족 로봇 프로젝트입니다. 현재 STM32 실시간 제어,
@@ -80,14 +82,23 @@ ID로 구분합니다. ST-LINK는 `0483:374b`이고, 나머지 USB 시리얼 장
 
 ```text
 spot_omg/
-├── apps/ios/SpotOMGController/ # SwiftUI/CoreBluetooth iPhone controller
-├── firmware/stm32-learning/  # STM32F446RE 로봇 제어 펌웨어
-├── hardware/urdf/            # 12-DOF URDF와 실측 파라미터
-├── simulation/mujoco/        # 자세·보행·점프 시뮬레이션
-├── tools/servo_tool/         # URT-2 USB 직접 제어 및 보정 도구
-├── environment.yml           # 공용 Conda 환경
+├── apps/                    # iPhone/macOS 및 Windows 제어 앱
+├── firmware/                # STM32, ESP32 펌웨어
+├── hardware/                # URDF, 배선·전원 회로
+├── simulation/mujoco/       # 가상 로봇 실행·물리 모델·시험·실험 도구
+├── tools/                   # 서보 제어 및 공용 코드 생성 도구
+├── config/                  # 공용 설정, environment.yml
+├── docs/                    # 설계·사용법·참고 자료(references/)
+├── artifacts/               # 실행 기록, 검증 결과, 이미지·영상
+├── AGENTS.md                # 작업 시 유지해야 할 구현 기준
+├── platformio.ini           # 루트에서 실행하는 ESP32 빌드 설정
+├── pytest.ini              # 공용 시험 경로 및 캐시 설정
 └── readme.md
 ```
+
+시뮬레이터 내부 구성과 이동 기준은 [폴더 구조](docs/PROJECT-LAYOUT.md)를 참고하세요.
+기존 가상 로봇 실행 경로 `simulation/mujoco/virtual_robot.py`는 유지됩니다.
+
 
 ---
 
@@ -120,11 +131,11 @@ Isaac Sim/Isaac Lab에서 사용할 12-DOF URDF 초안과 실측 파라미터는
 Servo tool, 단위 시험과 MuJoCo 시뮬레이션은 `spot_omg` Conda 환경을 사용합니다.
 
 ```bash
-conda env create -f environment.yml
+conda env create -f config/environment.yml
 conda activate spot_omg
 
 spotctl --help
-pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+pytest tools/servo_tool/tests simulation/mujoco/tests/test_trot2.py -q
 python simulation/mujoco/walk.py --dynamic --balance \
   --gait trot --preset sim-trot --cycles 10 --check
 ```
@@ -141,7 +152,7 @@ mjpython simulation/mujoco/walk.py --dynamic \
 정의 파일과 동기화합니다.
 
 ```bash
-conda env update -f environment.yml --prune
+conda env update -f config/environment.yml --prune
 ```
 
 로컬 `.venv` 또는 `.venv-mujoco`는 사용하지 않습니다. 자세한 실행법은

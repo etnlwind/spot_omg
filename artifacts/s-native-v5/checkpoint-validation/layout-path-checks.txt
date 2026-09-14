@@ -1,0 +1,22 @@
+..F................                                                   [100%]
+=================================== FAILURES ===================================
+______ test_selected_gait_improves_speed_with_bounded_tilt_and_motor_load ______
+
+    def test_selected_gait_improves_speed_with_bounded_tilt_and_motor_load():
+        selected=json.loads((RESULTS/'selected.json').read_text())
+        params=np.array([selected['params'][k] for k in NAMES])
+        p,model=make_scenario()
+        baseline=evaluate(None,p,model,duration=20,baseline=True)
+        result=evaluate(params,p,model,duration=20)
+        assert not result['fallen']
+        assert result['speed_m_s']>baseline['speed_m_s']*3
+        assert result['cost_of_transport']<baseline['cost_of_transport']
+        assert result['peak_tilt_deg']<10
+>       assert abs(result['yaw_deg'])<10
+E       assert 12.485658663534675 < 10
+E        +  where 12.485658663534675 = abs(12.485658663534675)
+
+simulation/mujoco/tests/test_optimized_gait.py:47: AssertionError
+=========================== short test summary info ============================
+FAILED simulation/mujoco/tests/test_optimized_gait.py::test_selected_gait_improves_speed_with_bounded_tilt_and_motor_load
+1 failed, 18 passed, 3 subtests passed in 5.14s

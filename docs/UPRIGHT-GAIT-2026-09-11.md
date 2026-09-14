@@ -12,7 +12,7 @@
 - 기존 C 발끝 궤적/IK, level 기반 IMU 보정, BNO055 지연 모델, 전압/서보 토크 한계,
   CAD 질량/관성/접촉 모델을 사용한다. 실험 파라미터는 Python 실험 실행 경로를 사용하며
   STM32 전체 제어 루프와 동일하게 배포된 정책이라는 의미는 아니다.
-- 정책 파일: `simulation/mujoco/upright_profiles.json`, 이름 `upright`.
+- 정책 파일: `simulation/mujoco/config/upright_profiles.json`, 이름 `upright`.
 
 ## 결과와 제한
 
@@ -45,7 +45,7 @@
 
 ```bash
 cd /Users/etnlwind/project/spot_omg
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_upright.py --viewer
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_upright.py --viewer
 ```
 
 지속적인 MuJoCo 조작 화면(W:8초 전진, Space:중지), 별도 로컬 포트:
@@ -53,13 +53,13 @@ cd /Users/etnlwind/project/spot_omg
 ```bash
 /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py \
   --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 \
-  --experimental-profiles simulation/mujoco/upright_profiles.json --profile upright
+  --experimental-profiles simulation/mujoco/config/upright_profiles.json --profile upright
 ```
 
 영상 생성:
 
 ```bash
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/preview_upright.py \
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/preview_upright.py \
   --video artifacts/upright/2026-09-11/upright.mp4
 ```
 

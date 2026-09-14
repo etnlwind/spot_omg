@@ -33,7 +33,7 @@
 
 ## 파일·재실행
 
-- 정책: `simulation/mujoco/measured_response_profiles.json`의 `measured_front_lift`
+- 정책: `simulation/mujoco/config/measured_response_profiles.json`의 `measured_front_lift`
 - 긴 후보 비교: `artifacts/audits/front-turn-lift-2026-09-12/long-selection.json`
 - 최종 추가 조건 시험: `artifacts/audits/front-turn-lift-2026-09-12/stress-validation.json`
 - 영상의 실제 설정: `artifacts/audits/front-turn-lift-2026-09-12/video-profile.json`
@@ -43,8 +43,8 @@
 
 ```sh
 /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py \
-  --parameters simulation/mujoco/measured_response_plant.json \
-  --experimental-profiles simulation/mujoco/measured_response_profiles.json \
+  --parameters simulation/mujoco/config/measured_response_plant.json \
+  --experimental-profiles simulation/mujoco/config/measured_response_profiles.json \
   --profile measured_front_lift --host 127.0.0.1 --port 8875 --no-ble --no-video
 ```
 

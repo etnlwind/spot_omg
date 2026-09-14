@@ -43,6 +43,6 @@
 - 앱이 `reason=tilt`/안전 관련 거부를 받으면 즉시 안전 상태를 반영하고, 스틱 해제 및 명시적 복구 전까지 재시작을 차단한다. 종료/오류/프롬프트 순서가 달라도 stopping에 갇히지 않게 한다.
 - 가상 로봇 프레임별 센서·보정·입력·안전 원인을 순환 로그로 남긴다.
 
-결과 요약: `simulation/mujoco/diagnostics/balance_incident_20260909.json`. 로컬 원본 앱 로그는 `/private/tmp/spot-balance-incident.jsonl`, 상세 재현은 `/private/tmp/balance-incident-replay.json`에 보존했다.
+결과 요약: `artifacts/simulation/mujoco/diagnostics/balance_incident_20260909.json`. 로컬 원본 앱 로그는 `/private/tmp/spot-balance-incident.jsonl`, 상세 재현은 `/private/tmp/balance-incident-replay.json`에 보존했다.
 
 후속 수정과 적용 결과: [BALANCE-V3-2026-09-09.md](BALANCE-V3-2026-09-09.md). 위 내용은 수정 전 사건 분석 기록이다.

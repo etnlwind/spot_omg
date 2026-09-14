@@ -5,7 +5,7 @@ the decision logic that cuts torque can be exercised on a workstation rather
 than only on the robot.  This wrapper exists so those tests run alongside the
 Python suite instead of being a separate step someone has to remember.
 
-    pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py \
+    pytest tools/servo_tool/tests simulation/mujoco/tests/test_trot2.py \
            firmware/stm32-learning/tests/test_firmware_c.py -q
 """
 

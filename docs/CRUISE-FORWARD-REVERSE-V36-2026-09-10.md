@@ -29,5 +29,5 @@
 - SHA256 `478ce4dccc620b58dd2cc9bb2bcc2b45cc41c5b871592c1140af9e09beb1f71d`.
 - 바이너리 `/private/tmp/spot-cruise-v36/shared-locomotion-v36.bin`.
 - V36 업로드·검증·재부팅 완료. 실제 `syncstate`에서 `rev=shared-locomotion-v36`, `profile=cruise` 확인. 업로드 직후 `pose=custom torque=off safety=ok`였다. **새 크루즈의 실기 보행은 아직 검증하지 않았다.**
-- 상세 시뮬레이션 결과: `simulation/mujoco/cruise_symmetric_validation.json`.
+- 상세 시뮬레이션 결과: `artifacts/simulation/mujoco/cruise_symmetric_validation.json`.
 - 속도 결과: `config/locomotion_speed_benchmarks.json`.

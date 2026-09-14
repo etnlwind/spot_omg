@@ -47,7 +47,7 @@
 `*-frames.json`에는20ms별 명령/지연/filtered/실제각·속도·토크·500µs별 clipping 집계를, `*-feet.csv`에는 발 접촉/높이를 저장했다. `analysis.json`은 주기 차이·지연·추종·포화 시점을 담는다.
 
 ```bash
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/diagnose_arc_actuator_timing.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/diagnose_arc_actuator_timing.py
 ```
 
 매개변수·제어기·plant 필터는 수정하지 않았고, 모든 참값은 평가에만 사용했다.

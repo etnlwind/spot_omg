@@ -23,7 +23,7 @@ STEP 모델, 추정 4.398 kg, 11.1 V 3S, 중력·접촉·모터 토크/속도 �
 | 저마찰 조건 최대 기울기 | 5.29° | 3.03° |
 | 위치 이동+지연 최대 기울기 | 6.17° | 4.56° |
 
-기울기는 각 프레임의 max(abs(roll), abs(pitch))이며, 전환 이후 4초까지 평가했다. 모든 개별 전환 시점이 개선된다는 의미는 아니다. 기존 방식에서도 전도가 재현되지 않아 **실제 전도 해결로 판정하지 않는다**. 회전 요청을 줄여 속도를 희생한 보수적 개선이다. 측정 자료는 `simulation/mujoco/gait_search/drive_transition/summary.json`에 보관했다.
+기울기는 각 프레임의 max(abs(roll), abs(pitch))이며, 전환 이후 4초까지 평가했다. 모든 개별 전환 시점이 개선된다는 의미는 아니다. 기존 방식에서도 전도가 재현되지 않아 **실제 전도 해결로 판정하지 않는다**. 회전 요청을 줄여 속도를 희생한 보수적 개선이다. 측정 자료는 `artifacts/simulation/mujoco/gait_search/drive_transition/summary.json`에 보관했다.
 
 단순 1.5초 중립 대기, 입력 변화율 1/4, 발 좌표 합성도 비교했으나 일관된 이점이 없어 채택하지 않았다. 발 좌표 합성 시험 수정은 되돌렸다.
 
@@ -40,13 +40,13 @@ STEP 모델, 추정 4.398 kg, 11.1 V 3S, 중력·접촉·모터 토크/속도 �
 
 ```sh
 cd /Users/etnlwind/project/spot_omg
-PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/check_drive_transition.py --replay
+PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/validation/check_drive_transition.py --replay
 ```
 
 기존 방식 비교는 `--legacy`를 추가한다. 전체 24회 수치 비교는 일반 python으로 실행한다.
 
 ```sh
-PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/check_drive_transition.py
+PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/check_drive_transition.py
 ```
 
 검증: 관련 Python/C 검사 **138 passed, 23 subtests passed**. 공유 C 입력 제한 경계와 기본 조건 전환 회귀 검사 포함. STM32 clean build 성공(`/private/tmp/spot-turn-transition-build`); 이 디렉터리의 빌드명은 기존 빌드 스크립트의 V13 이름을 유지하므로 정식 배포 릴리스로 취급하지 않는다.

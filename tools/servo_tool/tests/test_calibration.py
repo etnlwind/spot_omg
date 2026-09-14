@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[3]
 JOINTS_JSON = ROOT / "tools" / "servo_tool" / "config" / "joints.json"
 FIRMWARE = ROOT / "firmware" / "stm32-learning" / "Src"
 FIRMWARE_TABLE = FIRMWARE / "robot_config.c"
-SCENE = ROOT / "simulation" / "mujoco" / "spot_omg_scene.xml"
+SCENE = ROOT / "simulation" / "mujoco" / "models" / "spot_omg_scene.xml"
 
 LEGS = ("FL", "FR", "RL", "RR")
 LEG_INDEX = {"FL": 0, "FR": 1, "RL": 2, "RR": 3}

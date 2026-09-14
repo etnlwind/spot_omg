@@ -33,8 +33,8 @@ J2 스포츠 정책, 30초 최대 직진, 회전 입력 0, 수평 보정 off. �
 
 수평 보정 on/off × 직진 보정 on/off × IMU seed 55/77의 8개 조건 모두 안전 오류·발 이외 접촉 없이 정지했다. 이 통과 기준은 완벽한 직진을 뜻하지 않는다. 수평 보정 on / 직진 보정 off에서는 오른쪽 이탈이 약 3.6~24.7cm로 달라졌다.
 
-기존 물리·가상로봇 테스트 34개 통과. 재현 스크립트는 `diagnose_right_drift.py`, 비교 검증은 `validate_right_drift.py`, 결과는 `simulation/mujoco/diagnostics/right-drift/`에 있다.
+기존 물리·가상로봇 테스트 34개 통과. 재현 스크립트는 `diagnose_right_drift.py`, 비교 검증은 `validate_right_drift.py`, 결과는 `artifacts/simulation/mujoco/diagnostics/right-drift/`에 있다.
 
-![직진 경로와 방향 비교](../simulation/mujoco/diagnostics/right-drift/right-drift-comparison.png)
+![직진 경로와 방향 비교](../artifacts/simulation/mujoco/diagnostics/right-drift/right-drift-comparison.png)
 
 그래프의 횡방향 단위는 cm이며 차이를 보기 위해 확대했다. 경로 그림은 가로·세로 동일 축척이 아니다.

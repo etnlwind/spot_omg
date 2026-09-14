@@ -16,7 +16,7 @@ STM32 `shared-locomotion-v17`, MuJoCo `shared-locomotion-v17-sim`, 앱 V0.4.0 (1
 | PI 수평 보정·적분 제한·관절 보정 변화율 | `balance_control.h` |
 | 관절별 중심·방향·0.1° 반올림·4096-tick 변환 | `locomotion_servo.h`, `robot_config.c` |
 
-`config/locomotion_profiles.json`이 배포 프로파일의 기준이다. `tools/generate_locomotion_profiles.py`로 C 헤더를 생성한다. 펌웨어 빌드와 시뮬레이터 호스트 로더는 manifest가 변경됐는데 헤더를 생성하지 않은 경우 실행을 거부한다. 기존 `simulation/mujoco/gait_search/profiles/selected.json`은 이전 탐색 결과이며 배포 설정이 아니다. 오프라인 탐색 코드의 명시적인 `robot.profiles` 변경만 실험용 별도 파라미터 경로를 사용한다.
+`config/locomotion_profiles.json`이 배포 프로파일의 기준이다. `tools/generate_locomotion_profiles.py`로 C 헤더를 생성한다. 펌웨어 빌드와 시뮬레이터 호스트 로더는 manifest가 변경됐는데 헤더를 생성하지 않은 경우 실행을 거부한다. 기존 `artifacts/simulation/mujoco/gait_search/profiles/selected.json`은 이전 탐색 결과이며 배포 설정이 아니다. 오프라인 탐색 코드의 명시적인 `robot.profiles` 변경만 실험용 별도 파라미터 경로를 사용한다.
 
 ## 실제 펌웨어
 

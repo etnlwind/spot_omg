@@ -56,7 +56,7 @@
 [기존/안정 후보 측면·정면 비교 영상](../artifacts/audits/arc-control-2026-09-12/stable-support-comparison.mp4)은 관절 애니메이션이 아니라 동일 설정의 MuJoCo 물리 계산을 재실행해 만들었다. 실제 몸체 기울기, 접지한 발, 지면 여유를 표시한다.
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_arc_control.py \
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_arc_control.py \
   artifacts/audits/arc-control-2026-09-12/preview-baseline.json \
   artifacts/audits/arc-control-2026-09-12/preview-stable3.json \
   --output artifacts/audits/arc-control-2026-09-12/stable-support-comparison.mp4

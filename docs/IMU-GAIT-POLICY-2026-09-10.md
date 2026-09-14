@@ -31,7 +31,7 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/m
 
 ## 검증 결과
 
-`simulation/mujoco/validate_imu_policy.py`로 10개 조건 × lift/imu = 20개 실행. 각 실행은 24초, 구동 요청은 20초이며 시작/종료 전환을 포함한다. 전부 safety=ok, 비발 접촉 없음, 정지 완료. 결과는 `simulation/mujoco/imu_policy_validation.json`.
+`simulation/mujoco/scripts/validation/validate_imu_policy.py`로 10개 조건 × lift/imu = 20개 실행. 각 실행은 24초, 구동 요청은 20초이며 시작/종료 전환을 포함한다. 전부 safety=ok, 비발 접촉 없음, 정지 완료. 결과는 `artifacts/simulation/mujoco/imu_policy_validation.json`.
 
 | 조건 | lift 자세 RMS(도) | imu 자세 RMS(도) | 변화 |
 |---|---:|---:|---:|

@@ -139,16 +139,16 @@ python -m pytest -q \
   firmware/stm32-learning/tests/test_body_stabilizer.py \
   firmware/stm32-learning/tests/test_bno055_body.py \
   firmware/stm32-learning/tests/test_stabilize_console.py \
-  simulation/mujoco/test_body_stabilizer_integration.py \
-  simulation/mujoco/test_body_stabilizer_transport.py \
-  simulation/mujoco/test_bno055_emulator.py
+  simulation/mujoco/tests/test_body_stabilizer_integration.py \
+  simulation/mujoco/tests/test_body_stabilizer_transport.py \
+  simulation/mujoco/tests/test_bno055_emulator.py
 
 python -m pytest -q tools/servo_tool/tests/test_stabilize_cli.py
 
 # GUI·실물 연결 없이 현재 설정으로 새 물리 기록 생성
-python simulation/mujoco/validate_body_stabilization.py off \
+python simulation/mujoco/scripts/validation/validate_body_stabilization.py off \
   --duration 70 --output /private/tmp/spot-pd-off-70s.json
-python simulation/mujoco/validate_body_stabilization.py on \
+python simulation/mujoco/scripts/validation/validate_body_stabilization.py on \
   --duration 70 --output /private/tmp/spot-pd-on-70s.json
 ```
 

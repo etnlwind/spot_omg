@@ -42,7 +42,7 @@
 재생 비교 명령:
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_support_shift.py --profiles artifacts/upright/2026-09-11/cushion/diagonal-preload-profiles.json --baseline diagonal-lift20-lead40 --candidate diagonal-preload-1 --prefix diagonal-preload --height-overlay
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_support_shift.py --profiles artifacts/upright/2026-09-11/cushion/diagonal-preload-profiles.json --baseline diagonal-lift20-lead40 --candidate diagonal-preload-1 --prefix diagonal-preload --height-overlay
 ```
 
 추가 기울기·각속도 보정 60초 결과 (`diagonal-load-attitude-final-60s.json`): safety=ok, 높이 변동 8.31mm, 표준편차 1.30mm, 목표 높이 RMS 오차 3.76mm, 최대 roll/pitch 4.66°/2.04°. 최대 roll 3° 기준 미달이다. 호스트 회귀 총 22개 통과.

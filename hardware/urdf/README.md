@@ -90,9 +90,9 @@ URDF를 직접 열면 Initial Joint Position (초기 관절 위치)이 모두 0�
 
 ```bash
 conda activate spot_omg
-python simulation/mujoco/preview_pose.py stand45
+python simulation/mujoco/scripts/visualization/preview_pose.py stand45
 ```
 
 프로젝트는 별도 `.venv`를 사용하지 않습니다. 환경이 없다면 저장소 루트에서
-`conda env create -f environment.yml`로 생성합니다. macOS에서 실시간 MuJoCo
+`conda env create -f config/environment.yml`로 생성합니다. macOS에서 실시간 MuJoCo
 Viewer가 필요한 명령은 같은 환경의 `mjpython`으로 실행합니다.

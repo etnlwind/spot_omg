@@ -22,8 +22,8 @@
 5. 실물 설치 전 상태: V37, stand, safety=ok, read 1 전압 12100mV, 온도30°C, moving=0, hw=0x00. 업데이트 전 Landing 정상 완료.
 
 원시 시뮬레이션 기록: `artifacts/upright/2026-09-11/cushion/arcturn-shared-c-{left,right}.json`.
-기하 생성: `simulation/mujoco/export_arc_geometry.py`.
-물리 검사: `simulation/mujoco/validate_arc_hardware.py`.
+기하 생성: `simulation/mujoco/scripts/analysis/export_arc_geometry.py`.
+물리 검사: `simulation/mujoco/scripts/validation/validate_arc_hardware.py`.
 실물 검사는 `tools/test_arc_turn_hardware.py --execute --output <JSON>`로만 명시 실행한다. 방향별 최대 4초의 명령 구간과 Stop을 사용한다. 초기 정상 전압/상태, 설치 버전 확인, 시험 후 오류/지연 확인을 통과해야 다음 방향으로 진행한다.
 
 ## 앱과 벤치마크

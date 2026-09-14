@@ -49,7 +49,7 @@ simulation/mujoco/virtual_robot.py --viewer --profile jointsport \
 
 앱의 `IMU 직진 방향 유지`와 `BNO055 수평 보정`으로 각각 비교한다. 실제 폰을 사용하며 iOS Simulator는 실행하지 않는다.
 
-![경로 비교](../simulation/mujoco/diagnostics/heading-v24/comparison.png)
+![경로 비교](../artifacts/simulation/mujoco/diagnostics/heading-v24/comparison.png)
 
 
 ## 완료한 검증과 적용 범위

@@ -4,9 +4,9 @@
 
 ## 재현 및 원인 분석
 
-동일한 모델/궤적에서 full 1000 명령을 재생하고, 각속도 예측/J1/착지 위치/지지 비중 보정을 하나씩 제거했다. 18초 구동 비교에서 기존 lift의 자세 RMS는 2.75도, 최초 IMU 정책은 3.81도였다. 각속도 예측 제거만으로 3.20도까지 감소했다. 보정 항목이 결합된 비선형 폐루프이므로 단일 원인으로 단정하지 않는다. 결과: `simulation/mujoco/imu_wobble_ablation.json`.
+동일한 모델/궤적에서 full 1000 명령을 재생하고, 각속도 예측/J1/착지 위치/지지 비중 보정을 하나씩 제거했다. 18초 구동 비교에서 기존 lift의 자세 RMS는 2.75도, 최초 IMU 정책은 3.81도였다. 각속도 예측 제거만으로 3.20도까지 감소했다. 보정 항목이 결합된 비선형 폐루프이므로 단일 원인으로 단정하지 않는다. 결과: `artifacts/simulation/mujoco/imu_wobble_ablation.json`.
 
-처음에는 지지 비중 변화와 J1을 약화하고 예측을 제거했으나, 60초 구동에서 다시 큰 흔들림이 나타났다. 해당 중간 결과는 `simulation/mujoco/diagnostics/imu-first-fix-full-speed.json`에 보존했다.
+처음에는 지지 비중 변화와 J1을 약화하고 예측을 제거했으나, 60초 구동에서 다시 큰 흔들림이 나타났다. 해당 중간 결과는 `artifacts/simulation/mujoco/diagnostics/imu-first-fix-full-speed.json`에 보존했다.
 
 ## 최종 변경
 
@@ -23,7 +23,7 @@
 
 ## 최종 60초 최대 직진 결과
 
-각 실행은 60초 동안 `@D ... 1000 0`을 유지하고 최종 정지를 확인한다. RMS는 초기 준비 구간 및 정지 구간을 제외한다. script: `simulation/mujoco/validate_imu_full_speed.py`, 결과: `simulation/mujoco/imu_full_speed_validation.json`.
+각 실행은 60초 동안 `@D ... 1000 0`을 유지하고 최종 정지를 확인한다. RMS는 초기 준비 구간 및 정지 구간을 제외한다. script: `simulation/mujoco/scripts/validation/validate_imu_full_speed.py`, 결과: `artifacts/simulation/mujoco/imu_full_speed_validation.json`.
 
 명목 물성, seed 55에서:
 
@@ -38,7 +38,7 @@
 
 최종 정책은 센서 seed 55/77/101, 지연 60ms, 무게·마찰 변경, 무게중심 변경의 6개 60초 실행에서 안전 정지 없이 최종 명령 정지 완료, 비발 접촉 없음. 비교용 최초 IMU와 lift 포함 8개 실행을 기록했다.
 
-- 추가 제자리 회전·전진 회전·회전→직진 3개 회귀 실행 정상 완료 (`simulation/mujoco/imu_stable_transition_validation.json`).
+- 추가 제자리 회전·전진 회전·회전→직진 3개 회귀 실행 정상 완료 (`artifacts/simulation/mujoco/imu_stable_transition_validation.json`).
 - 공통 C/서보 명령 parity·IMU 실패·OFF·프로토콜 테스트 52개 통과.
 - STM32 v18 빌드 성공, 152688 bytes, `/private/tmp/spot-imu-stable-build/shared-locomotion-v18.bin`.
 - 실물 펌웨어는 설치하지 않음. 앱 프로토콜/모드 이름은 동일하여 앱 소스 변경은 필요하지 않음.

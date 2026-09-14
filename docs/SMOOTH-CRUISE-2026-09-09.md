@@ -19,7 +19,7 @@ BNO055 능동 보정 ON, nominal 물성, 입력 1000, 14초 구동(안정화 이
 | 전진 속도 표준편차 | 0.0887m/s | 0.0623m/s | 약 30% 감소 |
 | 최대 roll/pitch | 4.30° | 1.94° | 감소 |
 
-이는 한 nominal 비교 조건의 수치다. 모든 조건에서 같은 비율의 개선을 보장하지 않는다. 결과는 `simulation/mujoco/smooth_cruise_comparison.json`에 있다.
+이는 한 nominal 비교 조건의 수치다. 모든 조건에서 같은 비율의 개선을 보장하지 않는다. 결과는 `artifacts/simulation/mujoco/smooth_cruise_comparison.json`에 있다.
 
 ## 검증
 

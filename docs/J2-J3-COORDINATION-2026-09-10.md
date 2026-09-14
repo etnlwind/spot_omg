@@ -44,7 +44,7 @@ J3만 40–80ms 상당 선행 보상한 후보는 RMS 1.85–2.73°로 흔들림
 - 펌웨어 `shared-locomotion-v21.bin` 빌드 성공, 153952 bytes, SHA256 `0618f19b52790444d9bf7772f13bb053adf198d1a394bc4e7b7aca52c8de6f02`.
 - 앱 **V0.4.3 (15)** UJIN17에서 빌드·실행 확인. 이번 iOS Simulator XCTest는 사용자 요청으로 중단했으므로 통과로 계산하지 않는다.
 - 진단 중 `command_delay_s=0`을 주어도 최소 한 프레임 지연이 남던 시뮬레이터 오류를 수정하고 회귀 테스트를 추가했다. 기본 20ms 지연 설정에는 변화 없음.
-- `simulation/mujoco/diagnostics/j3-lift/`: 원시 프레임 JSON, 진단 요약, J2/J3 파형 PNG, 후보 검색 결과.
+- `artifacts/simulation/mujoco/diagnostics/j3-lift/`: 원시 프레임 JSON, 진단 요약, J2/J3 파형 PNG, 후보 검색 결과.
 - `joint_gait_validation.json`, `joint_turn_validation.json`: 배포 프로필 검증.
 - `artifacts/gait-videos/2026-09-10/joint-comparison.mp4`: 왼쪽 Level15, 오른쪽 joint. 23초, 25fps, 실제 속도. 전체 디코딩/프레임 확인 완료.
 

@@ -21,12 +21,12 @@ Landing 2초 → 뒷다리를 앞으로 뻗기 3초 → 앞다리를 앞으로 �
 저장소 루트에서:
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/stow_preview.py --case extended --viewer
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/stow_preview.py --case extended --viewer
 ```
 
 기존 범위 비교는 `--case nominal --viewer`. 다시 물리 계산 및 영상 생성은 Python으로 `--case extended --run --video`를 사용한다.
 
-영상과 정량 결과: `simulation/mujoco/diagnostics/stow/`의 `nominal.mp4`, `extended.mp4`, 각 JSON/NPZ. 이 별도 검토 뷰어는 앱의 일반 가상 로봇 영상 서버와 연결하지 않는다.
+영상과 정량 결과: `artifacts/simulation/mujoco/diagnostics/stow/`의 `nominal.mp4`, `extended.mp4`, 각 JSON/NPZ. 이 별도 검토 뷰어는 앱의 일반 가상 로봇 영상 서버와 연결하지 않는다.
 
 ## 다음 설계 조건
 
@@ -43,10 +43,10 @@ J2가 최소 −85~95°를 실제로 통과할 수 있는지 확인하고, 전�
 - 테스트 4개 통과: 중간 경로에서 발이 고관절보다 20cm 이상 위를 통과하고, 최종 기하학적 방향은 기존 후보와 같으며, 일반 모델의 서보 인코딩은 유지됨을 확인했다.
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/stow_preview.py --case overhead --viewer
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/stow_preview.py --case overhead --viewer
 ```
 
-영상: `simulation/mujoco/diagnostics/stow/overhead.mp4`.
+영상: `artifacts/simulation/mujoco/diagnostics/stow/overhead.mp4`.
 
 ## 동시 저속 접기 — simultaneous
 
@@ -55,10 +55,10 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/m
 - 최종 크기 약513×241×118mm, 최대 기울기15.61°, 최대 추종 오차6.70°.
 - 바닥 이외 충돌 프록시의 1mm 초과 침투 미검출. 상세 CAD·배선 및 실제 서보 회전 한계 검증은 미완료다.
 - 이전과 동일한 설계 검토용 확장 범위/단회전 인코딩 해제 조건이며, 실제 로봇·앱의 일반 제어에는 추가하지 않았다.
-- 영상 `simulation/mujoco/diagnostics/stow/simultaneous.mp4`.
+- 영상 `artifacts/simulation/mujoco/diagnostics/stow/simultaneous.mp4`.
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/stow_preview.py --case simultaneous --viewer
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/stow_preview.py --case simultaneous --viewer
 ```
 
 ## 채택한 기준 및 역방향 Landing 복귀 — stow-cycle
@@ -69,10 +69,10 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/m
 - 전체 최대 기울기15.61°, 최대 추종 오차8.49°. 최종 Landing 기울기0.107°, 최종 관절 목표 오차 최대 약0.843°.
 - 바닥 이외 충돌 프록시의 1mm 초과 침투 미검출. 같은 확장 관절/인코딩 가정을 사용하는 설계 검토 기준이며 물리 로봇 적용 승인은 아니다.
 - 테스트6개 통과. 접기 기준 보존, 전·후방 공통 시간축, 역경로의 대칭성을 검증했다(공유 C float32 반올림 허용치0.001°).
-- 전체 영상 `simulation/mujoco/diagnostics/stow/stow-cycle.mp4`, 펼치기 영상 `simulation/mujoco/diagnostics/stow/unfold-to-landing.mp4`.
+- 전체 영상 `artifacts/simulation/mujoco/diagnostics/stow/stow-cycle.mp4`, 펼치기 영상 `artifacts/simulation/mujoco/diagnostics/stow/unfold-to-landing.mp4`.
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/stow_preview.py --viewer
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/stow_preview.py --viewer
 ```
 
 ## 가상 로봇 명령 및 앱 V0.5.0 (28)
@@ -102,10 +102,10 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/m
 - STEP 및 영점/모터 모델 자료는 존재하지만 물리 파라미터 파일 자체에 추정 질량·마찰·축·무게중심 및 단순 충돌 형상이라는 제한이 기록되어 있다. 이를 실제 측정/사양 기반 값과 혼동하지 않는다.
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/validate_stow_hardware.py
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/validate_stow_hardware.py
 ```
 
-결과: `simulation/mujoco/diagnostics/stow/hardware-preflight.json`.
+결과: `artifacts/simulation/mujoco/diagnostics/stow/hardware-preflight.json`.
 
 ## 앱 경로에서 앞다리가 멈추던 문제 수정
 
@@ -144,10 +144,10 @@ PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/p
 재현 명령:
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python -m pip install -r simulation/mujoco/requirements-stow.txt
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/stow_clearance.py
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/validate_stow_dynamics.py
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/stow_preview.py --case stow-cycle --run --video
+/opt/anaconda3/envs/spot_omg/bin/python -m pip install -r simulation/mujoco/config/requirements-stow.txt
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/runtime/stow_clearance.py
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/validate_stow_dynamics.py
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/visualization/stow_preview.py --case stow-cycle --run --video
 ```
 
 결과는 `diagnostics/stow/clearance.json`(메시 SHA256 및 경로 표본), `dynamic-clearance.json`(가상 컨트롤러 동역학), `stow-cycle.mp4`(접기·무구동 안착·Landing 왕복)에 저장한다. STL 표면, 잠정 관절 축/원점, 추정 질량 및 마찰에 따른 결과이며, 실물의 감속기 역구동성·배선·유격은 별도 측정이 필요하다.

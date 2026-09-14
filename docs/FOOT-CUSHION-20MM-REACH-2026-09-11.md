@@ -24,8 +24,8 @@
 후보/결과: 같은 폴더의 reach20-search/stride/fine/validation.json.
 
 ```bash
-mjpython simulation/mujoco/preview_upright.py --viewer --profile upright_reach \
-  --foot-cushion simulation/mujoco/foot_cushion_20mm.json
+mjpython simulation/mujoco/scripts/visualization/preview_upright.py --viewer --profile upright_reach \
+  --foot-cushion simulation/mujoco/config/foot_cushion_20mm.json
 ```
 
 ## 사진 확인 후 판단

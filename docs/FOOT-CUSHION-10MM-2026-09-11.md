@@ -46,13 +46,13 @@
 
 ```bash
 cd /Users/etnlwind/project/spot_omg
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_upright.py \
-  --viewer --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_upright.py \
+  --viewer --foot-cushion simulation/mujoco/config/foot_cushion_d37p3_l27mm.json
 ```
 
 현재 로컬 조작 화면은8875포트에서 위 쿠션 설정으로 실행한다. W:8초 전진, Space:중지.
-파라미터: `simulation/mujoco/foot_cushion_d37p3_l27mm.json`.
-반복 검증: `python simulation/mujoco/validate_upright_cushion.py`.
+파라미터: `simulation/mujoco/config/foot_cushion_d37p3_l27mm.json`.
+반복 검증: `python simulation/mujoco/scripts/validation/validate_upright_cushion.py`.
 결과/영상: `artifacts/upright/2026-09-11/cushion/`.
 
 기하 확장10mm,추가 질량20g,회전 최저점,초기 지면 배치 및 기존 가상 로봇 검사를

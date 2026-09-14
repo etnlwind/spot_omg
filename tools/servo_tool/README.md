@@ -40,7 +40,7 @@ Servo Tool, 단위 시험과 MuJoCo는 저장소 루트의 Conda `spot_omg` 환�
 최초 설치는 저장소 루트에서 실행합니다.
 
 ```bash
-conda env create -f environment.yml
+conda env create -f config/environment.yml
 conda activate spot_omg
 spotctl --help
 ```
@@ -48,10 +48,10 @@ spotctl --help
 환경 정의가 변경됐거나 로컬 패키지를 다시 동기화할 때는 다음을 실행합니다.
 
 ```bash
-conda env update -f environment.yml --prune
+conda env update -f config/environment.yml --prune
 ```
 
-별도의 `.venv` 설치 흐름은 사용하지 않습니다. `environment.yml`이 이 디렉터리를
+별도의 `.venv` 설치 흐름은 사용하지 않습니다. `config/environment.yml`이 이 디렉터리를
 editable package로 설치하므로 소스 수정은 즉시 `spotctl`에 반영됩니다.
 
 ## 빠른 명령

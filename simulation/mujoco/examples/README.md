@@ -12,7 +12,7 @@ mjpython simulation/mujoco/examples/joint_sweep.py
 mjpython simulation/mujoco/examples/pose_cycle.py
 ```
 
-환경이 아직 없다면 먼저 저장소 루트에서 `conda env create -f environment.yml`을
+환경이 아직 없다면 먼저 저장소 루트에서 `conda env create -f config/environment.yml`을
 실행합니다. 별도 예제용 venv는 만들지 않습니다.
 
 - `falling_ball.py`: 중력과 평면 충돌 확인

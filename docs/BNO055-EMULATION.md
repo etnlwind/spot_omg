@@ -34,11 +34,11 @@ MuJoCo 물리 서브스텝의 몸체 자세 → 100Hz 센서 샘플 → 추정 �
 
 ## 설정과 확인
 
-`virtual_robot.py --parameters PATH`가 읽는 물리 JSON에 `bno055` 객체를 추가하면 센서 파라미터를 덮어쓸 수 있다. 예: `"bno055": {"fusion_delay_s": 0.04, "noise_std_deg": 0.15}`. 단위는 이름에 명시했다. 기본값은 `simulation/mujoco/bno055_emulator.py`의 `BNO055Config`에 있다.
+`virtual_robot.py --parameters PATH`가 읽는 물리 JSON에 `bno055` 객체를 추가하면 센서 파라미터를 덮어쓸 수 있다. 예: `"bno055": {"fusion_delay_s": 0.04, "noise_std_deg": 0.15}`. 단위는 이름에 명시했다. 기본값은 `simulation/mujoco/runtime/bno055_emulator.py`의 `BNO055Config`에 있다.
 
 BLE/TCP 콘솔에서 `imudiag`를 보내면 모드, 측정값, 실제 샘플 나이, Euler 원시 바이트, 필터 결과, 오류 횟수, 설정값이 나온다. `baldiag`에도 같은 진단을 포함했다. `syncstate`는 `imu=bno055-emulated` 및 `bno055emu` capability를 제공하고, `balance=monitor`를 유지한다. MuJoCo 화면에는 센서 샘플 나이가 표시된다.
 
-`check_bno055_response.py`는 10도 계단 입력에 대한 최초 응답·필터 50%·90% 도달 시간을 측정하고, 20/60ms 융합 지연에서 5개 보행의 좌회전→전진→정지를 검증한다. 결과는 `simulation/mujoco/bno055_validation.json`에 저장한다. 이는 추정 센서의 응답이며 실측 BNO055 응답이 아니다.
+`check_bno055_response.py`는 10도 계단 입력에 대한 최초 응답·필터 50%·90% 도달 시간을 측정하고, 20/60ms 융합 지연에서 5개 보행의 좌회전→전진→정지를 검증한다. 결과는 `artifacts/simulation/mujoco/bno055_validation.json`에 저장한다. 이는 추정 센서의 응답이며 실측 BNO055 응답이 아니다.
 
 공식 출처: [Bosch BNO055 데이터시트 Rev 1.8](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bno055-ds000.pdf), 표 3-14, 3-28, 3-29.
 

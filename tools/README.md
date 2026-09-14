@@ -25,11 +25,11 @@ Spot OMG 로봇을 설정하고 점검하기 위한 개발 도구 모음입니�
 만들고 활성화합니다.
 
 ```bash
-conda env create -f environment.yml
+conda env create -f config/environment.yml
 conda activate spot_omg
 ```
 
-`environment.yml`이 `tools/servo_tool`을 editable package로 설치하므로 환경이
+`config/environment.yml`이 `tools/servo_tool`을 editable package로 설치하므로 환경이
 활성화되면 어느 디렉터리에서든 `spotctl`을 사용할 수 있습니다. 로컬 `.venv`는
 만들지 않습니다.
 

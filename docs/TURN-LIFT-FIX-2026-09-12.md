@@ -48,8 +48,8 @@
 저장소 루트에서:
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/python -m pytest simulation/mujoco/test_arc_lift_first.py simulation/mujoco/test_arc_support_profile.py simulation/mujoco/test_shared_locomotion.py simulation/mujoco/test_arc_trial_contracts.py -q
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/search_arc_control.py artifacts/audits/turn-lift-fix-2026-09-12/spot-turnlift-final.json
+/opt/anaconda3/envs/spot_omg/bin/python -m pytest simulation/mujoco/tests/test_arc_lift_first.py simulation/mujoco/tests/test_arc_support_profile.py simulation/mujoco/tests/test_shared_locomotion.py simulation/mujoco/tests/test_arc_trial_contracts.py -q
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/tuning/search_arc_control.py artifacts/audits/turn-lift-fix-2026-09-12/spot-turnlift-final.json
 ```
 
 집계: `artifacts/audits/turn-lift-fix-2026-09-12/summary.json`.

@@ -18,4 +18,4 @@ The optimizer reached its fixed 60-evaluation budget; SciPy success=false report
 
 Every JSON records source SHA-256 before and after evaluation. Eight trials overlapped source edits by the parent (opt-in dynamic support was being added); these remain flagged and preserved, not silently excluded. The best and second-ranked candidates have unchanged before/after hashes. Their cases contain no `arc_dynamic_trial` key. The initial manifest and per-candidate hashes both remain available.
 
-Artifacts: `wave3-manifest.json`, `wave3-optimization.json`, `wave3.log`, and all 60 `../arc-control-2026-09-12/wave3_*.json`. Script: `simulation/mujoco/optimize_arc_wave3.py`. This is MuJoCo estimated-physics validation only; no hardware readback, position-hold or full-motion hardware validation was performed.
+Artifacts: `wave3-manifest.json`, `wave3-optimization.json`, `wave3.log`, and all 60 `../arc-control-2026-09-12/wave3_*.json`. Script: `simulation/mujoco/scripts/tuning/optimize_arc_wave3.py`. This is MuJoCo estimated-physics validation only; no hardware readback, position-hold or full-motion hardware validation was performed.

@@ -4,7 +4,7 @@ MuJoCo 실제 물리 실행에서 **정적으로 복원 방향인 수평 이동�
 
 ## 실행 조건
 
-`simulation/mujoco/diagnose_arc_com_reaction.py`로5개 조건을 독립 실행했다. 기존 중립 원호 자세, 쿠션, 질량·모터 강성/토크·속도 한계,20ms 명령 지연, 서보 양자화를 유지했다. 실제 로봇 명령은 없다. 모든 참값 측정은 평가 출력이며 제어 입력으로 넣지 않았다.
+`simulation/mujoco/scripts/analysis/diagnose_arc_com_reaction.py`로5개 조건을 독립 실행했다. 기존 중립 원호 자세, 쿠션, 질량·모터 강성/토크·속도 한계,20ms 명령 지연, 서보 양자화를 유지했다. 실제 로봇 명령은 없다. 모든 참값 측정은 평가 출력이며 제어 입력으로 넣지 않았다.
 
 -3초간 네 발로 정착한 뒤0.4초 동안 FR/RL 발높이 목표를20mm 올렸다. FL/RR만 지지한다.
 - 이동 시작은3.44초다. 이 시점에 두 발만 접촉하며 발높이 목표는20mm에 도달한 상태다.
@@ -53,7 +53,7 @@ I_p q̈ ≈ m g h q − m g δ + m h δ̈
 `baseline.json`, 조건별 원시 JSON, `summary.json`에 모든 시계열과 비교 수치를 저장했다.
 
 ```bash
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/diagnose_arc_com_reaction.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/diagnose_arc_com_reaction.py
 ```
 
 검증 범위는 MuJoCo 자유 몸체와 추정 물리다. 실제 로봇·MCU·실제 IMU/서보 시험을 수행하지 않았다.

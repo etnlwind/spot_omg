@@ -1,0 +1,27 @@
+"""Replay the measured-cap reach policy; estimates only, no robot IO."""
+
+# Support direct execution from any working directory.
+if __package__ in (None, ""):
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[4]))
+
+from simulation.mujoco.paths import REPO_ROOT, SIM_ROOT, RESULTS_ROOT
+import json
+from pathlib import Path
+from simulation.mujoco.scripts.analysis.diagnose_turn_clearance import run
+ROOT=SIM_ROOT
+OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
+
+def main():
+    OUT.mkdir(parents=True,exist_ok=True)
+    policy=json.loads((ROOT/'config/upright_profiles.json').read_text())['profiles']['cushion_reach']
+    pad=json.loads((ROOT/'config/foot_cushion_d37p3_l27mm.json').read_text())
+    results=[]
+    for name,linear,yaw,seconds,scenario in [('forward',1000,0,60,'nominal'),('reverse',-600,0,24,'nominal'),('left',0,600,24,'nominal'),('right',0,-600,24,'nominal'),('com_offset',1000,0,30,'com_offset')]:
+        summary,_=run(linear,yaw,seconds,profile='cushion_reach',override=policy,cushion=pad,scenario=scenario)
+        summary['case']=name;results.append(summary)
+        (OUT/'reach373-validation.json').write_text(json.dumps(results,indent=2))
+        print(name,summary['safety'],round(summary['speed_m_s'],3),[(k,round(v['touchdown_forward_median_mm'] or 0,1),round(v['peak_tilt_deg'] or 0,1),round(v['middle_swing_contact_fraction'] or 0,2)) for k,v in summary['legs'].items()],flush=True)
+
+if __name__=='__main__':main()

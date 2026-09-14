@@ -13,15 +13,15 @@
 
 `gait_profiles.py`에서 앞/뒤 발의 횡방향 궤적을 반대로 주고 J1을 움직여 몸체 중심 주위로 발을 옮긴다. 횡방향 보폭은 CAD 스탠스의 길이/폭 비율을 근사한 1.6 배율을 사용하며, 회전 중 발 들기를 보완했다. 전진·후진 입력이 0에서 0.6까지 커질 때 C2 smoothstep으로 제자리 회전 성분을 줄인다. 0.6 이상은 기존 이동 궤적과 같다. 조이스틱 축 매핑과 yaw 제한, 물리 모델은 바꾸지 않았다.
 
-초기 후보는 횡방향 회전을 이동 중에도 전부 적용하여 트롯 대각선에서 발 이외의 접촉이 발생했다. 해당 후보는 채택하지 않았다. 기록은 `simulation/mujoco/diagnostics/pivot-unblended-2026-09-10.jsonl`에 남겼다.
+초기 후보는 횡방향 회전을 이동 중에도 전부 적용하여 트롯 대각선에서 발 이외의 접촉이 발생했다. 해당 후보는 채택하지 않았다. 기록은 `artifacts/simulation/mujoco/diagnostics/pivot-unblended-2026-09-10.jsonl`에 남겼다.
 
 재현 검증:
 
 ```sh
-PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/validate_pivot_turns.py
+PYTHONPATH=tools/servo_tool:simulation/mujoco /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/validation/validate_pivot_turns.py
 ```
 
-이 검증은 제자리 회전의 실제 누적 yaw와 중심 이동, 대각선 이동, 회전→직진, 낮은 전진·후진 입력의 회전, 정지 완료, 안전 상태, 발 이외의 접촉을 측정한다. 테스트는 중력과 접촉을 포함한 동역학을 진행하며 자세나 위치를 강제로 바꾸지 않는다. 결과는 `simulation/mujoco/pivot_turn_validation.json`에 저장한다.
+이 검증은 제자리 회전의 실제 누적 yaw와 중심 이동, 대각선 이동, 회전→직진, 낮은 전진·후진 입력의 회전, 정지 완료, 안전 상태, 발 이외의 접촉을 측정한다. 테스트는 중력과 접촉을 포함한 동역학을 진행하며 자세나 위치를 강제로 바꾸지 않는다. 결과는 `artifacts/simulation/mujoco/pivot_turn_validation.json`에 저장한다.
 
 실제 펌웨어의 legacy 궤적은 이번 수정 범위에 포함되지 않는다. 새 궤적은 가상 로봇의 crawl/cruise/trot/highstep 정책에 적용된다. 물성이 추정값인 시뮬레이션의 측정 결과이며 하드웨어 검증 결과는 아니다.
 

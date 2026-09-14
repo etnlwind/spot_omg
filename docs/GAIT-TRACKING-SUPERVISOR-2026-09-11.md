@@ -43,7 +43,7 @@
 
 ## 재현
 
-- `python -m pytest -q simulation/mujoco/test_gait_tracking.py simulation/mujoco/test_servo_pipeline.py simulation/mujoco/test_shared_locomotion.py firmware/stm32-learning/tests simulation/mujoco/test_virtual_robot.py simulation/mujoco/test_drive_transition.py simulation/mujoco/test_stow_controller.py`
-- `python simulation/mujoco/validate_gait_tracking.py`
+- `python -m pytest -q simulation/mujoco/tests/test_gait_tracking.py simulation/mujoco/tests/test_servo_pipeline.py simulation/mujoco/tests/test_shared_locomotion.py firmware/stm32-learning/tests simulation/mujoco/tests/test_virtual_robot.py simulation/mujoco/tests/test_drive_transition.py simulation/mujoco/tests/test_stow_controller.py`
+- `python simulation/mujoco/scripts/validation/validate_gait_tracking.py`
 - 결과: `artifacts/audits/tracking-v42/`. 위 결과의 기준은 해당 디렉터리 JSON이다.
 - 빌드: `/private/tmp/spot-tracking-v42/shared-locomotion-v42.bin`. 실물 미설치.

@@ -8,7 +8,7 @@ MuJoCo 자유 몸체에서 CAD 발높이 보정의 roll/pitch 부호는 예상�
 
 ## 시험 조건
 
-- 새 독립 스크립트 `simulation/mujoco/diagnose_arc_body_axes.py`를 사용했다. 실제 로봇 명령은 없다.
+- 새 독립 스크립트 `simulation/mujoco/scripts/analysis/diagnose_arc_body_axes.py`를 사용했다. 실제 로봇 명령은 없다.
 - 현재 CAD, 쿠션, 질량, 모터 강성·토크/속도 한계,20ms 명령 지연, 실제 서보 양자화를 유지했다.
 - 공통 C `arc_turn.h`의 FK/IK를 임시 공유 라이브러리로 호출했다. 하드웨어 부호·캘리브레이션·제어 코드를 수정하지 않았다.
 - 원호 턴의 중립 발 위치에서3초 정착 후 발별 CAD Z를0.2초 동안±1mm 변경했다. XY 목표는 유지했다.
@@ -60,14 +60,14 @@ FL–RR 두 지지발에서는 roll용 패턴과 pitch용 패턴이 정반대다
 ## 재현
 
 ```bash
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/diagnose_arc_body_axes.py
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/diagnose_arc_body_axes.py
 ```
 
 검증 수준은 공통 CAD 기하를 사용한 MuJoCo 자유 몸체/에뮬레이트 IMU 응답이다. 실제 장착 IMU 방향, 실물 모터 응답, 펌웨어 계산 시간을 새로 검증한 것은 아니다.
 
 ## 별도 실험용 소수 관측기
 
-위 정수 절삭 문제를 분리하기 위해 `firmware/stm32-learning/Inc/arc_observer.h`와 독립 호스트 바인딩 `simulation/mujoco/arc_observer.py`를 추가했다. 기존 `attitude_update`의 안전 정지·센서 누락 판단은 수정하지 않았다. 새 후보가 선택해서 사용할 수 있는 별도 관측기다.
+위 정수 절삭 문제를 분리하기 위해 `firmware/stm32-learning/Inc/arc_observer.h`와 독립 호스트 바인딩 `simulation/mujoco/runtime/arc_observer.py`를 추가했다. 기존 `attitude_update`의 안전 정지·센서 누락 판단은 수정하지 않았다. 새 후보가 선택해서 사용할 수 있는 별도 관측기다.
 
 - 원시 BNO roll/pitch와 실제 샘플 시각을 사용한다. 각도/속도 단위는degree/degree per second다.
 -20ms에서 각도 alpha0.6, 속도 alpha0.25이고 실제 샘플 간격으로 계수를 보정한다. 속도는기존과 같은±120°/s 한계다. 같은 샘플을 여러 번 읽어도 재필터링하지 않는다.

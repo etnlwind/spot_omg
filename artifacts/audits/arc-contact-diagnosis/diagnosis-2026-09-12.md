@@ -60,15 +60,15 @@
 
 ## 새 평가 코드와 재현
 
-`simulation/mujoco/arc_contact_metrics.py`는 입력을 변경하지 않는 평가 함수다. 완전 스윙 최고값 min/p10/median/max, 이륙/착지 위상, 대각선 높이차·시점차, 접촉 개수 시간비율을 반환한다. 누락·비유한값·중복 샘플이 있는 스윙을 제외하며 값이 없으면0 대신null을 반환한다. 시작/끝 부분 스윙도 제외한다.
+`simulation/mujoco/runtime/arc_contact_metrics.py`는 입력을 변경하지 않는 평가 함수다. 완전 스윙 최고값 min/p10/median/max, 이륙/착지 위상, 대각선 높이차·시점차, 접촉 개수 시간비율을 반환한다. 누락·비유한값·중복 샘플이 있는 스윙을 제외하며 값이 없으면0 대신null을 반환한다. 시작/끝 부분 스윙도 제외한다.
 
 ```bash
-/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/arc_contact_metrics.py \
+/opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/runtime/arc_contact_metrics.py \
   artifacts/audits/arc-preload-validation/d20-y-1000-enabled1.csv \
   --start 5 --end 65 \
   --output artifacts/audits/arc-contact-diagnosis/d20-y-1000-enabled1.json
 
-/opt/anaconda3/envs/spot_omg/bin/python -m pytest -q simulation/mujoco/test_arc_contact_metrics.py
+/opt/anaconda3/envs/spot_omg/bin/python -m pytest -q simulation/mujoco/tests/test_arc_contact_metrics.py
 ```
 
 기존8개CSV의 재계산 JSON을 이 디렉터리에 보존했다. 합성 경계/누락/위상 분리 검사6개를 통과했다. 제어 코드·펌웨어·앱은 이 진단 작업에서 수정하지 않았다.

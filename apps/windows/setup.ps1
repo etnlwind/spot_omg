@@ -13,5 +13,5 @@ if (-not (Test-Path -LiteralPath $zig)) {
     Expand-Archive -LiteralPath $archive -DestinationPath $toolchain -Force
     Rename-Item -LiteralPath (Join-Path $toolchain "zig-x86_64-windows-0.15.2") -NewName "zig"
 }
-& $Python -X utf8 -c "from servo import SharedGaitPolicy; SharedGaitPolicy(); from pathlib import Path; import sys; sys.path.insert(0,str(Path(sys.argv[1])/'simulation/mujoco')); from body_stabilizer import BodyStabilizer; BodyStabilizer(); print('Windows C bindings ready')" $repo
+& $Python -X utf8 -c "from servo import SharedGaitPolicy; SharedGaitPolicy(); from pathlib import Path; import sys; sys.path.insert(0,str(Path(sys.argv[1]))); from simulation.mujoco.runtime.body_stabilizer import BodyStabilizer; BodyStabilizer(); print('Windows C bindings ready')" $repo
 if ($LASTEXITCODE -ne 0) { throw "C binding verification failed" }

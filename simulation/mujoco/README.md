@@ -1,3 +1,23 @@
+[최신 S 보행 V5 인수인계](../../docs/HANDOFF-2026-09-15-S-NATIVE-V5.md): 새 컴퓨터 환경, 실행/검증 명령, 영상과 남은 문제.
+
+## 폴더 구성
+
+- `virtual_robot.py`, `walk.py`: 기존 실행 명령을 유지하는 진입점
+- `runtime/`: 물리 모델, 보행·자세 제어, 통신·영상 구현
+- `tests/`: 자동 검사
+- `scripts/analysis/`: 동작 원인 분석·측정
+- `scripts/tuning/`: 정책 탐색·튜닝
+- `scripts/validation/`: 물리 재생 및 성능 검증
+- `scripts/visualization/`: 미리보기·그래프·영상·모델 생성
+- `config/`: 쿠션·실험 정책·의존성 설정
+- `models/`, `cad_300mm/`: 실행에 사용하는 모델·CAD 자산
+- `ble_bridge/`, `scenarios/`, `examples/`: BLE 연결, 시험 조건, 예제
+- 결과물: 저장소의 `artifacts/simulation/mujoco/` 및 목적별 `artifacts/` 하위 폴더
+
+코드는 `simulation.mujoco.runtime` 등의 패키지 경로로 import합니다. 파일 위치에 의존하는 리소스 경로는 `paths.py`의 `SIM_ROOT`, `REPO_ROOT`, `RESULTS_ROOT`를 사용합니다. 스크립트는 저장소 밖에서도 절대 경로로 직접 실행할 수 있습니다.
+
+> 2026-09-14: `virtual_robot.py` 기본 실행은 실측 총질량 2.754kg(배터리·쿠션 포함)과 외경 37.3mm / 전체 길이 27mm 발끝 쿠션을 적용합니다. 창의 `Model / cushion` 행과 시작 로그에서 실제 모델 질량·쿠션 치수를 확인할 수 있습니다. 질량 분포와 접촉 물성은 추정값입니다. `--parameters`와 `--foot-cushion`으로 명시적 대체 파일을 지정할 수 있으며 파일 누락 시 실행을 중단합니다.
+
 > V16 펌웨어 공유 C 보행 자세 검증은 `check_walk_stance.py`로 실행합니다. 기존 일반 drive 재생은 V15 비교용입니다. [V16 반영·한계](../../docs/UPDATE-2026-09-09-V16.md).
 
 > 2026-09-09: [Stand 각도 비교 및 보행 정책 제안](../../docs/GAIT-STANCE-2026-09-09.md). 40°/80° 평지 보행 후보, 0.5ms 물리 간격 기준. 실제 설치된 V15 자세는 변경하지 않았습니다.
@@ -15,7 +35,7 @@ V13부터 개선 보행 재생은 Python 궤적 복사본 대신 STM32의 공용
 
 ```bash
 conda activate spot_omg
-mjpython simulation/mujoco/gait_lab.py
+mjpython simulation/mujoco/scripts/visualization/gait_lab.py
 ```
 
 **R 재시작 / 1 기존 보행 / 2 개선 보행 / P 또는 Space 일시정지**.
@@ -37,8 +57,8 @@ mjpython simulation/mujoco/gait_lab.py
 
 ```bash
 conda activate spot_omg
-mjpython simulation/mujoco/cad_physics.py --duration 120 --linear 0.6
-python simulation/mujoco/cad_physics.py --check --duration 12 --linear 0.6
+mjpython simulation/mujoco/runtime/cad_physics.py --duration 120 --linear 0.6
+python simulation/mujoco/runtime/cad_physics.py --check --duration 12 --linear 0.6
 ```
 
 이 장면은 새 STEP 메시와 임시 관절축을 사용합니다. 몸체는 6자유도로 움직이며
@@ -102,8 +122,8 @@ CAD에 관절 정의는 없습니다. 회전축·부품 연결·영점 자세는
 새 STEP의 12개 관절에 공용 C `drive_targets()` 보행 정책을 재생하려면:
 
 ```bash
-mjpython simulation/mujoco/cad_gait.py --duration 120 --linear 0.6
-python simulation/mujoco/cad_gait.py --check --duration 12
+mjpython simulation/mujoco/runtime/cad_gait.py --duration 120 --linear 0.6
+python simulation/mujoco/runtime/cad_gait.py --check --duration 12
 ```
 
 W/S 전후진, A/D 회전, Space 중립입니다. 입력은 키를 뗀 뒤에도 유지됩니다.
@@ -124,8 +144,8 @@ CAD의 미세한 기울기를 유지합니다. CAD +X→로봇 +Y, CAD -Y→로�
 
 ```bash
 conda activate spot_omg
-mjpython simulation/mujoco/preview_cad.py
-python simulation/mujoco/preview_cad.py --check
+mjpython simulation/mujoco/scripts/visualization/preview_cad.py
+python simulation/mujoco/scripts/visualization/preview_cad.py --check
 ```
 
 `cad_300mm/scene.xml`은 제공된 STEP의 실제 조립 배치를 메시로 가져온 별도 장면입니다.
@@ -142,7 +162,7 @@ MuJoCo 로딩 검사 및 렌더 이미지에서 조립 배치를 확인했습니
 재생성에는 `cadquery-ocp`가 필요합니다. 설치된 Python 환경에서 다음을 실행합니다.
 
 ```bash
-python simulation/mujoco/import_step.py "/Users/etnlwind/Downloads/Spot OMG 300mm Frame.step"
+python simulation/mujoco/scripts/visualization/import_step.py "/Users/etnlwind/Downloads/Spot OMG 300mm Frame.step"
 ```
 
 ## 현재 조이스틱 drive 동역학 실험
@@ -152,7 +172,7 @@ python simulation/mujoco/import_step.py "/Users/etnlwind/Downloads/Spot OMG 300m
 
 ```bash
 conda activate spot_omg
-mjpython simulation/mujoco/drive_lab.py --balance --duration 30
+mjpython simulation/mujoco/scripts/visualization/drive_lab.py --balance --duration 30
 ```
 
 - W: 전진 입력, S: 후진 입력, A/D: 회전 입력, Space: 중립 입력.
@@ -163,9 +183,9 @@ mjpython simulation/mujoco/drive_lab.py --balance --duration 30
 화면 없이 결과를 비교하려면:
 
 ```bash
-python simulation/mujoco/drive_lab.py --check --balance --linear 0.6 \
+python simulation/mujoco/scripts/visualization/drive_lab.py --check --balance --linear 0.6 \
   --duration 12 --output /tmp/spot-drive-forward
-python simulation/mujoco/drive_lab.py --check --linear 0 \
+python simulation/mujoco/scripts/visualization/drive_lab.py --check --linear 0 \
   --duration 12 --output /tmp/spot-drive-idle
 ```
 
@@ -185,16 +205,16 @@ X=-0.511m, 최대 추종 오차 10.28°, 토크 한계 비율 1.11%, 자세 유�
 단순히 입력 부호를 뒤집어 실물 정책까지 수정하지 않습니다.
 
 저장소 루트의 Conda `spot_omg` 환경에서 URDF를 Canonical Pose (논리 자세)로
-확인합니다. Servo Tool과 시뮬레이션은 동일한 `environment.yml`을 사용합니다.
+확인합니다. Servo Tool과 시뮬레이션은 동일한 `config/environment.yml`을 사용합니다.
 
 ```bash
-conda env create -f environment.yml
+conda env create -f config/environment.yml
 conda activate spot_omg
 
-python simulation/mujoco/preview_pose.py stand45
+python simulation/mujoco/scripts/visualization/preview_pose.py stand45
 ```
 
-`environment.yml`은 MuJoCo와 `tools/servo_tool` editable package를 함께
+`config/environment.yml`은 MuJoCo와 `tools/servo_tool` editable package를 함께
 설치합니다. 이는 STM32 코드를 Python으로 바꾸는 것이 아니라 MuJoCo 호스트가
 저장소의 공용 C 헤더와 Python 바인딩을 찾도록 하는 구성입니다. 로컬
 `.venv-mujoco`는 사용하지 않습니다.
@@ -246,8 +266,8 @@ mjpython simulation/mujoco/walk.py \
 URDF가 바뀌면 Dynamic Scene (동역학 장면)을 다시 생성합니다.
 
 ```bash
-python simulation/mujoco/generate_scene.py
-python simulation/mujoco/generate_scene.py --check
+python simulation/mujoco/scripts/visualization/generate_scene.py
+python simulation/mujoco/scripts/visualization/generate_scene.py --check
 ```
 
 `--dynamic`을 추가하면 중력, 평면 지면, 발 마찰, Floating Base (자유 몸체),
@@ -366,7 +386,7 @@ conda run -n spot_omg python -m tools.servo_tool.servo.gait_analysis
 정격 270°/s 대비 판정이 바뀌지 않는지 검사합니다.
 
 ```bash
-pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+pytest tools/servo_tool/tests simulation/mujoco/tests/test_trot2.py -q
 ```
 
 ## 제자리 및 전진 점프
@@ -375,7 +395,7 @@ pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
 기본은 1200ms 제자리 점프 3회입니다.
 
 ```bash
-python simulation/mujoco/jump.py --check
+python simulation/mujoco/scripts/visualization/jump.py --check
 ```
 
 현재 제자리 기본값의 headless 결과는 몸체 시작 높이 약 `0.222m`, 최대 높이
@@ -383,7 +403,7 @@ python simulation/mujoco/jump.py --check
 STM32에 적용하기 전에 다음처럼 작은 값부터 시뮬레이션합니다.
 
 ```bash
-python simulation/mujoco/jump.py \
+python simulation/mujoco/scripts/visualization/jump.py \
   --forward-travel 0.02 --cycles 3 --check
 ```
 
@@ -479,6 +499,7 @@ MuJoCo 설치, 관절축, sit/stand 보간을 확인했던 초기 스크립트�
 실행 명령, 앱의 실제/가상 대상 선택, 지원 명령과 실물 동일성의 현재 한계는
 [가상 로봇 연결 문서](../../docs/VIRTUAL-ROBOT-2026-09-09.md)를 참고하십시오.
 `virtual_robot.py`는 STEP 기반 물리 모델을 실시간으로 구동하며 TCP 콘솔을 제공합니다.
+기본 화면은 로봇 앞쪽이 오른쪽을 향하는 측면 시점입니다(방위각 90°, 고도각 0°, 거리 1.05m). 몸체와 발끝 쿠션이 함께 보이도록 무게중심보다 0.1m 낮은 지점을 따라갑니다. 실행 중 마우스로 시점을 바꿀 수 있으며, 다음 실행은 다시 측면으로 시작합니다. 화면 없는 영상 송출의 기본 시점도 같습니다.
 
 ### Bluetooth 가상 로봇
 
@@ -551,7 +572,7 @@ V0.4.2 (14) / shared-locomotion-v20: `level15` (**수평 + 발 들기 · 15mm**)
 기존 정책은 변경하지 않으며 실제 펌웨어에 설치하지 않는다.
 
 ```bash
-mjpython simulation/mujoco/preview_upright.py --viewer
+mjpython simulation/mujoco/scripts/visualization/preview_upright.py --viewer
 ```
 
 자동 전진/정지 데모 및 검증 수치와 제한은 [Upright 기록](../../docs/UPRIGHT-GAIT-2026-09-11.md)을 참고한다.
@@ -559,8 +580,8 @@ mjpython simulation/mujoco/preview_upright.py --viewer
 1cm 탄성 의자발 쿠션 가정은 다음과 같이 재생한다. 재질은 미실측 접촉 근사다.
 
 ```bash
-mjpython simulation/mujoco/preview_upright.py --viewer \
-  --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
+mjpython simulation/mujoco/scripts/visualization/preview_upright.py --viewer \
+  --foot-cushion simulation/mujoco/config/foot_cushion_d37p3_l27mm.json
 ```
 
 비교 결과와 모델 한계: [쿠션 실험 기록](../../docs/FOOT-CUSHION-10MM-2026-09-11.md).
@@ -581,3 +602,15 @@ mjpython simulation/mujoco/preview_upright.py --viewer \
 `cushion_dynamics_wbc80`은 질량중심 MPC, 전신 역동역학 QP와 위치 서보용 변환을 사용하는 별도 실험 정책이다. **검증실패** 상태이며 기본 보행과 실물 펌웨어를 대체하지 않는다. 지지력 해의 성공과 실제 보행 합격을 구분한다.
 
 추가 의존성은 `requirements-wbc.txt`에 있으며, 실행·검증 명령과 한계는 [동역학 제어 기록](../../docs/DYNAMICS-WBC-2026-09-11.md)에 정리했다.
+
+## S 기준 시뮬레이터 보행 (2026-09-14)
+
+기본 가상 로봇은 `standing_pose.py`에서 쿠션 최저 표면 접촉점과 CAD J2 회전축의 X좌표를 맞춘 S를 사용합니다. 시작, Stand, 보행 정지 복귀가 동일한 기준입니다. S에서 drive를 시작하면 별도 1초 R 준비 자세 전환을 하지 않습니다. 각 보행 정책의 접촉점 변위를 해당 정책의 영진폭 자세에 대해 계산해 S에 옮기고 IK로 풉니다. 다른 자세에서 출발할 경우 S로 제어된 복귀는 유지합니다. 관절 물리 상태는 보행 시작 시 덮어쓰지 않습니다.
+
+이 변경은 `aligned_standing_pose`가 적용된 가상 로봇의 Python 변환 단계이며 STM32의 공용 C 정책이나 실물 펌웨어는 변경하지 않았습니다. 모든 기존 정책의 성능을 보장하지 않습니다. 현재 centerpivot의 전진600/회전500/정지 시험은 safety=ok, cruise 전진600은 음의 X 이동이 관측되어 별도 정책 검증이 필요합니다. 측정 결과: `artifacts/stance-comparison/s-gait-validation.json`.
+
+
+### S-native V5 기본 실험 모델
+기본 실행은 `s_native_v5`, 앱 표시명은 “S 출발 · FR 첫걸음 V5 · 실험”이다. S에서 첫 FR/RL 스윙을 시작하고 FR만 정상 J1 오므림 변화량의 2배로 안쪽에 내딛는다. 기구 간섭 검사와 사용자 승인에 따라 정상 기준은 9°, 첫 FR은 18°다. 다음 반 주기에 네 다리가 정상 오므림으로 합류하며, Stop에서는 현재 오므림을 부드럽게 풀어 S로 돌아간다. 발 교대 대기는 0초다. V1~V4는 비교용으로 유지한다. `--allow-fall`은 보행 중 기울기 정지만 생략한다.
+
+최종 물리 재생에서 첫 실제 착지는 RL보다 FR이 80ms 늦었고 보행 1.2초 뒤 전도했다. 목표 제어/정지 검사 통과가 실제 접지 동기나 안정 보행을 의미하지 않는다. 상세 결과와 최신 앞/뒤/위/옆 영상: `artifacts/s-native-v5/README.md`, `artifacts/s-native-v5/final-video/`.

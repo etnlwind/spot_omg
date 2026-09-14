@@ -96,7 +96,7 @@ Conda `spot_omg` 환경에서 실행합니다.
 
 ```bash
 conda activate spot_omg
-pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+pytest tools/servo_tool/tests simulation/mujoco/tests/test_trot2.py -q
 python simulation/mujoco/walk.py --dynamic --balance \
   --gait trot --preset sim-trot --cycles 10 --check
 ```

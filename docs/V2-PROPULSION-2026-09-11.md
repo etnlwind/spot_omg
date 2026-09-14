@@ -36,7 +36,7 @@ V2의6~7초에서 FL+RR은 지지 후반, FR+RL은 지지 초반이다. 이때 �
 ## 재생·검증
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/preview_support_shift.py --baseline cushion_support_shift_v2 --candidate cushion_v2_push --prefix v2-push --before-title 'BEFORE: V2 fixed J1' --after-title 'AFTER: shared stance propulsion (EXPERIMENT)'
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/scripts/visualization/preview_support_shift.py --baseline cushion_support_shift_v2 --candidate cushion_v2_push --prefix v2-push --before-title 'BEFORE: V2 fixed J1' --after-title 'AFTER: shared stance propulsion (EXPERIMENT)'
 ```
 
 `artifacts/upright/2026-09-11/cushion/v2-push-comparison.mp4`: 위 기존V2 / 아래 추진 후보, 측면·정면, 실제 물리20초.

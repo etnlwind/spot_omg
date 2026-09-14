@@ -541,7 +541,7 @@ Release는 P90을 기준으로 더 낮게 설정해 경계에서 상태가 반�
 - `servo/attitude.py`: 실제 BNO086과 MuJoCo가 공유할 IMU sample 및 PD 제어
 - `servo/contact.py`: 정지 부하 기준 Hysteresis/Debounce 접촉 판정
 - `servo/load_profile.py`: 보행 위상별 절대 부하 baseline 생성·저장·조회
-- `simulation/mujoco/generate_scene.py`: 몸체 중앙 IMU site와 quaternion/gyro 센서
+- `simulation/mujoco/scripts/visualization/generate_scene.py`: 몸체 중앙 IMU site와 quaternion/gyro 센서
 - `simulation/mujoco/walk.py`: 단일 IMU, J1/J2/J3 자세 보정과 접촉 통계
 - `spotctl contacts`: 정지 상태 접촉 관찰
 - `spotctl walk --profile-loads`: 공중 동적 부하 CSV 기록
@@ -1021,7 +1021,7 @@ Servo Tool과 MuJoCo에 나뉘어 있던 `.venv`, `.venv-mujoco` 안내를 제�
 editable `tools/servo_tool`을 설치합니다.
 
 ```bash
-conda env create -f environment.yml
+conda env create -f config/environment.yml
 conda activate somg   # 현재 이름은 spot_omg
 pytest tools/servo_tool/tests -q
 ```
@@ -1071,12 +1071,12 @@ MuJoCo `auto` controller도 같은 C 함수를 호출하며 Python 기준 구현
 갱신했습니다. 패키지 구성은 그대로입니다.
 
 ```bash
-conda env create -f environment.yml
+conda env create -f config/environment.yml
 conda activate spot_omg
-pytest tools/servo_tool/tests simulation/mujoco/test_trot2.py -q
+pytest tools/servo_tool/tests simulation/mujoco/tests/test_trot2.py -q
 ```
 
-`simulation/mujoco/test_trot2.py`는 `simulation.mujoco.walk`를 import 했는데
+`simulation/mujoco/tests/test_trot2.py`는 `simulation.mujoco.walk`를 import 했는데
 pytest rootdir가 `tools/servo_tool/pyproject.toml` 기준으로 잡혀 저장소 루트가
 `sys.path`에 없어 수집 단계에서 실패했습니다. `jump.py`와 같이 자기 디렉터리를
 `sys.path`에 넣고 `walk`를 직접 import 하도록 바꿔 두 시험 경로를 한 번에

@@ -1,6 +1,6 @@
 # 원형 쿠션: 어깨 앞 착지 전진 정책
 
-프로필 `cushion_reach`, `simulation/mujoco/upright_profiles.json`에 저장.
+프로필 `cushion_reach`, `simulation/mujoco/config/upright_profiles.json`에 저장.
 기존 upright/upright_reach와 실기 정책은 변경하지 않았다.
 쿠션: 최대 지름37.3mm, 길이27mm, 삼각형 구멍 바닥과 평행. 물성은 추정이다.
 정책: 주기1.8초, 지지비0.60, 보폭50mm, 목표 들림30mm, 다리 수직 길이240mm,
@@ -24,7 +24,7 @@
 결과: `artifacts/upright/2026-09-11/cushion/reach373-validation.json`
 후보: 같은 폴더의 `reach373-search.json`, `reach373-fine.json`
 영상: 같은 폴더의 `cushion-reach.mp4` (16초, 종료 시 정지 포함).
-재검증: `python simulation/mujoco/validate_cushion_reach.py`
+재검증: `python simulation/mujoco/scripts/validation/validate_cushion_reach.py`
 
 ## 앱 연결 가능한 실행
 
@@ -32,8 +32,8 @@
 cd /Users/etnlwind/project/spot_omg
 /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py \
   --viewer --host 0.0.0.0 --port 8765 --video-host 0.0.0.0 --video-port 8766 \
-  --experimental-profiles simulation/mujoco/upright_profiles.json \
-  --profile cushion_reach --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
+  --experimental-profiles simulation/mujoco/config/upright_profiles.json \
+  --profile cushion_reach --foot-cushion simulation/mujoco/config/foot_cushion_d37p3_l27mm.json
 ```
 
 Bluetooth도 기본 활성화된다. 앱의 기존 정책 버튼을 누르면 선택이 바뀔 수 있다.

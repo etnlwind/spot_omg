@@ -30,7 +30,7 @@
 ## 재현 / 결과
 
 ```sh
-PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/diagnose_turn_clearance.py --output /private/tmp/turn-check --capture /private/tmp/turn-check.png
+PYTHONPATH=tools/servo_tool /opt/anaconda3/envs/spot_omg/bin/python simulation/mujoco/scripts/analysis/diagnose_turn_clearance.py --output /private/tmp/turn-check --capture /private/tmp/turn-check.png
 ```
 
 `config/locomotion_profiles.json`의 해당 정책 `turn_lift_m` 변경 후 `tools/generate_locomotion_profiles.py` 실행으로 후보를 재생성한다. 0은 기존 궤적이다. 진단 도구는 하드웨어를 연결하거나 움직이지 않는다.
