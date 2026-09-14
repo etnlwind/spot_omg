@@ -202,7 +202,7 @@ class Window(QMainWindow):
         outer.setSpacing(16)
         header = QHBoxLayout()
         title = QVBoxLayout()
-        title.addWidget(label("SPOT / OMG", "title"))
+        title.addWidget(label("Spot OMG", "title"))
         title.addWidget(label(f"WINDOWS CONTROL STATION   /   v{__version__}", "muted"))
         header.addLayout(title)
         header.addStretch()
