@@ -17,7 +17,7 @@ def trial(case):
         if 5<=now<10:
             R=r.plant.data.xmat[r.plant.model.body('robot').id].reshape(3,3)
             headings.append((now,float(np.arctan2(R[1,0],R[0,0]))))
-    pad=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    pad=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     result,rows=run(0,yaw,14.02,profile='arcturn',cushion=pad,stop_at=10,observer=observe,
         parameter_overrides=dict(arc_trial=options,arc_balance_trial=balance,arc_preload_trial=preload,command_delay_s=delay,tracking_feedback_enabled=False))
     result['metrics']=metrics(rec.frames,rows);result['options']=options

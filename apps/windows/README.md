@@ -10,6 +10,8 @@ Python / PySide6 / Bleak로 구현했으며 STM32 펌웨어와 관절 좌표·�
 
 - **MuJoCo 시작 + 연결**: 로컬 시뮬레이터를 시작하고 TCP identity 확인, 상태 동기화,
   영상 표시를 수행합니다. 기본 포트는 제어 8765, 영상 8766입니다.
+  기존 실측 총중량 2.754kg 설정(`physics_parameters_measured_total_2754g.json`)을 사용합니다.
+  원형 외경 37.3mm·전체 길이 27mm 쿠션이 포함되며, 질량 분포와 접촉 물성은 추정값입니다.
 - **별도 3D 뷰어도 열기**: MuJoCo의 카메라 조작 가능한 창도 함께 엽니다.
   Windows에서는 일반 Python으로 실행하며 macOS 전용 `mjpython`이 필요하지 않습니다.
 - **실제 로봇 · BLE**: iPhone 앱에서 로봇 연결을 먼저 해제하고 연결하기를 누릅니다.

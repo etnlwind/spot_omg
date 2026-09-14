@@ -14,7 +14,7 @@ def first_sustained(mask,count=3):
 def evaluate(name):
     cfg=json.loads((OUT/(name+'.json')).read_text())['profile'];rec=Recorder()
     result,rows=run(1000,0,20.02,profile=name,override=cfg,
-        cushion=json.loads((ROOT/'foot_cushion_10mm.json').read_text()),observer=rec)
+        cushion=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text()),observer=rec)
     byleg={l:[r for r in rows if r['leg']==l] for l in ['FL','FR','RL','RR']}
     events=[]
     for a,b in [('FL','RR'),('FR','RL')]:

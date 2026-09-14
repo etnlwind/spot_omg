@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def parameters():
     p = json.loads((Path(__file__).parent/'cad_300mm/physics_parameters_measured_total_2754g.json').read_text())
     p.update(timestep_s=.0005, experimental_stow=True)
-    p['foot_cushion'] = json.loads((Path(__file__).parent/'foot_cushion_10mm.json').read_text())
+    p['foot_cushion'] = json.loads((Path(__file__).parent/'foot_cushion_d37p3_l27mm.json').read_text())
     return p
 
 

@@ -8,7 +8,7 @@ from validate_support_shift import Recorder,metrics
 
 def trial(job):
     name,cfg,seconds=job
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text());rec=Recorder();height=[]
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text());rec=Recorder();height=[]
     def observe(now,r):
         rec(now,r);state=r.plant.row();d=r.plant.data;m=r.plant.model
         diag=r.support_shift.diagnostic if r.support_shift else {}

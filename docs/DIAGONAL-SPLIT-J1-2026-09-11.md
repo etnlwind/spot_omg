@@ -57,7 +57,7 @@
 이 실험만 별도로 열려면 저장소 루트에서 실행한다. 현재 앱 연결용 서버와 다른 포트를 사용한다.
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_diagonal_sync --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_diagonal_sync --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
 ```
 
 창에서 W는 8초 보행, Space는 Stop이다. 앱 메뉴 추가/실기 배포 완료를 의미하지 않는다.

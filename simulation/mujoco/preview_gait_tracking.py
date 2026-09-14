@@ -15,7 +15,7 @@ def main():
     robots=[];renderers=[]
     for enabled in (False,True):
         p,_=physics();p.update(command_delay_s=.08,tracking_feedback_enabled=enabled)
-        p['foot_cushion']=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+        p['foot_cushion']=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
         xml,p=build(p,write_scene=False);m=mujoco.MjModel.from_xml_string(xml)
         m.vis.global_.offwidth=640;m.vis.global_.offheight=360
         r=RobotController(Simulation(p,m));r.select_profile('arcturn')

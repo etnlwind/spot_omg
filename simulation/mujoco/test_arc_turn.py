@@ -9,7 +9,7 @@ from search_gait_profiles import physics
 import mujoco
 
 def test_cad_targets_match_python_arc_reference():
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml,p=build(p,write_scene=False);c=SupportShift(mujoco.MjModel.from_xml_string(xml))
     policy=SharedGaitPolicy();fn=policy._library.spot_locomotion_targets
     fn.argtypes=(ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.POINTER(ctypes.c_float));fn.restype=ctypes.c_int

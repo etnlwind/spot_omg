@@ -6,7 +6,7 @@ import mujoco
 from cad_physics import build
 from search_gait_profiles import physics
 ROOT=Path(__file__).resolve().parents[2]
-p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
 xml,p=build(p,write_scene=False);m=mujoco.MjModel.from_xml_string(xml);d=mujoco.MjData(m)
 d.qpos[:]=m.qpos0;d.qpos[:3]=0;d.qpos[3:7]=[1,0,0,0]
 for leg in ('fl','fr','rl','rr'):

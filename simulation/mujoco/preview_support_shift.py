@@ -31,7 +31,7 @@ def main():
     robots=[];renderers=[]
     profiles=json.loads(args.profiles.read_text())['profiles']
     for name in (args.baseline,args.candidate):
-        p,_=physics();p['foot_cushion']=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+        p,_=physics();p['foot_cushion']=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
         xml,p=build(p,write_scene=False);m=mujoco.MjModel.from_xml_string(xml)
         m.vis.global_.offwidth=640;m.vis.global_.offheight=380
         robot=RobotController(Simulation(p,m));robot.load_experimental_profiles(args.profiles);robot.select_profile(name)

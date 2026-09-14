@@ -105,7 +105,7 @@ def gates(result, baseline, expect_stop=False):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     profiles = json.loads((ROOT/'upright_profiles.json').read_text())['profiles']
-    pad = json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad = json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     soft = dict(pad, contact_time_constant_s=.04, damping_ratio=.8, friction=[.6, .005, .0001])
     cases = [('forward', 'nominal', 65.02, pad, {}, None),
              ('com_offset', 'com_offset', 30, pad, {}, None),

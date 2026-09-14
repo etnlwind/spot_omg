@@ -21,7 +21,7 @@
 ## 별도 실행
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_diagonal_sync_wide80 --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_diagonal_sync_wide80 --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
 ```
 
 W: 8초 보행, Space: Stop. 100mm를 보려면 profile 이름 끝을 wide100으로 바꾼다. 현재 앱용 서버/앱 메뉴/실기 펌웨어는 이번 변경으로 교체하지 않았다.

@@ -560,7 +560,7 @@ mjpython simulation/mujoco/preview_upright.py --viewer
 
 ```bash
 mjpython simulation/mujoco/preview_upright.py --viewer \
-  --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+  --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
 ```
 
 비교 결과와 모델 한계: [쿠션 실험 기록](../../docs/FOOT-CUSHION-10MM-2026-09-11.md).

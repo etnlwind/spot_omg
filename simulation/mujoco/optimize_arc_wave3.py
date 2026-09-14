@@ -20,7 +20,7 @@ TRACKING_BASELINE=BASELINE['metrics']['tracking_rms_deg']
 SEED=np.array([.0017557040361956876,-.0009905324626316228,.0007808772327605116,.0012395485171061073,.0013113643286768628])
 SOURCE_FILES=[*sorted((ROOT/'firmware/stm32-learning/Inc').glob('arc*.h')),
  ROOT/'tools/servo_tool/servo/gait_policy_host.c',ROOT/'tools/servo_tool/servo/shared_gait.py',
- *[Path(__file__).with_name(s) for s in ('optimize_arc_wave3.py','search_arc_control.py','arc_contact_metrics.py','cad_physics.py','drive_controller.py','virtual_robot.py','search_gait_profiles.py','foot_cushion_10mm.json')],
+ *[Path(__file__).with_name(s) for s in ('optimize_arc_wave3.py','search_arc_control.py','arc_contact_metrics.py','cad_physics.py','drive_controller.py','virtual_robot.py','search_gait_profiles.py','foot_cushion_d37p3_l27mm.json')],
  CAD/'physics_parameters.json',BASELINE_PATH]
 
 def source_hashes():

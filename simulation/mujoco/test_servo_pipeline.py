@@ -52,7 +52,7 @@ def test_arc_foot_error_after_actual_encoder():
     from cad_physics import build
     from search_gait_profiles import physics
     from drive_controller import NAMES
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml,_=build(p,write_scene=False);cad=SupportShift(mujoco.MjModel.from_xml_string(xml))
     lib,encode=encoder();fn=lib.spot_locomotion_targets
     fn.argtypes=(ctypes.c_int,*([ctypes.c_float]*4),ctypes.POINTER(ctypes.c_float));fn.restype=ctypes.c_int

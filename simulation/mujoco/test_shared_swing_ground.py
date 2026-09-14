@@ -12,7 +12,7 @@ from shared_swing_ground import SharedSwingGround
 def model():
     root=Path(__file__).parent
     p=json.loads((root/'cad_300mm/physics_parameters_measured_total_2754g.json').read_text())
-    p['foot_cushion']=json.loads((root/'foot_cushion_10mm.json').read_text())
+    p['foot_cushion']=json.loads((root/'foot_cushion_d37p3_l27mm.json').read_text())
     xml,_=build(p,write_scene=False)
     return mujoco.MjModel.from_xml_string(xml)
 

@@ -8,7 +8,7 @@ OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
 def main():
     OUT.mkdir(parents=True,exist_ok=True)
     policy=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_j2lift']
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     results=[]
     for name,linear,yaw,seconds,scenario in [('forward',1000,0,60,'nominal'),('reverse',-600,0,24,'nominal'),('left',0,600,24,'nominal'),('right',0,-600,24,'nominal'),('com_offset',1000,0,30,'com_offset')]:
         summary,_=run(linear,yaw,seconds,profile='cushion_j2lift',override=policy,cushion=pad,scenario=scenario)

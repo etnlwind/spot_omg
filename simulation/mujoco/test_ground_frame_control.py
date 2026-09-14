@@ -13,7 +13,7 @@ from gait_profiles import foot_targets
 @pytest.fixture(scope='module')
 def model():
     parameters, _ = physics()
-    parameters['foot_cushion'] = json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    parameters['foot_cushion'] = json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml, _ = build(parameters, write_scene=False)
     return mujoco.MjModel.from_xml_string(xml)
 

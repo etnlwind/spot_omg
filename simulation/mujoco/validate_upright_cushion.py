@@ -8,7 +8,7 @@ OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
 def main():
     OUT.mkdir(parents=True,exist_ok=True)
     policy=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['upright']
-    base=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    base=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     results=[]
     for name,friction,softness in [('bare',None,None),('nominal',1.,.02),('firm',.8,.008),('soft_grippy',1.4,.03)]:
         pad=None if name=='bare' else dict(base,friction=[friction,.005,.0001],contact_time_constant_s=softness)

@@ -45,7 +45,7 @@ def main():
         'No per-servo torque calibration; torque and speed limits unchanged.'])
     (OUT/'calibration.json').write_text(json.dumps(result,indent=2))
     from search_gait_profiles import physics
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     p.update(selected['overrides'] if accepted else {})
     p['empirical_fit_status']='effective response fitted on forward, selected on left, checked on right' if accepted else 'candidate rejected; original parameters retained'
     (OUT/'plant.json').write_text(json.dumps(p,indent=2))

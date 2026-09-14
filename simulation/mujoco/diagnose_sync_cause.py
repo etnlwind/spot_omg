@@ -53,7 +53,7 @@ def evaluate(case):
             cached_mesh_min_m=cached_min,cached_legacy_clearance_m=cached_legacy,
             nominal_deg=r.target.tolist(),command_deg=r.command_target.tolist(),actual_deg=row['actual_deg'],
             diagnostic=copy.deepcopy(r.support_shift.diagnostic)))
-    result,rows=run(1000,0,20.02,profile='sync_'+case,override=cfg,cushion=json.loads((ROOT/'foot_cushion_10mm.json').read_text()),observer=observe)
+    result,rows=run(1000,0,20.02,profile='sync_'+case,override=cfg,cushion=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text()),observer=observe)
     a=[r for r in rows if r['leg']=='FL'];b=[r for r in rows if r['leg']=='RR']
     mid=[i for i,r in enumerate(a) if r['middle_swing']]
     result.update(case=case,max_roll_deg=max(abs(f['roll_deg']) for f in frames),max_pitch_deg=max(abs(f['pitch_deg']) for f in frames),

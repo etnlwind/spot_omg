@@ -70,7 +70,7 @@ void axes_feet(const float source[12],float out[12]) {
 
 def make_plant(neutral):
     p, _ = physics()
-    p['foot_cushion'] = json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p['foot_cushion'] = json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml, p = build(p, write_scene=False)
     plant = Simulation(p, mujoco.MjModel.from_xml_string(xml))
     plant.data.qpos[plant.q] = np.radians(neutral)

@@ -96,7 +96,7 @@ Stop 후 정지와 자세 전환 완료는 확인했다. 다른 조건의 품질
 별도 MuJoCo 창으로 실험 정책을 열 때(실물/기존 TCP 연결을 사용하지 않음):
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_dynamics_wbc80 --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --no-ble --no-video --host 127.0.0.1 --port 8875 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_dynamics_wbc80 --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
 ```
 
 ## 참고와 구현 범위

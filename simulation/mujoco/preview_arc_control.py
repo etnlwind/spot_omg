@@ -25,7 +25,7 @@ def render(cases, output, stop_at=18., seconds=22.):
     for case in cases:
         parameters, _ = physics(case.get('scenario', 'nominal'))
         parameters.update(case['parameters'], tracking_feedback_enabled=False)
-        parameters['foot_cushion'] = json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+        parameters['foot_cushion'] = json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
         xml, parameters = build(parameters, write_scene=False)
         model = mujoco.MjModel.from_xml_string(xml)
         model.vis.global_.offwidth = 640

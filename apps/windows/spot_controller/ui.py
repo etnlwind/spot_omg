@@ -631,7 +631,8 @@ class Window(QMainWindow):
         self.sim_heartbeat.touch()
         arguments = ["-X", "utf8", "-u", str(script), "--no-ble", "--desktop-heartbeat", str(self.sim_heartbeat),
             "--viewer" if self.viewer.isChecked() else "--headless", "--host", "127.0.0.1", "--port", str(self.port.value()),
-            "--video-host", "127.0.0.1", "--video-port", str(self.video_port.value())]
+            "--video-host", "127.0.0.1", "--video-port", str(self.video_port.value()),
+            "--parameters", str(repo/"simulation/mujoco/cad_300mm/physics_parameters_measured_total_2754g.json")]
         if os.name == 'nt' and getattr(sys, 'frozen', False):
             # The PyInstaller DLL directory is inherited by child processes.
             # Restore the system loader while launching the external Conda runtime.

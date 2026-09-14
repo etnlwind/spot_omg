@@ -59,7 +59,7 @@ def geometry():
     from cad_physics import build
     from search_gait_profiles import physics
     from support_shift import SupportShift
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml,_=build(p,write_scene=False)
     return SupportShift(mujoco.MjModel.from_xml_string(xml))
 

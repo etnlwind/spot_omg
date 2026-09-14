@@ -12,7 +12,7 @@ PARAMS=[4.8,.7,.14,.04,.24,-.01,.75]
 
 @pytest.fixture
 def tracker():
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml,_=build(p,write_scene=False)
     t=FootstepTracker(mujoco.MjModel.from_xml_string(xml))
     q=t.plan(PARAMS,0,0,0,0,{})

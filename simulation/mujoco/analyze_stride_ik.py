@@ -49,7 +49,7 @@ def calculate(kin,stride,height,period=4.8,samples=121):
 
 def main():
     OUT.mkdir(parents=True,exist_ok=True)
-    p,_=physics();p['foot_cushion']=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     xml,_=build(p,write_scene=False);kin=SupportShift(mujoco.MjModel.from_xml_string(xml))
     results=[];selected=[]
     for stride in (.06,.10,.14):

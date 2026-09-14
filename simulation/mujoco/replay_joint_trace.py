@@ -16,7 +16,7 @@ def replay(path,output=None,parameter_overrides=None):
     meta,mapping,commands,samples=parse(path.read_text());observed,rows=analyze(path.read_text())
     params,_=physics('nominal')
     params.update(parameter_overrides or {})
-    params['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    params['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     params['embedded_servo_quantization']=False # Already encoded and decoded on the physical path.
     plant=Simulation(params)
     targets=np.array([[(signed_target(c['target'][j])-mapping[j]['center'])*mapping[j]['direction']*DEG for j in range(12)] for c in commands])

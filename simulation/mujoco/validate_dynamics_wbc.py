@@ -8,13 +8,13 @@ from validate_support_shift import Recorder,metrics
 from develop_support_v2 import ROOT,OUT
 
 SOURCE=['dynamics_wbc.py','centroidal_preview.py','support_shift.py','virtual_robot.py',
-        'cad_physics.py','bno055_emulator.py','foot_cushion_10mm.json','upright_profiles.json']
+        'cad_physics.py','bno055_emulator.py','foot_cushion_d37p3_l27mm.json','upright_profiles.json']
 
 
 def trial(job):
     name,scenario,overrides,seconds,stop=job
     cfg=copy.deepcopy(json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_dynamics_wbc80'])
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     if name=='cushion':pad.update(contact_time_constant_s=.04,damping_ratio=.8,friction=[.6,.005,.0001])
     rec=Recorder();heights=[]
     def observe(now,robot):

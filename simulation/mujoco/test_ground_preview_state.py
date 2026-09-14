@@ -14,7 +14,7 @@ def preview(monkeypatch):
     monkeypatch.setattr(virtual_robot, 'shared_drive_step', drive_controller.step)
     path = Path(__file__).parent
     p = json.loads((path / 'cad_300mm/physics_parameters_measured_total_2754g.json').read_text())
-    p['foot_cushion'] = json.loads((path / 'foot_cushion_10mm.json').read_text())
+    p['foot_cushion'] = json.loads((path / 'foot_cushion_d37p3_l27mm.json').read_text())
     robot = RobotController(Simulation(p)); robot.select_profile('centerpivot')
     info = configure(robot, dict(period_s=3.2, duty=.7, cartesian_stride_m=.096,
         foothold_transfer=True, touchdown_x_offset_m=.02, max_foothold_y_m=.01,

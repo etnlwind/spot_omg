@@ -15,7 +15,7 @@ def trial(bias,pulse=0.,peak=.7,shape="sine"):
     cfg['support_shift']['forward_pulse_m']=pulse
     cfg['support_shift']['forward_pulse_peak_phase']=peak
     cfg['support_shift']['forward_pulse_shape']=shape
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text());rec=Recorder();force_rows=[]
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text());rec=Recorder();force_rows=[]
     def observe(now,r):
         rec(now,r)
         if now<5:return

@@ -8,7 +8,7 @@ from develop_support_v2 import ROOT,OUT
 def trial(job):
     name,scenario,override,stop=job
     cfg=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_support_shift_v2']
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     if name=='cushion':pad.update(contact_time_constant_s=.04,damping_ratio=.8,friction=[.6,.005,.0001])
     rec=Recorder();r,rows=run(1000,0,24.02,profile='cushion_support_shift_v2',override=cfg,scenario=scenario,cushion=pad,parameter_overrides=override,stop_at=stop,observer=rec)
     r.update(case=name,metrics=metrics(rec.frames,rows),controller_sha256=fingerprints(),

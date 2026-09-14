@@ -10,7 +10,7 @@ from support_shift import SupportShift
 from gait_profiles import foot_targets
 ROOT=Path(__file__).resolve().parent
 OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
-p,_=physics();p['foot_cushion']=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+p,_=physics();p['foot_cushion']=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
 xml,_=build(p,write_scene=False);model=mujoco.MjModel.from_xml_string(xml)
 model.vis.global_.offwidth=480;model.vis.global_.offheight=300
 renderer=mujoco.Renderer(model,height=300,width=480)

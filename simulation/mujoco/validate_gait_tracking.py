@@ -18,7 +18,7 @@ def trial(case):
         if r.motion:
             rates.append(r.tracking.rate)
             if r.tracking.diagnostic.get('fault'):faults.append(r.tracking.diagnostic.copy())
-    cushion=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    cushion=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     result,rows=run(0,yaw,14.02,profile='arcturn',cushion=cushion,stop_at=10,
                     parameter_overrides=overrides,observer=observe)
     result['metrics']=metrics(recorder.frames,rows)

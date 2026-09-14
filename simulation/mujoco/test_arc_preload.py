@@ -8,7 +8,7 @@ from cad_physics import build
 from support_shift import SupportShift
 
 def test_c_gravity_and_preload_match_private_cad_model():
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml,_=build(p,write_scene=False);m=mujoco.MjModel.from_xml_string(xml);control=SupportShift(m)
     lib=SharedGaitPolicy()._library;fp=ctypes.POINTER(ctypes.c_float)
     gravity=lib.spot_arc_gravity;gravity.argtypes=(fp,fp,fp)

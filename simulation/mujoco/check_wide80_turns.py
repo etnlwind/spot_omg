@@ -10,7 +10,7 @@ from validate_support_shift import Recorder,metrics
 def trial(direction,config=None,prefix="wide80-turn",linear=0,stop_at=20.):
     cfg=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_diagonal_sync_wide80']
     if config is not None:cfg=config
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text());rec=Recorder();heading=[]
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text());rec=Recorder();heading=[]
     def observe(now,robot):
         rec(now,robot)
         d=robot.plant.data;m=robot.plant.model;R=d.xmat[m.body('robot').id].reshape(3,3)

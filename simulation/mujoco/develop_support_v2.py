@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parent
 OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
 
 def evaluate(name,profile,seconds=20.02):
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text());rec=Recorder()
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text());rec=Recorder()
     result,rows=run(1000,0,seconds,profile=name,override=profile,cushion=pad,observer=rec)
     result['metrics']=metrics(rec.frames,rows)
     result['first_fault_s']=next((f['time_s'] for f in rec.frames if f['safety']!='ok'),None)

@@ -6,7 +6,7 @@ import pytest
 from cad_physics import build, Simulation, foot_clearance, rounded_cap_vertices
 from search_gait_profiles import physics
 
-PAD=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+PAD=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
 
 def models(pad=PAD):
     p,bare=physics()

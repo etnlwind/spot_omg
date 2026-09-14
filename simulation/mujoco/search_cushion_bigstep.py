@@ -7,7 +7,7 @@ OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
 
 def main():
     base=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_j2lift']
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text());results=[]
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text());results=[]
     for stride,offset,period,duty in [(.1,-.01,3.2,.65),(.12,-.01,4.,.65),(.14,-.01,4.8,.7),(.1,.015,3.6,.7),(.12,.015,4.4,.7)]:
         profile=copy.deepcopy(base);profile['params'][2]=stride;profile['params'][5]=offset;profile['params'][0]=period;profile['params'][1]=duty
         result,_=run(1000,0,24,profile='cushion_forward',override=profile,cushion=pad)

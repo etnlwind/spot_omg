@@ -12,7 +12,7 @@ def endurance(direction):
 
 def transitions():
     config=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_diagonal_sync_wide80']
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text());rec=Recorder();seen=[]
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text());rec=Recorder();seen=[]
     def observe(now,robot):
         rec(now,robot)
         # Commands are sent through the same app protocol. The evaluation

@@ -86,7 +86,7 @@
 GUI / iPhone TCP·Bluetooth·영상:
 
 ```sh
-/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --host 0.0.0.0 --port 8765 --video-host 0.0.0.0 --video-port 8766 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_support_shift --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+/opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py --viewer --host 0.0.0.0 --port 8765 --video-host 0.0.0.0 --video-port 8766 --experimental-profiles simulation/mujoco/upright_profiles.json --profile cushion_support_shift --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
 ```
 
 - [동시 측면·정면 비교 영상](../artifacts/upright/2026-09-11/cushion/support-shift-comparison.mp4)

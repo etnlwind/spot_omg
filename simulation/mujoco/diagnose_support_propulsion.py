@@ -16,7 +16,7 @@ OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
 
 def main():
     profiles=json.loads((ROOT/'upright_profiles.json').read_text())['profiles']
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     results=[]
     for name in ('cushion_forward','cushion_support_shift'):
         rows=[]

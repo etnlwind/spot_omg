@@ -19,7 +19,7 @@ from footstep_tracker import rotation
 def model():
     root = Path(__file__).parent
     params = json.loads((root/'cad_300mm/physics_parameters_measured_total_2754g.json').read_text())
-    params['foot_cushion'] = json.loads((root/'foot_cushion_10mm.json').read_text())
+    params['foot_cushion'] = json.loads((root/'foot_cushion_d37p3_l27mm.json').read_text())
     xml, _ = build(params, write_scene=False)
     return mujoco.MjModel.from_xml_string(xml)
 

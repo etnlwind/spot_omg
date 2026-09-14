@@ -18,7 +18,7 @@ def trial(job):
     stride,period,height=job
     profile=copy.deepcopy(json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_support_shift'])
     profile['params'][0]=period;profile['params'][2]=stride;profile['params'][4]=height
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     trace=[]
     def observe(now,r):
         state=r.plant.row()

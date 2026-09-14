@@ -8,7 +8,7 @@ OUT=ROOT.parents[1]/'artifacts/upright/2026-09-11/cushion'
 
 def main():
     profile=copy.deepcopy(json.loads((ROOT/'upright_profiles.json').read_text())['profiles']['cushion_forward'])
-    pad=json.loads((ROOT/'foot_cushion_10mm.json').read_text())
+    pad=json.loads((ROOT/'foot_cushion_d37p3_l27mm.json').read_text())
     config=dict(lateral_m=.005,lower_m=.01,feedback_gain=.15,ki=0.,lead_s=.1,feedforward_coefficients=np.zeros((2,7)).tolist())
     profile['support_shift']=config;results=[]
     for iteration in range(7):

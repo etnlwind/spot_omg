@@ -67,7 +67,7 @@ class Instrument:
 def evaluate(name):
     original=json.loads((SOURCE/(name+'.json')).read_text())
     case=original['case'];instrument=Instrument()
-    pad=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    pad=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     overrides=dict(case['parameters']);overrides['tracking_feedback_enabled']=False
     if overrides.get('command_delay_s',.02)!=.02:raise ValueError('This diagnostic assumes one-frame command delay')
     summary,rows=run(0,case['yaw'],25.02,profile='arcturn',cushion=pad,observer=instrument,

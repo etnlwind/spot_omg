@@ -9,7 +9,7 @@ from support_shift import SupportShift,transfer_gate,swing_path
 
 @pytest.fixture(scope='module')
 def controller():
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     xml,p=build(p,write_scene=False)
     return SupportShift(mujoco.MjModel.from_xml_string(xml))
 
@@ -142,7 +142,7 @@ def test_rear_swing_copies_front_after_attitude_compensation(controller):
 def test_stop_profile_switch_and_imu_loss_preserve_safety(controller):
     from cad_physics import Simulation
     from virtual_robot import RobotController
-    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text())
+    p,_=physics();p['foot_cushion']=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text())
     robot=RobotController(Simulation(p,controller.model))
     robot.load_experimental_profiles(Path(__file__).with_name('upright_profiles.json'))
     robot.command('simprofile cushion_support_shift',0)

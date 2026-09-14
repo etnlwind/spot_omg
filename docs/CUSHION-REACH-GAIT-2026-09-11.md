@@ -33,7 +33,7 @@ cd /Users/etnlwind/project/spot_omg
 /opt/anaconda3/envs/spot_omg/bin/mjpython simulation/mujoco/virtual_robot.py \
   --viewer --host 0.0.0.0 --port 8765 --video-host 0.0.0.0 --video-port 8766 \
   --experimental-profiles simulation/mujoco/upright_profiles.json \
-  --profile cushion_reach --foot-cushion simulation/mujoco/foot_cushion_10mm.json
+  --profile cushion_reach --foot-cushion simulation/mujoco/foot_cushion_d37p3_l27mm.json
 ```
 
 Bluetooth도 기본 활성화된다. 앱의 기존 정책 버튼을 누르면 선택이 바뀔 수 있다.

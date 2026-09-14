@@ -7,7 +7,7 @@ from diagnose_turn_clearance import run
 from validate_support_shift import Recorder,metrics
 OUT=Path(__file__).resolve().parents[2]/'artifacts/upright/2026-09-11/cushion'
 def check(yaw,prefix="arcturn-shared-c"):
-    pad=json.loads(Path(__file__).with_name('foot_cushion_10mm.json').read_text());rec=Recorder();headings=[]
+    pad=json.loads(Path(__file__).with_name('foot_cushion_d37p3_l27mm.json').read_text());rec=Recorder();headings=[]
     def observe(now,robot):
         rec(now,robot)
         R=robot.plant.data.xmat[robot.plant.model.body("robot").id].reshape(3,3)
