@@ -49,7 +49,7 @@ def stop_cases():
     return reports
 
 
-def clearance_cases():
+def clearance_cases(profile_name='s_native_v5', limits=(None, 10., 9.)):
     import fcl
     plant = Simulation(load_parameters(parse_args([])))
     model = plant.model
@@ -66,8 +66,8 @@ def clearance_cases():
         bvh.endModel()
         objects[name] = (geom, fcl.CollisionObject(bvh))
     reports = []
-    for limit in (None, 10., 9.):
-        profile = copy.deepcopy(PROFILES['s_native_v5'])
+    for limit in limits:
+        profile = copy.deepcopy(PROFILES[profile_name])
         if limit is None:
             profile.pop('normal_adduction_limit_deg')
         else:

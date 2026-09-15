@@ -388,6 +388,18 @@ SPOT_GAIT_EXPORT float spot_tracking_step(void *s,uint32_t now,float dt,int stop
 }
 
 #include "locomotion_servo.h"
+#include "s_native_servo.h"
+SPOT_GAIT_EXPORT int spot_native_servo_encode(const float values[12],uint16_t ticks[12],float decoded[12]) {
+    GaitPolicyLegTarget targets[4];unpack_targets(values,targets);
+    if(!s_native_servo_targets(targets,ticks))return 0;
+    for(int i=0;i<12;i++) {
+        const RobotJointConfig *j=&g_robot_joints[i];
+        float motor=((int)ticks[i]-j->center)*j->direction*360.f/4096.f;
+        /* Physical front J1 rotates opposite to the CAD angle convention. */
+        decoded[j->leg_index*3+j->joint_index-1]=j->leg_index<2 && j->joint_index==1?-motor:motor;
+    }
+    return 1;
+}
 SPOT_GAIT_EXPORT int spot_servo_encode(const float values[12],uint16_t ticks[12],float decoded[12]) {
     GaitPolicyLegTarget targets[4];unpack_targets(values,targets);
     if(!locomotion_servo_targets(targets,ticks))return 0;

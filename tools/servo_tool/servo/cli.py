@@ -2343,10 +2343,10 @@ def update_stm32_firmware(args: argparse.Namespace) -> int:
                     )
                 progress = sent * 100 // image_size
                 if progress >= next_report:
-                    print(f"Staging on ESP32: {progress}%")
+                    print(f"Staging on ESP32: {progress}%", flush=True)
                     next_report = progress + 10
 
-        print("ESP32 image verified; STM32 bootloader is programming flash")
+        print("ESP32 image verified; STM32 bootloader is programming flash", flush=True)
         deadline = time.monotonic() + 180.0
         last_percent = -1
         while time.monotonic() < deadline:
@@ -2354,7 +2354,7 @@ def update_stm32_firmware(args: argparse.Namespace) -> int:
                 transport, max(0.5, deadline - time.monotonic())
             )
             if response == "OK":
-                print("STM32 firmware verified and rebooted")
+                print("STM32 firmware verified and rebooted", flush=True)
                 return 0
             if response.startswith("ERROR "):
                 raise RuntimeError(response)
@@ -2362,7 +2362,7 @@ def update_stm32_firmware(args: argparse.Namespace) -> int:
                 flashed = int(response.split()[1])
                 percent = flashed * 100 // image_size
                 if percent != last_percent:
-                    print(f"Flashing STM32: {percent}%")
+                    print(f"Flashing STM32: {percent}%", flush=True)
                     last_percent = percent
         raise RuntimeError("STM32 flash operation timed out")
 

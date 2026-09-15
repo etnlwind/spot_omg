@@ -5,6 +5,14 @@ from servo.cli import _land_before_update
 from servo.console import ConsoleResponse, ConsoleError
 
 class AppControlTests(unittest.TestCase):
+    def test_windows_direct_ble_does_not_require_iphone_control(self):
+        from servo.cli import main
+        with patch.object(app_control.sys, 'platform', 'win32'), patch('servo.cli._main', return_value=0) as run:
+            self.assertEqual(main(['--no-app-control','--via','ble','console','send','syncstate']),0)
+            run.assert_called_once()
+            with self.assertRaisesRegex(RuntimeError, 'requires macOS'):
+                app_control.request('phone','status')
+
     def test_lease_restores_connected_robot(self):
         with patch.object(app_control, 'request', side_effect=[{'ready': True, 'target':'robot'}, {'ready':False}, {'ready':True}]) as request:
             with app_control.robot_ble_lease('phone'):

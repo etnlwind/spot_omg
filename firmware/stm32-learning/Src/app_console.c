@@ -4,6 +4,8 @@
 #include "flight_log.h"
 #include "mechanical_diagnostics.h"
 #include "gait_policy.h"
+#include "locomotion_servo.h"
+#include "s_native_servo.h"
 #include "robot_config.h"
 #include "safety.h"
 #include "sts3215.h"
@@ -647,7 +649,14 @@ static void command_sync_state(AppConsole *console)
         robot_stand_targets(stand) &&
         robot_landing_targets(landing) &&
         robot_straight_targets(straight)) {
-        const uint16_t stand_error = pose_max_error(positions, stand);
+        uint16_t stand_error = pose_max_error(positions, stand);
+        if(locomotion_is_native(console->robot->locomotion_profile)) {
+            GaitPolicyLegTarget native[4];s_native_stand(native);
+            if(s_native_servo_targets(native,stand)) {
+                const uint16_t native_error=pose_max_error(positions,stand);
+                if(native_error<stand_error)stand_error=native_error;
+            }
+        }
         const uint16_t landing_error = pose_max_error(positions, landing);
         const uint16_t straight_error = pose_max_error(positions, straight);
         pose_error = stand_error;
@@ -674,15 +683,16 @@ static void command_sync_state(AppConsole *console)
     }
 
     if(console->robot->stow_active)pose=console->robot->stow_complete?"stow":"stow-paused";
-    char message[400];
+    char message[512];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,jointtrace,jointtracepage,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,jointtrace,jointtracepage,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
         safety_is_faulted(&console->robot->safety) ? "fault" : console->robot->locomotion_fault ? (console->robot->locomotion_fault_reason==ROBOT_TILT_LIMIT ? "tilt":"fault") : "ok",
+        locomotion_is_native(console->robot->locomotion_profile) ? "suspended" :
         console->robot->locomotion_profile==locomotion_profile_id("attitudepd") ?
             (console->robot->stabilization_enabled ?
                 (console->robot->attitude_pd.body.diagnostics.status==BODY_STABILIZER_ACTIVE ? "active" : "suspended") : "off") :
@@ -2727,7 +2737,7 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "gaitprofile") == 0) {
         int profile=locomotion_profile_id(strtok(NULL," \t"));
         if(profile<0 || robot_drive_is_active(console->robot)) write_text(console,"ERROR: stop before selecting a valid gait profile\r\n");
-        else {console->robot->locomotion_profile=profile;write_text(console,"OK\r\n");}
+        else {console->robot->shared_idle=false;console->robot->locomotion_profile=profile;write_text(console,"OK\r\n");}
     } else if (strcmp(command, "heading") == 0) {
         char *value=strtok(NULL," \t");
         if(!value || (strcmp(value,"on") && strcmp(value,"off")) || robot_drive_is_active(console->robot))

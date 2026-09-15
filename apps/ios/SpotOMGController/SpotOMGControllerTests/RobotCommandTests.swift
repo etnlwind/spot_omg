@@ -4,6 +4,16 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
+        XCTAssertEqual(SimulatorGaitProfile.newest, .s_native_v6_2_1)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_1.simulatorOnly)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_1.isSupported(capabilities: ["gaitprofiles", "s_native_v6_2"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_1.isSupported(capabilities: ["gaitprofiles", "s_native_v6_2_1"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2.simulatorOnly)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2.isSupported(capabilities: ["gaitprofiles", "s_native_v6_1"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2.isSupported(capabilities: ["gaitprofiles", "s_native_v6_2"]))
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_1.simulatorOnly)
+    }
     func testAttitudePDProfileIsExperimentalAndCapabilityGated() {
         XCTAssertEqual(SimulatorGaitProfile.attitudepd.titleWithSpeed,
                        "IMU 자세 안정화 · PD · 실험 (검증실패)")
@@ -12,6 +22,13 @@ final class RobotCommandTests: XCTestCase {
         XCTAssertTrue(SimulatorGaitProfile.allCases.contains(.attitudepd))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd.isSupported(capabilities: ["gaitprofiles", "centerpivot"]))
         XCTAssertTrue(SimulatorGaitProfile.attitudepd.isSupported(capabilities: ["gaitprofiles", "attitudepd"]))
+    }
+
+    func testNativeV61RequiresAdvertisedHardwareSupport() {
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_1.simulatorOnly)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_1.isSupported(capabilities: ["gaitprofiles"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6_1.isSupported(capabilities: ["gaitprofiles", "s_native_v6_1"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6.simulatorOnly)
     }
 
     func testAttitudePDRequiresExplicitSelectionAndSupportedFirmware() {
@@ -217,6 +234,19 @@ final class RobotCommandTests: XCTestCase {
         manager.disconnect()
         manager.updateDrive(x: 0, y: 1)
         XCTAssertEqual(sent.count, count)
+    }
+
+    func testStopButtonWaitsForWalkingReturnWithoutRepeatedInterrupt() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        manager.updateDrive(x: 0, y: 1)
+        manager.stopWalkingOrHold()
+        XCTAssertTrue(sent.last?.hasPrefix("@S ") == true)
+        let count = sent.count
+        manager.stopWalkingOrHold()
+        XCTAssertEqual(sent.count, count)
+        XCTAssertFalse(sent.contains("\u{03}"))
+        manager.disconnect()
     }
 
     func testLostStartedNotificationDoesNotDisconnectHeldJoystick() {

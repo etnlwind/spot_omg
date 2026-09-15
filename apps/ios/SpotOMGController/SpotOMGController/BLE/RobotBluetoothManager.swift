@@ -590,6 +590,16 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         }
     }
 
+    func stopWalkingOrHold() {
+        pendingCommandAfterDrive = nil
+        cancelLandingRelease()
+        if driveSessionActive {
+            stopDrive(reason: "stop-button")
+        } else {
+            send(.hold)
+        }
+    }
+
     func stopDrive(reason: String = "joystick-release") {
         if reason == "gesture-ended" || reason == "joystick-release" || reason == "joystick-neutral-or-disconnected" {
             driveRequiresRelease = false
@@ -605,7 +615,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         drivePhase = .stopping
         armDriveCompletionTimeout()
         sendDrivePacket(.stop(sequence: nextDriveSequence()))
-        driveStatus = "중립 · 감속 정지"
+        driveStatus = "감속 · 최초 자세 복귀 중"
     }
 
     func clearConsole() {
@@ -673,7 +683,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // Select once per connection, only from a confirmed idle state. The UI
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
-        let profile: SimulatorGaitProfile = target == .robot ? .centerpivot : .newest
+        let profile = SimulatorGaitProfile.allCases.first {
+            ($0.rawValue.hasPrefix("s_native_v") || $0 == .centerpivot) &&
+            (target != .robot || !$0.simulatorOnly) && $0.isSupported(capabilities: runtimeState.capabilities)
+        } ?? .centerpivot
         guard defaultValidationProfilePending, state.isReady,
               lastStateSync != nil, !driveSessionActive, !motionControlsLocked,
               ["landing", "stand", "stand11"].contains(runtimeState.pose),

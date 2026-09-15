@@ -1,0 +1,50 @@
+{
+  "encoder_pass": true,
+  "encoder_failures": [],
+  "encoder": "shared stow_control.h, signed-magnitude STS absolute position",
+  "tick_min": [
+    1929,
+    1622,
+    2015,
+    2089,
+    -975,
+    602,
+    2104,
+    1487,
+    2014,
+    1951,
+    1336,
+    567
+  ],
+  "tick_max": [
+    1929,
+    4974,
+    3444,
+    2089,
+    2377,
+    2031,
+    2104,
+    2861,
+    3443,
+    1951,
+    2710,
+    1996
+  ],
+  "max_frame_step_ticks": 12,
+  "multi_turn_servo_ids": [
+    2,
+    5
+  ],
+  "physical_validation": "pending",
+  "required_runtime_checks": [
+    "STS3250 position mode 0, resolution 1; verify limits 9/11 zero",
+    "torque-off before mode change; settings readback before torque enable",
+    "temperature/hardware-error/load/tracking checks; stop and resume",
+    "reconstruct continuous origin after power loss; translate ordinary gait targets without a one-turn jump"
+  ],
+  "limitations": [
+    "CAD joint axes and assembly tolerances remain provisional",
+    "mesh clearance does not model wires or all same-leg/chassis contacts",
+    "host and MuJoCo tests do not replace on-robot validation"
+  ]
+}

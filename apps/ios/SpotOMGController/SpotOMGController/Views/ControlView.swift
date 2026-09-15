@@ -325,7 +325,7 @@ struct ControlView: View {
                 compactButton("Relax", icon: "power", enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked, destructive: true) { showRelaxConfirmation = true }
                     .tint(.red)
                 compactButton("Stop", icon: "stop.fill", enabled: bluetooth.state.isReady, destructive: true) {
-                    bluetooth.send(.hold)
+                    bluetooth.stopWalkingOrHold()
                 }
                 .accessibilityIdentifier("controllerStop")
             }

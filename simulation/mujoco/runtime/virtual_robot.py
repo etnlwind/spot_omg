@@ -169,7 +169,8 @@ class RobotController:
             return
         if self.motion is None or self.stopping_reason:
             return
-        if self.motion[0] in ('drive','profile') and not self.transition and self.elapsed > .1:
+        if (self.motion[0] in ('drive','profile') and not self.transition and
+                (self.elapsed > .1 or self.profiles.get(self.profile,{}).get('stop_on_next_placement'))):
             self.stopping_reason = reason
             self.request = (0.,0.)
             if self.profiles.get(self.profile,{}).get('entry_sequence')=='fr_double':
@@ -201,6 +202,8 @@ class RobotController:
         return float(np.clip(value,-limit,limit))
 
     def limited_linear(self, value):
+        if 'reverse_input_limit' in self.profiles.get(self.profile,{}):
+            return max(-self.profiles[self.profile]['reverse_input_limit'],value)
         # Fast trot / high-step full reverse strides lost stability in the 60 s matrix.
         # Its validated reverse envelope is 60%; forward remains unrestricted.
         return max(-.6,value) if self.profile in ('trot','highstep','lift','imu','level','level15','joint','jointfast','jointsport') else value
@@ -253,7 +256,7 @@ class RobotController:
                 self.reply(f'$STABILIZE enabled={int(self.body_stabilizer.enabled)} status={status} policy={self.profile} rate_hz=50')
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=shared-locomotion-v58-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={600 if self.profile in ("trot","highstep","lift","imu","level","level15","joint","jointfast","jointsport") else 1000}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-1-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'tracking':
@@ -686,7 +689,8 @@ class RobotController:
         if not self.stow_path:
             self.tracking.sample(float(self.plant.data.time),self.command_target,
                 np.degrees(self.plant.data.qpos[self.plant.q]),drop=self.plant.p.get('tracking_feedback_drop',False))
-        self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque)
+        self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque,
+                        native_servo=self.profile in ('s_native_v6_1','s_native_v6_2','s_native_v6_2_1'))
         self.imu_reading = self.imu.read(float(self.plant.data.time))
         # Ignore configured sensor-entry warmup; subsequent missing reads fail
         # after three control polls, as in firmware. Ground truth is display only.

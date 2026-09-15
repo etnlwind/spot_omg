@@ -121,7 +121,8 @@ def audit_design():
 
 if __name__ == '__main__':
     result = audit_design()
-    path = SIM_ROOT/'diagnostics/stow/clearance.json'
+    path = RESULTS_ROOT/'diagnostics/stow/clearance.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result,indent=2))
     print(json.dumps({k:v for k,v in result.items() if k not in ('samples','mesh_sha256')},indent=2))
     raise SystemExit(0 if result['policy_matches'] else 1)

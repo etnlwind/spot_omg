@@ -3,6 +3,62 @@ from spot_controller.protocol import Controller, ConsoleStream, drive_vector
 
 STATE = b'$SPOTSTATE pose=stand torque=on safety=ok rev=test caps=stow,gaitprofiles,balancecontrol,headinghold,trot5 profile=legacy\r\n'
 
+
+def test_native_profiles_require_simulator_and_explicit_capability():
+    c = Controller(simulator=True)
+    c.caps = {'gaitprofiles', 's_native_v5'}
+    c.validate('gaitprofile s_native_v5')
+    with pytest.raises(ValueError):
+        c.validate('gaitprofile s_native_v4')
+    c.simulator = False
+    with pytest.raises(ValueError):
+        c.validate('gaitprofile s_native_v5')
+
+
+def test_v6_1_real_robot_requires_firmware_capability():
+    c=Controller(simulator=False);c.caps={'gaitprofiles'}
+    with pytest.raises(ValueError):c.validate('gaitprofile s_native_v6_1')
+    c.caps.add('s_native_v6_1');c.validate('gaitprofile s_native_v6_1')
+    c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_1')+b'# ',.1);drain(c)
+    c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_1\n'
+
+
+def test_select_newest_supported_native_once_after_initial_readback():
+    c = Controller(simulator=True)
+    c.opened(0)
+    drain(c)
+    state = STATE.replace(b'trot5', b'trot5,s_native_v2,s_native_v4')
+    c.feed(state + b'# ', .1)
+    assert drain(c) == b'read 1\n'
+    c.feed(b'ID 1 voltage=11100mV\r\n# ', .2)
+    assert drain(c) == b'gaitprofile s_native_v4\n'
+    assert not c.default_profile_pending
+
+
+@pytest.mark.parametrize('simulator,expected',[(True,'s_native_v6_2'),(False,'s_native_v6_1')])
+def test_v62_default_keeps_v61_available_for_hardware(simulator,expected):
+    c=Controller(simulator=simulator);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_1,s_native_v6_2')+b'# ',.1)
+    drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
+    assert drain(c)==f'gaitprofile {expected}\n'.encode()
+    if not simulator:
+        with pytest.raises(ValueError):c.validate('gaitprofile s_native_v6_2')
+
+
+@pytest.mark.parametrize('simulator,expected',[(True,'s_native_v6_2_1'),(False,'s_native_v6_2_1')])
+def test_v621_is_first_supported_simulator_choice(simulator,expected):
+    from spot_controller.protocol import NATIVE_PROFILES
+    assert NATIVE_PROFILES[:3]==('s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
+    c=Controller(simulator=simulator);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_1,s_native_v6_2,s_native_v6_2_1')+b'# ',.1)
+    drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
+    assert drain(c)==f'gaitprofile {expected}\n'.encode()
+    c.validate('gaitprofile s_native_v6_2_1')
+    c.caps.remove('s_native_v6_2_1')
+    with pytest.raises(ValueError):c.validate('gaitprofile s_native_v6_2_1')
+
 def drain(c):
     packets = list(c.outbox)
     c.outbox.clear()
@@ -61,6 +117,24 @@ def test_release_waits_for_stop_then_prompt_and_new_gesture():
     c.update(0,1,1.7);assert not drain(c)
     c.release(1.8);c.update(0,-1,1.9)
     assert drain(c).startswith(b'drive -1000 0 ')
+
+
+def test_normal_stop_is_idempotent_while_robot_returns_to_s():
+    c = ready(); c.update(0, 1, 1); drain(c)
+    c.stop(1.1)
+    assert drain(c).startswith(b'@S ')
+    c.stop(2); c.update(0, 1, 2.1); c.tick(3)
+    assert c.phase == 'stopping' and not drain(c)
+    c.feed(b'$SPOTDRIVE stopped reason=requested\r\n# ', 3.3)
+    assert c.phase == 'idle'
+    c.update(0, 1, 3.4)
+    assert not drain(c)
+
+
+def test_emergency_can_still_interrupt_return_to_s():
+    c = ready(); c.update(0, 1, 1); drain(c)
+    c.stop(1.1); drain(c); c.interrupt(1.2)
+    assert drain(c) == b'\x03'
 
 def test_watchdog_and_error_require_release_no_replay():
     c=ready();c.update(0,1,1);drain(c)

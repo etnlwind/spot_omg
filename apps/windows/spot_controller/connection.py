@@ -139,6 +139,7 @@ class Connection(QObject):
         self.latest = None
         self.pulse_at = time.monotonic()
         self.emergency = False
+        self.walk_stop = False
         self.closing = False
 
     @property
@@ -152,6 +153,7 @@ class Connection(QObject):
             self.intents.clear()
             self.latest = None
             self.closing = self.emergency = False
+            self.walk_stop = False
             self.pulse_at = time.monotonic()
         self.thread = threading.Thread(target=self._run, args=(target, host, port, address), daemon=True)
         self.thread.start()
@@ -166,9 +168,12 @@ class Connection(QObject):
             if len(self.intents) < 16:
                 self.intents.append((line, time.monotonic()))
 
-    def stop(self):
+    def stop(self, graceful=False):
         with self.lock:
-            self.emergency = True
+            if graceful:
+                self.walk_stop = True
+            else:
+                self.emergency = True
             self.latest = None
             self.intents.clear()
 
@@ -218,12 +223,16 @@ class Connection(QObject):
                 with self.lock:
                     vector, pulse, closing = self.latest, self.pulse_at, self.closing
                     emergency, self.emergency = self.emergency, False
+                    walk_stop, self.walk_stop = self.walk_stop, False
                     intents = list(self.intents)
                     self.intents.clear()
                 if closing and not model.disconnect_requested:
                     model.disconnect(now)
                 if emergency:
                     model.interrupt(now)
+                    intents = []
+                elif walk_stop:
+                    model.stop(now)
                     intents = []
                 if now - pulse > .6:
                     vector = None

@@ -1,4 +1,7 @@
-> 소스 최신: **walk-stance-v16**, Stand 45°/90°·조이스틱 보행 40°/80°. 사용자 요청에 따라 코드·빌드만 반영했고 **미설치**입니다. [V16 검증·한계](../../docs/UPDATE-2026-09-09-V16.md).
+> 소스/최종 빌드 최신: **s-native-v6-1-v62**. [두 걸음 정지·접지 검증 한계](../../docs/S-NATIVE-STOP-PLACEMENT-2026-09-15.md)를 참고하세요. 실기는 v60이며 v62 미설치입니다.
+> [회전 수정·검증](../../docs/S-NATIVE-YAW-FIX-2026-09-15.md)을 참고하세요.
+> [V60 검증·설치 상태](../../docs/S-NATIVE-V61-FRONT-J1.md)를 먼저 확인하세요.
+> [V59 최초 이식·설치 기록](../../docs/S-NATIVE-V61-FIRMWARE.md). 아래 V13~V16 내용은 과거 기록입니다.
 
 # Spot OMG STM32 Servo Firmware
 

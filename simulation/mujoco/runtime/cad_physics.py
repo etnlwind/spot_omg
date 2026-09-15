@@ -266,7 +266,7 @@ class Simulation:
         self.delay=collections.deque([self.desired.copy() for _ in range(max(0,round(self.p['command_delay_s']/.02)))])
         self.voltage=self.p['pack_open_circuit_voltage'];self.current=0.;self.limits=self.stall.copy();self.saturated=0.
 
-    def step(self,linear=0,yaw=0,balance=True,startup=1,targets_deg=None,limit_yaw=True,stride_scale=None,period_s=None,torque_enabled=True):
+    def step(self,linear=0,yaw=0,balance=True,startup=1,targets_deg=None,limit_yaw=True,stride_scale=None,period_s=None,torque_enabled=True,native_servo=False):
         if period_s is not None and (not math.isfinite(period_s) or period_s <= 0):
             raise ValueError("period_s must be positive and finite")
         p=self.p;d=self.data;m=self.model;dt=m.opt.timestep
@@ -289,7 +289,7 @@ class Simulation:
             values=np.asarray(encode(values)[0])
         elif self.p.get('embedded_servo_quantization', True):
             import ctypes
-            fn=self.policy._library.spot_servo_encode
+            fn=self.policy._library.spot_native_servo_encode if native_servo else self.policy._library.spot_servo_encode
             fp=ctypes.POINTER(ctypes.c_float)
             fn.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);fn.restype=ctypes.c_int
             ticks=(ctypes.c_uint16*12)();decoded=(ctypes.c_float*12)()

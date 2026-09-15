@@ -8,6 +8,8 @@
 #include "feetech_protocol.h"
 #include "gait_policy.h"
 #include "locomotion_servo.h"
+#include "s_native_impl.h"
+#include "s_native_servo.h"
 #include "sts3215.h"
 
 #include <stdbool.h>
@@ -464,7 +466,12 @@ static RobotResult robot_move_to_pose(RobotController *robot, RobotPoseTargets b
 
 RobotResult robot_stand(RobotController *robot)
 {
-    RobotResult result=robot_move_to_pose(robot, robot_stand_targets);
+    RobotResult result;
+    if(robot && locomotion_is_native(robot->locomotion_profile)) {
+        GaitPolicyLegTarget q[4];uint16_t positions[12];s_native_stand(q);
+        if(!s_native_servo_targets(q,positions))return ROBOT_CONFIG_ERROR;
+        result=robot_supervised_pose(robot,positions);
+    } else result=robot_move_to_pose(robot, robot_stand_targets);
     if(robot) robot->shared_idle=result==ROBOT_OK;
     return result;
 }
@@ -1946,7 +1953,8 @@ static bool shared_correct(RobotController *robot,GaitPolicyLegTarget out[4],boo
 {
     /* This policy owns its Cartesian residual. OFF must not pass through the
      * legacy balance implementation, which can also clamp or decay joints. */
-    if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
+    if(robot->locomotion_profile==locomotion_profile_id("attitudepd") ||
+       locomotion_is_native(robot->locomotion_profile)) {
         memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
         return true;
     }
@@ -1981,6 +1989,7 @@ static void stabilization_trace_push(RobotController *robot,uint32_t now) {
 }
 static RobotResult robot_shared_drive(RobotController *robot)
 {
+    const bool native=locomotion_is_native(robot->locomotion_profile);
     if(robot->locomotion_fault || safety_is_faulted(&robot->safety)) return ROBOT_SAFETY_FAULT;
     if(!robot->attitude_reader) return ROBOT_IMU_ERROR;
     if(!actuator_profile_supports_limited_gait(robot->profile_speed,robot->profile_acceleration)) return ROBOT_ACTUATOR_PROFILE_ERROR;
@@ -1991,6 +2000,8 @@ static RobotResult robot_shared_drive(RobotController *robot)
     robot->shared_idle=false;
     if(result!=ROBOT_OK)return result;
     memset(&robot->drive_control,0,sizeof(robot->drive_control));
+    s_native_reset_profile(&robot->s_native,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_1"));
+    if(native)robot->drive_control.phase=.5f;
     memset(&robot->shared_attitude,0,sizeof(robot->shared_attitude));
     memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
     memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
@@ -1998,9 +2009,12 @@ static RobotResult robot_shared_drive(RobotController *robot)
     robot->stabilization_trace_write=robot->stabilization_trace_count=0;
     GaitPolicyLegTarget stand[4],neutral[4],nominal[4],from[4],command[4];
     for(int i=0;i<4;i++)stand[i]=nominal[i]=from[i]=(GaitPolicyLegTarget){0,45,90,true};
-    if(!locomotion_targets(robot->locomotion_profile,0,0,0,0,neutral))return ROBOT_CONFIG_ERROR;
+    if(native) {
+        s_native_stand(stand);
+        for(int i=0;i<4;i++)neutral[i]=nominal[i]=from[i]=stand[i];
+    } else if(!locomotion_targets(robot->locomotion_profile,0,0,0,0,neutral))return ROBOT_CONFIG_ERROR;
     result=shared_observe(robot);if(result!=ROBOT_OK)return result;
-    bool stopping=false,watchdog=false;int stage=1;float transition=0;
+    bool stopping=false,watchdog=false;int stage=native?2:1;float transition=0;
     uint32_t started=HAL_GetTick(),deadline=started;
     gait_tracking_reset(&robot->tracking,started);
     uint32_t previous_frame=started;
@@ -2040,10 +2054,25 @@ static RobotResult robot_shared_drive(RobotController *robot)
             bool yaw_valid=robot->heading_reader && robot->shared_attitude.failures==0 && robot->heading_reader(robot->attitude_context,&yaw);
             float phase_rate=robot->tracking_enabled?gait_tracking_step(&robot->tracking,compute_started,frame_dt,stopping):1;
             if(robot->tracking_enabled && robot->tracking.fault){result=ROBOT_MOTION_ABORTED;robot_latch_locomotion_fault(robot,result);break;}
-            if(!drive_control_step_timed(&robot->drive_control,robot->locomotion_profile,
+            bool target_ok;
+            if(native) {
+                DriveControl *drive=&robot->drive_control;
+                float rl=stopping?0:locomotion_linear(robot->locomotion_profile,request.linear*.001f),ry=stopping?0:gait_policy_drive_yaw_limit(request.yaw)*.001f;
+                float progress=frame_dt*phase_rate;
+                drive->elapsed+=progress;
+                drive->linear=drive_timed_slew(lroundf(drive->linear*1000),lroundf(rl*1000),progress)*.001f;
+                float correction=heading_update(&drive->heading,yaw*.1f,yaw_valid,
+                    robot->heading_enabled && !stopping,rl,ry,drive->yaw,frame_dt);
+                drive->yaw=drive_timed_slew(lroundf(drive->yaw*1000),lroundf((ry+correction)*1000),progress)*.001f;
+                target_ok=s_native_step(&robot->s_native,drive->phase,gait_policy_smootherstep(fminf(1,drive->elapsed)),
+                    drive->linear,drive->yaw,rl,ry,frame_dt,stopping,nominal);
+                drive->phase=fmodf(drive->phase+progress/locomotion_period(robot->locomotion_profile,drive->linear,drive->yaw),1);
+            } else target_ok=drive_control_step_timed(&robot->drive_control,robot->locomotion_profile,
                     stopping?0:request.linear*.001f,stopping?0:request.yaw*.001f,
-                    yaw*.1f,yaw_valid,robot->heading_enabled,stopping,frame_dt,phase_rate,nominal)) {result=ROBOT_CONFIG_ERROR;break;}
-            if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f) {
+                    yaw*.1f,yaw_valid,robot->heading_enabled,stopping,frame_dt,phase_rate,nominal);
+            if(!target_ok){result=ROBOT_CONFIG_ERROR;break;}
+            if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f &&
+               (!native || s_native_stopped(&robot->s_native))) {
                 for(int i=0;i<4;i++) {from[i]=robot->locomotion_profile==locomotion_profile_id("attitudepd")?command[i]:nominal[i];}
                 if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
                     memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
@@ -2066,7 +2095,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
             stabilization_trace_push(robot,compute_started);
         }
         uint16_t positions[12];
-        if(!gait_policy_to_servo_targets(command,positions)) {result=ROBOT_CONFIG_ERROR;break;}
+        if(!(native?s_native_servo_targets(command,positions):gait_policy_to_servo_targets(command,positions))) {result=ROBOT_CONFIG_ERROR;break;}
         uint32_t compute_ms=HAL_GetTick()-compute_started;
         if(compute_ms>robot->drive_peak_compute_ms)robot->drive_peak_compute_ms=(uint16_t)(compute_ms>65535U?65535U:compute_ms);
         uint32_t io_started=HAL_GetTick();
@@ -2133,8 +2162,10 @@ void robot_control_idle(RobotController *robot)
     robot->shared_idle_at=now;
     if(shared_observe(robot)!=ROBOT_OK)return;
     GaitPolicyLegTarget out[4];for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
+    const bool native=locomotion_is_native(robot->locomotion_profile);
+    if(native)s_native_stand(out);
     uint16_t positions[12];
-    if(!shared_correct(robot,out,true,false) || !gait_policy_to_servo_targets(out,positions)) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
+    if(!shared_correct(robot,out,true,false) || !(native?s_native_servo_targets(out,positions):gait_policy_to_servo_targets(out,positions))) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
     if(!robot_support_observe(robot,positions))return;
     ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,12);
     if(sent!=SERVO_BUS_OK) {

@@ -11,8 +11,12 @@ static inline int locomotion_profile_id(const char *name) {
     for(int i=0;i<LOCOMOTION_PROFILE_COUNT;i++) if(strcmp(name,locomotion_names[i])==0) return i;
     return -1;
 }
+static inline bool locomotion_is_native(int profile) {
+    return profile==locomotion_profile_id("s_native_v6_1") ||
+           profile==locomotion_profile_id("s_native_v6_2_1");
+}
 static inline float locomotion_linear(int profile,float linear) {
-    return (profile==3 || profile==4 || profile==5 || profile==6 || profile==7 || profile==8 || profile==9 || profile==10 || profile==11) ? fmaxf(-.6f,linear) : linear;
+    return (profile==3 || profile==4 || profile==5 || profile==6 || profile==7 || profile==8 || profile==9 || profile==10 || profile==11 || profile==locomotion_profile_id("s_native_v6_2_1")) ? fmaxf(-.6f,linear) : linear;
 }
 static inline void locomotion_params(int profile,float linear,float p[7]) {
     float w=gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));
@@ -58,6 +62,8 @@ static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
 }
 static inline bool locomotion_targets_assisted(int profile,float phase,float scale,float linear,float yaw,float assist,GaitPolicyLegTarget out[4]) {
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(assist) || assist<0 || assist>1) return false;
+    /* Native entry/stop has state and must use s_native_step, never legacy IK. */
+    if(locomotion_is_native(profile))return false;
     if(profile==locomotion_profile_id("arcturn"))return arc_turn_targets(phase,scale,linear,yaw,out);
     if(profile==locomotion_profile_id("arcsupport"))return arc_support_targets(phase,scale,linear,yaw,out);
     if(profile==0) return gait_policy_drive_walk_targets(phase,scale,linear,yaw,out);

@@ -4,7 +4,9 @@ import codecs
 import math
 import re
 
-PROFILES = (
+NATIVE_PROFILES = ("s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
+SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1"}
+PROFILES = NATIVE_PROFILES + (
     "attitudepd", "centerpivot", "arcsupport", "arcturn", "legacy", "crawl",
     "cruise", "trot", "highstep", "lift", "imu", "level", "level15", "joint",
     "jointfast", "jointsport", "cushion_reach", "cushion_j2lift", "cushion_wbc",
@@ -88,6 +90,7 @@ class Controller:
         self.state_at = None
         self.fatal = False
         self.disconnect_requested = False
+        self.default_profile_pending = True
 
     def packet(self, text, kind="command"):
         data = text.encode("utf-8") if isinstance(text, str) else text
@@ -145,9 +148,9 @@ class Controller:
             if len(words) != 2 or words[1] not in PROFILES:
                 raise ValueError("지원 목록의 보행 정책을 선택하십시오.")
             profile = words[1]
-            if profile.startswith("cushion_") and not self.simulator:
+            if (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) and not self.simulator:
                 raise ValueError("이 보행 정책은 시뮬레이터 전용입니다.")
-            if profile in {"attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
+            if profile in {*NATIVE_PROFILES, "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
                 raise ValueError("제어기가 선택한 실험 정책을 지원하지 않습니다.")
 
     def request(self, line, now):
@@ -206,6 +209,16 @@ class Controller:
             self.packet(f"@S {self.next_sequence()}\n", "stop")
             self.phase = "stopping"
             self.deadline = now + 5
+
+    def stop(self, now):
+        """Normal walking STOP waits for the robot's return-to-stand completion."""
+        self.pending = None
+        self.relax_pending = False
+        if self.phase in {"drive", "stopping", "draining"}:
+            self.release(now)
+            self.requires_release = True
+        else:
+            self.interrupt(now)
 
     def interrupt(self, now):
         if not self.connected:
@@ -343,6 +356,13 @@ class Controller:
                 self.fatal = True
             else:
                 self._console("read 1", now)
+        elif command == "read 1" and self.default_profile_pending and self.synced and self.state.get('safety') == 'ok' and self.state.get('pose') in {'stand', 'stand11', 'landing'}:
+            self.default_profile_pending = False
+            profile = next((p for p in NATIVE_PROFILES if p in self.caps and
+                            (self.simulator or p not in SIMULATOR_NATIVE_PROFILES)), None)
+            if profile and self.state.get('profile') != profile and self.caps & {'gaitprofiles', 'simprofiles'}:
+                prefix = 'gaitprofile' if 'gaitprofiles' in self.caps else 'simprofile'
+                self.request(prefix + ' ' + profile, now)
         elif command != "read 1" and command not in READ_ONLY:
             self.refresh_at = now + .1
 

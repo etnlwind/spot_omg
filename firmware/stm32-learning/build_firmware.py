@@ -1,17 +1,23 @@
 from pathlib import Path
-import subprocess, hashlib, struct, json, argparse, re, sys
+import subprocess, hashlib, struct, json, argparse, re, sys, shutil
 
 root = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser(description='Build STM32 application in a clean output directory')
 parser.add_argument('--output', type=Path, default=Path('/private/tmp/spot-v13-build'))
+parser.add_argument('--compiler', type=Path, help='Path to arm-none-eabi-gcc (including .exe on Windows)')
 args = parser.parse_args()
 subprocess.run([sys.executable,str(root.parents[1]/'tools/generate_locomotion_profiles.py'),'--check'],check=True)
 subprocess.run([sys.executable,str(root.parents[1]/'tools/generate_body_stabilization_config.py'),'--check'],check=True)
 out = args.output.resolve()
 revision = re.search(r'#define ROBOT_CONTROL_REV "([^"]+)"', (root/'Inc/robot.h').read_text()).group(1)
 out.mkdir(parents=True, exist_ok=True)
-tool = next(Path('/Applications/STM32CubeIDE.app/Contents/Eclipse/plugins').glob('com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.*/tools/bin/arm-none-eabi-gcc'))
-prefix = str(tool)[:-3]
+tool = args.compiler or shutil.which('arm-none-eabi-gcc') or next(
+    Path('/Applications/STM32CubeIDE.app/Contents/Eclipse/plugins').glob(
+        'com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.*/tools/bin/arm-none-eabi-gcc'), None)
+if tool is None:
+    parser.error('ARM compiler not found; specify --compiler')
+tool = Path(tool).resolve()
+objcopy = tool.with_name(tool.name.replace('gcc', 'objcopy'))
 flags = ['-mcpu=cortex-m4', '-mthumb', '-mfpu=fpv4-sp-d16', '-mfloat-abi=hard', '--specs=nano.specs']
 includes = ['Inc','Drivers/STM32F4xx_HAL_Driver/Inc','Drivers/STM32F4xx_HAL_Driver/Inc/Legacy','Drivers/CMSIS/Device/ST/STM32F4xx/Include','Drivers/CMSIS/Include','Drivers/sh2']
 objects = []
@@ -35,7 +41,7 @@ with (out/'build.log').open('w') as log:
     elf = out/(revision+'.elf')
     run([str(tool), *flags, '-o',str(elf),*objects,'-T'+str(root/'STM32F446RETX_FLASH.ld'),'--specs=nosys.specs','-Wl,-Map='+str(out/(revision+'.map')),'-Wl,--gc-sections','-static','-Wl,--start-group','-lc','-lm','-Wl,--end-group'])
     binary = out/(revision+'.bin')
-    run([prefix+'objcopy','-O','binary',str(elf),str(binary)])
+    run([str(objcopy),'-O','binary',str(elf),str(binary)])
 data = binary.read_bytes()
 sp, reset = struct.unpack('<II',data[:8])
 assert 0x20000000 <= sp <= 0x20020000

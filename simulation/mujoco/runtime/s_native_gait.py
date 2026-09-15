@@ -1,4 +1,4 @@
-"""S-native diagonal trot. Simulator-only; no legacy reference-pose conversion."""
+"""S-native CAD diagonal trot; V6.1 targets are mirrored by the STM32 kernel."""
 
 # Support direct execution from any working directory.
 if __package__ in (None, ""):
@@ -8,7 +8,7 @@ if __package__ in (None, ""):
 import numpy as np
 from simulation.mujoco.runtime.standing_pose import SoleKinematics
 
-NAME = 's_native_v5'
+NAME = 's_native_v6_2_1'
 # Preserve the 0.4s swing, halve the hold at each diagonal exchange from
 # 0.6s to 0.3s (at full input). Duty describes each leg's actual stance time.
 PERIOD = 1.4
@@ -25,11 +25,27 @@ V3_PROFILE = dict(V2_PROFILE, params=[.8, .5, .08, .025], rear_extension_m=.04)
 V4_PROFILE = dict(V3_PROFILE, params=list(V3_PROFILE['params']), walking_foot_y='j1', placement_entry_amplitude=.5)
 # Start with FR/RL together. Only FR doubles its normal J1 angular change
 # on that first step; the next half-cycle brings all four to normal adduction.
-PROFILE = dict(V4_PROFILE, params=list(V4_PROFILE['params']),
+V5_PROFILE = dict(V4_PROFILE, params=list(V4_PROFILE['params']),
                entry_sequence='fr_double', start_phase=.5, entry_adduction_end=1.,
                normal_adduction_limit_deg=9.)
+# Bounded lift and slower support exchange reduce the vertical impulse around
+# FL/RR takeoff. These are position-trajectory limits, not force feedback.
+# Keep shared pair phase/X/Z, rear reach, and the original FR entry sequence.
+V6_PROFILE = dict(V5_PROFILE, params=[1.2, .5, .08, .012])
+# V6.1 extends only the rear endpoint by 5mm: +20/-65mm about S.
+V61_PROFILE = dict(V6_PROFILE, params=[1.2, .5, .085, .012], rear_extension_m=.045,
+               stop_on_next_placement=True, stop_lift_m=.012, stop_period_s=1.2,
+               stop_timing=(.2,.4,.45,.7))
+# Independent V6.2 copy: the rear endpoint approaches a vertical lower leg
+# in the CAD side view. Forward placement, S and the two-step STOP are inherited.
+V62_PROFILE = dict(V61_PROFILE, params=[2.0, .5, .145, .012], rear_extension_m=.105,
+               reverse_input_limit=.6)
+PROFILE = dict(V62_PROFILE, params=list(V62_PROFILE['params']),
+               continuous_recovery=True, lift_exponent=.25, stop_period_s=1.6)
 PROFILES = {'s_native_v1': V1_PROFILE, 's_native_v2': V2_PROFILE,
-            's_native_v3': V3_PROFILE, 's_native_v4': V4_PROFILE, NAME: PROFILE}
+            's_native_v3': V3_PROFILE, 's_native_v4': V4_PROFILE,
+            's_native_v5': V5_PROFILE, 's_native_v6': V6_PROFILE,
+            's_native_v6_1': V61_PROFILE, 's_native_v6_2': V62_PROFILE, NAME: PROFILE}
 
 class SNativeGait:
     def __init__(self, model, standing, profile=None):
@@ -82,9 +98,17 @@ class SNativeGait:
         delta = np.zeros((4, 3))
         # Cubic extension is C2 at S: extra push only behind the shoulder.
         delta[:, 0] = stride*c - extra*linear*np.maximum(0.,-c)**3
-        # Tangential displacement around the body centre for turning.
-        delta[:, 0] -= .10*yaw*self.origin[:, 1]*c
-        delta[:, 1] = .10*yaw*self.origin[:, 0]*c
+        if self.profile.get('continuous_recovery'):
+            # Spread rear reach across the complete stroke. Starting the
+            # extra displacement only behind S caused a crossing-speed dip.
+            # Both X and knee flexion continue throughout recovery.
+            progress=(1-c)/2
+            delta[:,0]=stride*c-extra*linear*progress**3
+        # Protocol yaw is right-positive. During stance c decreases, and
+        # planted feet move opposite the body's rotation: use clockwise
+        # placement here so positive yaw turns the body clockwise too.
+        delta[:, 0] += .10*yaw*self.origin[:, 1]*c
+        delta[:, 1] = -.10*yaw*self.origin[:, 0]*c
         activity = min(1., (abs(linear)+abs(yaw))/.15)
         delta[:,1] += activity*self.walking_lateral_offset
         # First half is stance front->rear; second half swings rear->front.
@@ -183,12 +207,21 @@ class SNativeGait:
             self.stop_progress=0.
             self.stop_j1=self.previous[::3].copy()
             self.stop_placement=self.placement_fraction.copy()
+            if self.profile.get('stop_on_next_placement'):
+                self.stop_pose=self.previous.copy()
+                self.kin.set_angles(self.stop_pose)
+                self.stop_feet=np.array([self.kin.foot(i) for i in range(4)])
+                # Complete the lifted diagonal first, then place its partner.
+                phase=self.entry_previous_phase if self.entry_previous_phase is not None else .5
+                self.stop_first=np.array([0,3] if phase<.5 else [1,2])
 
     @property
     def stop_ready(self):
         return self.stop_progress is not None and self.stop_progress>=1.
 
     def fr_stop_targets(self,phase,amplitude,linear,yaw):
+        if self.profile.get('stop_on_next_placement'):
+            return self.placement_stop_targets()
         # Continue phase while decelerating. Reverse the current angular
         # adduction to S over one nominal cycle, including an interrupted start.
         self.stop_progress=min(1.,self.stop_progress+.02/self.profile['params'][0])
@@ -200,6 +233,35 @@ class SNativeGait:
         result,error=self.kin.solve_xz(points,self.previous,locked,iterations=60)
         if error>.0002:raise ValueError('S-native stop X/Z unreachable')
         self.previous=result.copy()
+        self.last_target_points=np.array([self.kin.foot(i) for i in range(4)])
+        return result
+
+    def placement_stop_targets(self):
+        """Two in-place diagonal placements with J1 held during lift/lowering."""
+        self.stop_progress=min(1.,self.stop_progress+.02/self.profile['stop_period_s'])
+        first=np.isin(np.arange(4),self.stop_first)
+        u=np.clip(2*self.stop_progress-np.where(first,0.,1.),0.,1.)
+        def smooth(x):return x*x*x*(10+x*(-15+6*x))
+        # Lift, make one placement, lower, then allow contact to settle before
+        # the other pair lifts. These are body-relative goals, not sensed contact.
+        lift_end,move_end,lower_start,lower_end=self.profile['stop_timing']
+        move=smooth(np.clip((u-lift_end)/(move_end-lift_end),0.,1.))
+        up=smooth(np.clip(u/lift_end,0.,1.))
+        down=smooth(np.clip((u-lower_start)/(lower_end-lower_start),0.,1.))
+        points=self.stop_feet.copy()
+        points[:,0]+=(self.origin[:,0]-points[:,0])*move
+        apex=np.maximum(self.stop_feet[:,2],self.origin[:,2]+self.profile['stop_lift_m'])
+        points[:,2]=np.where(u<lower_start,self.stop_feet[:,2]+(apex-self.stop_feet[:,2])*up,
+                            apex+(self.origin[:,2]-apex)*down)
+        locked=self.stop_j1+(self.standing[::3]-self.stop_j1)*move
+        result,error=self.kin.solve_xz(points,self.previous,locked,iterations=60)
+        if error>.0002:raise ValueError('S-native stop placement unreachable')
+        legs=result.reshape(4,3)
+        legs[u<=0]=self.stop_pose.reshape(4,3)[u<=0]
+        legs[u>=lower_end]=self.standing.reshape(4,3)[u>=lower_end]
+        self.placement_fraction=(1-move)*self.stop_placement
+        self.previous=result.copy()
+        self.kin.set_angles(result)
         self.last_target_points=np.array([self.kin.foot(i) for i in range(4)])
         return result
 
@@ -236,6 +298,10 @@ class SNativeGait:
         cd=-60*u*u*(1-u)**2/duration
         x=stride*c-extra*np.maximum(0.,-c)**3
         xdd=stride*cdd+np.where(c<0,extra*(6*c*cd*cd+3*c*c*cdd),0.)
+        if self.profile.get('continuous_recovery'):
+            progress=(1-c)/2
+            x=stride*c-extra*progress**3
+            xdd=(stride+1.5*extra*progress**2)*cdd-1.5*extra*progress*cd**2
         period=self.profile['params'][0]*(1.35-.35*min(1.,abs(linear)+abs(yaw)))
         h_g=self.height/9.81
         zmp_x=self.center[0]+h_g*xdd/period**2

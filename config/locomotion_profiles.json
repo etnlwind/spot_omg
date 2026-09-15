@@ -1,6 +1,6 @@
 {
   "status": "Shared deployment manifest for STM32 and MuJoCo; physical parameters require hardware measurement",
-  "default": "cruise",
+  "default": "s_native_v6_2_1",
   "profiles": {
     "crawl": {
       "label": "Crawl / four-beat",
@@ -289,6 +289,41 @@
       "experimental": true,
       "validation": "Separate attitude-PD experiment using unchanged centerpivot nominal kinematics; physical gait validation pending.",
       "turn_input_limit": 0.5
+    },
+    "s_native_v6_1": {
+      "label": "S 출발 · 뒤쪽 65mm V6.1 · 실험",
+      "family": "trot",
+      "params": [
+        1.2,
+        0.5,
+        0.085,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "validation": "CAD C port with S entry and stop. Hardware validation pending."
+    },
+    "s_native_v6_2_1": {
+      "label": "S 출발 · 연속 회수 V6.2.1 · 실험",
+      "family": "trot",
+      "params": [
+        2.0,
+        0.5,
+        0.145,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Continuous crossing and moving knee recovery; C port validation pending; physical contact remains."
     }
   }
 }

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 
 from . import __version__
 from .connection import Connection
-from .protocol import PROFILES, READ_ONLY
+from .protocol import PROFILES, NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES, READ_ONLY
 
 STYLE = """
 QMainWindow, QWidget#shell { background: #eef2ef; color: #162e26; }
@@ -210,7 +210,8 @@ class Window(QMainWindow):
         header.addWidget(self.connection_badge)
         self.stop_button = QPushButton("■  STOP   /   SPACE")
         self.stop_button.setObjectName("stop")
-        self.stop_button.clicked.connect(self.emergency_stop)
+        self.stop_button.clicked.connect(self.walk_stop)
+        self.stop_button.setToolTip("보행 정지 후 최초 자세 복귀 · Esc: 긴급 중단")
         header.addWidget(self.stop_button)
         outer.addLayout(header)
         content = QHBoxLayout()
@@ -451,8 +452,8 @@ class Window(QMainWindow):
         self.profiles.setEnabled(profiles_ok)
         self.profile_button.setEnabled(profiles_ok)
         for index, profile in enumerate(PROFILES):
-            allowed = not profile.startswith("cushion_") or state.get("simulator", False)
-            allowed &= profile not in {"attitudepd", "centerpivot", "arcsupport"} or profile in caps
+            allowed = not (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) or state.get("simulator", False)
+            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd", "centerpivot", "arcsupport"} or profile in caps
             self.profiles.model().item(index).setEnabled(allowed)
         self.balance_button.setEnabled(idle and not stowed and bool(caps & {"balancecontrol", "simbalance"}))
         self.heading_button.setEnabled(idle and not stowed and "headinghold" in caps)
@@ -533,6 +534,10 @@ class Window(QMainWindow):
                 self.show_error('MuJoCo heartbeat: ' + str(exc))
             self.sim_pulse_at = time.monotonic() + .4
 
+    def walk_stop(self):
+        self.release_input()
+        self.connection.stop(graceful=True)
+
     def emergency_stop(self):
         self.release_input()
         self.connection.stop()
@@ -548,7 +553,11 @@ class Window(QMainWindow):
             key = event.key()
             typing = isinstance(QApplication.focusWidget(), (QLineEdit, QPlainTextEdit, QSpinBox, QComboBox))
             if event.type() == QEvent.Type.KeyPress and (key == Qt.Key.Key_Escape or (key == Qt.Key.Key_Space and not typing)):
-                self.emergency_stop()
+                if not event.isAutoRepeat():
+                    if key == Qt.Key.Key_Escape:
+                        self.emergency_stop()
+                    else:
+                        self.walk_stop()
                 return True
             directions = {Qt.Key.Key_W: (0, 1), Qt.Key.Key_Up: (0, 1), Qt.Key.Key_S: (0, -1), Qt.Key.Key_Down: (0, -1),
                           Qt.Key.Key_A: (-1, 0), Qt.Key.Key_Left: (-1, 0), Qt.Key.Key_D: (1, 0), Qt.Key.Key_Right: (1, 0)}

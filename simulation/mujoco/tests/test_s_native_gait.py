@@ -14,15 +14,15 @@ from simulation.mujoco.runtime.s_native_gait import SNativeGait, NAME, PROFILES
 def plant():
     return Simulation(load_parameters(parse_args([])))
 
-@pytest.mark.parametrize('name,front,rear',[('s_native_v1',.020,.020),('s_native_v2',.020,.020),('s_native_v3',.020,.060)])
+@pytest.mark.parametrize('name,front,rear',[('s_native_v1',.020,.020),('s_native_v2',.020,.020),('s_native_v3',.020,.060),('s_native_v6',.020,.060),('s_native_v6_1',.020,.065)])
 def test_diagonals_share_paths_and_opposing_extrema(plant,name,front,rear):
     g=SNativeGait(plant.model,plant.stand_target,PROFILES[name])
     for phase in np.linspace(0,1,101):
         delta=g.points(phase,1,1,0)-g.origin
-        np.testing.assert_allclose(delta[0],delta[3],atol=1e-12)
-        np.testing.assert_allclose(delta[1],delta[2],atol=1e-12)
+        np.testing.assert_allclose(delta[0,[0,2]],delta[3,[0,2]],atol=1e-12)
+        np.testing.assert_allclose(delta[1,[0,2]],delta[2,[0,2]],atol=1e-12)
         opposite=g.points(phase+.5,1,1,0)-g.origin
-        np.testing.assert_allclose(delta[0],opposite[2],atol=1e-12)
+        np.testing.assert_allclose(delta[0,[0,2]],opposite[2,[0,2]],atol=1e-12)
     for phase,sign in ((0,1),(.5,-1)):
         d=g.points(phase,1,1,0)-g.origin
         assert d[2,0] == pytest.approx(front if sign>0 else -rear)
@@ -64,12 +64,13 @@ def test_sole_xy_tracks_one_material_point_without_vertex_jumps(plant):
         # 0.01 degree cannot physically move a point on these links by 0.5mm.
         assert np.max(np.linalg.norm(np.diff(positions,axis=0),axis=1)) < .00005
 
-def test_body_transfer_keeps_opposing_extrema_and_s(plant):
-    g=SNativeGait(plant.model,plant.stand_target)
+@pytest.mark.parametrize('name,rear', [('s_native_v6',.060), ('s_native_v6_1',.065)])
+def test_body_transfer_keeps_opposing_extrema_and_s(plant,name,rear):
+    g=SNativeGait(plant.model,plant.stand_target,PROFILES[name])
     for linear in (.3,.6,1.):
         path=np.array([g.command_points(t,1,linear,0)-g.origin for t in np.linspace(0,1,201)])
         np.testing.assert_allclose(path[:,:,0].max(axis=0),.020*linear,atol=1e-9)
-        np.testing.assert_allclose(path[:,:,0].min(axis=0),-.060*linear,atol=1e-9)
+        np.testing.assert_allclose(path[:,:,0].min(axis=0),-rear*linear,atol=1e-9)
         np.testing.assert_allclose(g.command_points(.25,0,linear,0),g.origin)
 
 
@@ -105,8 +106,12 @@ def test_fall_experiment_only_ignores_tilt_during_native_walk(allow_fall,fault,k
     assert robot.safety==('ok' if keeps_walking else fault)
     if keeps_walking:
         robot.command('@S 2',.64)
-        for i in range(50):robot.tick(.64+i*.02)
+        # An interrupted first step completes the selected model's two
+        # placements and the following one-second S hold.
+        stop_seconds=robot.profiles[robot.profile]['stop_period_s']
+        for i in range(round((stop_seconds+1.2)/.02)):robot.tick(.64+i*.02)
         assert robot.motion is None
+        assert robot.transition is None
 
 
 def test_v3_extends_push_behind_s_without_changing_front_placement_or_exchange(plant):
@@ -160,8 +165,9 @@ def test_v4_only_moves_entry_footprint_during_swing_and_reaches_both_pairs(plant
     np.testing.assert_allclose(g.last_target_points[0,1]-g.last_target_points[1,1],.0782385895,atol=.0001)
 
 
-def test_v5_first_fr_rl_swing_and_double_fr_angular_adduction(plant):
-    g=SNativeGait(plant.model,plant.stand_target)
+@pytest.mark.parametrize('name', ['s_native_v5', 's_native_v6', 's_native_v6_1'])
+def test_first_fr_rl_swing_and_double_fr_angular_adduction(plant, name):
+    g=SNativeGait(plant.model,plant.stand_target,PROFILES[name])
     assert g.profile['start_phase']==.5
     for p in np.linspace(.5,1.,51):
         q=g.targets(p%1,1.,1.,0.)
@@ -184,12 +190,13 @@ def test_v5_first_fr_rl_swing_and_double_fr_angular_adduction(plant):
 
 
 @pytest.mark.parametrize('progress',[.25,.6,1.2])
-def test_v5_stop_reverses_adduction_continuously_to_s(plant,progress):
-    g=SNativeGait(plant.model,plant.stand_target)
+@pytest.mark.parametrize('name', ['s_native_v5', 's_native_v6', 's_native_v6_1'])
+def test_stop_reverses_adduction_continuously_to_s(plant,progress,name):
+    g=SNativeGait(plant.model,plant.stand_target,PROFILES[name])
     for p in np.arange(0,progress,.025):g.targets((.5+p)%1,1.,1.,0.)
     start=g.previous.copy();g.begin_stop()
     previous=abs(start[::3]-plant.stand_target[::3])
-    for tick in range(40):
+    for tick in range(round(g.profile['params'][0]/.02)+1):
         command=max(0.,1-(tick+1)/25)
         q=g.targets((.5+progress+(tick+1)*.025)%1,1.,command,0.)
         inward=abs(q[::3]-plant.stand_target[::3])
@@ -200,3 +207,32 @@ def test_v5_stop_reverses_adduction_continuously_to_s(plant,progress):
     assert g.stop_ready
     np.testing.assert_allclose(q,plant.stand_target,atol=.01)
     np.testing.assert_allclose(g.placement_fraction,0.,atol=1e-9)
+
+
+@pytest.mark.parametrize('phase',[.18,.68])
+def test_v61_stop_places_two_diagonals_at_planned_clearance(plant,phase):
+    g=SNativeGait(plant.model,plant.stand_target,PROFILES['s_native_v6_1'])
+    for p in np.arange(.5,2+phase,.02):g.targets(p%1,1.,.6,0.)
+    g.targets(phase,1.,.6,0.)
+    g.begin_stop()
+    first=g.stop_first;second=np.array([i for i in range(4) if i not in first])
+    start=g.previous.reshape(4,3).copy();old=start.copy()
+    for tick in range(60):
+        # Zero drive input must not collapse the two placement lifts.
+        q=g.targets((phase+.02*tick)%1,1.,0.,0.).reshape(4,3)
+        changed=abs(q[:,0]-old[:,0])>1e-6
+        assert np.all(g.last_target_points[changed,2]>=g.origin[changed,2]+.0119)
+        if tick<30:
+            np.testing.assert_allclose(q[second],start[second],atol=1e-10)
+        if tick>=21:
+            np.testing.assert_allclose(q[first],plant.stand_target.reshape(4,3)[first],atol=.01)
+        if tick>=12:
+            np.testing.assert_allclose(q[first,0],plant.stand_target.reshape(4,3)[first,0],atol=1e-9)
+        if tick>=42:
+            np.testing.assert_allclose(q[:,0],plant.stand_target[::3],atol=1e-9)
+        old=q.copy()
+    assert g.stop_ready
+    np.testing.assert_allclose(q.ravel(),plant.stand_target,atol=.01)
+    # A completed placement never opens farther or resumes its oscillator.
+    for p in (.1,.6,.9):
+        np.testing.assert_allclose(g.targets(p,1.,0.,0.),plant.stand_target,atol=.01)

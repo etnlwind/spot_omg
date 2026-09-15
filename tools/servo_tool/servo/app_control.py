@@ -1,10 +1,10 @@
 """Paired-iPhone app control over CoreDevice, independent of the robot BLE link."""
 from contextlib import contextmanager
-import fcntl
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -38,6 +38,9 @@ def _device_call(arguments, directory, *, allow_failure=False):
 
 
 def request(device, action, target=None):
+    if sys.platform != 'darwin':
+        raise RuntimeError('Paired iPhone control requires macOS; use --no-app-control for direct robot BLE on Windows')
+    import fcntl
     if not device:
         raise ValueError('Choose a paired iPhone with --device, or run spotctl app pair --device UJIN17')
     if action not in ('status','connect','disconnect'):

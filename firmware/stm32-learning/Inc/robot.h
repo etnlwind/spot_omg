@@ -17,6 +17,7 @@ extern "C" {
 #include "balance_control.h"
 #include "attitude_control.h"
 #include "attitude_pd.h"
+#include "s_native.h"
 
 #include <stdint.h>
 
@@ -89,7 +90,7 @@ typedef struct {
 void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
-#define ROBOT_CONTROL_REV "shared-locomotion-v58"
+#define ROBOT_CONTROL_REV "s-native-v6-2-1-v63"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -181,6 +182,7 @@ typedef struct
     bool shared_idle;
     uint32_t shared_idle_at;
     DriveControl drive_control;
+    SNativeControl s_native;
     BalanceControl shared_balance;
     AttitudeControl shared_attitude;
     AttitudePd attitude_pd;

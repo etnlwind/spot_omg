@@ -10,6 +10,9 @@ from simulation.mujoco.paths import REPO_ROOT, SIM_ROOT, RESULTS_ROOT
 import ctypes
 import importlib.util
 import subprocess
+import sys
+import shutil
+import os
 from pathlib import Path
 import numpy as np
 import pytest
@@ -20,7 +23,7 @@ ROOT=REPO_ROOT
 
 
 def test_profile_manifest_matches_embedded_generated_constants():
-    subprocess.run(['python3',str(ROOT/'tools/generate_locomotion_profiles.py'),'--check'],check=True)
+    subprocess.run([sys.executable,str(ROOT/'tools/generate_locomotion_profiles.py'),'--check'],check=True)
 
 
 def test_cruise_uses_the_reverse_stride_and_lift_for_forward():
@@ -76,6 +79,7 @@ def test_unoptimized_firmware_kernel_matches_host_and_tick_commands(tmp_path):
 #include <stdio.h>
 int main(void) {
  for(int profile=0;profile<LOCOMOTION_PROFILE_COUNT;profile++) {
+  if(locomotion_is_native(profile))continue; /* Stateful native kernel has its own parity suite. */
   DriveControl s={0};
   for(int frame=0;frame<500;frame++) {
    float linear=frame<200?.8f:frame<300?.4f:frame<400?-.6f:0;
@@ -87,8 +91,10 @@ int main(void) {
  }
 }
 ''')
-    binary=tmp_path/'kernel'
-    subprocess.run(['cc','-std=c11','-O0','-Wall','-Werror','-I',str(inc),str(source),str(inc.parent/'Src/robot_config.c'),'-lm','-o',str(binary)],check=True)
+    binary=tmp_path/('kernel.exe' if os.name=='nt' else 'kernel')
+    compiler=shutil.which('cc') or shutil.which('gcc')
+    command=[compiler] if compiler else [str(ROOT/'.toolchain/zig/zig.exe'),'cc','-target','x86_64-windows-gnu']
+    subprocess.run([*command,'-std=c11','-O0','-UNDEBUG','-Wall','-Werror','-I',str(inc),str(source),str(inc.parent/'Src/robot_config.c'),'-lm','-o',str(binary)],check=True)
     expected=np.array([list(map(int,line.split())) for line in subprocess.check_output([str(binary)],text=True).splitlines()])
     policy=SharedGaitPolicy();fp=ctypes.POINTER(ctypes.c_float)
     drive=policy._library.spot_drive_step
@@ -98,6 +104,8 @@ int main(void) {
     encode.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);encode.restype=ctypes.c_int
     rows=[]
     for profile in range(1+len(load_profiles())):
+        if profile and list(load_profiles().values())[profile-1].get('stateful_native'):
+            continue
         state=(ctypes.c_float*11)()
         preload=(ctypes.c_float*12)()
         stateful=policy._library.spot_drive_step_stateful
@@ -114,7 +122,7 @@ int main(void) {
     np.testing.assert_array_equal(rows,expected)
 
 
-@pytest.mark.parametrize('profile',list(load_profiles()))
+@pytest.mark.parametrize('profile',[name for name,p in load_profiles().items() if not p.get('stateful_native')])
 def test_all_profile_targets_fit_physical_servo_calibration(profile):
     policy=SharedGaitPolicy();fn=policy._library.spot_servo_encode;fp=ctypes.POINTER(ctypes.c_float)
     fn.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);fn.restype=ctypes.c_int
