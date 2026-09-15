@@ -3,9 +3,10 @@ from collections import deque
 import codecs
 import math
 import re
+from .battery import BatteryWarning, reading as battery_reading
 
-NATIVE_PROFILES = ("s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
-SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1"}
+NATIVE_PROFILES = ("s_native_v6_2_5", "s_native_v6_2_4", "s_native_v6_2_3", "s_native_v6_2_2", "s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
+SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1", "s_native_v6_2_2", "s_native_v6_2_3", "s_native_v6_2_4", "s_native_v6_2_5"}
 PROFILES = NATIVE_PROFILES + (
     "attitudepd", "centerpivot", "arcsupport", "arcturn", "legacy", "crawl",
     "cruise", "trot", "highstep", "lift", "imu", "level", "level15", "joint",
@@ -87,6 +88,8 @@ class Controller:
         self.relax_pending = False
         self.voltage = None
         self.voltage_at = None
+        self.battery = BatteryWarning()
+        self.next_voltage_poll = 5.
         self.state_at = None
         self.fatal = False
         self.disconnect_requested = False
@@ -255,6 +258,11 @@ class Controller:
             self.fatal = True
         if self.phase == "idle" and self.refresh_at is not None and now >= self.refresh_at:
             self._console("syncstate", now)
+        if (self.phase == "idle" and self.synced and self.connected and not self.fatal
+                and not self.disconnect_requested and now >= self.next_voltage_poll
+                and (self.voltage_at is None or now - self.voltage_at >= 5)):
+            self.next_voltage_poll = now + 5
+            self._console("read 1", now)
 
     def feed(self, data, now):
         for kind, line in self.stream.feed(data):
@@ -271,10 +279,12 @@ class Controller:
                 self.synced = True
                 if self.command == 'syncstate':
                     self.command_state_seen = True
-            if line.startswith("ID 1 "):
-                match = re.search(r"\bvoltage=(\d+)mV\b", line)
-                if match and 0 < int(match[1]) <= 60000:
-                    self.voltage = int(match[1]) / 1000
+            value = battery_reading(line)
+            if value:
+                mv, historical = value
+                self.battery.observe(mv, now, historical=historical)
+                if not historical:
+                    self.voltage = mv / 1000
                     self.voltage_at = now
             if line == "OK" or line == "OK " + (self.command or ""):
                 self.command_ok = True
@@ -371,4 +381,5 @@ class Controller:
                     phase=self.phase, state=dict(self.state), caps=sorted(self.caps),
                     error=self.error, can_drive=self.can_drive, voltage=self.voltage,
                     voltage_at=self.voltage_at, state_at=self.state_at,
+                    battery_warning=self.battery.snapshot() if self.connected else {},
                     simulator=self.simulator, vector=self.vector, motion_active=self.motion_active)

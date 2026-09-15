@@ -196,7 +196,36 @@ class Window(QMainWindow):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidgetResizable(True)
         scroll.setWidget(shell)
-        self.setCentralWidget(scroll)
+        container = QWidget()
+        root = QVBoxLayout(container)
+        root.setContentsMargins(0, 0, 0, 0)
+        self.battery_level = self.battery_acknowledged = 0
+        self.battery_panel = QFrame()
+        self.battery_panel.setObjectName("batteryWarningBanner")
+        self.battery_panel.setStyleSheet("QFrame#batteryWarningBanner { background: #ae0f15; } QLabel { color: white; } QPushButton { color: #ae0f15; background: white; }")
+        warning_layout = QVBoxLayout(self.battery_panel)
+        warning_layout.setContentsMargins(18, 12, 18, 12)
+        self.battery_title = QLabel()
+        self.battery_title.setStyleSheet("font-size: 20px; font-weight: 800; color: white;")
+        self.battery_title.setWordWrap(True)
+        warning_layout.addWidget(self.battery_title)
+        self.battery_message = QLabel()
+        self.battery_message.setWordWrap(True)
+        warning_layout.addWidget(self.battery_message)
+        self.battery_actions = QWidget()
+        warning_actions = QHBoxLayout(self.battery_actions)
+        warning_actions.setContentsMargins(0, 0, 0, 0)
+        self.battery_stop = QPushButton("보행 정지")
+        self.battery_stop.clicked.connect(self.walk_stop)
+        warning_actions.addWidget(self.battery_stop)
+        warning_actions.addStretch()
+        self.battery_confirm = QPushButton("확인")
+        self.battery_confirm.clicked.connect(self.acknowledge_battery)
+        warning_actions.addWidget(self.battery_confirm)
+        warning_layout.addWidget(self.battery_actions)
+        root.addWidget(self.battery_panel)
+        root.addWidget(scroll)
+        self.setCentralWidget(container)
         outer = QVBoxLayout(shell)
         outer.setContentsMargins(24, 20, 24, 16)
         outer.setSpacing(16)
@@ -474,9 +503,31 @@ class Window(QMainWindow):
         voltage = state.get("voltage")
         stale = time.monotonic() - (state.get("voltage_at") or 0) > 15
         self.metrics["voltage"].setText(f"≈ {voltage:.1f} V" + (" · 이전" if stale else "") if voltage else "—")
+        self.show_battery_warning(state.get("battery_warning", {}), state.get("simulator", False))
         self.firmware.setText("펌웨어  " + robot.get("rev", "—") + "\n토크  " + robot.get("torque", "—"))
         self.drive_status.setText("조종 중  /  놓으면 정지" if phase == "drive" else names.get(phase, phase))
         self.show_error(state.get("error", ""))
+
+    def show_battery_warning(self, warning, simulator=False):
+        level = warning.get('level', 0)
+        if level > self.battery_level:
+            QApplication.beep()
+            QApplication.alert(self, 5000)
+        if not level:
+            self.battery_acknowledged = 0
+        self.battery_level = level
+        self.battery_panel.setVisible(level > 0)
+        self.battery_title.setText(('가상 로봇 · ' if simulator else '') + warning.get('title', ''))
+        self.battery_message.setText(warning.get('message', ''))
+        self.battery_panel.setAccessibleName(self.battery_title.text() + ' ' + self.battery_message.text())
+        self.battery_stop.setEnabled(self.snapshot.get('connected', False))
+        self.battery_message.setVisible(level > self.battery_acknowledged)
+        self.battery_actions.setVisible(level > self.battery_acknowledged)
+
+    def acknowledge_battery(self):
+        self.battery_acknowledged = self.battery_level
+        self.battery_message.hide()
+        self.battery_actions.hide()
 
     def toggle_connection(self):
         self.release_input()

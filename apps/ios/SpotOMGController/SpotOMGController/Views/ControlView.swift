@@ -1,8 +1,11 @@
 import SwiftUI
+import AudioToolbox
+import UIKit
 
 struct ControlView: View {
     @EnvironmentObject private var bluetooth: RobotBluetoothManager
     @State private var showRelaxConfirmation = false
+    @State private var acknowledgedBatteryLevel = 0
     @State private var consoleCommand = ""
     @State private var terminalPage = CommandLine.arguments.contains("--simulator-video") ? 1 : 0
     @FocusState private var consoleInputFocused: Bool
@@ -23,6 +26,7 @@ struct ControlView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if bluetooth.batteryWarning.level > 0 { batteryWarningBanner }
             TabView(selection: $terminalPage) {
                 terminalPanel.tag(0)
                 SimulatorVideoView(active: terminalPage == 1, controlHost: bluetooth.target == .simulator ? bluetooth.simulatorHost : nil).tag(1)
@@ -214,6 +218,14 @@ struct ControlView: View {
                 Button("완료") { consoleInputFocused = false }
             }
         }
+        .onChange(of: bluetooth.batteryWarning.level) { oldLevel, newLevel in
+            if newLevel == 0 { acknowledgedBatteryLevel = 0 }
+            if newLevel > oldLevel {
+                AudioServicesPlayAlertSound(1005)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                UIAccessibility.post(notification: .announcement, argument: bluetooth.batteryWarning.title)
+            }
+        }
         .confirmationDialog("모든 서보의 토크를 해제할까요?", isPresented: $showRelaxConfirmation,
                             titleVisibility: .visible) {
             Button("Relax", role: .destructive) { bluetooth.send(.relax) }
@@ -221,6 +233,31 @@ struct ControlView: View {
         } message: {
             Text("몸체가 쓰러지지 않도록 먼저 로봇을 지지하십시오.")
         }
+    }
+
+    private var batteryWarningBanner: some View {
+        let warning = bluetooth.batteryWarning
+        return VStack(alignment: .leading, spacing: 8) {
+            Label((bluetooth.target.isSimulator ? "[가상] " : "") + warning.title,
+                  systemImage: "battery.0percent")
+                .font(.headline.bold())
+            if acknowledgedBatteryLevel < warning.level {
+                Text(warning.message).font(.subheadline)
+                HStack {
+                    Button("보행 정지") { bluetooth.stopDrive(reason: "배터리 충전 필요") }
+                        .disabled(!bluetooth.state.isReady)
+                    Spacer()
+                    Button("확인") { acknowledgedBatteryLevel = warning.level }
+                }
+                .buttonStyle(.bordered).tint(.white)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(red: 0.68, green: 0.06, blue: 0.08))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("batteryWarningBanner")
     }
 
     private func controllerPage(height: CGFloat) -> some View {

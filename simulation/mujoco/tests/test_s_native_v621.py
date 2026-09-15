@@ -2,7 +2,8 @@
 import numpy as np
 from simulation.mujoco.runtime.cad_physics import Simulation
 from simulation.mujoco.runtime.virtual_robot import RobotController,load_parameters,parse_args
-from simulation.mujoco.runtime.s_native_gait import SNativeGait,PROFILES,NAME
+from simulation.mujoco.runtime.s_native_gait import SNativeGait,PROFILES
+NAME="s_native_v6_2_1"
 
 def test_v621_crossing_has_no_speed_dip_or_hold_and_preserves_endpoints():
     plant=Simulation(load_parameters(parse_args([])))

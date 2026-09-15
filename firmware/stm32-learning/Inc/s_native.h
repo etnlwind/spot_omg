@@ -7,11 +7,16 @@ typedef struct {
     float stop_pose[4][3], stop_feet[4][3];
     bool stop_first_fl_rr;
     float support_linear, support_yaw;
-    bool have_phase, have_support, continuous_recovery;
+    float extended_rear_m;
+    bool have_phase, have_support, continuous_recovery, extended_reach, placement_swing;
 } SNativeControl;
 void s_native_reset(SNativeControl *s);
 /* false preserves V6.1; true selects the independent V6.2.1 trajectory. */
 void s_native_reset_profile(SNativeControl *s, bool continuous_recovery);
+/* V6.2.3 preserves older trajectories and adds smooth lift / rear reach. */
+void s_native_reset_v623(SNativeControl *s);
+void s_native_reset_v624(SNativeControl *s);
+void s_native_reset_v625(SNativeControl *s);
 void s_native_stand(GaitPolicyLegTarget out[4]);
 /* yaw/requested_yaw follow drive protocol: positive turns the body right. */
 bool s_native_step(SNativeControl *s, float phase, float amplitude, float linear, float yaw,

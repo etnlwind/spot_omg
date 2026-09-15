@@ -1,6 +1,6 @@
 # Spot OMG
 
-다른 컴퓨터에서 최신 S 보행 V5 작업을 이어갈 때는 [2026-09-15 인수인계](docs/HANDOFF-2026-09-15-S-NATIVE-V5.md)를 먼저 확인하세요. 실행 환경, 맥 앱 빌드, 시험 영상과 미해결 착지/전도 문제를 정리했습니다.
+다른 컴퓨터에서 이어갈 때는 [2026-09-16 인수인계](docs/HANDOFF-2026-09-16-V625-STEP-HESITATION.md)를 먼저 확인하세요. V6.2.5의 매 걸음 멈칫함, 실제 V70/소스 V71 구분, 세 앱 배터리 경고와 재현 방법을 정리했습니다.
 
 Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
 

@@ -47,6 +47,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         }
         advanceRemoteRequest()
         selectDefaultValidationProfileIfIdle()
+        pollBattery()
     }
 
     func beginRemoteRequest(_ request: AppRemoteRequest) {
@@ -119,6 +120,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     @Published private(set) var driveStatus = "중립"
     @Published private(set) var supplyVoltageMillivolts: Int?
     @Published private(set) var lastVoltageRead: Date?
+    @Published private(set) var batteryWarning = RobotBatteryWarning()
+    private var pendingConsoleResponses = 0
+    private var lastBatteryPoll = Date.distantPast
+
+    /// Short idle-only read. Realtime motion receives firmware $BATTERY events.
+    func pollBattery(now: Date = Date()) {
+        guard state.isReady, lastStateSync != nil, !driveSessionActive,
+              !motionControlsLocked, pendingConsoleResponses == 0,
+              now.timeIntervalSince(lastBatteryPoll) >= 5,
+              now.timeIntervalSince(lastVoltageRead ?? .distantPast) >= 5 else { return }
+        lastBatteryPoll = now
+        sendCommandNow(.raw("read 1"))
+    }
 
     @Published private(set) var target: RobotConnectionTarget =
         RobotConnectionTarget(rawValue: UserDefaults.standard.string(forKey: "robotTarget") ?? "") ?? .robot
@@ -484,6 +498,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             driveStatus = "\(posture.capitalized) 전환 중"
         }
         appendConsole("> \(wireCommand.consoleLine)\n")
+        pendingConsoleResponses += 1
         write(data)
         if let delay = command.stateRefreshDelay {
             scheduleStateRefresh(after: delay)
@@ -657,6 +672,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         defaultValidationProfilePending = true
         supplyVoltageMillivolts = nil
         lastVoltageRead = nil
+        batteryWarning = RobotBatteryWarning()
+        pendingConsoleResponses = 0
+        lastBatteryPoll = .distantPast
         peripheral = nil
         receiveCharacteristic = nil
         transmitCharacteristic = nil
@@ -789,6 +807,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func processConsolePrompt() {
+        pendingConsoleResponses = max(0, pendingConsoleResponses - 1)
         guard driveSessionActive, driveAwaitingPrompt else { return }
         driveCompletionTimeout?.cancel()
         driveCompletionTimeout = nil
@@ -862,13 +881,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 // Informational only: never arm/cancel the stop timeout here.
                 continue
             }
-            if line.hasPrefix("ID 1 "),
-               let field = line.split(separator: " ").first(where: { $0.hasPrefix("voltage=") }),
-               field.hasSuffix("mV"),
-               let millivolts = Int(field.dropFirst(8).dropLast(2)),
-               (1...60000).contains(millivolts) {
-                supplyVoltageMillivolts = millivolts
-                lastVoltageRead = Date()
+            if let reading = RobotBatteryWarning.reading(in: line) {
+                let now = Date()
+                batteryWarning.observe(reading.millivolts, at: now.timeIntervalSince1970, historical: reading.historical)
+                if !reading.historical {
+                    supplyVoltageMillivolts = reading.millivolts
+                    lastVoltageRead = now
+                }
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
                 let stopReason = line.lowercased()
@@ -955,8 +974,6 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             // Existing firmware exposes voltage via a read-only servo snapshot.
             // Never enqueue a console read while realtime drive is active.
             if !driveSessionActive {
-                supplyVoltageMillivolts = nil
-                lastVoltageRead = nil
                 sendCommandNow(.raw("read 1"))
             }
         }

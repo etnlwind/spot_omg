@@ -69,6 +69,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
 
     robot->support_event=0;robot->drive_pose_entry=false;robot_support_reset(robot);
     memset(&robot->joint_trace,0,sizeof(robot->joint_trace));
+    memset(&robot->battery_telemetry,0,sizeof(robot->battery_telemetry));
     robot->locomotion_profile = LOCOMOTION_DEFAULT_PROFILE;
     robot->heading_enabled = true;
     robot->heading_reader = NULL;
@@ -88,7 +89,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->bus = bus;
     robot->last_bus_result = SERVO_BUS_OK;
     robot->last_failed_servo_id = 0U;
-    robot->tracking_enabled = false; /* Experimental until contact/tilt quality is validated. */
+    robot->tracking_enabled = robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_4") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5"); /* Experimental reach supervision. */
     robot->profile_speed = ROBOT_PROFILE_SPEED_DEFAULT;
     robot->profile_acceleration = ROBOT_PROFILE_ACCELERATION_DEFAULT;
     robot->attitude_reader = NULL;
@@ -871,6 +872,7 @@ static RobotResult sample_joint(RobotController *robot,
     if (bus_result != SERVO_BUS_OK) {
         return bus_failure(robot, id, bus_result);
     }
+    battery_telemetry_sample(&robot->battery_telemetry,state.voltage_mv);
     if (position != NULL) {
         *position = state.position;
     }
@@ -1999,8 +2001,27 @@ static RobotResult robot_shared_drive(RobotController *robot)
     robot->drive_pose_entry=false;
     robot->shared_idle=false;
     if(result!=ROBOT_OK)return result;
+    /* Stand seeds 300/30 into the physical servos. Position-only gait writes
+     * do not change those registers: restore and verify the requested profile
+     * before advancing the first walking target. Do not rewrite pose/origin. */
+    ServoBusResult configured=sts3215_sync_profile(robot->bus,g_robot_servo_ids,12,
+        robot->profile_speed,robot->profile_acceleration);
+    if(configured!=SERVO_BUS_OK)return bus_failure(robot,FEETECH_BROADCAST_ID,configured);
+    for(unsigned i=0;i<12;i++) {
+        uint8_t profile[7];
+        configured=servo_bus_read(robot->bus,g_robot_servo_ids[i],STS3215_ADDR_ACCELERATION,profile,sizeof profile);
+        if(configured!=SERVO_BUS_OK)return bus_failure(robot,g_robot_servo_ids[i],configured);
+        if(profile[0]!=robot_servo_profile_acceleration(g_robot_servo_ids[i],robot->profile_acceleration) ||
+           ((uint16_t)profile[5]|((uint16_t)profile[6]<<8))!=robot->profile_speed) {
+            robot->last_failed_servo_id=g_robot_servo_ids[i];return ROBOT_VERIFY_ERROR;
+        }
+    }
+    if(robot->motion_abort_requested)return ROBOT_MOTION_ABORTED;
     memset(&robot->drive_control,0,sizeof(robot->drive_control));
-    s_native_reset_profile(&robot->s_native,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_1"));
+    if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5"))s_native_reset_v625(&robot->s_native);
+    else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_4"))s_native_reset_v624(&robot->s_native);
+    else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_3"))s_native_reset_v623(&robot->s_native);
+    else s_native_reset_profile(&robot->s_native,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_1") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_2"));
     if(native)robot->drive_control.phase=.5f;
     memset(&robot->shared_attitude,0,sizeof(robot->shared_attitude));
     memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
@@ -2037,6 +2058,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
         if(drive_watchdog_due(HAL_GetTick(),request.updated_at_ms,ROBOT_DRIVE_WATCHDOG_MS,stopping || request.stop_requested)) {stopping=true;watchdog=true;}
         if(request.stop_requested)stopping=true;
+        if(stopping && robot->joint_trace.arm_on_stop)joint_trace_arm(&robot->joint_trace);
         if(stage==1 && stopping) {
             for(int i=0;i<4;i++) {from[i]=nominal[i];}
             stage=3;transition=0;
@@ -2052,7 +2074,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         } else if(stage==2) {
             int16_t yaw=0;
             bool yaw_valid=robot->heading_reader && robot->shared_attitude.failures==0 && robot->heading_reader(robot->attitude_context,&yaw);
-            float phase_rate=robot->tracking_enabled?gait_tracking_step(&robot->tracking,compute_started,frame_dt,stopping):1;
+            float phase_rate=robot->tracking_enabled?gait_tracking_step_policy(&robot->tracking,compute_started,frame_dt,stopping,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5")):1;
             if(robot->tracking_enabled && robot->tracking.fault){result=ROBOT_MOTION_ABORTED;robot_latch_locomotion_fault(robot,result);break;}
             bool target_ok;
             if(native) {
@@ -2118,6 +2140,10 @@ static RobotResult robot_shared_drive(RobotController *robot)
         gait_target_history_push(robot,positions);
         result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
         if(result!=ROBOT_OK)break;
+        if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5")) {
+            result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
+            if(result!=ROBOT_OK)break;
+        }
         result=shared_observe(robot);
         uint32_t io_ms=HAL_GetTick()-io_started;
         if(io_ms>robot->drive_peak_io_ms)robot->drive_peak_io_ms=(uint16_t)(io_ms>65535U?65535U:io_ms);

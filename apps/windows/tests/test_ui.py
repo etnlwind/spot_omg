@@ -56,3 +56,36 @@ def test_joystick_release_and_focus_loss_clear_input():
     assert window.input_vector is None and not window.keys
     assert window.connection.latest is None
     window.close();app.processEvents()
+
+
+def test_battery_banner_persists_after_ack_and_escalates(monkeypatch, tmp_path):
+    from spot_controller.battery import BatteryWarning
+    app = QApplication.instance() or QApplication([])
+    calls = []
+    monkeypatch.setattr(QApplication, 'beep', lambda: calls.append('sound'))
+    monkeypatch.setattr(QApplication, 'alert', lambda *args: None)
+    window = Window(); window.show(); app.processEvents()
+    b = BatteryWarning(); b.observe(10900, 0)
+    try:
+        window.snapshot['connected'] = True
+        window.show_battery_warning(b.snapshot())
+        assert window.battery_panel.isVisible()
+        assert '지금 충전' in window.battery_title.text()
+        assert '10.9V' in window.battery_message.text()
+        assert calls == ['sound']
+        window.battery_confirm.click()
+        assert window.battery_panel.isVisible()
+        assert not window.battery_message.isVisible()
+        window.show_battery_warning(b.snapshot())
+        assert calls == ['sound']
+        b.observe(10300, 1); window.show_battery_warning(b.snapshot())
+        assert window.battery_message.isVisible()
+        assert '즉시 사용 중단' in window.battery_title.text()
+        assert calls == ['sound', 'sound']
+        assert window.grab().save(str(tmp_path / 'battery-critical.png'))
+        assert not window.connection.running
+        for t in [2, 4, 7]: b.observe(12000, t)
+        window.show_battery_warning(b.snapshot())
+        assert not window.battery_panel.isVisible()
+    finally:
+        window.close(); app.processEvents()

@@ -28,3 +28,16 @@ firmware/esp32-c3-mini/esp32_c3_stm32_uart_bridge/wifi_secrets.h
 /apps/windows/dist-v62/
 /apps/windows/*.spec
 /apps/windows/test-output/
+
+# Rebuildable experiment and app build outputs; retain logs and firmware bins.
+/artifacts/**/ios-build/
+/artifacts/**/iphone-build/
+/artifacts/**/mac-build/
+/artifacts/**/*.o
+/artifacts/**/*.elf
+/artifacts/**/*.map
+/artifacts/**/*.dylib
+/artifacts/**/c-tests/*
+!/artifacts/**/c-tests/*.json
+!/artifacts/**/c-tests/*.log
+/artifacts/battery-warning-2026-09-15/check-battery*

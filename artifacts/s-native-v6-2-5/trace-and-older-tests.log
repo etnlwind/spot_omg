@@ -1,0 +1,128 @@
+..................F...........F....................                      [100%]
+=================================== FAILURES ===================================
+__________________ test_v621_protected_walk_and_two_step_stop __________________
+
+    def test_v621_protected_walk_and_two_step_stop():
+        from simulation.mujoco.scripts.validation.validate_s_native_v62 import trial
+        report,_=trial(profile=NAME)
+>       assert report['first_fault_s'] is None and report['completed']
+E       assert (5.42 is None)
+
+simulation/mujoco/tests/test_s_native_v621.py:54: AssertionError
+___ test_v621_actual_c_targets_complete_protected_physics_and_stop[command0] ___
+
+kernel = <CDLL '/private/var/folders/z5/ymmbzkc138lfn7jwz50_nf2h0000gn/T/pytest-of-etnlwind/pytest-38/v621-c0/s-native.dylib', handle 74d8f4f0 at 0x104a88550>
+command = (1000, 0)
+
+    @pytest.mark.parametrize('command',[(1000,0),(473,0),(-600,0),(0,500),(0,-500),(600,250)])
+    def test_v621_actual_c_targets_complete_protected_physics_and_stop(kernel,command):
+>       report,_=physical_replay(kernel,command,profile='s_native_v6_2_1')
+
+simulation/mujoco/tests/test_s_native_v621_firmware.py:25: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+lib = <CDLL '/private/var/folders/z5/ymmbzkc138lfn7jwz50_nf2h0000gn/T/pytest-of-etnlwind/pytest-38/v621-c0/s-native.dylib', handle 74d8f4f0 at 0x104a88550>
+command = (1000, 0), heading = True, profile = 's_native_v6_2_1'
+
+    def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1'):
+        """Replay protocol input with tilt protection; None selects Python targets."""
+        plant=Simulation(load_parameters(parse_args([])))
+        robot=RobotController(plant);robot.select_profile(profile)
+        robot.heading.enabled=heading
+        if lib is not None:(lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
+        output=(ct.c_float*12)();rows=[]
+        joints=json.loads((ROOT/'tools/servo_tool/config/joints.json').read_text())['joints']
+        # Independent physical convention: left/front ID1 decreases to adduct;
+        # FR ID4 increases (measured), rear ID7 increases and ID10 decreases.
+        physical_directions=np.array([1,-1,1,-1,1,-1,-1,-1,1,1,1,-1])
+        def targets(phase,amp,linear,yaw):
+            gait=robot.s_native_gait
+            stopping=gait.stop_progress is not None
+            assert lib.step(phase,amp,linear,yaw,*robot.request,.02,int(stopping),output)
+            ticks=(ct.c_uint16*12)();assert lib.encode(output,ticks)
+            decoded=(np.array(ticks)-[j['center'] for j in joints])*physical_directions*360/4096
+            assert np.max(abs(decoded-np.array(output)))<.095
+            if stopping and lib.stopped():gait.stop_progress=1.
+            gait.previous=np.array(output)
+            return gait.previous.copy()
+        for i in range(700):
+            t=i*.02
+            if i==100:
+                robot.command(f'drive {command[0]} {command[1]} 1',t)
+                if lib is not None:
+                    robot.s_native_gait.targets=targets
+                    robot.s_native_gait.prepare_support=lambda *args:None
+            elif i==500:robot.command('@S 1000',t)
+            elif 100<i<500 and i%10==0:robot.command(f'@D {i} {command[0]} {command[1]}',t)
+            robot.tick(t);state=plant.row()
+            rotation=plant.data.xmat[plant.model.body('robot').id].reshape(3,3)
+            rows.append(dict(time_s=t,roll_deg=state['roll_deg'],pitch_deg=state['pitch_deg'],
+                             body_yaw_deg=float(np.degrees(np.arctan2(rotation[1,0],rotation[0,0]))),
+                             position_m=plant.data.qpos[:3].tolist(),applied_yaw=robot.yaw,
+                             heading=robot.heading.diagnostic(),safety=robot.safety,
+                             reply=robot.drain().decode(),target=robot.command_target.tolist()))
+        actual_error=float(np.max(abs(np.degrees(plant.data.qpos[plant.q])-robot.stand_target)))
+>       assert not robot.motion and not robot.transition and robot.safety=='ok'
+E       AssertionError
+
+simulation/mujoco/scripts/validation/validate_s_native_firmware.py:96: AssertionError
+=============================== warnings summary ===============================
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 7 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 1 warning
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: divide by zero encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 7 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 1 warning
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: overflow encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 7 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 1 warning
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: invalid value encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 18 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 11 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: divide by zero encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 18 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 11 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: overflow encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 18 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 11 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: invalid value encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 7 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 1 warning
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: divide by zero encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 7 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 1 warning
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: overflow encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v621.py: 3 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 7 warnings
+simulation/mujoco/tests/test_s_native_v622.py: 1 warning
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: invalid value encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED simulation/mujoco/tests/test_s_native_v621.py::test_v621_protected_walk_and_two_step_stop
+FAILED simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+2 failed, 49 passed, 162 warnings in 22.86s

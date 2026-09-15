@@ -1,0 +1,141 @@
+..................................FF.........................FFF         [100%]
+=================================== FAILURES ===================================
+_____ test_v621_is_first_supported_simulator_choice[True-s_native_v6_2_1] ______
+
+simulator = True, expected = 's_native_v6_2_1'
+
+    @pytest.mark.parametrize('simulator,expected',[(True,'s_native_v6_2_1'),(False,'s_native_v6_2_1')])
+    def test_v621_is_first_supported_simulator_choice(simulator,expected):
+        from spot_controller.protocol import NATIVE_PROFILES
+>       assert NATIVE_PROFILES[2:6]==('s_native_v6_2_2','s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
+E       AssertionError: assert ('s_native_v6..._native_v6_2') == ('s_native_v6..._native_v6_1')
+E         
+E         At index 0 diff: 's_native_v6_2_3' != 's_native_v6_2_2'
+E         Use -v to get more diff
+
+apps/windows/tests/test_protocol.py:53: AssertionError
+_____ test_v621_is_first_supported_simulator_choice[False-s_native_v6_2_1] _____
+
+simulator = False, expected = 's_native_v6_2_1'
+
+    @pytest.mark.parametrize('simulator,expected',[(True,'s_native_v6_2_1'),(False,'s_native_v6_2_1')])
+    def test_v621_is_first_supported_simulator_choice(simulator,expected):
+        from spot_controller.protocol import NATIVE_PROFILES
+>       assert NATIVE_PROFILES[2:6]==('s_native_v6_2_2','s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
+E       AssertionError: assert ('s_native_v6..._native_v6_2') == ('s_native_v6..._native_v6_1')
+E         
+E         At index 0 diff: 's_native_v6_2_3' != 's_native_v6_2_2'
+E         Use -v to get more diff
+
+apps/windows/tests/test_protocol.py:53: AssertionError
+_________________ test_v622_is_latest_supported_hardware_model _________________
+
+    def test_v622_is_latest_supported_hardware_model():
+        from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+        c=Controller(simulator=False);c.opened(0);drain(c)
+        c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2')+b'# ',.1)
+        assert drain(c)==b'read 1\n'
+        c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+        assert drain(c)==b'gaitprofile s_native_v6_2_2\n'
+        c.validate('gaitprofile s_native_v6_2_2')
+>       assert NATIVE_PROFILES[2]=='s_native_v6_2_2'
+E       AssertionError: assert 's_native_v6_2_3' == 's_native_v6_2_2'
+E         
+E         - s_native_v6_2_2
+E         ?               ^
+E         + s_native_v6_2_3
+E         ?               ^
+
+apps/windows/tests/test_protocol.py:203: AssertionError
+_________________ test_v623_is_latest_supported_hardware_model _________________
+
+    def test_v623_is_latest_supported_hardware_model():
+        from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+        c=Controller(simulator=False);c.opened(0);drain(c)
+        c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3')+b'# ',.1)
+        assert drain(c)==b'read 1\n'
+        c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+        assert drain(c)==b'gaitprofile s_native_v6_2_3\n'
+        c.validate('gaitprofile s_native_v6_2_3')
+>       assert NATIVE_PROFILES[1]=='s_native_v6_2_3'
+E       AssertionError: assert 's_native_v6_2_4' == 's_native_v6_2_3'
+E         
+E         - s_native_v6_2_3
+E         ?               ^
+E         + s_native_v6_2_4
+E         ?               ^
+
+apps/windows/tests/test_protocol.py:215: AssertionError
+_________________ test_v624_is_latest_supported_hardware_model _________________
+
+    def test_v624_is_latest_supported_hardware_model():
+        from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+        c=Controller(simulator=False);c.opened(0);drain(c)
+        c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4')+b'# ',.1)
+        assert drain(c)==b'read 1\n'
+        c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+        assert drain(c)==b'gaitprofile s_native_v6_2_4\n'
+        c.validate('gaitprofile s_native_v6_2_4')
+>       assert NATIVE_PROFILES[0]=='s_native_v6_2_4'
+E       AssertionError: assert 's_native_v6_2_5' == 's_native_v6_2_4'
+E         
+E         - s_native_v6_2_4
+E         ?               ^
+E         + s_native_v6_2_5
+E         ?               ^
+
+apps/windows/tests/test_protocol.py:227: AssertionError
+=============================== warnings summary ===============================
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: divide by zero encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: overflow encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: invalid value encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v623.py: 13 warnings
+simulation/mujoco/tests/test_s_native_v624.py: 10 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: divide by zero encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v623.py: 13 warnings
+simulation/mujoco/tests/test_s_native_v624.py: 10 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: overflow encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v623.py: 13 warnings
+simulation/mujoco/tests/test_s_native_v624.py: 10 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: invalid value encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: divide by zero encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: overflow encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: invalid value encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED apps/windows/tests/test_protocol.py::test_v621_is_first_supported_simulator_choice[True-s_native_v6_2_1]
+FAILED apps/windows/tests/test_protocol.py::test_v621_is_first_supported_simulator_choice[False-s_native_v6_2_1]
+FAILED apps/windows/tests/test_protocol.py::test_v622_is_latest_supported_hardware_model
+FAILED apps/windows/tests/test_protocol.py::test_v623_is_latest_supported_hardware_model
+FAILED apps/windows/tests/test_protocol.py::test_v624_is_latest_supported_hardware_model
+5 failed, 59 passed, 81 warnings in 7.54s

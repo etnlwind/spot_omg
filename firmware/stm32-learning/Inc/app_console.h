@@ -25,6 +25,7 @@ typedef struct
     Bno086 *imu;
     bool *imu_log_enabled;
     uint32_t support_event_seen;
+    uint32_t battery_event_seen;
     uint8_t rx_byte;
     char line[APP_CONSOLE_LINE_CAPACITY];
     volatile size_t line_length;

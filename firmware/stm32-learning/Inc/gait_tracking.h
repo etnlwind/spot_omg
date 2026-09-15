@@ -20,7 +20,7 @@ static inline void gait_tracking_sample(GaitTracking *s,unsigned joint,
     if(joint>=12 || !isfinite(error_deg))return;
     s->error[joint]=error_deg;s->sampled_at[joint]=now;s->seen|=(uint16_t)(1U<<joint);
 }
-static inline float gait_tracking_step(GaitTracking *s,uint32_t now,float dt,bool stopping) {
+static inline float gait_tracking_step_policy(GaitTracking *s,uint32_t now,float dt,bool stopping,bool responsive) {
     if(s->fault)return 0;
     s->peak_error=0;s->oldest_ms=0;
     for(unsigned i=0;i<12;i++){
@@ -34,9 +34,12 @@ static inline float gait_tracking_step(GaitTracking *s,uint32_t now,float dt,boo
     float wanted=fmaxf(0,fminf(1,(14-s->peak_error)/8));
     if(s->oldest_ms>360)wanted=0;
     if(wanted==0)s->rate=0;
-    else s->rate+=fmaxf(-.6f*dt,fminf(.2f*dt,wanted-s->rate));
+    else s->rate+=fmaxf(-.6f*dt,fminf((responsive?2.f:.2f)*dt,wanted-s->rate));
     if(s->rate<.05f)s->blocked_ms+=(uint32_t)(dt*1000+.5f);else s->blocked_ms=0;
     if(s->blocked_ms>=600){s->fault=2;s->rate=0;}
     return s->rate;
+}
+static inline float gait_tracking_step(GaitTracking *s,uint32_t now,float dt,bool stopping) {
+    return gait_tracking_step_policy(s,now,dt,stopping,false);
 }
 #endif

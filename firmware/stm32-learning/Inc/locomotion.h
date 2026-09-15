@@ -13,10 +13,11 @@ static inline int locomotion_profile_id(const char *name) {
 }
 static inline bool locomotion_is_native(int profile) {
     return profile==locomotion_profile_id("s_native_v6_1") ||
-           profile==locomotion_profile_id("s_native_v6_2_1");
+           profile==locomotion_profile_id("s_native_v6_2_1") ||
+           profile==locomotion_profile_id("s_native_v6_2_2") || profile==locomotion_profile_id("s_native_v6_2_3") || (profile==locomotion_profile_id("s_native_v6_2_4") || profile==locomotion_profile_id("s_native_v6_2_5"));
 }
 static inline float locomotion_linear(int profile,float linear) {
-    return (profile==3 || profile==4 || profile==5 || profile==6 || profile==7 || profile==8 || profile==9 || profile==10 || profile==11 || profile==locomotion_profile_id("s_native_v6_2_1")) ? fmaxf(-.6f,linear) : linear;
+    return (profile==3 || profile==4 || profile==5 || profile==6 || profile==7 || profile==8 || profile==9 || profile==10 || profile==11 || profile==locomotion_profile_id("s_native_v6_2_1") || profile==locomotion_profile_id("s_native_v6_2_2") || profile==locomotion_profile_id("s_native_v6_2_3") || (profile==locomotion_profile_id("s_native_v6_2_4") || profile==locomotion_profile_id("s_native_v6_2_5"))) ? fmaxf(-.6f,linear) : linear;
 }
 static inline void locomotion_params(int profile,float linear,float p[7]) {
     float w=gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));

@@ -5,7 +5,13 @@ import Network
 
 final class RobotCommandTests: XCTestCase {
     func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
-        XCTAssertEqual(SimulatorGaitProfile.newest, .s_native_v6_2_1)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .s_native_v6_2_5)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.simulatorOnly)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_2"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_3"]))
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_2.simulatorOnly)
+        XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_2.isSupported(capabilities: ["s_native_v6_2_1"]))
+        XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_2.isSupported(capabilities: ["s_native_v6_2_2"]))
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_1.simulatorOnly)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_1.isSupported(capabilities: ["gaitprofiles", "s_native_v6_2"]))
         XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_1.isSupported(capabilities: ["gaitprofiles", "s_native_v6_2_1"]))

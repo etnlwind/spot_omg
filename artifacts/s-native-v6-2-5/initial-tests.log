@@ -1,0 +1,91 @@
+..........F...........F......                                            [100%]
+=================================== FAILURES ===================================
+__________ test_rear_endpoint_pair_symmetry_and_preserved_old_models ___________
+
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x107c1e590>
+
+    def test_rear_endpoint_pair_symmetry_and_preserved_old_models(plant):
+     g=SNativeGait(plant.model,plant.stand_target,PROFILES[NAME])
+     p=g.points(0.,1.,1.,0.)-g.origin
+     np.testing.assert_allclose(p[:,0],[-.135,.020,.020,-.135],atol=1e-10)
+     for phase in np.linspace(0,1,101):
+      d=g.points(phase,1.,1.,0.)-g.origin
+      np.testing.assert_allclose(d[0,[0,2]],d[3,[0,2]],atol=1e-10)
+      np.testing.assert_allclose(d[1,[0,2]],d[2,[0,2]],atol=1e-10)
+     assert PROFILES['s_native_v6_2_2']['params'][:4]==[.5,.5,.145,.012]
+     assert PROFILES['s_native_v6_2_1']['params'][0]==2.
+     d=json.loads((ROOT/'config/locomotion_profiles.json').read_text())
+     assert ['legacy',*d['profiles']][16:20]==['s_native_v6_1','s_native_v6_2_1','s_native_v6_2_2',NAME]
+>    assert RobotController(plant).profile==d['default']=='s_native_v6_2_4'
+E    AssertionError: assert 's_native_v6_2_5' == 's_native_v6_2_4'
+E      
+E      - s_native_v6_2_4
+E      ?               ^
+E      + s_native_v6_2_5
+E      ?               ^
+
+simulation/mujoco/tests/test_s_native_v623.py:33: AssertionError
+____________ test_photo_reference_is_lower_link_angle_not_servo_90 _____________
+
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x107d18040>
+
+    def test_photo_reference_is_lower_link_angle_not_servo_90(plant):
+     report,_=geometry(plant,NAME)
+     for row in report['rear_endpoints'].values():
+      assert 88<row['lower_from_ground_deg']<=90
+>     assert abs(row['x_mm']+125)<.2
+E     assert 1.309566362607157 < 0.2
+E      +  where 1.309566362607157 = abs((-126.30956636260716 + 125))
+
+simulation/mujoco/tests/test_s_native_v624.py:17: AssertionError
+=============================== warnings summary ===============================
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: divide by zero encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: overflow encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: invalid value encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v623.py: 13 warnings
+simulation/mujoco/tests/test_s_native_v624.py: 10 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: divide by zero encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v623.py: 13 warnings
+simulation/mujoco/tests/test_s_native_v624.py: 10 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: overflow encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v623.py: 13 warnings
+simulation/mujoco/tests/test_s_native_v624.py: 10 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: invalid value encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: divide by zero encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: overflow encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v623.py::test_c_python_entry_walk_stop[command0-0]
+simulation/mujoco/tests/test_s_native_v624.py::test_c_python_targets_and_stop[command0-0]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: invalid value encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED simulation/mujoco/tests/test_s_native_v623.py::test_rear_endpoint_pair_symmetry_and_preserved_old_models
+FAILED simulation/mujoco/tests/test_s_native_v624.py::test_photo_reference_is_lower_link_angle_not_servo_90
+2 failed, 27 passed, 81 warnings in 8.60s

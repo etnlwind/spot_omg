@@ -16,6 +16,8 @@ class GaitTracking:
         lib.spot_tracking_reset.argtypes=(ptr,u)
         lib.spot_tracking_sample.argtypes=(ptr,ctypes.c_uint,f,u)
         lib.spot_tracking_step.argtypes=(ptr,u,f,ctypes.c_int,ctypes.POINTER(f));lib.spot_tracking_step.restype=f
+        lib.spot_tracking_step_responsive.argtypes=lib.spot_tracking_step.argtypes
+        lib.spot_tracking_step_responsive.restype=f
         self.state=ctypes.create_string_buffer(lib.spot_tracking_size());self.reset(0)
     def reset(self,now):
         self.lib.spot_tracking_reset(self.state,round(now*1000));self.index=0
@@ -29,8 +31,9 @@ class GaitTracking:
         if not fn((ctypes.c_float*12)(*target),ticks,decoded):raise ValueError('Invalid tracking target')
         measured=round(float(actual[i])*4096/360)*360/4096
         self.lib.spot_tracking_sample(self.state,i,measured-decoded[i],round(now*1000))
-    def step(self,now,dt,stopping):
+    def step(self,now,dt,stopping,responsive=False):
         diag=(ctypes.c_float*4)()
-        self.rate=float(self.lib.spot_tracking_step(self.state,round(now*1000),dt,stopping,diag))
+        fn=self.lib.spot_tracking_step_responsive if responsive else self.lib.spot_tracking_step
+        self.rate=float(fn(self.state,round(now*1000),dt,stopping,diag))
         self.diagnostic=dict(rate=self.rate,peak_error_deg=diag[0],oldest_ms=diag[1],fault=int(diag[2]),blocked_ms=diag[3],contact='unobserved')
         return self.rate

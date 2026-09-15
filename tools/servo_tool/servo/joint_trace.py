@@ -144,7 +144,7 @@ def write_report(path:Path,output:Path,compare:Path|None=None,start_ms=0,end_ms=
         '|---|---:|---:|---:|---:|---:|---:|---:|']
     for k,v in data['joints'].items():
         lines.append(f"|{k}|{v['samples']}|{fmt(v['target_excursion_deg'])}|{fmt(v['observed_excursion_deg'])}|{fmt(v['rms_error_deg'])}|{fmt(v['max_error_deg'])}|{fmt(v['median_sample_gap_ms'])}|{fmt(v['min_voltage_mv']/1000 if v['min_voltage_mv'] is not None else None)}|")
-    lines+=['','## 지연 판정','', '12축 순차 조회에서는 축당 약240ms 간격입니다. 10~20ms 지연을 실측 확정값으로 보고하지 않습니다. JSON의 delay_candidate_ms는 탐색 후보이고 delay_estimate_ms가 null이면 식별 미완료입니다.']
+    lines+=['','## 지연 판정','', '축별 실제 조회 간격은 위 표에 표시합니다. 순차 조회 사이의 빠른 움직임과 극값은 놓칠 수 있습니다. 10~20ms 지연을 실측 확정값으로 보고하지 않습니다. JSON의 delay_candidate_ms는 탐색 후보이고 delay_estimate_ms가 null이면 식별 미완료입니다.']
     if other:
         lines+=['','## 비교 입력 대비 RMS 오차 차이','',f'비교 입력: `{compare}`. 양수면 첫 번째 입력의 오차가 더 큽니다. 정책·전압·바닥·조작 크기를 맞춰 해석해야 합니다.','', '| 관절 | 첫 입력 − 비교 입력 ° |','|---|---:|']
         for k,v in data['joints'].items():
@@ -172,7 +172,7 @@ def download(console,path:Path):
         if len(markers)!=1:raise ValueError('Paged transfer requires V47 jointtracepage firmware')
         first,count,total=map(int,markers[0].split(',')[2:])
         data=[line for line in page if line.startswith(('$JT,C,','$JT,S,'))]
-        if first!=offset or len(data)!=count or not 0<=count<=12 or not first+count<=total<=512:
+        if first!=offset or len(data)!=count or not 0<=count<=12 or not first+count<=total<=768:
             partial.write_text('\n'.join(lines+page)+'\n');raise ValueError('Incomplete or misnumbered trace page')
         if expected_total is not None and total!=expected_total:raise ValueError('Capture changed during transfer')
         expected_total=total;lines.extend(page);partial.write_text('\n'.join(lines)+'\n')

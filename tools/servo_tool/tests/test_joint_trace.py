@@ -115,3 +115,23 @@ def test_paged_download_rejects_missing_record(tmp_path):
     p=tmp_path/'bad.log'
     with pytest.raises(ValueError,match='Incomplete'):download(Broken(),p)
     assert not p.exists() and p.with_suffix('.log.partial').exists()
+
+def test_two_reads_per_frame_downloads_all_768_records(tmp_path):
+    from types import SimpleNamespace
+    from servo.joint_trace import download
+    headers=['$JT,M,1,256,512,0,1,21,3400,254',
+             *[f'$JT,J,{j},{j+1},2048,1' for j in range(12)]]
+    commands=[f'$JT,C,{i},{i*20},{i*20+1},'+','.join(['2048']*12) for i in range(256)]
+    samples=[f'$JT,S,{i*20+2+3*k},{i*20+4+3*k},{i},{(2*i+k)%12},0,2048,0,0,0,11200,30,0'
+             for i in range(256) for k in range(2)]
+    data=commands+samples
+    class Console:
+        def send(self,command,timeout):
+            offset=int(command.split()[2]);part=data[offset:offset+12]
+            lines=(headers if offset==0 else [])+[f'$JT,P,{offset},{len(part)},768']+part
+            if offset+len(part)==768:lines+=['$JT,END']
+            return SimpleNamespace(ok=True,lines=lines,text='\n'.join(lines))
+    p=download(Console(),tmp_path/'two-reads.log')
+    meta,_,c,s=parse(p.read_text());assert len(c)==256 and len(s)==512
+    result,_=analyze(p.read_text())
+    assert result['joints']['FL-J1']['median_sample_gap_ms']==120

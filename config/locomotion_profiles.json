@@ -1,6 +1,6 @@
 {
   "status": "Shared deployment manifest for STM32 and MuJoCo; physical parameters require hardware measurement",
-  "default": "s_native_v6_2_1",
+  "default": "s_native_v6_2_5",
   "profiles": {
     "crawl": {
       "label": "Crawl / four-beat",
@@ -324,6 +324,78 @@
       "turn_input_limit": 0.5,
       "reverse_input_limit": 0.6,
       "validation": "Continuous crossing and moving knee recovery; C port validation pending; physical contact remains."
+    },
+    "s_native_v6_2_2": {
+      "label": "S 출발 · 고속 V6.2.2 · 실험",
+      "family": "trot",
+      "params": [
+        0.5,
+        0.5,
+        0.145,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Time-compressed V6.2.1 shape; supported-body experiment, floor gait not validated."
+    },
+    "s_native_v6_2_3": {
+      "label": "S 출발 · 확장 V6.2.3 · 실험",
+      "family": "trot",
+      "params": [
+        1.0,
+        0.5,
+        0.155,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Rear reach -135mm, smooth swing lift; actual speed and tracking require physical validation."
+    },
+    "s_native_v6_2_4": {
+      "label": "S 출발 · 도달 확인 V6.2.4 · 실험",
+      "family": "trot",
+      "params": [
+        1.0,
+        0.5,
+        0.145,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Photo-reference lower leg near vertical at -125mm; existing tracking supervisor enabled by default; physical reach unverified."
+    },
+    "s_native_v6_2_5": {
+      "label": "S 출발 · 신속 회수 V6.2.5 · 실험",
+      "family": "trot",
+      "params": [
+        1.0,
+        0.5,
+        0.145,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Lift before swing translation; faster tracking recovery and 120ms encoder sweep. Hardware validation pending."
     }
   }
 }

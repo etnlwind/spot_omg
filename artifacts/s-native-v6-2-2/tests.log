@@ -1,0 +1,111 @@
+.........F.....................................................F         [100%]
+=================================== FAILURES ===================================
+_____________ test_fast_c_python_parity_and_stopping[command8-2.0] _____________
+
+kernel = <CDLL '/private/var/folders/z5/ymmbzkc138lfn7jwz50_nf2h0000gn/T/pytest-of-etnlwind/pytest-24/v6220/s-native.dylib', handle 74d82d30 at 0x10582f220>
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x102d7dd80>
+command = (0.6, 0.25), stop = 2.0
+
+    @pytest.mark.parametrize('command,stop', [((1.,0.),0.),((1.,0.),.04),((1.,0.),.3),((1.,0.),1.2),((1.,0.),4.),((-.6,0.),2.),((0.,.5),2.),((0.,-.5),2.),((.6,.25),2.)])
+    def test_fast_c_python_parity_and_stopping(kernel,plant,command,stop):
+>    assert compare(kernel,plant,command,stop,profile='s_native_v6_2_2')['max_target_error_deg']<.06
+E    assert 0.09126225835596458 < 0.06
+
+simulation/mujoco/tests/test_s_native_v622.py:29: AssertionError
+_________________ test_v622_is_latest_supported_hardware_model _________________
+
+    def test_v622_is_latest_supported_hardware_model():
+        c=Controller(simulator=False)
+        c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2')+b'# ',.1)
+        c.validate('gaitprofile s_native_v6_2_2')
+>       assert NATIVE_PROFILES[0]=='s_native_v6_2_2'
+E       NameError: name 'NATIVE_PROFILES' is not defined
+
+apps/windows/tests/test_protocol.py:199: NameError
+=============================== warnings summary ===============================
+simulation/mujoco/tests/test_s_native_v622.py::test_preserves_phase_geometry_and_support_reference
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_c_targets_match_python_and_fit_calibrated_servos[command0-0.0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command1]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command2]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command3]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command4]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command5]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: divide by zero encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v622.py::test_preserves_phase_geometry_and_support_reference
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_c_targets_match_python_and_fit_calibrated_servos[command0-0.0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command1]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command2]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command3]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command4]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command5]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: overflow encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v622.py::test_preserves_phase_geometry_and_support_reference
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_c_targets_match_python_and_fit_calibrated_servos[command0-0.0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command1]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command2]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command3]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command4]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command5]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:170: RuntimeWarning: invalid value encountered in matmul
+    local=points@pad_rotation
+
+simulation/mujoco/tests/test_s_native_v622.py: 10 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 18 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: divide by zero encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v622.py: 10 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 18 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: overflow encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v622.py: 10 warnings
+simulation/mujoco/tests/test_s_native_v621_firmware.py: 18 warnings
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/standing_pose.py:15: RuntimeWarning: invalid value encountered in matmul
+    world=self.vertices[i] @ d.geom_xmat[f].reshape(3,3).T+d.geom_xpos[f]
+
+simulation/mujoco/tests/test_s_native_v622.py::test_preserves_phase_geometry_and_support_reference
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_c_targets_match_python_and_fit_calibrated_servos[command0-0.0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command1]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command2]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command3]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command4]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command5]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: divide by zero encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v622.py::test_preserves_phase_geometry_and_support_reference
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_c_targets_match_python_and_fit_calibrated_servos[command0-0.0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command1]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command2]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command3]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command4]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command5]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: overflow encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+simulation/mujoco/tests/test_s_native_v622.py::test_preserves_phase_geometry_and_support_reference
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_c_targets_match_python_and_fit_calibrated_servos[command0-0.0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command0]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command1]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command2]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command3]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command4]
+simulation/mujoco/tests/test_s_native_v621_firmware.py::test_v621_actual_c_targets_complete_protected_physics_and_stop[command5]
+  /Users/etnlwind/project/spot_omg/simulation/mujoco/runtime/cad_physics.py:94: RuntimeWarning: invalid value encountered in matmul
+    return float(np.max(model.mesh_vert[start:start+count]@local))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED simulation/mujoco/tests/test_s_native_v622.py::test_fast_c_python_parity_and_stopping[command8-2.0]
+FAILED apps/windows/tests/test_protocol.py::test_v622_is_latest_supported_hardware_model
+2 failed, 62 passed, 132 warnings in 18.93s

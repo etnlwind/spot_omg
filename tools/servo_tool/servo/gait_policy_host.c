@@ -386,6 +386,10 @@ SPOT_GAIT_EXPORT float spot_tracking_step(void *s,uint32_t now,float dt,int stop
  GaitTracking *t=s;float rate=gait_tracking_step(t,now,dt,stop!=0);
  diag[0]=t->peak_error;diag[1]=t->oldest_ms;diag[2]=t->fault;diag[3]=t->blocked_ms;return rate;
 }
+SPOT_GAIT_EXPORT float spot_tracking_step_responsive(void *s,uint32_t now,float dt,int stop,float diag[4]) {
+ GaitTracking *t=s;float rate=gait_tracking_step_policy(t,now,dt,stop!=0,true);
+ diag[0]=t->peak_error;diag[1]=t->oldest_ms;diag[2]=t->fault;diag[3]=t->blocked_ms;return rate;
+}
 
 #include "locomotion_servo.h"
 #include "s_native_servo.h"

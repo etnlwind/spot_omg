@@ -97,11 +97,15 @@ enum RobotConnectionTarget: String, CaseIterable {
 
 
 enum SimulatorGaitProfile: String, CaseIterable {
-    case s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
+    case s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
     static var newest: Self { .allCases[0] }
     case attitudepd, centerpivot, arcsupport, arcturn, legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
     case cushion_reach, cushion_j2lift, cushion_wbc, cushion_forward, cushion_support_shift, cushion_support_shift_v2, cushion_v2_push, cushion_diagonal_sync_wide80
     func isSupported(capabilities: Set<String>) -> Bool {
+        (self != .s_native_v6_2_5 || capabilities.contains("s_native_v6_2_5")) &&
+        (self != .s_native_v6_2_4 || capabilities.contains("s_native_v6_2_4")) &&
+        (self != .s_native_v6_2_3 || capabilities.contains("s_native_v6_2_3")) &&
+        (self != .s_native_v6_2_2 || capabilities.contains("s_native_v6_2_2")) &&
         (self != .s_native_v6_2_1 || capabilities.contains("s_native_v6_2_1")) &&
         (self != .s_native_v6_2 || capabilities.contains("s_native_v6_2")) &&
         (self != .s_native_v6_1 || capabilities.contains("s_native_v6_1")) &&
@@ -118,6 +122,10 @@ enum SimulatorGaitProfile: String, CaseIterable {
     var simulatorOnly: Bool { [.s_native_v6_2, .s_native_v6, .s_native_v5, .s_native_v4, .s_native_v3, .s_native_v2, .s_native_v1, .cushion_reach, .cushion_j2lift, .cushion_wbc, .cushion_forward, .cushion_support_shift, .cushion_support_shift_v2, .cushion_v2_push, .cushion_diagonal_sync_wide80].contains(self) }
     var title: String {
         switch self {
+        case .s_native_v6_2_5: return "S 출발 · 신속 회수 V6.2.5"
+        case .s_native_v6_2_4: return "S 출발 · 도달 확인 V6.2.4"
+        case .s_native_v6_2_3: return "S 출발 · 확장 V6.2.3"
+        case .s_native_v6_2_2: return "S 출발 · 고속 V6.2.2"
         case .s_native_v6_2_1: return "S 출발 · 연속 회수 V6.2.1"
         case .s_native_v6_2: return "S 출발 · 뒤쪽 125mm V6.2"
         case .s_native_v6_1: return "S 출발 · 뒤쪽 65mm V6.1"
@@ -160,7 +168,7 @@ enum SimulatorGaitProfile: String, CaseIterable {
 extension SimulatorGaitProfile {
     var benchmarkSpeedMetersPerSecond: Double? {
         switch self {
-        case .s_native_v6_2_1, .s_native_v6_2, .s_native_v6_1, .s_native_v6, .s_native_v5, .s_native_v4, .s_native_v3, .s_native_v2, .s_native_v1: return nil
+        case .s_native_v6_2_5, .s_native_v6_2_4, .s_native_v6_2_3, .s_native_v6_2_2, .s_native_v6_2_1, .s_native_v6_2, .s_native_v6_1, .s_native_v6, .s_native_v5, .s_native_v4, .s_native_v3, .s_native_v2, .s_native_v1: return nil
         case .legacy: return 0.047956415
         case .crawl: return 0.028477535
         case .cruise: return 0.157175313
@@ -193,6 +201,64 @@ extension SimulatorGaitProfile {
         return "(\(String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), speed))m/s)"
     }
 
-    var titleWithSpeed: String { if self == .s_native_v6_2_1 || self == .s_native_v6_2 || self == .s_native_v6_1 || self == .s_native_v6 || self == .s_native_v5 || self == .s_native_v4 || self == .s_native_v3 || self == .s_native_v2 || self == .s_native_v1 { return "\(title) · 실험" }; return "\(title) \(Self.speedSuffix(benchmarkSpeedMetersPerSecond))" }
+    var titleWithSpeed: String { if self == .s_native_v6_2_5 || self == .s_native_v6_2_4 || self == .s_native_v6_2_3 || self == .s_native_v6_2_2 || self == .s_native_v6_2_1 || self == .s_native_v6_2 || self == .s_native_v6_1 || self == .s_native_v6 || self == .s_native_v5 || self == .s_native_v4 || self == .s_native_v3 || self == .s_native_v2 || self == .s_native_v1 { return "\(title) · 실험" }; return "\(title) \(Self.speedSuffix(benchmarkSpeedMetersPerSecond))" }
 }
 // END GENERATED GAIT SPEEDS
+
+/// 3S LiPo warning policy. Servo-rail voltage is not a cell-level fuel gauge.
+struct RobotBatteryWarning {
+    static let chargeMV = 11_000
+    static let criticalMV = 10_500
+    static let recoveredMV = 11_400
+    private(set) var level = 0
+    private(set) var detectedMV: Int?
+    private var recoveryStarted: TimeInterval?
+    private var recoveryLast: TimeInterval?
+    private var recoveryCount = 0
+
+    mutating func observe(_ mv: Int, at now: TimeInterval, historical: Bool = false) {
+        guard (1...60_000).contains(mv) else { return }
+        let incoming = mv <= Self.criticalMV ? 2 : mv <= Self.chargeMV ? 1 : 0
+        if incoming > 0 {
+            if incoming >= level { detectedMV = min(detectedMV ?? mv, mv) }
+            level = max(level, incoming)
+        }
+        // A completed gait's minimum can raise a warning, never clear one.
+        if historical { return }
+        guard level > 0, mv >= Self.recoveredMV else {
+            recoveryStarted = nil; recoveryLast = nil; recoveryCount = 0; return
+        }
+        if let last = recoveryLast, now - last < 1 { return }
+        if let last = recoveryLast, now - last > 15 {
+            recoveryStarted = nil; recoveryCount = 0
+        }
+        if recoveryStarted == nil { recoveryStarted = now }
+        recoveryLast = now; recoveryCount += 1
+        if recoveryCount >= 3, now - (recoveryStarted ?? now) >= 5 {
+            self = RobotBatteryWarning()
+        }
+    }
+
+    var title: String { level == 2 ? "즉시 사용 중단 · 배터리 충전" : "배터리 부족 · 지금 충전하세요" }
+    var message: String {
+        let voltage = detectedMV.map { String(format: "감지 전압 %.1fV. ", Double($0) / 1000) } ?? ""
+        return voltage + "보행을 멈추고 몸체를 지지한 뒤 전원 스위치를 끄고 충전하세요."
+    }
+
+    static func reading(in line: String) -> (millivolts: Int, historical: Bool)? {
+        let prefix: String
+        let historical: Bool
+        if line.hasPrefix("ID 1 ") { prefix = "voltage="; historical = false }
+        else if line.hasPrefix("$BATTERY ") { prefix = "mv="; historical = false }
+        else if line.hasPrefix("Gait diagnostics:") { prefix = "min_voltage="; historical = true }
+        else { return nil }
+        guard let field = line.split(separator: " ").first(where: { $0.hasPrefix(prefix) }) else { return nil }
+        var value = field.dropFirst(prefix.count)
+        if prefix != "mv=" {
+            guard value.hasSuffix("mV") else { return nil }
+            value = value.dropLast(2)
+        }
+        guard let mv = Int(value), (1...60_000).contains(mv) else { return nil }
+        return (mv, historical)
+    }
+}

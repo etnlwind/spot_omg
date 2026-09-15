@@ -52,6 +52,8 @@ class RobotController:
         self.stow_path = False
         self.stow_queue = []
         self.phase = 0.
+        self.profile_speed=3400;self.profile_acceleration=254
+        self.drive_profile_pending=False
         self.turn_assist = 0.
         self.linear = self.yaw = 0.
         self.request = (0., 0.)
@@ -75,6 +77,7 @@ class RobotController:
         self.support_shift=None
         self.footstep_tracker=None
         self.profile = NAME if NAME in self.profiles else json.loads(PROFILE_FILE.read_text()).get('default','legacy')
+        self.tracking_enabled = self.tracking_enabled or self.profiles.get(self.profile,{}).get("feedback_tracking",False)
         self.stopping_reason = None
         self.pending_profile = None
         self.imu = BNO055Emulator(BNO055Config(**plant.p.get("bno055", {})))
@@ -147,6 +150,8 @@ class RobotController:
     def blend_pose(self,target,completion):
         self.capture_current_target()
         _,duration=shared_pose_frame(self.target,target)
+        self.plant.servo_profile.set(self.profile_speed if duration==0 else 300,
+                                     self.profile_acceleration if duration==0 else 30)
         self.blend(target,completion,max(.02,duration))
 
     def capture_current_target(self):
@@ -213,6 +218,8 @@ class RobotController:
             raise ValueError('unknown profile: '+name)
         if self.motion or self.transition:
             raise ValueError('stop before changing profile')
+        if self.profile in ("s_native_v6_2_4","s_native_v6_2_5") or name in ("s_native_v6_2_4","s_native_v6_2_5"):
+            self.tracking_enabled=name in ("s_native_v6_2_4","s_native_v6_2_5")
         self.profile = name
         if name=='attitudepd':
             from simulation.mujoco.runtime.body_stabilizer import BodyStabilizer
@@ -256,9 +263,18 @@ class RobotController:
                 self.reply(f'$STABILIZE enabled={int(self.body_stabilizer.enabled)} status={status} policy={self.profile} rate_hz=50')
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-1-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-5-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
+            elif cmd == 'profile':
+                if len(words)==1:self.reply(f'Profile: speed={self.profile_speed} acceleration={self.profile_acceleration}')
+                elif len(words)==3 and not self.motion and not self.transition:
+                    speed,acceleration=map(int,words[1:])
+                    if not 1<=speed<=3400 or not 0<=acceleration<=254:raise ValueError('Invalid profile')
+                    self.profile_speed=speed;self.profile_acceleration=acceleration;self.reply()
+                else:raise ValueError('profile [speed acceleration] requires idle')
+            elif cmd == 'servoprofile':
+                self.reply('$SERVOPROFILE '+json.dumps(self.plant.servo_profile.snapshot()))
             elif cmd == 'tracking':
                 if len(words)!=2 or words[1] not in ('on','off') or self.motion or self.transition:
                     raise ValueError('tracking on|off requires idle')
@@ -446,6 +462,10 @@ class RobotController:
             from simulation.mujoco.runtime.pivot_turn import PivotTurn
             self.pivot_turn=PivotTurn(self.plant.model);self.pivot_turn.set_entry(self.command_target)
         self.motion=motion; self.elapsed=self.phase=self.linear=self.yaw=0.
+        if motion[0]=='drive':
+            # Mirror physical Stand -> drive register persistence.
+            self.plant.servo_profile.set(300,30)
+            self.drive_profile_pending=True
         self.s_gait_frame=None
         if self.profiles.get(self.profile,{}).get('s_native'):
             from simulation.mujoco.runtime.s_native_gait import SNativeGait
@@ -530,21 +550,37 @@ class RobotController:
                         self.pose='stow-paused'
                     self.reply(completion)
         elif self.motion:
+            if self.drive_profile_pending:
+                if self.plant.p.get('firmware_servo_profile_restore',True):
+                    self.plant.servo_profile.set(self.profile_speed,self.profile_acceleration)
+                self.drive_profile_pending=False
             self.nominal_phase=self.phase  # target time, before the gait advances
             if self.motion[0]=='drive' and (self.profile=='legacy' or (self.profile in self.deployed_profiles and self.profiles[self.profile]==self.deployed_profiles[self.profile])):
                 self.target=shared_drive_step(self)
             else:
-                self.elapsed+=.02
-                self.linear=self.plant.policy.drive_slew(round(self.linear*1000),round(self.request[0]*1000))/1000
+                rate=1.
+                if self.profiles.get(self.profile,{}).get('s_native') and self.tracking_enabled:
+                    if self.elapsed==0:self.tracking.reset(float(self.plant.data.time))
+                    rate=self.tracking.step(float(self.plant.data.time),.02,bool(self.stopping_reason),responsive=self.profiles[self.profile].get("tracking_responsive",False))
+                    if self.tracking.diagnostic.get('fault'):
+                        self.capture_current_target();self.motion=None;self.transition=None
+                        self.request=(0.,0.);self.linear=self.yaw=0.;self.torque=False
+                        self.safety='tracking';self.pose='custom'
+                        self.reply('$SPOTDRIVE stopped reason=tracking feedback fault')
+                        return
+                progress=.02*rate
+                limit=int(2000*progress+.5)
+                self.elapsed+=progress
+                self.linear=(round(self.linear*1000)+np.clip(round(self.request[0]*1000)-round(self.linear*1000),-limit,limit))/1000
                 correction=self.heading.update(self.imu_reading,self.request[0],self.request[1],self.yaw,
                     permitted=self.motion[0]=='drive' and not self.stopping_reason and self.safety=='ok')
-                self.yaw=self.plant.policy.drive_slew(round(self.yaw*1000),round((self.request[1]+correction)*1000))/1000
+                self.yaw=(round(self.yaw*1000)+np.clip(round((self.request[1]+correction)*1000)-round(self.yaw*1000),-limit,limit))/1000
                 result=self.gait(self.phase,self.plant.policy.smootherstep(min(1,self.elapsed)))
                 self.target=np.array([result[k] for k in KEYS])
                 period=self.plant.policy.drive_period_ms(round(self.linear*1000),round(self.yaw*1000))/1000 if self.motion[0]=='drive' else self.motion[2]
                 if self.motion[0] in ('drive','profile') and self.profile != 'legacy':
                     period=self.active_profile_params()[0]*(1.35-.35*min(1,abs(self.linear)+abs(self.yaw)))
-                self.phase=(self.phase+.02/period)%1
+                self.phase=(self.phase+progress/period)%1
             try:
                 self.rebase_gait_on_s()
             except ValueError as error:
@@ -687,10 +723,11 @@ class RobotController:
             self.command_target=self.pivot_hold.apply(self.command_target,encoders,self.attitude_filter,self.imu_reading,
                 self.phase,self.active_profile_params()[1],hold_config,enabled)
         if not self.stow_path:
-            self.tracking.sample(float(self.plant.data.time),self.command_target,
-                np.degrees(self.plant.data.qpos[self.plant.q]),drop=self.plant.p.get('tracking_feedback_drop',False))
+            for _ in range(self.profiles.get(self.profile,{}).get('tracking_samples_per_frame',1)):
+                self.tracking.sample(float(self.plant.data.time),self.command_target,
+                    np.degrees(self.plant.data.qpos[self.plant.q]),drop=self.plant.p.get('tracking_feedback_drop',False))
         self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque,
-                        native_servo=self.profile in ('s_native_v6_1','s_native_v6_2','s_native_v6_2_1'))
+                        native_servo=self.profile in ('s_native_v6_1','s_native_v6_2','s_native_v6_2_1','s_native_v6_2_2','s_native_v6_2_3','s_native_v6_2_4','s_native_v6_2_5'))
         self.imu_reading = self.imu.read(float(self.plant.data.time))
         # Ignore configured sensor-entry warmup; subsequent missing reads fail
         # after three control polls, as in firmware. Ground truth is display only.

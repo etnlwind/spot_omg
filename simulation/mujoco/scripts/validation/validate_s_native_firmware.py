@@ -20,6 +20,9 @@ def load_binding(directory):
     path=build_shared([firmware/'tests/s_native_binding.c',firmware/'Src/robot_config.c'],
                       firmware/'Inc',directory/('s-native'+library_suffix()))
     lib=ct.CDLL(str(path));lib.reset.argtypes=[];lib.reset.restype=None
+    lib.reset_v625.argtypes=[];lib.reset_v625.restype=None
+    lib.reset_v624.argtypes=[];lib.reset_v624.restype=None
+    lib.reset_v623.argtypes=[];lib.reset_v623.restype=None
     lib.reset_v621.argtypes=[];lib.reset_v621.restype=None
     lib.step.argtypes=[ct.c_float]*7+[ct.c_int,ct.POINTER(ct.c_float)];lib.step.restype=ct.c_int
     lib.encode.argtypes=[ct.POINTER(ct.c_float),ct.POINTER(ct.c_uint16)];lib.encode.restype=ct.c_int
@@ -29,7 +32,7 @@ def load_binding(directory):
 def compare(lib,plant,request,stop_after,profile='s_native_v6_1'):
     parameters=PROFILES[profile]
     gait=SNativeGait(plant.model,plant.stand_target,parameters)
-    (lib.reset_v621 if profile=='s_native_v6_2_1' else lib.reset)()
+    (lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
     phase=.5;linear=yaw=0.;previous=None;error=0.;stop_tick=round(stop_after/.02)
     output=(ct.c_float*12)()
     for i in range(stop_tick+round(parameters['stop_period_s']/.02)+5):
@@ -40,7 +43,10 @@ def compare(lib,plant,request,stop_after,profile='s_native_v6_1'):
         gait.prepare_support(rl,ry)
         u=min(1,(i+1)*.02);amp=u**3*(10+u*(-15+6*u))
         reference=gait.targets(phase,amp,linear,yaw)
-        if not lib.step(phase,amp,linear,yaw,rl,ry,.02,int(stopping),output):
+        # A Python phase just below 1 can round to float32 1.0. Firmware
+        # wraps its float clock before calling the kernel; mirror that boundary.
+        c_phase=ct.c_float(phase).value % 1.
+        if not lib.step(c_phase,amp,linear,yaw,rl,ry,.02,int(stopping),output):
             raise AssertionError(f'C IK failed at {request=} {i=} {phase=}')
         actual=np.array(output);error=max(error,float(np.max(abs(actual-reference))))
         if error>.25:raise AssertionError(f'C/Python mismatch {error:.4f} deg at {request=} {i=} {actual=} {reference=}')
@@ -54,7 +60,7 @@ def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1')
     plant=Simulation(load_parameters(parse_args([])))
     robot=RobotController(plant);robot.select_profile(profile)
     robot.heading.enabled=heading
-    if lib is not None:(lib.reset_v621 if profile=='s_native_v6_2_1' else lib.reset)()
+    if lib is not None:(lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
     output=(ct.c_float*12)();rows=[]
     joints=json.loads((ROOT/'tools/servo_tool/config/joints.json').read_text())['joints']
     # Independent physical convention: left/front ID1 decreases to adduct;

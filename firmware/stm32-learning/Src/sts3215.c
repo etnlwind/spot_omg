@@ -124,6 +124,26 @@ ServoBusResult sts3215_write_position(ServoBus *bus,
                            sizeof(data));
 }
 
+ServoBusResult sts3215_sync_profile(ServoBus *bus, const uint8_t *servo_ids,
+                                    size_t servo_count, uint16_t speed, uint8_t acceleration)
+{
+    if(!bus || !servo_ids || servo_count==0 || servo_count>12 || speed==0 || speed>3400 || acceleration>254)
+        return SERVO_BUS_INVALID_ARGUMENT;
+    /* Preserve wire-format goal/time bytes, including signed multi-turn goals.
+     * Some installed servos read back acceleration=50 after separate profile
+     * writes. Use the same complete 41..47 block as position control instead.
+     * Never reconstruct the goal from wrapped PRESENT_POSITION feedback. */
+    uint8_t items[12U*7U];
+    for(size_t i=0;i<servo_count;i++) {
+        uint8_t *item=&items[7U*i];
+        ServoBusResult result=servo_bus_read(bus,servo_ids[i],STS3215_ADDR_ACCELERATION,item,7U);
+        if(result!=SERVO_BUS_OK)return result;
+        item[0]=robot_servo_profile_acceleration(servo_ids[i],acceleration);
+        feetech_encode_u16(speed,&item[5]);
+    }
+    return servo_bus_sync_write(bus,STS3215_ADDR_ACCELERATION,7U,servo_ids,items,servo_count);
+}
+
 ServoBusResult sts3215_sync_move(ServoBus *bus,
                                  const uint8_t *servo_ids,
                                  const uint16_t *positions,

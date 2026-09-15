@@ -19,6 +19,7 @@ extern "C" {
 #define STS3215_ADDR_TORQUE_ENABLE        40U
 #define STS3215_ADDR_ACCELERATION         41U
 #define STS3215_ADDR_GOAL_POSITION        42U
+#define STS3215_ADDR_GOAL_SPEED           46U
 #define STS3215_ADDR_PRESENT_POSITION     56U
 #define STS3215_ADDR_PRESENT_CURRENT      69U
 
@@ -56,6 +57,9 @@ ServoBusResult sts3215_write_position(ServoBus *bus,
                                       uint16_t speed,
                                       uint8_t acceleration);
 
+/* Update the motion profile; preserve existing goal/time bytes and torque. */
+ServoBusResult sts3215_sync_profile(ServoBus *bus, const uint8_t *servo_ids,
+                                    size_t servo_count, uint16_t speed, uint8_t acceleration);
 ServoBusResult sts3215_sync_move(ServoBus *bus,
                                  const uint8_t *servo_ids,
                                  const uint16_t *positions,

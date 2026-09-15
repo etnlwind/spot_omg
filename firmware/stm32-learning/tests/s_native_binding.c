@@ -4,6 +4,9 @@
 #include "s_native_servo.h"
 static SNativeControl state;
 void reset(void) { s_native_reset(&state); }
+void reset_v624(void) { s_native_reset_v624(&state); }
+void reset_v625(void) { s_native_reset_v625(&state); }
+void reset_v623(void) { s_native_reset_v623(&state); }
 void reset_v621(void) { s_native_reset_profile(&state,true); }
 int step(float phase,float amplitude,float linear,float yaw,float rl,float ry,float dt,int stop,float out[12]) {
     GaitPolicyLegTarget target[4];

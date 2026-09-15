@@ -4,6 +4,7 @@
 #include "arc_turn.h"
 #include "s_native_data.h"
 #include "s_native_v621_data.h"
+#include "s_native_v623_data.h"
 #include <string.h>
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC push_options
@@ -75,6 +76,15 @@ void s_native_reset(SNativeControl *s) {
 void s_native_reset_profile(SNativeControl *s,bool continuous_recovery) {
     s_native_reset(s);s->continuous_recovery=continuous_recovery;
 }
+void s_native_reset_v623(SNativeControl *s) {
+    s_native_reset_profile(s,true);s->extended_reach=true;s->extended_rear_m=.115f;
+}
+void s_native_reset_v624(SNativeControl *s) {
+    s_native_reset_v623(s);s->extended_rear_m=.105f;
+}
+void s_native_reset_v625(SNativeControl *s) {
+    s_native_reset_v624(s);s->placement_swing=true;
+}
 bool s_native_stopped(const SNativeControl *s) { return s->stop_progress>=1; }
 
 static void sn_support_update(SNativeControl *s,float linear,float yaw) {
@@ -84,10 +94,11 @@ static void sn_support_update(SNativeControl *s,float linear,float yaw) {
     float x=gait_policy_clampf((linear+1)*10,0,20),y=gait_policy_clampf((yaw+.5f)*10,0,10);
     int a=(int)fminf(19,floorf(x)),b=(int)fminf(9,floorf(y));float u=x-a,v=y-b;
     if(s->continuous_recovery) {
+        const int16_t (*table)[11][1+2*SN_V621_HARMONICS]=s->extended_reach?sn_v623_support_um:sn_v621_support_um;
         float coefficient[1+2*SN_V621_HARMONICS];
         for(int k=0;k<1+2*SN_V621_HARMONICS;k++)coefficient[k]=1.e-6f*(
-            (1-u)*((1-v)*sn_v621_support_um[a][b][k]+v*sn_v621_support_um[a][b+1][k])+
-            u*((1-v)*sn_v621_support_um[a+1][b][k]+v*sn_v621_support_um[a+1][b+1][k]));
+            (1-u)*((1-v)*table[a][b][k]+v*table[a][b+1][k])+
+            u*((1-v)*table[a+1][b][k]+v*table[a+1][b+1][k]));
         for(int j=0;j<64;j++)s->support[j]=coefficient[0];
         /* Reconstruct once per requested input change. Each harmonic needs
          * one sin/cos pair, then a bounded oscillator recurrence. */
@@ -166,12 +177,16 @@ bool s_native_step(SNativeControl *s,float phase,float amplitude,float linear,fl
     for(int i=0;i<4;i++) {
         float lp=fmodf(phase+offsets[i],1),c=1-2*smooth(fmodf(lp,.5f)/.5f);
         if(lp>=.5f)c=-c;
+        if(s->placement_swing && lp>=.5f)
+            c=-1+2*smooth(((lp-.5f)/.5f-.2f)/.6f);
         float back=fmaxf(0,-c),swing=(lp-.5f)/.5f;
         float lift=swing>0 && swing<1?sqrtf(fmaxf(0,sinf(GAIT_POLICY_PI*swing))):0;
         if(s->continuous_recovery)lift=sqrtf(lift);
+        if(s->extended_reach)lift=smooth(fminf(swing,1-swing)/.35f);
+        if(s->placement_swing)lift=smooth(fminf(swing,1-swing)/.3f);
         float height=.012f*activity*lift;
         float rear=.045f;
-        if(s->continuous_recovery) { back=(1-c)/2;rear=.105f; }
+        if(s->continuous_recovery) { back=(1-c)/2;rear=s->extended_reach?s->extended_rear_m:.105f; }
         /* Right-positive protocol yaw; stance feet oppose body rotation. */
         goal[i][0]=sn_origin[i][0]+amplitude*(.02f*linear*c-rear*linear*back*back*back+.10f*yaw*sn_origin[i][1]*c+transfer);
         goal[i][1]=sn_origin[i][1]-amplitude*.10f*yaw*sn_origin[i][0]*c+activity*sn_lateral[i]+amplitude*support;

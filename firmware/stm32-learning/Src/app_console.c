@@ -683,11 +683,11 @@ static void command_sync_state(AppConsole *console)
     }
 
     if(console->robot->stow_active)pose=console->robot->stow_complete?"stow":"stow-paused";
-    char message[512];
+    char message[640];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,jointtrace,jointtracepage,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -1762,7 +1762,18 @@ static void command_balance(AppConsole *console, char *mode)
 }
 
 void app_console_service_realtime(AppConsole *console) {
-    if(!console || !console->robot || !console->stabilize_reply_pending)return;
+    if(!console || !console->robot)return;
+    if(!console->stabilize_reply_pending) {
+        uint16_t mv=battery_telemetry_poll(&console->robot->battery_telemetry,HAL_GetTick(),&console->battery_event_seen);
+        if(mv && console->uart) {
+            char battery[40];
+            int count=snprintf(battery,sizeof(battery),"$BATTERY mv=%u\r\n",(unsigned)mv);
+            /* Foreground, bounded ~2ms at 115200 baud; never another servo read.
+             * Defer telemetry when a realtime ACK owns this service slot. */
+            (void)HAL_UART_Transmit(console->uart,(uint8_t*)battery,(uint16_t)count,5U);
+        }
+        return;
+    }
     console->stabilize_reply_pending=false;
     RobotController *r=console->robot;
     char message[128];
@@ -2621,19 +2632,20 @@ static void execute_line(AppConsole *console)
         command_safety(console);
     } else if (strcmp(command, "jointtrace") == 0) {
         char *action=strtok(NULL," \t");JointTrace *t=&console->robot->joint_trace;
-        if(!action || (strcmp(action,"arm") && strcmp(action,"dump") && strcmp(action,"status") && strcmp(action,"off"))) {
-            write_text(console,"usage: jointtrace arm|off|status|dump\r\n");return;
+        if(!action || (strcmp(action,"arm") && strcmp(action,"stop") && strcmp(action,"dump") && strcmp(action,"status") && strcmp(action,"off"))) {
+            write_text(console,"usage: jointtrace arm|stop|off|status|dump\r\n");return;
         }
         if(strcmp(action,"status") && (robot_drive_is_active(console->robot)||console->robot->stow_active||console->robot->gait_diagnostics_active)) {
             write_text(console,"ERROR: stop before changing or dumping jointtrace\r\n");return;
         }
         if(!strcmp(action,"arm")){joint_trace_arm(t);write_text(console,"OK jointtrace armed; no motion commanded\r\n");return;}
-        if(!strcmp(action,"off"))t->armed=false;
+        if(!strcmp(action,"stop")){t->armed=false;t->arm_on_stop=true;write_text(console,"OK jointtrace will capture STOP; no motion commanded\r\n");return;}
+        if(!strcmp(action,"off")){t->armed=false;t->arm_on_stop=false;}
         uint32_t first=0,count=12;
         bool dumping=!strcmp(action,"dump");
         if(dumping){
             char *start_text=strtok(NULL," \t"),*count_text=strtok(NULL," \t");
-            if((start_text&&!parse_u32(start_text,0,512,&first)) ||
+            if((start_text&&!parse_u32(start_text,0,768,&first)) ||
                (count_text&&!parse_u32(count_text,1,12,&count))){write_text(console,"ERROR: jointtrace dump OFFSET COUNT; COUNT=1..12\r\n");return;}
             t->armed=false;
         }
@@ -2737,7 +2749,12 @@ static void execute_line(AppConsole *console)
     } else if (strcmp(command, "gaitprofile") == 0) {
         int profile=locomotion_profile_id(strtok(NULL," \t"));
         if(profile<0 || robot_drive_is_active(console->robot)) write_text(console,"ERROR: stop before selecting a valid gait profile\r\n");
-        else {console->robot->shared_idle=false;console->robot->locomotion_profile=profile;write_text(console,"OK\r\n");}
+        else {
+            int reach=locomotion_profile_id("s_native_v6_2_4"),fast=locomotion_profile_id("s_native_v6_2_5");
+            if(profile==reach || profile==fast || console->robot->locomotion_profile==reach || console->robot->locomotion_profile==fast)
+                console->robot->tracking_enabled=profile==reach || profile==fast;
+            console->robot->shared_idle=false;console->robot->locomotion_profile=profile;write_text(console,"OK\r\n");
+        }
     } else if (strcmp(command, "heading") == 0) {
         char *value=strtok(NULL," \t");
         if(!value || (strcmp(value,"on") && strcmp(value,"off")) || robot_drive_is_active(console->robot))
@@ -2875,6 +2892,7 @@ void app_console_init(AppConsole *console,
     }
 
     console->support_event_seen=0;
+    console->battery_event_seen=0;
     console->uart = uart;
     console->robot = robot;
     console->imu055 = imu055;

@@ -262,6 +262,10 @@ class Simulation:
         floor=min(foot_clearance(self.model,self.data,i) for i in feet)
         self.data.qpos[2] += .001-floor
         mujoco.mj_forward(self.model,self.data)
+        from simulation.mujoco.runtime.servo_profile import ServoProfile
+        self.servo_profile=ServoProfile(self.p.get('servo_goal_speed_register',3400),
+            self.p.get('servo_acceleration_register',254),
+            self.p.get('servo_acceleration_cap_register',[50,254,50]*4))
         self.filtered=self.desired.copy();self.target_velocity=np.zeros(12)
         self.delay=collections.deque([self.desired.copy() for _ in range(max(0,round(self.p['command_delay_s']/.02)))])
         self.voltage=self.p['pack_open_circuit_voltage'];self.current=0.;self.limits=self.stall.copy();self.saturated=0.
@@ -298,9 +302,11 @@ class Simulation:
         values=values+self.joint_zero_error
         self.desired=np.radians(values);self.delay.append(self.desired.copy());delayed=self.delay.popleft()
         self.phase=(self.phase+.02/(period_s if period_s is not None else (2.4-.6*min(1,abs(self.linear)+abs(self.yaw)))))%1
+        velocity_limit=self.servo_profile.velocity_limit(self.speed)
+        acceleration_limit=self.servo_profile.acceleration_limit()
         for _ in range(round(.02/dt)):
-            wanted=np.clip((delayed-self.filtered)/dt,-self.speed,self.speed)
-            self.target_velocity+=np.clip(wanted-self.target_velocity,-p['target_acceleration_rad_s2']*dt,p['target_acceleration_rad_s2']*dt)
+            wanted=np.clip((delayed-self.filtered)/dt,-velocity_limit,velocity_limit)
+            self.target_velocity+=np.clip(wanted-self.target_velocity,-acceleration_limit*dt,acceleration_limit*dt)
             increment=self.target_velocity*dt
             increment=np.where(abs(increment)>abs(delayed-self.filtered),delayed-self.filtered,increment)
             self.filtered+=increment
@@ -333,7 +339,7 @@ class Simulation:
             c=d.contact[i]
             if m.geom('floor').id in (c.geom1,c.geom2):
                 force=np.zeros(6);mujoco.mj_contactForce(m,d,i,force);normal+=force[0]
-        return dict(time_s=float(d.time),position_m=d.qpos[:3].tolist(),com_m=d.subtree_com[m.body('robot').id].tolist(),roll_deg=math.degrees(sample.roll),pitch_deg=math.degrees(sample.pitch),contacts=sorted(contacts),normal_force_n=normal,max_penetration_m=penetration,voltage_v=self.voltage,current_estimate_a=self.current,torque_nm=d.ctrl.tolist(),actual_deg=np.degrees(d.qpos[self.q]).tolist(),target_deg=np.degrees(self.desired).tolist(),max_tracking_error_deg=float(np.degrees(abs(self.desired-d.qpos[self.q])).max()),torque_limit_fraction=self.saturated,above_rated_fraction=float(np.mean(abs(d.ctrl)>self.rated)))
+        return dict(servo_profile=self.servo_profile.snapshot(),time_s=float(d.time),position_m=d.qpos[:3].tolist(),com_m=d.subtree_com[m.body('robot').id].tolist(),roll_deg=math.degrees(sample.roll),pitch_deg=math.degrees(sample.pitch),contacts=sorted(contacts),normal_force_n=normal,max_penetration_m=penetration,voltage_v=self.voltage,current_estimate_a=self.current,torque_nm=d.ctrl.tolist(),actual_deg=np.degrees(d.qpos[self.q]).tolist(),target_deg=np.degrees(self.desired).tolist(),max_tracking_error_deg=float(np.degrees(abs(self.desired-d.qpos[self.q])).max()),torque_limit_fraction=self.saturated,above_rated_fraction=float(np.mean(abs(d.ctrl)>self.rated)))
 
 
 def main():

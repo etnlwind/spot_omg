@@ -8,7 +8,7 @@ if __package__ in (None, ""):
 import numpy as np
 from simulation.mujoco.runtime.standing_pose import SoleKinematics
 
-NAME = 's_native_v6_2_1'
+NAME = 's_native_v6_2_5'
 # Preserve the 0.4s swing, halve the hold at each diagonal exchange from
 # 0.6s to 0.3s (at full input). Duty describes each leg's actual stance time.
 PERIOD = 1.4
@@ -40,12 +40,25 @@ V61_PROFILE = dict(V6_PROFILE, params=[1.2, .5, .085, .012], rear_extension_m=.0
 # in the CAD side view. Forward placement, S and the two-step STOP are inherited.
 V62_PROFILE = dict(V61_PROFILE, params=[2.0, .5, .145, .012], rear_extension_m=.105,
                reverse_input_limit=.6)
-PROFILE = dict(V62_PROFILE, params=list(V62_PROFILE['params']),
+V621_PROFILE = dict(V62_PROFILE, params=list(V62_PROFILE['params']),
                continuous_recovery=True, lift_exponent=.25, stop_period_s=1.6)
+# Preserve the entire V6.2.1 phase geometry, including its support reference.
+# This time-compressed experiment is not a retuned floor-balance policy.
+V622_PROFILE = dict(V621_PROFILE, params=[.5, .5, .145, .012], support_reference_period_s=2.)
+# Longer rear stroke with finite-acceleration lift at both swing boundaries.
+# Allow travel time; a short clock is not a substitute for actual excursion.
+V623_PROFILE = dict(V622_PROFILE, params=[1., .5, .155, .012], rear_extension_m=.115,
+               smooth_lift_fraction=.35)
+# Retain V623 lateral support reference for the supported-body reach trial.
+V624_PROFILE = dict(V623_PROFILE, params=[1., .5, .145, .012], rear_extension_m=.105,
+               support_reference_profile='s_native_v6_2_3', feedback_tracking=True)
+PROFILE = dict(V624_PROFILE, params=list(V624_PROFILE['params']),
+               placement_swing=(.2,.8),smooth_lift_fraction=.3,
+               tracking_responsive=True,tracking_samples_per_frame=2)
 PROFILES = {'s_native_v1': V1_PROFILE, 's_native_v2': V2_PROFILE,
             's_native_v3': V3_PROFILE, 's_native_v4': V4_PROFILE,
             's_native_v5': V5_PROFILE, 's_native_v6': V6_PROFILE,
-            's_native_v6_1': V61_PROFILE, 's_native_v6_2': V62_PROFILE, NAME: PROFILE}
+            's_native_v6_1': V61_PROFILE, 's_native_v6_2': V62_PROFILE, 's_native_v6_2_1': V621_PROFILE, 's_native_v6_2_2': V622_PROFILE, 's_native_v6_2_3': V623_PROFILE, 's_native_v6_2_4':V624_PROFILE, NAME: PROFILE}
 
 class SNativeGait:
     def __init__(self, model, standing, profile=None):
@@ -93,6 +106,10 @@ class SNativeGait:
         u=np.clip((q%.5-margin)/(.5-2*margin),0.,1.)
         smooth=u*u*u*(10+u*(-15+6*u))
         c=np.where(q<.5,1-2*smooth,-1+2*smooth)
+        if 'placement_swing' in self.profile:
+            a,b=self.profile['placement_swing']
+            u=np.clip(((q-.5)/.5-a)/(b-a),0.,1.)
+            c=np.where(q>=.5,-1+2*u**3*(10+u*(-15+6*u)),c)
         extra = self.profile.get("rear_extension_m", 0.)
         stride = (self.profile["params"][2]-extra)/2 * linear
         delta = np.zeros((4, 3))
@@ -115,6 +132,10 @@ class SNativeGait:
         margin=self.profile["transfer_fraction"]
         swing=np.clip((q-.5-margin)/(.5-2*margin),0.,1.)
         shape=np.where((swing>0)&(swing<1),np.maximum(0.,np.sin(np.pi*swing))**self.profile.get("lift_exponent",2.),0.)
+        if "smooth_lift_fraction" in self.profile:
+            rise=self.profile["smooth_lift_fraction"]
+            u=np.clip(np.minimum(swing,1-swing)/rise,0.,1.)
+            shape=u**3*(10+u*(-15+6*u))
         delta[:, 2] = self.profile["params"][3]*activity*shape
         return self.origin + amplitude*delta
 
@@ -302,7 +323,7 @@ class SNativeGait:
             progress=(1-c)/2
             x=stride*c-extra*progress**3
             xdd=(stride+1.5*extra*progress**2)*cdd-1.5*extra*progress*cd**2
-        period=self.profile['params'][0]*(1.35-.35*min(1.,abs(linear)+abs(yaw)))
+        period=self.profile.get('support_reference_period_s',self.profile['params'][0])*(1.35-.35*min(1.,abs(linear)+abs(yaw)))
         h_g=self.height/9.81
         zmp_x=self.center[0]+h_g*xdd/period**2
         slope=np.where(t<.5,-1.,1.)*(self.origin[0,1]-self.origin[1,1])/(self.origin[0,0]-self.origin[2,0])
@@ -316,6 +337,14 @@ class SNativeGait:
     def prepare_support(self,linear,yaw):
         """Periodic inverse-dynamics support reference, computed from CAD only."""
         import mujoco
+        if self.profile.get('support_reference_profile'):
+            if not hasattr(self,'support_reference'):
+                self.support_reference=SNativeGait(self.kin.model,self.standing,
+                    PROFILES[self.profile['support_reference_profile']])
+            self.support_reference.prepare_support(linear,yaw)
+            if hasattr(self.support_reference,'support_table'):
+                self.support_table=self.support_reference.support_table
+            return
         if abs(linear)+abs(yaw)<.1:return
         key=(round(linear,1),round(yaw,1))
         if getattr(self,'support_key',None)==key:return
@@ -329,7 +358,7 @@ class SNativeGait:
             k.set_angles(seed)
             poses.append(np.radians(seed));feet.append(np.array([k.contact(i) for i in range(4)]))
         poses=np.array(poses);feet=np.array(feet)
-        period=self.profile['params'][0]*(1.35-.35*min(1.,abs(linear)+abs(yaw)))
+        period=self.profile.get('support_reference_period_s',self.profile['params'][0])*(1.35-.35*min(1.,abs(linear)+abs(yaw)))
         dt=period/n
         velocity=(np.roll(poses,-1,axis=0)-np.roll(poses,1,axis=0))/(2*dt)
         acceleration=(np.roll(poses,-1,axis=0)-2*poses+np.roll(poses,1,axis=0))/dt**2

@@ -50,7 +50,7 @@ def test_v62_default_keeps_v61_available_for_hardware(simulator,expected):
 @pytest.mark.parametrize('simulator,expected',[(True,'s_native_v6_2_1'),(False,'s_native_v6_2_1')])
 def test_v621_is_first_supported_simulator_choice(simulator,expected):
     from spot_controller.protocol import NATIVE_PROFILES
-    assert NATIVE_PROFILES[:3]==('s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
+    assert NATIVE_PROFILES[3:7]==('s_native_v6_2_2','s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
     c=Controller(simulator=simulator);c.opened(0);drain(c)
     c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_1,s_native_v6_2,s_native_v6_2_1')+b'# ',.1)
     drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
@@ -190,3 +190,50 @@ def test_disconnect_during_read_does_not_send_motion():
     c=ready();c.request('syncstate',1);drain(c);c.disconnect(1.1)
     assert not drain(c)
     c.feed(STATE+b'# ',1.2);assert c.fatal and not drain(c)
+
+
+def test_v622_is_latest_supported_hardware_model():
+    from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+    c=Controller(simulator=False);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2')+b'# ',.1)
+    assert drain(c)==b'read 1\n'
+    c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_2_2\n'
+    c.validate('gaitprofile s_native_v6_2_2')
+    assert NATIVE_PROFILES[3]=='s_native_v6_2_2'
+    assert 's_native_v6_2_2' not in SIMULATOR_NATIVE_PROFILES
+
+
+def test_v623_is_latest_supported_hardware_model():
+    from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+    c=Controller(simulator=False);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3')+b'# ',.1)
+    assert drain(c)==b'read 1\n'
+    c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_2_3\n'
+    c.validate('gaitprofile s_native_v6_2_3')
+    assert NATIVE_PROFILES[2]=='s_native_v6_2_3'
+    assert 's_native_v6_2_3' not in SIMULATOR_NATIVE_PROFILES
+
+
+def test_v624_is_latest_supported_hardware_model():
+    from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+    c=Controller(simulator=False);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4')+b'# ',.1)
+    assert drain(c)==b'read 1\n'
+    c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_2_4\n'
+    c.validate('gaitprofile s_native_v6_2_4')
+    assert NATIVE_PROFILES[1]=='s_native_v6_2_4'
+    assert 's_native_v6_2_4' not in SIMULATOR_NATIVE_PROFILES
+
+
+def test_v625_is_latest_supported_hardware_model():
+    from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+    c=Controller(simulator=False);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_4,s_native_v6_2_5')+b'# ',.1)
+    assert drain(c)==b'read 1\n'
+    c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_2_5\n'
+    assert NATIVE_PROFILES[0]=='s_native_v6_2_5'
+    assert 's_native_v6_2_5' not in SIMULATOR_NATIVE_PROFILES

@@ -1,0 +1,31 @@
+COMMAND syncstate
+COMMAND profile
+COMMAND imu off
+COMMAND jointtrace stop
+$SPOTDRIVE started seq=1 linear=1000 yaw=0 watchdog=800ms rev=s-native-v6-2-5-v70
+Full-input run 10.0s / 10s
+$SPOTDRIVE stopped reason=ok elapsed=6884ms
+Gait diagnostics: samples=345 min_voltage=10600mV lag=3 lag+droop=3 derate=no fall=no late_frames=0 limited_frames=0
+COMMAND relax
+COMMAND syncstate
+Downloading startup joint trace
+COMMAND baldiag
+COMMAND relax
+COMMAND syncstate
+{
+  "linear": 1000,
+  "yaw": 0,
+  "nominal_cycles": 10.0,
+  "nominal_duration_s": 10.0,
+  "profile": "s_native_v6_2_4",
+  "revision": "s-native-v6-2-5-v70",
+  "support": "user-secured body; feet off floor",
+  "full_cycle_count_measured": false,
+  "stop_result": "$SPOTDRIVE stopped reason=ok elapsed=6884ms",
+  "drive_prompt_received": false,
+  "post_relax_state": "$SPOTSTATE pose=stand error=6 torque=off safety=ok balance=suspended rev=s-native-v6-2-5-v70 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=s_native_v6_2_4 heading=on reverse_limit=600 recovery=new-command fault_code=0 support=load-supported mass_g=2754",
+  "trace_validated": true,
+  "balance_download_error": "timed out waiting for the STM32 console prompt; received 20 line(s)",
+  "relax_result": "OK",
+  "final_state": "$SPOTSTATE pose=custom error=383 torque=off safety=ok balance=suspended rev=s-native-v6-2-5-v70 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=s_native_v6_2_4 heading=on reverse_limit=600 recovery=new-command fault_code=0 support=load-supported mass_g=2754"
+}

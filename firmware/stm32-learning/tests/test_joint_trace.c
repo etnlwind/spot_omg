@@ -15,5 +15,13 @@ int main(void){
  assert(!t.full&&t.armed&&!t.command_count&&!t.sample_count);
  joint_trace_command(&t,0xfffffff0U,0xfffffff1U,targets);
  s.begin_ms=2;s.end_ms=5;joint_trace_sample(&t,s);assert(t.samples[0].begin_ms==2);
+ joint_trace_arm(&t);
+ for(unsigned i=0;i<JOINT_TRACE_CAPACITY;i++){
+  joint_trace_command(&t,i*20,i*20+1,targets);
+  for(unsigned j=0;j<2;j++){s.joint=(2*i+j)%12;joint_trace_sample(&t,s);}
+ }
+ assert(t.command_count==256 && t.sample_count==512 && t.armed);
+ joint_trace_command(&t,6000,6001,targets);assert(t.full&&!t.armed);
+ t.arm_on_stop=true;joint_trace_arm(&t);assert(!t.arm_on_stop && t.armed);
  return 0;
 }

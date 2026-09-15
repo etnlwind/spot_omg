@@ -1,0 +1,70 @@
+{
+  "error" : {
+    "code" : 12040,
+    "domain" : "com.apple.dt.CoreDeviceError",
+    "userInfo" : {
+      "DeviceIdentifier" : {
+        "string" : "D67546A7-5F85-5E69-B544-F24994F3041E"
+      },
+      "NSLocalizedDescription" : {
+        "string" : "The developer disk image could not be mounted on this device."
+      },
+      "NSUnderlyingError" : {
+        "error" : {
+          "code" : 12010,
+          "domain" : "com.apple.dt.CoreDeviceError",
+          "userInfo" : {
+            "NSLocalizedDescription" : {
+              "string" : "The developer disk image could not be unmounted on this device."
+            },
+            "NSUnderlyingError" : {
+              "error" : {
+                "code" : 10003,
+                "domain" : "com.apple.dt.CoreDeviceError",
+                "userInfo" : {
+                  "NSLocalizedDescription" : {
+                    "string" : "The operation failed since the device is locked."
+                  },
+                  "NSLocalizedRecoverySuggestion" : {
+                    "string" : "Unlock the device and try again."
+                  },
+                  "NSUnderlyingError" : {
+                    "error" : {
+                      "code" : -402652958,
+                      "domain" : "com.apple.mobiledevice",
+                      "userInfo" : {
+                        "NSLocalizedDescription" : {
+                          "string" : "The device is locked."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "info" : {
+    "arguments" : [
+      "devicectl",
+      "device",
+      "install",
+      "app",
+      "--device",
+      "D67546A7-5F85-5E69-B544-F24994F3041E",
+      "artifacts/battery-warning-2026-09-15/iphone-build/Build/Products/Debug-iphoneos/SpotOMGController.app",
+      "--json-output",
+      "artifacts/battery-warning-2026-09-15/iphone-install.json"
+    ],
+    "commandType" : "devicectl.device.install.app",
+    "environment" : {
+      "TERM" : "dumb"
+    },
+    "jsonVersion" : 3,
+    "outcome" : "failed",
+    "version" : "518.33"
+  }
+}

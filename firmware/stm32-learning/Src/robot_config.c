@@ -2,6 +2,17 @@
 
 #include "motor_capability.h"
 
+uint8_t robot_servo_profile_acceleration(uint8_t servo_id, uint8_t requested)
+{
+    for(unsigned i=0;i<ROBOT_JOINT_COUNT;i++) {
+        if(g_robot_joints[i].servo_id==servo_id) {
+            uint8_t observed=g_robot_joints[i].joint_index==2U?254U:50U;
+            return requested>observed?observed:requested;
+        }
+    }
+    return requested;
+}
+
 /*
  * Generated from tools/servo_tool/config/joints.json.
  * Leg index: 0=FL, 1=FR, 2=RL, 3=RR.
