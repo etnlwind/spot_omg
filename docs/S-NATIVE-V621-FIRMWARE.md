@@ -1,5 +1,9 @@
 # V6.2.1 실기 이식 — v63
 
+**설치 후 후속 상태:** 사용자가 실제 보행에서 “다리를 끌다가 넘어지네”라고 보고했다.
+아래 설치/readback 성공은 실기 안정 보행 성공을 뜻하지 않는다. 넘어짐 이후의 로그 수집·
+원인 분석·수정은 중단된 상태이며 [최신 인계](HANDOFF-2026-09-15-V621-REAL-ROBOT.md)에서 이어간다.
+
 사용자가 V6.2.1을 실제 로봇에도 반영하도록 요청했다. 시뮬레이터의 명목 궤적을
 STM32 C 커널로 이식하고, 앱에서 해당 capability를 광고하는 실기에서도 선택하도록 했다.
 
@@ -39,10 +43,25 @@ STM32 C 커널로 이식하고, 앱에서 해당 capability를 광고하는 실�
 
 ## 설치 상태와 실기 검증 수준
 
+2026-09-15 18:03 KST, 실제 SpotOMG-Bridge에 **v63 설치와 상태 readback을 완료했다**.
 설치 전 조회는 기존 `s-native-v6-1-v60`, `torque=on`, `safety=tilt`,
-`fault_code=14`, 자세 `custom`이었다. 몸체 지지와 실기 앱 연결 해제를 확인한 뒤
-Relax와 토크 OFF readback, `--skip-landing` OTA 순서로 진행한다.
-설치 결과는 `artifacts/s-native-v6-2-1/hardware-deployment/`에 별도로 기록한다.
+`fault_code=14`, 자세 `custom`이었다. 사용자가 몸체 지지와 실기 앱 연결 해제를
+확인한 뒤 Relax를 보내고 `torque=off`를 조회했다. `--skip-landing` OTA로
+자세 이동 없이 전송했으며 ESP32 이미지 확인, STM32 기록 검증과 재부팅이 성공했다.
+
+- 설치 후 `rev=s-native-v6-2-1-v63`, `profile=s_native_v6_2_1`.
+- capability에 `s_native_v6_1`과 `s_native_v6_2_1` 모두 광고한다.
+- `reverse_limit=600`, `heading=on`, `mass_g=2754`.
+- `torque=off`, `safety=ok`, `fault_code=0`, 자세 `custom`.
+  재부팅 후 fault가 없다는 상태이며 하중 보행 통과를 의미하지 않는다.
+- 12개 서보 모두 응답, `moving=0`, `speed=0`, `hw=0x00`, 읽기 실패 0.
+  전압 11.3–11.5V, 온도 30–40°C. 모터 설정/영점은 변경하지 않았다.
+- Windows 실행 파일도 새 실기 capability를 인식하도록 다시 빌드하고 실행했다.
+  사용자가 BLE로 연결한 뒤 앱 화면에서 v63, V6.2.1 기본 선택, 토크 OFF와
+  안전 상태 OK를 확인했다. 이 단계에서 보행 명령은 보내지 않았다.
+
+설치 로그는 `artifacts/s-native-v6-2-1/hardware-deployment/`의
+`relax.log`, `before-ota.log`, `ota-v63.log`, `after-ota.log`, `servo-status.log`에 있다.
 
 **호스트/시뮬레이터 통과는 실기 위치 유지·보행·정지 검증 완료가 아니다.**
 기존 V6.2.1에서 관측한 회수 중 잔여 접촉과 Stop 접지 동기 한계가 남아 있다.
