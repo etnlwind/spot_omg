@@ -69,6 +69,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
 
     robot->support_event=0;robot->drive_pose_entry=false;robot_support_reset(robot);
     memset(&robot->joint_trace,0,sizeof(robot->joint_trace));
+    memset(&robot->imu_trace,0,sizeof(robot->imu_trace));
     memset(&robot->battery_telemetry,0,sizeof(robot->battery_telemetry));
     robot->locomotion_profile = LOCOMOTION_DEFAULT_PROFILE;
     robot->heading_enabled = true;
@@ -1945,6 +1946,13 @@ static RobotResult shared_observe(RobotController *robot)
     }
     if(!valid)valid=robot->attitude_reader && robot->attitude_reader(robot->attitude_context,&roll,&pitch);
     int fault=attitude_update(&robot->shared_attitude,valid,roll,pitch);
+    if(robot->drive_active) {
+        imu_trace_record(&robot->imu_trace,(ImuTraceSample){
+            .time_ms=HAL_GetTick(),.roll10=roll,.pitch10=pitch,
+            .phase1000=(uint16_t)(robot->drive_control.phase*1000.f),
+            .rate1000=(uint16_t)(robot->tracking.rate*1000.f),
+            .valid=valid,.fault=(uint8_t)fault});
+    }
     robot->balance_last_roll_error_tenths=robot->shared_attitude.filtered[0];
     robot->balance_last_pitch_error_tenths=robot->shared_attitude.filtered[1];
     if(fault) {
@@ -2062,7 +2070,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
         if(drive_watchdog_due(HAL_GetTick(),request.updated_at_ms,ROBOT_DRIVE_WATCHDOG_MS,stopping || request.stop_requested)) {stopping=true;watchdog=true;}
         if(request.stop_requested)stopping=true;
-        if(stopping && robot->joint_trace.arm_on_stop)joint_trace_arm(&robot->joint_trace);
+        if(stopping && robot->joint_trace.arm_on_stop){joint_trace_arm(&robot->joint_trace);imu_trace_arm(&robot->imu_trace);}
         if(stage==1 && stopping) {
             for(int i=0;i<4;i++) {from[i]=nominal[i];}
             stage=3;transition=0;
@@ -2229,6 +2237,7 @@ RobotResult robot_drive(RobotController *robot,
     robot->drive_active = true;
 
     const RobotResult result = robot_shared_drive(robot);
+    robot->imu_trace.armed=false; /* Preserve failure/stop evidence against idle reads. */
     robot->drive_active = false;
     robot->drive_stop_requested = false;
     robot->drive_target_linear = 0;

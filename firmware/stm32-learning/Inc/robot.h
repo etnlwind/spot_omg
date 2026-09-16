@@ -1,4 +1,5 @@
 #include "joint_trace.h"
+#include "imu_trace.h"
 #include "battery_telemetry.h"
 #include "pose_supervisor.h"
 #include "load_support.h"
@@ -91,7 +92,7 @@ typedef struct {
 void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
-#define ROBOT_CONTROL_REV "s-native-v6-2-7-v76"
+#define ROBOT_CONTROL_REV "s-native-v6-2-7-v77"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -262,6 +263,7 @@ typedef struct
      * never cut torque, which remains exclusively the safety monitor's job.
      */
     JointTrace joint_trace;
+    ImuTrace imu_trace;
     BatteryTelemetry battery_telemetry;
     ActuatorDiagnostics gait_diagnostics;
     bool gait_diagnostics_active;

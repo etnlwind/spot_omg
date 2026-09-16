@@ -689,7 +689,7 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -2652,6 +2652,37 @@ static void execute_line(AppConsole *console)
             snprintf(line,sizeof line,"$RESPONSE_REG block=%u bytes=%u,%u,%u,%u,%u,%u,%u\r\n",n,p[0],p[1],p[2],p[3],p[4],p[5],p[6]);write_text(console,line);
         }
         print_robot_result(console,result);
+    } else if (strcmp(command, "imutrace") == 0) {
+        ImuTrace *t=&console->robot->imu_trace;
+        char *action=strtok(NULL," \t");
+        if(!action || (strcmp(action,"status") && strcmp(action,"dump"))){
+            write_text(console,"usage: imutrace status|dump OFFSET COUNT; arm with jointtrace arm\r\n");return;
+        }
+        bool dumping=!strcmp(action,"dump");uint32_t first=0,count=12;
+        if(dumping && (robot_drive_is_active(console->robot)||console->robot->stow_active||console->robot->gait_diagnostics_active)){
+            write_text(console,"ERROR: stop before dumping imutrace\r\n");return;
+        }
+        if(dumping){
+            char *offset=strtok(NULL," \t"),*amount=strtok(NULL," \t");
+            if((offset&&!parse_u32(offset,0,IMU_TRACE_CAPACITY,&first)) ||
+               (amount&&!parse_u32(amount,1,12,&count)) || first>t->count){
+                write_text(console,"ERROR: imutrace dump OFFSET COUNT; COUNT=1..12\r\n");return;
+            }
+        }
+        char line[160];
+        if(!dumping || first==0){
+            snprintf(line,sizeof line,"$IT,M,1,%u,%u,%u\r\n",t->count,t->armed,t->full);write_text(console,line);
+        }
+        if(dumping){
+            unsigned end=first+count;if(end>t->count)end=t->count;
+            snprintf(line,sizeof line,"$IT,P,%lu,%u,%u\r\n",(unsigned long)first,end-(unsigned)first,t->count);write_text(console,line);
+            for(unsigned n=first;n<end;n++){
+                const ImuTraceSample *v=&t->samples[n];
+                snprintf(line,sizeof line,"$IT,S,%u,%lu,%d,%d,%u,%u,%u,%u\r\n",n,(unsigned long)v->time_ms,
+                    v->roll10,v->pitch10,v->phase1000,v->rate1000,v->valid,v->fault);write_text(console,line);
+            }
+            if(end==t->count)write_text(console,"$IT,END\r\n");
+        }
     } else if (strcmp(command, "jointtrace") == 0) {
         char *action=strtok(NULL," \t");JointTrace *t=&console->robot->joint_trace;
         if(!action || (strcmp(action,"arm") && strcmp(action,"stop") && strcmp(action,"dump") && strcmp(action,"status") && strcmp(action,"off"))) {
@@ -2660,9 +2691,9 @@ static void execute_line(AppConsole *console)
         if(strcmp(action,"status") && (robot_drive_is_active(console->robot)||console->robot->stow_active||console->robot->gait_diagnostics_active)) {
             write_text(console,"ERROR: stop before changing or dumping jointtrace\r\n");return;
         }
-        if(!strcmp(action,"arm")){joint_trace_arm(t);write_text(console,"OK jointtrace armed; no motion commanded\r\n");return;}
-        if(!strcmp(action,"stop")){t->armed=false;t->arm_on_stop=true;write_text(console,"OK jointtrace will capture STOP; no motion commanded\r\n");return;}
-        if(!strcmp(action,"off")){t->armed=false;t->arm_on_stop=false;}
+        if(!strcmp(action,"arm")){joint_trace_arm(t);imu_trace_arm(&console->robot->imu_trace);write_text(console,"OK jointtrace armed; no motion commanded\r\n");return;}
+        if(!strcmp(action,"stop")){console->robot->imu_trace.armed=false;t->armed=false;t->arm_on_stop=true;write_text(console,"OK jointtrace will capture STOP; no motion commanded\r\n");return;}
+        if(!strcmp(action,"off")){t->armed=false;t->arm_on_stop=false;console->robot->imu_trace.armed=false;}
         uint32_t first=0,count=12;
         bool dumping=!strcmp(action,"dump");
         if(dumping){
@@ -3094,6 +3125,7 @@ void app_console_print_help(AppConsole *console)
                "  safety           stall detector state and the latched fault\r\n"
                "  jointtrace arm|off|status|dump  raw timed gait feedback (RAM)\r\n"
                "  gaitdiag         last gait tracking/current/voltage report\r\n"
+               "  imutrace status|dump  paged timed gait IMU; armed with jointtrace\r\n"
                "  baldiag          recent balance frames and tilt snapshot\r\n"
                "  baltest          preview static balance correction; no servo motion\r\n"
                "  recover          clear a safety fault and hold where the legs are\r\n"

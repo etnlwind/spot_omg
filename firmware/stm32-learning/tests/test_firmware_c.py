@@ -24,6 +24,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 CFLAGS = ["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror", f"-I{PROJECT/'Inc'}"]
 
 CASES = [
+    ("imu_trace", ["tests/test_imu_trace.c"]),
     ("joint_trace", ["tests/test_joint_trace.c"]),
     ("drive_watchdog", ["tests/test_drive_watchdog.c"]),
     ("safety", ["Src/safety.c", "tests/test_safety.c"]),
@@ -383,7 +384,8 @@ def test_shared_drive_diagnostics_do_not_add_motor_reads_or_flash_writes() -> No
     source = (PROJECT / "Src/robot.c").read_text()
     start=source.index("static RobotResult robot_shared_drive(")
     body=source[start:source.index("void robot_control_idle(",start)]
-    assert body.count("sample_next_joint(")==1
+    # V625+ intentionally performs two reads per frame (120ms per joint).
+    assert body.count("sample_next_joint(")==2
     assert "sts3215_read_state" not in body
     assert "flight_log" not in body and "mechanical_log" not in body
     assert body.index("gait_target_history_push(robot,positions)") < body.index("sample_next_joint(")
@@ -446,3 +448,12 @@ def test_pose_supervisor_runtime() -> None:
         assert build.returncode == 0, build.stderr
         run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=15)
         assert run.returncode == 0, f"{run.stdout}\n{run.stderr}"
+
+
+def test_imu_recorder_uses_existing_observation_before_fault_exit():
+    source = (PROJECT / "Src/robot.c").read_text()
+    begin = source.index("static RobotResult shared_observe(")
+    body = source[begin:source.index("static bool shared_correct(", begin)]
+    assert body.index("attitude_update(") < body.index("imu_trace_record(") < body.index("if(fault)")
+    assert "HAL_UART" not in body and "printf" not in body
+    assert "robot->imu_trace.armed=false" in source
