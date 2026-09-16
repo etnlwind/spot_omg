@@ -33,7 +33,7 @@ def test_new_default_append_only_indices_and_native_encoding(plant):
  data=json.loads((ROOT/'config/locomotion_profiles.json').read_text())
  names=['legacy',*data['profiles']]
  assert names[16:19]==['s_native_v6_1','s_native_v6_2_1','s_native_v6_2_2']
- assert data['default']==NAME=='s_native_v6_2_5'
+ assert data['default']==NAME=='s_native_v6_2_7'
  robot=RobotController(plant)
  assert robot.profile==NAME
  assert robot.limited_linear(-1.)==-.6

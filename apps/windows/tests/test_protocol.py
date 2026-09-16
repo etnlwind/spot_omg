@@ -50,7 +50,8 @@ def test_v62_default_keeps_v61_available_for_hardware(simulator,expected):
 @pytest.mark.parametrize('simulator,expected',[(True,'s_native_v6_2_1'),(False,'s_native_v6_2_1')])
 def test_v621_is_first_supported_simulator_choice(simulator,expected):
     from spot_controller.protocol import NATIVE_PROFILES
-    assert NATIVE_PROFILES[3:7]==('s_native_v6_2_2','s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
+    start=NATIVE_PROFILES.index('s_native_v6_2_2')
+    assert NATIVE_PROFILES[start:start+4]==('s_native_v6_2_2','s_native_v6_2_1','s_native_v6_2','s_native_v6_1')
     c=Controller(simulator=simulator);c.opened(0);drain(c)
     c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_1,s_native_v6_2,s_native_v6_2_1')+b'# ',.1)
     drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
@@ -200,7 +201,7 @@ def test_v622_is_latest_supported_hardware_model():
     c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
     assert drain(c)==b'gaitprofile s_native_v6_2_2\n'
     c.validate('gaitprofile s_native_v6_2_2')
-    assert NATIVE_PROFILES[3]=='s_native_v6_2_2'
+    assert NATIVE_PROFILES.index('s_native_v6_2_2') < NATIVE_PROFILES.index('s_native_v6_2_1')
     assert 's_native_v6_2_2' not in SIMULATOR_NATIVE_PROFILES
 
 
@@ -212,7 +213,7 @@ def test_v623_is_latest_supported_hardware_model():
     c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
     assert drain(c)==b'gaitprofile s_native_v6_2_3\n'
     c.validate('gaitprofile s_native_v6_2_3')
-    assert NATIVE_PROFILES[2]=='s_native_v6_2_3'
+    assert NATIVE_PROFILES.index('s_native_v6_2_3') < NATIVE_PROFILES.index('s_native_v6_2_2')
     assert 's_native_v6_2_3' not in SIMULATOR_NATIVE_PROFILES
 
 
@@ -224,7 +225,7 @@ def test_v624_is_latest_supported_hardware_model():
     c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
     assert drain(c)==b'gaitprofile s_native_v6_2_4\n'
     c.validate('gaitprofile s_native_v6_2_4')
-    assert NATIVE_PROFILES[1]=='s_native_v6_2_4'
+    assert NATIVE_PROFILES.index('s_native_v6_2_4') < NATIVE_PROFILES.index('s_native_v6_2_3')
     assert 's_native_v6_2_4' not in SIMULATOR_NATIVE_PROFILES
 
 
@@ -235,5 +236,35 @@ def test_v625_is_latest_supported_hardware_model():
     assert drain(c)==b'read 1\n'
     c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
     assert drain(c)==b'gaitprofile s_native_v6_2_5\n'
-    assert NATIVE_PROFILES[0]=='s_native_v6_2_5'
+    assert NATIVE_PROFILES.index('s_native_v6_2_5') < NATIVE_PROFILES.index('s_native_v6_2_4')
     assert 's_native_v6_2_5' not in SIMULATOR_NATIVE_PROFILES
+
+
+@pytest.mark.parametrize('simulator',[False,True])
+def test_v626_is_first_only_when_firmware_advertises_support(simulator):
+    from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+    c=Controller(simulator=simulator);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_5,s_native_v6_2_6')+b'# ',.1)
+    assert drain(c)==b'read 1\n'
+    c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_2_6\n'
+    assert NATIVE_PROFILES.index('s_native_v6_2_6') < NATIVE_PROFILES.index('s_native_v6_2_5')
+    assert 's_native_v6_2_6' not in SIMULATOR_NATIVE_PROFILES
+    c.validate('gaitprofile s_native_v6_2_6')
+    c.caps.remove('s_native_v6_2_6')
+    with pytest.raises(ValueError):c.validate('gaitprofile s_native_v6_2_6')
+
+
+@pytest.mark.parametrize("simulator",[False, True])
+def test_v627_is_first_only_when_firmware_advertises_support(simulator):
+    from spot_controller.protocol import NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES
+    c=Controller(simulator=simulator);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',b'trot5,s_native_v6_2_5,s_native_v6_2_7')+b'# ',.1)
+    assert drain(c)==b'read 1\n'
+    c.feed(b'ID 1 voltage=11400mV\r\n# ',.2)
+    assert drain(c)==b'gaitprofile s_native_v6_2_7\n'
+    assert NATIVE_PROFILES[0]=='s_native_v6_2_7'
+    assert 's_native_v6_2_7' not in SIMULATOR_NATIVE_PROFILES
+    c.validate('gaitprofile s_native_v6_2_7')
+    c.caps.remove('s_native_v6_2_7')
+    with pytest.raises(ValueError):c.validate('gaitprofile s_native_v6_2_7')

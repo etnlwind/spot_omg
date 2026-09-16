@@ -33,3 +33,23 @@ class ServoProfile:
 
     def snapshot(self):
         return dict(goal_speed=self.speed.tolist(),acceleration=self.acceleration.tolist())
+
+    def advance_reference(self, position, velocity, goal, dt, nominal_speed):
+        """Acceleration-limited reference with braking distance before arrival.
+
+        Keep velocity consistent with position instead of snapping position to
+        a nearby goal while retaining momentum in an unrelated velocity state.
+        This is an estimated profile, not an identified servo implementation.
+        """
+        error = np.asarray(goal)-position
+        acceleration = self.acceleration_limit()
+        speed = self.velocity_limit(nominal_speed)
+        # Discrete braking bound: v*dt + v²/(2a) <= remaining distance.
+        finite = np.isfinite(acceleration)
+        safe = np.empty_like(error)
+        a = acceleration[finite]
+        safe[finite] = np.sqrt((a*dt)**2+2*a*np.abs(error[finite]))-a*dt
+        safe[~finite] = np.abs(error[~finite])/dt
+        wanted = np.sign(error)*np.minimum(speed,safe)
+        next_velocity = velocity+np.clip(wanted-velocity,-acceleration*dt,acceleration*dt)
+        return position+next_velocity*dt, next_velocity

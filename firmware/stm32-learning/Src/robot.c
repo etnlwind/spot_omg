@@ -89,7 +89,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->bus = bus;
     robot->last_bus_result = SERVO_BUS_OK;
     robot->last_failed_servo_id = 0U;
-    robot->tracking_enabled = robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_4") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5"); /* Experimental reach supervision. */
+    robot->tracking_enabled = robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_4") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5") || (robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_6") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_7")); /* Experimental reach supervision. */
     robot->profile_speed = ROBOT_PROFILE_SPEED_DEFAULT;
     robot->profile_acceleration = ROBOT_PROFILE_ACCELERATION_DEFAULT;
     robot->attitude_reader = NULL;
@@ -462,17 +462,19 @@ static RobotResult robot_move_to_pose(RobotController *robot, RobotPoseTargets b
     if(safety_is_faulted(&robot->safety) || robot->locomotion_fault)return ROBOT_SAFETY_FAULT;
     uint16_t target[12];
     if(!build_targets(target))return ROBOT_CONFIG_ERROR;
-    return robot_supervised_pose(robot,target);
+    return robot_supervised_pose(robot,target,false);
 }
 
 RobotResult robot_stand(RobotController *robot)
 {
-    RobotResult result;
+    if(!robot)return ROBOT_INVALID_ARGUMENT;
+    if(safety_is_faulted(&robot->safety) || robot->locomotion_fault)return ROBOT_SAFETY_FAULT;
+    uint16_t positions[12];
     if(robot && locomotion_is_native(robot->locomotion_profile)) {
-        GaitPolicyLegTarget q[4];uint16_t positions[12];s_native_stand(q);
+        GaitPolicyLegTarget q[4];s_native_stand(q);
         if(!s_native_servo_targets(q,positions))return ROBOT_CONFIG_ERROR;
-        result=robot_supervised_pose(robot,positions);
-    } else result=robot_move_to_pose(robot, robot_stand_targets);
+    } else if(!robot_stand_targets(positions))return ROBOT_CONFIG_ERROR;
+    RobotResult result=robot_supervised_pose(robot,positions,true);
     if(robot) robot->shared_idle=result==ROBOT_OK;
     return result;
 }
@@ -2018,7 +2020,9 @@ static RobotResult robot_shared_drive(RobotController *robot)
     }
     if(robot->motion_abort_requested)return ROBOT_MOTION_ABORTED;
     memset(&robot->drive_control,0,sizeof(robot->drive_control));
-    if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5"))s_native_reset_v625(&robot->s_native);
+    if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_7"))s_native_reset_v627(&robot->s_native);
+    else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_6"))s_native_reset_v626(&robot->s_native);
+    else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5"))s_native_reset_v625(&robot->s_native);
     else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_4"))s_native_reset_v624(&robot->s_native);
     else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_3"))s_native_reset_v623(&robot->s_native);
     else s_native_reset_profile(&robot->s_native,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_1") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_2"));
@@ -2074,7 +2078,9 @@ static RobotResult robot_shared_drive(RobotController *robot)
         } else if(stage==2) {
             int16_t yaw=0;
             bool yaw_valid=robot->heading_reader && robot->shared_attitude.failures==0 && robot->heading_reader(robot->attitude_context,&yaw);
-            float phase_rate=robot->tracking_enabled?gait_tracking_step_policy(&robot->tracking,compute_started,frame_dt,stopping,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5")):1;
+            bool smooth_recovery=(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_6") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_7"));
+            bool responsive=smooth_recovery || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5");
+            float phase_rate=robot->tracking_enabled?gait_tracking_step_rates(&robot->tracking,compute_started,frame_dt,stopping,smooth_recovery?6.f:.6f,responsive?2.f:.2f):1;
             if(robot->tracking_enabled && robot->tracking.fault){result=ROBOT_MOTION_ABORTED;robot_latch_locomotion_fault(robot,result);break;}
             bool target_ok;
             if(native) {
@@ -2140,7 +2146,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         gait_target_history_push(robot,positions);
         result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
         if(result!=ROBOT_OK)break;
-        if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5")) {
+        if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5") || (robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_6") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_7"))) {
             result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
             if(result!=ROBOT_OK)break;
         }

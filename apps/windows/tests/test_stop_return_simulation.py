@@ -6,12 +6,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from spot_controller.protocol import Controller
-from simulation.mujoco.runtime.cad_physics import Simulation
-from simulation.mujoco.runtime.virtual_robot import RobotController, load_parameters, parse_args
+from simulation.mujoco.runtime.virtual_robot import RobotController
+from simulation.mujoco.runtime.supported_demo import supported_plant
 
 
-def test_app_stop_waits_for_v6_1_physical_return():
-    robot = RobotController(Simulation(load_parameters(parse_args([]))))
+def test_app_stop_waits_for_supported_v6_1_return():
+    # This integration checks STOP acknowledgement/physical joint return.
+    # Free-floor V6.1 now faults before STOP with the measured J1/J3 cap=50;
+    # body support isolates the protocol while retaining all servo limits.
+    robot = RobotController(supported_plant(12.))
     robot.select_profile('s_native_v6_1')
     app = Controller(simulator=True)
     app.default_profile_pending = False

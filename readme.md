@@ -1,6 +1,6 @@
 # Spot OMG
 
-다른 컴퓨터에서 이어갈 때는 [2026-09-16 인수인계](docs/HANDOFF-2026-09-16-V625-STEP-HESITATION.md)를 먼저 확인하세요. V6.2.5의 매 걸음 멈칫함, 실제 V70/소스 V71 구분, 세 앱 배터리 경고와 재현 방법을 정리했습니다.
+다른 컴퓨터에서 이어갈 때는 [V6.2.7 첫걸음 전도 인수인계](docs/HANDOFF-2026-09-16-V627-FIRST-STEP-FALL.md)를 먼저 확인하세요. 실기는 v76이며 V6.2.7 첫걸음에서 전도했습니다. 설치·시뮬레이션 결과, 실제 실패 로그, 미완료 분석과 재개 방법을 구분해 정리했습니다.
 
 Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
 

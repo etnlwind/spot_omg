@@ -85,6 +85,12 @@ void s_native_reset_v624(SNativeControl *s) {
 void s_native_reset_v625(SNativeControl *s) {
     s_native_reset_v624(s);s->placement_swing=true;
 }
+void s_native_reset_v626(SNativeControl *s) {
+    s_native_reset_v624(s);s->uniform_recovery=true;
+}
+void s_native_reset_v627(SNativeControl *s) {
+    s_native_reset_v626(s);s->early_fold_recovery=true;
+}
 bool s_native_stopped(const SNativeControl *s) { return s->stop_progress>=1; }
 
 static void sn_support_update(SNativeControl *s,float linear,float yaw) {
@@ -183,12 +189,21 @@ bool s_native_step(SNativeControl *s,float phase,float amplitude,float linear,fl
         float lift=swing>0 && swing<1?sqrtf(fmaxf(0,sinf(GAIT_POLICY_PI*swing))):0;
         if(s->continuous_recovery)lift=sqrtf(lift);
         if(s->extended_reach)lift=smooth(fminf(swing,1-swing)/.35f);
-        if(s->placement_swing)lift=smooth(fminf(swing,1-swing)/.3f);
+        if(s->placement_swing || s->uniform_recovery)lift=smooth(fminf(swing,1-swing)/.3f);
         float height=.012f*activity*lift;
+        if(s->early_fold_recovery)
+            height=.016f*activity*smooth(fminf(swing,1-swing)/.25f);
         float rear=.045f;
         if(s->continuous_recovery) { back=(1-c)/2;rear=s->extended_reach?s->extended_rear_m:.105f; }
         /* Right-positive protocol yaw; stance feet oppose body rotation. */
-        goal[i][0]=sn_origin[i][0]+amplitude*(.02f*linear*c-rear*linear*back*back*back+.10f*yaw*sn_origin[i][1]*c+transfer);
+        float x=.02f*linear*c-rear*linear*back*back*back;
+        if(s->uniform_recovery)x=linear*(-rear/2+(.02f+rear/2)*c);
+        if(s->early_fold_recovery && lp>=.5f) {
+            float u=gait_policy_clampf(swing,0,1),v=1-u;
+            float progress=1-v*v*v*v*v*(1+5*u+15*u*u);
+            x+=linear*.145f*(progress-smooth(u));
+        }
+        goal[i][0]=sn_origin[i][0]+amplitude*(x+.10f*yaw*sn_origin[i][1]*c+transfer);
         goal[i][1]=sn_origin[i][1]-amplitude*.10f*yaw*sn_origin[i][0]*c+activity*sn_lateral[i]+amplitude*support;
         goal[i][2]=sn_origin[i][2]+height;
     }
@@ -198,6 +213,7 @@ bool s_native_step(SNativeControl *s,float phase,float amplitude,float linear,fl
         for(int i=0;i<4;i++) {
             float placement=s->entry_phase<=.5f?(i==1?2*smooth(s->entry_phase/.5f):0):(i==1?2-blend:blend);
             locked[i]=sn_standing[i][0]+placement*sn_adduction[i]+blend*(s->normal[i][0]-sn_standing[i][0]-sn_adduction[i]);
+            if(s->early_fold_recovery)locked[i]=sn_standing[i][0]+placement*sn_adduction[i];
         }
     }
     if(!solve(goal,q,locked))return false;

@@ -1,0 +1,13 @@
+{
+  "label": "V6.2.7 CANDIDATE - FR entry then normal J1 hold",
+  "pack_open_circuit_voltage": 11.1,
+  "j1_mode": "fixed_j1",
+  "notes": "Keep the first FR/RL placement and FR double angular adduction. The second step relaxes FR and brings the other J1 joints to normal adduction. Thereafter hold the normal J1 targets (about -8.99 CAD degrees), re-solving J2/J3 to preserve the final recovery X/Z goals. This is position-servo goal holding, not a physically welded joint. Stop still returns each diagonal to S. Offline experiment only.",
+  "trajectory": {
+    "height": 0.0,
+    "tuck_j2": 6.0,
+    "tuck_j3": 10.0,
+    "j2_timing": [0.0, 0.10, 0.80],
+    "j3_timing": [0.02, 0.18, 1.0]
+  }
+}

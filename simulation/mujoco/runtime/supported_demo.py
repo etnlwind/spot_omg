@@ -42,7 +42,8 @@ def supported_plant(voltage=10.9):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--profile', default='s_native_v6_2_5')
+    from simulation.mujoco.runtime.s_native_gait import NAME
+    parser.add_argument('--profile', default=NAME)
     parser.add_argument('--voltage', type=float, default=10.9)
     parser.add_argument('--seconds', type=float, default=8)
     parser.add_argument('--output', type=Path, required=True)

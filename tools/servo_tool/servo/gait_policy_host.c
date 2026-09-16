@@ -390,6 +390,10 @@ SPOT_GAIT_EXPORT float spot_tracking_step_responsive(void *s,uint32_t now,float 
  GaitTracking *t=s;float rate=gait_tracking_step_policy(t,now,dt,stop!=0,true);
  diag[0]=t->peak_error;diag[1]=t->oldest_ms;diag[2]=t->fault;diag[3]=t->blocked_ms;return rate;
 }
+SPOT_GAIT_EXPORT float spot_tracking_step_rates(void *s,uint32_t now,float dt,int stop,float deceleration,float recovery,float diag[4]) {
+ GaitTracking *t=s;float rate=gait_tracking_step_rates(t,now,dt,stop!=0,deceleration,recovery);
+ diag[0]=t->peak_error;diag[1]=t->oldest_ms;diag[2]=t->fault;diag[3]=t->blocked_ms;return rate;
+}
 
 #include "locomotion_servo.h"
 #include "s_native_servo.h"
@@ -435,13 +439,13 @@ SPOT_GAIT_EXPORT int spot_stow_encode(const float degrees[12],int32_t ticks[12],
 SPOT_GAIT_EXPORT int spot_stow_attitude(int valid,int roll,int pitch){return stow_attitude_ok(valid,roll,pitch);}
 
 #include "pose_control.h"
-SPOT_GAIT_EXPORT int spot_pose_frame(const float start[12],const float end[12],unsigned elapsed,float out[12]) {
+SPOT_GAIT_EXPORT int spot_pose_frame(const float start[12],const float end[12],unsigned elapsed,int stand_requested,float out[12]) {
     uint16_t from[12],to[12],ticks[12];
     for(unsigned i=0;i<12;i++) {
         if(!isfinite(start[i]) || !isfinite(end[i]) || fabsf(start[i])>300 || fabsf(end[i])>300)return -1;
         if(!robot_angle_tenths_to_position(i,lroundf(start[i]*10),from+i) || !robot_angle_tenths_to_position(i,lroundf(end[i]*10),to+i))return -1;
     }
-    unsigned duration=pose_duration(from,to);pose_frame(from,to,duration,elapsed,ticks);
+    unsigned duration=pose_transition_duration(from,to,stand_requested!=0);pose_frame(from,to,duration,elapsed,ticks);
     for(unsigned i=0;i<12;i++)out[i]=(ticks[i]-g_robot_joints[i].center)*g_robot_joints[i].direction*360.f/4096.f;
     return duration;
 }

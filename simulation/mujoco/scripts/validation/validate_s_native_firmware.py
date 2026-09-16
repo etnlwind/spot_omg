@@ -20,6 +20,8 @@ def load_binding(directory):
     path=build_shared([firmware/'tests/s_native_binding.c',firmware/'Src/robot_config.c'],
                       firmware/'Inc',directory/('s-native'+library_suffix()))
     lib=ct.CDLL(str(path));lib.reset.argtypes=[];lib.reset.restype=None
+    lib.reset_v627.argtypes=[];lib.reset_v627.restype=None
+    lib.reset_v626.argtypes=[];lib.reset_v626.restype=None
     lib.reset_v625.argtypes=[];lib.reset_v625.restype=None
     lib.reset_v624.argtypes=[];lib.reset_v624.restype=None
     lib.reset_v623.argtypes=[];lib.reset_v623.restype=None
@@ -32,7 +34,7 @@ def load_binding(directory):
 def compare(lib,plant,request,stop_after,profile='s_native_v6_1'):
     parameters=PROFILES[profile]
     gait=SNativeGait(plant.model,plant.stand_target,parameters)
-    (lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
+    (lib.reset_v627 if profile=='s_native_v6_2_7' else lib.reset_v626 if profile=='s_native_v6_2_6' else lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
     phase=.5;linear=yaw=0.;previous=None;error=0.;stop_tick=round(stop_after/.02)
     output=(ct.c_float*12)()
     for i in range(stop_tick+round(parameters['stop_period_s']/.02)+5):
@@ -55,12 +57,14 @@ def compare(lib,plant,request,stop_after,profile='s_native_v6_1'):
     return dict(request=request,stop_after_s=stop_after,max_target_error_deg=error)
 
 
-def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1'):
+def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1',walk_seconds=8.,voltage=None):
     """Replay protocol input with tilt protection; None selects Python targets."""
-    plant=Simulation(load_parameters(parse_args([])))
+    parameters=load_parameters(parse_args([]))
+    if voltage is not None:parameters['pack_open_circuit_voltage']=voltage
+    plant=Simulation(parameters)
     robot=RobotController(plant);robot.select_profile(profile)
     robot.heading.enabled=heading
-    if lib is not None:(lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
+    if lib is not None:(lib.reset_v627 if profile=='s_native_v6_2_7' else lib.reset_v626 if profile=='s_native_v6_2_6' else lib.reset_v625 if profile=='s_native_v6_2_5' else lib.reset_v624 if profile=='s_native_v6_2_4' else lib.reset_v623 if profile=='s_native_v6_2_3' else lib.reset_v621 if profile in ('s_native_v6_2_1','s_native_v6_2_2') else lib.reset)()
     output=(ct.c_float*12)();rows=[]
     joints=json.loads((ROOT/'tools/servo_tool/config/joints.json').read_text())['joints']
     # Independent physical convention: left/front ID1 decreases to adduct;
@@ -76,15 +80,16 @@ def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1')
         if stopping and lib.stopped():gait.stop_progress=1.
         gait.previous=np.array(output)
         return gait.previous.copy()
-    for i in range(700):
+    stop_tick=100+round(walk_seconds/.02)
+    for i in range(stop_tick+200):
         t=i*.02
         if i==100:
             robot.command(f'drive {command[0]} {command[1]} 1',t)
             if lib is not None:
                 robot.s_native_gait.targets=targets
                 robot.s_native_gait.prepare_support=lambda *args:None
-        elif i==500:robot.command('@S 1000',t)
-        elif 100<i<500 and i%10==0:robot.command(f'@D {i} {command[0]} {command[1]}',t)
+        elif i==stop_tick:robot.command('@S 1000',t)
+        elif 100<i<stop_tick and i%10==0:robot.command(f'@D {i} {command[0]} {command[1]}',t)
         robot.tick(t);state=plant.row()
         rotation=plant.data.xmat[plant.model.body('robot').id].reshape(3,3)
         rows.append(dict(time_s=t,roll_deg=state['roll_deg'],pitch_deg=state['pitch_deg'],
@@ -97,9 +102,9 @@ def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1')
     assert np.max(abs(robot.command_target-robot.stand_target))<.01 and actual_error<1.1
     yaw=np.degrees(np.unwrap(np.radians([r['body_yaw_deg'] for r in rows])))
     return dict(command=list(command),heading_enabled=heading,backend='c' if lib is not None else 'python',
-                walk_yaw_change_deg=float(yaw[499]-yaw[99]),
+                walk_yaw_change_deg=float(yaw[stop_tick-1]-yaw[99]),
                 final_yaw_change_deg=float(yaw[-1]-yaw[99]),
-                walk_displacement_m=(np.array(rows[499]['position_m'])-rows[99]['position_m']).tolist(),
+                walk_displacement_m=(np.array(rows[stop_tick-1]['position_m'])-rows[99]['position_m']).tolist(),
                 max_tilt_deg=max(max(abs(r['roll_deg']),abs(r['pitch_deg'])) for r in rows[100:]),
                 final_actual_s_error_deg=actual_error,
                 stopped_video_s=next(r['time_s'] for r in rows if '$SPOTDRIVE stopped' in r['reply'])),rows

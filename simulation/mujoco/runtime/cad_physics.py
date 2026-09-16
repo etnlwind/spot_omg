@@ -302,14 +302,9 @@ class Simulation:
         values=values+self.joint_zero_error
         self.desired=np.radians(values);self.delay.append(self.desired.copy());delayed=self.delay.popleft()
         self.phase=(self.phase+.02/(period_s if period_s is not None else (2.4-.6*min(1,abs(self.linear)+abs(self.yaw)))))%1
-        velocity_limit=self.servo_profile.velocity_limit(self.speed)
-        acceleration_limit=self.servo_profile.acceleration_limit()
         for _ in range(round(.02/dt)):
-            wanted=np.clip((delayed-self.filtered)/dt,-velocity_limit,velocity_limit)
-            self.target_velocity+=np.clip(wanted-self.target_velocity,-acceleration_limit*dt,acceleration_limit*dt)
-            increment=self.target_velocity*dt
-            increment=np.where(abs(increment)>abs(delayed-self.filtered),delayed-self.filtered,increment)
-            self.filtered+=increment
+            self.filtered,self.target_velocity=self.servo_profile.advance_reference(
+                self.filtered,self.target_velocity,delayed,dt,self.speed)
             raw=p['servo_kp']*(self.filtered-d.qpos[self.q])-p['servo_kd']*d.qvel[self.v]
             scale=max(.05,self.voltage/12)
             # Linear DC motor torque-speed envelope in motoring direction;

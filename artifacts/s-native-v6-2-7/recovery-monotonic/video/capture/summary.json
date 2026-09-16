@@ -1,0 +1,411 @@
+{
+  "profile": "s_native_v6_2_6",
+  "parameters": {
+    "family": "trot",
+    "params": [
+      1.0,
+      0.5,
+      0.145,
+      0.012
+    ],
+    "balance_base": "cruise",
+    "s_native": true,
+    "experimental": true,
+    "transfer_fraction": 0.0,
+    "support_transfer": true,
+    "lift_exponent": 0.25,
+    "body_transfer_x_m": 0.006,
+    "rear_extension_m": 0.105,
+    "walking_foot_y": "j1",
+    "placement_entry_amplitude": 0.5,
+    "entry_sequence": "fr_double",
+    "start_phase": 0.5,
+    "entry_adduction_end": 1.0,
+    "normal_adduction_limit_deg": 9.0,
+    "stop_on_next_placement": true,
+    "stop_lift_m": 0.012,
+    "stop_period_s": 1.6,
+    "stop_timing": [
+      0.2,
+      0.4,
+      0.45,
+      0.7
+    ],
+    "reverse_input_limit": 0.6,
+    "continuous_recovery": true,
+    "support_reference_period_s": 2.0,
+    "smooth_lift_fraction": 0.3,
+    "support_reference_profile": "s_native_v6_2_3",
+    "feedback_tracking": true,
+    "tracking_responsive": true,
+    "tracking_samples_per_frame": 2,
+    "uniform_recovery": true,
+    "tracking_deceleration": 6.0
+  },
+  "command": 1000,
+  "experiment": {
+    "label": "V6.2.7 CANDIDATE r3 - continuous recovery X",
+    "pack_open_circuit_voltage": 11.1,
+    "j1_mode": "fixed_j1",
+    "notes": "Offline candidate: preserve the original quintic X path, project the existing J2/J3 pulse into shared vertical clearance, then solve both joints together. No pulse before the scheduled push ends. No physical acceleration claim or measured liftoff feedback. J1 entry and two-placement STOP retained; registered models unchanged.",
+    "trajectory": {
+      "height": 0.006,
+      "rise": 0.25,
+      "fall": 0.35,
+      "tuck_j2": 3.0,
+      "tuck_j3": 6.0,
+      "j2_timing": [
+        0.0,
+        0.18,
+        0.9
+      ],
+      "j3_timing": [
+        0.0,
+        0.1,
+        1.0
+      ],
+      "tuck_projection": "vertical"
+    }
+  },
+  "allow_fall": false,
+  "wait_s": 2,
+  "walk_s": 8,
+  "settle_s": 4,
+  "video_s": 14.0,
+  "fps": 25,
+  "stop_video_s": 10.0,
+  "returned_to_s_video_s": 12.6,
+  "final_target_s_error_deg": 0.0,
+  "final_actual_s_error_deg": 0.9899730544427996,
+  "views": [
+    "front",
+    "rear",
+    "top",
+    "side"
+  ],
+  "selection": "First >=5 degree roll/pitch sustained for four 20ms samples; an observation marker, not a stability pass/fail definition.",
+  "tilt_growth_detected": false,
+  "tipping_video_s": null,
+  "toppled_video_s": null,
+  "selected": [
+    {
+      "label": "Before",
+      "time_s": 10.22,
+      "since_drive_s": 8.22,
+      "stop_placement": "STOP STEP 1: FR+RL",
+      "phase": 0.16403040250314724,
+      "entry_phase": 5.444823128103628,
+      "roll_deg": -0.07426088189542068,
+      "pitch_deg": 0.5399530410079298,
+      "tilt_deg": 0.5399530410079298,
+      "clearance_mm": [
+        -3.725868610366185,
+        -1.427718076514331,
+        0.9911119149016643,
+        -1.2828720648628642
+      ],
+      "normal_force_n": [
+        15.820646972932497,
+        3.7014449042418986,
+        0.0,
+        8.094820967407186
+      ],
+      "body_relative_x_from_s_mm": [
+        -127.73158774507779,
+        4.8665402038637895,
+        10.246009743763217,
+        -125.59598657522957
+      ],
+      "body_relative_y_from_j1_mm": [
+        16.769595109493267,
+        -17.815503494892525,
+        17.722951626712188,
+        -17.71049541341646
+      ],
+      "j1_target_deg": [
+        -8.992355634251817,
+        -4.49235563394623,
+        -4.492355611796039,
+        -8.992355611488577
+      ],
+      "j1_actual_deg": [
+        -9.001167434309648,
+        -8.89479579416194,
+        -8.885934496515393,
+        -8.708096387199653
+      ],
+      "j2_target_deg": [
+        67.76764712589765,
+        48.826740120099394,
+        48.501744765733264,
+        67.60536750686126
+      ],
+      "j2_actual_deg": [
+        69.24636172429582,
+        48.75148817982296,
+        46.970306299323774,
+        68.4425054334112
+      ],
+      "j3_target_deg": [
+        76.21197947147344,
+        99.06772130916994,
+        99.04401921316777,
+        76.84338632619047
+      ],
+      "j3_actual_deg": [
+        77.2208799973531,
+        97.16451526560311,
+        96.42119217587425,
+        76.87757399086023
+      ],
+      "voltage_v": 10.705481532256032,
+      "phase_rate": 1.0,
+      "tracking": {
+        "rate": 1.0,
+        "peak_error_deg": 5.2734375,
+        "oldest_ms": 120.0,
+        "fault": 0,
+        "blocked_ms": 0.0,
+        "contact": "unobserved"
+      },
+      "lateral_placement_fraction": [
+        1.0,
+        0.5000000000000001,
+        0.5000000000000001,
+        1.0
+      ],
+      "normal_adduction_deg": [
+        -9.0,
+        -9.0,
+        -9.0,
+        -9.0
+      ],
+      "safety": "ok",
+      "moving": true,
+      "transitioning": false,
+      "target_s_error_deg": 21.75626099020557,
+      "actual_s_error_deg": 23.23497558860374,
+      "controller_reply": ""
+    },
+    {
+      "label": "Tilt growth",
+      "time_s": 10.42,
+      "since_drive_s": 8.42,
+      "stop_placement": "STOP STEP 1: FR+RL",
+      "phase": 0.3266736354734343,
+      "entry_phase": 5.444823128103628,
+      "roll_deg": 4.866355053629468,
+      "pitch_deg": 1.1390838407137536,
+      "tilt_deg": 4.866355053629468,
+      "clearance_mm": [
+        -2.186146580401994,
+        -2.4937446542300616,
+        19.014592308737445,
+        -2.333656322580209
+      ],
+      "normal_force_n": [
+        6.451476190389773,
+        11.091883999449427,
+        0.0,
+        9.24979078446943
+      ],
+      "body_relative_x_from_s_mm": [
+        -125.46439685880348,
+        5.0871041007573,
+        3.6035408935972124,
+        -126.9941018352479
+      ],
+      "body_relative_y_from_j1_mm": [
+        7.981621539240368,
+        -43.3069410825589,
+        50.54330593437229,
+        -13.219328373254388
+      ],
+      "j1_target_deg": [
+        -8.992355634251817,
+        0.007644366053771279,
+        0.0076443882039622935,
+        -8.992355611488577
+      ],
+      "j1_actual_deg": [
+        -11.070919604228623,
+        -2.7238103175174015,
+        -0.8948912223683079,
+        -9.841600461092334
+      ],
+      "j2_target_deg": [
+        67.76764712589765,
+        48.70025264778654,
+        48.700252253764205,
+        67.60536750686126
+      ],
+      "j2_actual_deg": [
+        68.30914830484096,
+        49.92709361684356,
+        49.500702138962495,
+        68.86599286893438
+      ],
+      "j3_target_deg": [
+        76.21197947147344,
+        94.903806912755,
+        94.90380565279803,
+        76.84338632619047
+      ],
+      "j3_actual_deg": [
+        76.721904931605,
+        99.49431615774114,
+        98.02637633166219,
+        76.95412837600105
+      ],
+      "voltage_v": 10.622349292203392,
+      "phase_rate": 1.0,
+      "tracking": {
+        "rate": 1.0,
+        "peak_error_deg": 7.91015625,
+        "oldest_ms": 120.0,
+        "fault": 0,
+        "blocked_ms": 0.0,
+        "contact": "unobserved"
+      },
+      "lateral_placement_fraction": [
+        1.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "normal_adduction_deg": [
+        -9.0,
+        -9.0,
+        -9.0,
+        -9.0
+      ],
+      "safety": "ok",
+      "moving": true,
+      "transitioning": false,
+      "target_s_error_deg": 21.75626099020557,
+      "actual_s_error_deg": 22.85460712088978,
+      "controller_reply": ""
+    },
+    {
+      "label": "Peak within 1s",
+      "time_s": 10.42,
+      "since_drive_s": 8.42,
+      "stop_placement": "STOP STEP 1: FR+RL",
+      "phase": 0.3266736354734343,
+      "entry_phase": 5.444823128103628,
+      "roll_deg": 4.866355053629468,
+      "pitch_deg": 1.1390838407137536,
+      "tilt_deg": 4.866355053629468,
+      "clearance_mm": [
+        -2.186146580401994,
+        -2.4937446542300616,
+        19.014592308737445,
+        -2.333656322580209
+      ],
+      "normal_force_n": [
+        6.451476190389773,
+        11.091883999449427,
+        0.0,
+        9.24979078446943
+      ],
+      "body_relative_x_from_s_mm": [
+        -125.46439685880348,
+        5.0871041007573,
+        3.6035408935972124,
+        -126.9941018352479
+      ],
+      "body_relative_y_from_j1_mm": [
+        7.981621539240368,
+        -43.3069410825589,
+        50.54330593437229,
+        -13.219328373254388
+      ],
+      "j1_target_deg": [
+        -8.992355634251817,
+        0.007644366053771279,
+        0.0076443882039622935,
+        -8.992355611488577
+      ],
+      "j1_actual_deg": [
+        -11.070919604228623,
+        -2.7238103175174015,
+        -0.8948912223683079,
+        -9.841600461092334
+      ],
+      "j2_target_deg": [
+        67.76764712589765,
+        48.70025264778654,
+        48.700252253764205,
+        67.60536750686126
+      ],
+      "j2_actual_deg": [
+        68.30914830484096,
+        49.92709361684356,
+        49.500702138962495,
+        68.86599286893438
+      ],
+      "j3_target_deg": [
+        76.21197947147344,
+        94.903806912755,
+        94.90380565279803,
+        76.84338632619047
+      ],
+      "j3_actual_deg": [
+        76.721904931605,
+        99.49431615774114,
+        98.02637633166219,
+        76.95412837600105
+      ],
+      "voltage_v": 10.622349292203392,
+      "phase_rate": 1.0,
+      "tracking": {
+        "rate": 1.0,
+        "peak_error_deg": 7.91015625,
+        "oldest_ms": 120.0,
+        "fault": 0,
+        "blocked_ms": 0.0,
+        "contact": "unobserved"
+      },
+      "lateral_placement_fraction": [
+        1.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "normal_adduction_deg": [
+        -9.0,
+        -9.0,
+        -9.0,
+        -9.0
+      ],
+      "safety": "ok",
+      "moving": true,
+      "transitioning": false,
+      "target_s_error_deg": 21.75626099020557,
+      "actual_s_error_deg": 22.85460712088978,
+      "controller_reply": ""
+    }
+  ],
+  "actual_body_relative_x_mm": {
+    "FL": {
+      "min": -138.16421276065623,
+      "max": 22.34019859188835
+    },
+    "FR": {
+      "min": -132.01823851876335,
+      "max": 18.714910147966723
+    },
+    "RL": {
+      "min": -139.80507931372338,
+      "max": 23.266652174797564
+    },
+    "RR": {
+      "min": -136.24875084853133,
+      "max": 19.392249141765628
+    }
+  },
+  "peak_tilt_during_drive_deg": 3.1521826367846617,
+  "first_fault_video_s": null,
+  "final_safety": "ok",
+  "note": "Estimated physical simulation; all four views render the same physical state. Underside rendering hides the floor only. Contact forces and foot heights are measured, distinct from command timing. Static COM projection alone does not establish dynamic stability."
+}

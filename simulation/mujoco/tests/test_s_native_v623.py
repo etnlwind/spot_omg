@@ -30,7 +30,7 @@ def test_rear_endpoint_pair_symmetry_and_preserved_old_models(plant):
  assert PROFILES['s_native_v6_2_1']['params'][0]==2.
  d=json.loads((ROOT/'config/locomotion_profiles.json').read_text())
  assert ['legacy',*d['profiles']][16:20]==['s_native_v6_1','s_native_v6_2_1','s_native_v6_2_2',NAME]
- assert RobotController(plant).profile==d['default']=='s_native_v6_2_5'
+ assert RobotController(plant).profile==d['default']=='s_native_v6_2_7'
 
 def test_lift_has_no_boundary_velocity_or_acceleration_jump(plant):
  g=SNativeGait(plant.model,plant.stand_target,PROFILES[NAME]);h=1e-5

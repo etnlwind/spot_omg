@@ -2270,7 +2270,7 @@ def _validate_stm32_application(image: Path, size: int) -> None:
 
 
 def _land_before_update(transport, name):
-    """Attempt Landing first; recovery updates must work even if motion fails."""
+    """Require a completed, measured Landing before a normal update."""
     console = Stm32Console(name, transport=transport)
     try:
         console.sync()
@@ -2278,14 +2278,15 @@ def _land_before_update(transport, name):
         completed = result.ok and any(line in ("OK", "OK landing") for line in result.lines)
         if completed:
             state = console.send("syncstate", timeout=15.0)
-            completed = state.ok and any(line.startswith("$SPOTSTATE ") and
-                                        "pose=landing" in line.split() for line in state.lines)
-        if completed:
-            print("Landing confirmed; continuing firmware update", flush=True)
-        else:
-            print("WARNING: Landing failed or stopped; continuing firmware update as requested", flush=True)
+            completed = state.ok and any(
+                line.startswith("$SPOTSTATE ") and
+                {"pose=landing", "safety=ok", "torque=on"}.issubset(line.split())
+                for line in state.lines)
     except (OSError, RuntimeError) as exc:
-        print(f"WARNING: Landing not confirmed ({exc}); continuing firmware update as requested", flush=True)
+        raise RuntimeError(f"Refusing firmware update: Landing not confirmed ({exc})") from exc
+    if not completed:
+        raise RuntimeError("Refusing firmware update: completed Landing with torque on and safety ok was not confirmed")
+    print("Landing confirmed; continuing firmware update", flush=True)
 
 
 

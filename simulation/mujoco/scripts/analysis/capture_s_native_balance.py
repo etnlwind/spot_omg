@@ -5,6 +5,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 import argparse
+import csv
 import json
 import subprocess
 from pathlib import Path
@@ -28,7 +29,21 @@ def main():
     parser.add_argument('--allow-fall', action='store_true')
     parser.add_argument('--fourth-view', choices=('side','bottom'), default='side')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--tuck-config', type=Path,
+                        help='Offline candidate JSON; does not register or replace an app model.')
     args = parser.parse_args()
+    if args.tuck_config:
+        from simulation.mujoco.scripts.analysis.analyze_knee_liftoff import tuck_experiment
+        from simulation.mujoco.scripts.analysis.analyze_j1_steady_hold import j1_experiment
+        experiment=json.loads(args.tuck_config.read_text(encoding='utf-8'))
+        if args.profile!='s_native_v6_2_6':parser.error('Tuck experiments require V6.2.6 as the preserved base')
+        with tuck_experiment(**experiment['trajectory']),j1_experiment(experiment.get('j1_mode','baseline')):
+            capture(args,parser,experiment)
+    else:
+        capture(args,parser)
+
+
+def capture(args,parser,experiment=None):
     if not 1 <= args.command <= 1000:
         parser.error('command must be 1..1000')
     if not 3 <= args.walk_seconds <= 120:
@@ -37,9 +52,11 @@ def main():
         parser.error('settle-seconds must be 0..30')
     stop_tick = (2 + args.walk_seconds)*50
     total_ticks = stop_tick + args.settle_seconds*50
-    plant = Simulation(load_parameters(parse_args(['--allow-fall'] if args.allow_fall else [])))
+    parameters=load_parameters(parse_args(['--allow-fall'] if args.allow_fall else []))
+    if experiment:parameters['pack_open_circuit_voltage']=experiment.get('pack_open_circuit_voltage',11.1)
+    plant = Simulation(parameters)
     robot = RobotController(plant)
-    robot.profile = args.profile
+    robot.select_profile(args.profile)
     model, data = plant.model, plant.data
     kin = SoleKinematics(model, plant.stand_target)
     origin = np.array([kin.foot(i) for i in range(4)])
@@ -78,6 +95,7 @@ def main():
         records.append(dict(time_s=t, since_drive_s=t-2,
             stop_placement=placement,
             phase=float(getattr(robot, 'nominal_phase', 0)),
+            entry_phase=float(getattr(gait,'entry_phase',0.)),
             roll_deg=state['roll_deg'], pitch_deg=state['pitch_deg'],
             tilt_deg=max(abs(state['roll_deg']), abs(state['pitch_deg'])),
             clearance_mm=[foot_clearance(model, data, foot)*1000 for foot in kin.feet],
@@ -86,8 +104,12 @@ def main():
             body_relative_y_from_j1_mm=[(kin.foot(j)[1]-kin.data.xanchor[model.joint(leg.lower()+'_j1').id,1])*1000 for j,leg in enumerate(legs)],
             j1_target_deg=robot.command_target[::3].tolist(),
             j1_actual_deg=np.degrees(data.qpos[plant.q])[::3].tolist(),
+            j2_target_deg=robot.command_target[1::3].tolist(),
+            j2_actual_deg=np.degrees(data.qpos[plant.q])[1::3].tolist(),
             j3_target_deg=robot.command_target[2::3].tolist(),
             j3_actual_deg=np.degrees(data.qpos[plant.q])[2::3].tolist(),
+            voltage_v=float(plant.voltage),phase_rate=float(robot.tracking.rate),
+            tracking=dict(robot.tracking.diagnostic),
             lateral_placement_fraction=(robot.s_native_gait.placement_fraction.tolist() if hasattr(robot,'s_native_gait') else [0.]*4),
             normal_adduction_deg=(robot.s_native_gait.normal_adduction.tolist() if hasattr(robot,'s_native_gait') and hasattr(robot.s_native_gait,'normal_adduction') else None),
             safety=robot.safety, moving=robot.motion is not None,
@@ -116,7 +138,7 @@ def main():
     camera = mujoco.MjvCamera()
     camera.elevation = 0
     # Leave room above the body for legs during the requested fall observation.
-    camera.distance = 1.35
+    camera.distance = 1.05 if experiment else 1.35
     floor_group = int(model.geom_group[floor])
     model.geom_group[floor] = 5
 
@@ -130,7 +152,7 @@ def main():
         camera.elevation = elevation
         # Hide only the rendered floor in the underside view; physics is unchanged.
         options.geomgroup[5] = int(elevation != 90)
-        camera.lookat[:] = data.subtree_com[model.body('robot').id]+[0, 0, .03]
+        camera.lookat[:] = data.subtree_com[model.body('robot').id]+[0, 0, -.1 if experiment else .03]
         renderer.update_scene(data, camera=camera, scene_option=options)
         frame = Image.fromarray(renderer.render())
         draw = ImageDraw.Draw(frame)
@@ -162,6 +184,7 @@ def main():
     returned = next((r for r in records[stop_tick:] if not r['moving'] and not r['transitioning']
                      and r['target_s_error_deg'] < .01), None)
     report = dict(profile=args.profile, parameters=PROFILES[args.profile], command=args.command,
+        experiment=experiment,
         allow_fall=args.allow_fall, wait_s=2, walk_s=args.walk_seconds,
         settle_s=args.settle_seconds, video_s=total_ticks*.02, fps=25,
         stop_video_s=stop_tick*.02 if args.settle_seconds else None,
@@ -176,9 +199,19 @@ def main():
         selected=[dict(label=label, **records[index]) for label,index in selected],
         actual_body_relative_x_mm={l:dict(min=float(active[:,j].min()),max=float(active[:,j].max())) for j,l in enumerate(legs)},
         peak_tilt_during_drive_deg=max(r['tilt_deg'] for r in records[100:stop_tick]),
+        first_fault_video_s=next((r['time_s'] for r in records if r['safety']!='ok'),None),
+        final_safety=records[-1]['safety'],
         note='Estimated physical simulation; all four views render the same physical state. Underside rendering hides the floor only. Contact forces and foot heights are measured, distinct from command timing. Static COM projection alone does not establish dynamic stability.')
     (args.output/'summary.json').write_text(json.dumps(report, indent=2))
     (args.output/'trajectory.json').write_text(json.dumps(records))
+    with (args.output/'telemetry.csv').open('w',newline='',encoding='utf-8') as f:
+        scalar=['time_s','phase','roll_deg','pitch_deg','voltage_v','phase_rate','safety']
+        vectors=['j1_target_deg','j1_actual_deg','j2_target_deg','j2_actual_deg','j3_target_deg','j3_actual_deg',
+                 'normal_force_n','clearance_mm','body_relative_x_from_s_mm']
+        writer=csv.writer(f)
+        writer.writerow(scalar+[leg+'_'+key for leg in legs for key in vectors])
+        for row in records:
+            writer.writerow([row[k] for k in scalar]+[row[k][j] for j in range(4) for k in vectors])
     print(json.dumps(report, indent=2), flush=True)
 
     # MuJoCo azimuth describes the viewing direction: 180 faces the +X front.
@@ -201,11 +234,13 @@ def main():
         frames = [render(j, 90, 'SIDE') for j in range(max(100,onset-15), min(total_ticks,onset+46), 2)]
         frames[0].save(args.output/'balance-window.gif', save_all=True, append_images=frames[1:], duration=40, loop=0)
         encoders = {name: encoder(name, 640, 400) for name,_,_ in views}
-        encoders['four-views'] = encoder('four-views', 1280, 880)
+        mosaic_height=1090 if experiment else 880
+        encoders['four-views'] = encoder('four-views', 1280, mosaic_height)
         for index in range(0, total_ticks, 2):
-            mosaic = Image.new('RGB', (1280, 880), '#17232f')
+            mosaic = Image.new('RGB', (1280, mosaic_height), '#17232f')
             draw = ImageDraw.Draw(mosaic)
-            draw.text((10, 10), f"{args.profile} | input {args.command/10:.0f}% | 2s wait + {args.walk_seconds}s walk + {args.settle_seconds}s stop/hold | same simulation / 4 views", font=font, fill='white')
+            label=experiment['label'] if experiment else args.profile
+            draw.text((10, 10), f"{label} | {args.command/10:.0f}% | 2s wait + {args.walk_seconds}s walk + {args.settle_seconds}s stop", font=font, fill='white')
             draw.text((10, 37), f'Mass {model.body_mass.sum():.3f} kg | cushion D37.3 x 27 mm | estimated physics | fall observation: {args.allow_fall}', font=font, fill='white')
             if index >= stop_tick:
                 draw.text((10, 59), f"{records[index]['stop_placement']} | S joint error: target {records[index]['target_s_error_deg']:.2f} deg | actual {records[index]['actual_s_error_deg']:.2f} deg (max / 12 joints)", font=font, fill='white')
@@ -216,6 +251,27 @@ def main():
                 frame = render(index, azimuth, name.upper(), elevation)
                 encoders[name].stdin.write(np.asarray(frame).tobytes())
                 mosaic.paste(frame, ((view_index%2)*640, 80+(view_index//2)*400))
+            if experiment:
+                row=records[index]
+                draw.text((10,888), f"Safety: {row['safety'].upper()} | Battery {row['voltage_v']:.2f} V | phase rate {row['phase_rate']:.2f} | tracking error {row['tracking'].get('peak_error_deg',0):.1f} deg | J1/J2/J3: commanded / actual",font=font,fill='white')
+                for j,leg in enumerate(legs):
+                    q=(row['phase']+[.5,0,0,.5][j])%1
+                    # The added pulse peak is not the final IK joint's reversal.
+                    # Report the final commanded J3 trend, independently of phase.
+                    previous=records[max(0,index-2)]
+                    change=row['j3_target_deg'][j]-previous['j3_target_deg'][j]
+                    trend='FOLD' if change>.02 else 'OPEN' if change<-.02 else 'HOLD'
+                    cue=('PUSH' if q<.5 else 'RECOVERY')+' / J3 '+trend
+                    if index<100:cue='S / WAIT'
+                    elif index>=stop_tick:cue='STOP / S'
+                    x=10+320*j
+                    draw.text((x,918),f'{leg} | {cue}',font=font,fill='#8bdddf')
+                    draw.text((x,943),f"J1  {row['j1_target_deg'][j]:6.1f} / {row['j1_actual_deg'][j]:6.1f} deg",font=font,fill='#9ee7a2')
+                    draw.text((x,968),f"J2  {row['j2_target_deg'][j]:6.1f} / {row['j2_actual_deg'][j]:6.1f} deg",font=font,fill='white')
+                    draw.text((x,993),f"J3  {row['j3_target_deg'][j]:6.1f} / {row['j3_actual_deg'][j]:6.1f} deg",font=font,fill='white')
+                    draw.text((x,1018),f"Foot X from S {row['body_relative_x_from_s_mm'][j]:+.1f} mm",font=font,fill='white')
+                j1_status='J1 NORMAL ANGLE HOLD' if experiment.get('j1_mode')=='fixed_j1' and row['entry_phase']>=1 and index<stop_tick else 'J1 ENTRY / STOP' if experiment.get('j1_mode')=='fixed_j1' else 'J1 PERIODIC'
+                draw.text((10,1061),j1_status+' | J3: command trend. Load/height: simulated. Servo dynamics unmeasured; drag remains.',font=font,fill='#ffce84')
             encoders['four-views'].stdin.write(np.asarray(mosaic).tobytes())
             captures = {min(total_ticks-2,onset+onset%2): 'tilt-onset-four-views.png', total_ticks-2: 'final-four-views.png'}
             if toppled is not None:

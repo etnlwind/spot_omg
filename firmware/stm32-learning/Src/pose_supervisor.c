@@ -96,7 +96,7 @@ done:
  r->pose_diagnostics.suspect_id=sid;r->pose_diagnostics.suspect_temperature=st;r->pose_diagnostics.suspect_hardware=sh;
  r->pose_diagnostics.reason=cause;r->last_failed_servo_id=failed;r->last_bus_result=bus;
 }
-RobotResult robot_supervised_pose(RobotController *r,const uint16_t to[12]) {
+RobotResult robot_supervised_pose(RobotController *r,const uint16_t to[12],bool stand_requested) {
  if(!r || !r->bus || !to || r->stow_active || (r->drive_active && !r->drive_pose_entry))return ROBOT_INVALID_ARGUMENT;
  memset(&r->pose_diagnostics,0,sizeof(r->pose_diagnostics));
  r->shared_idle=false;r->motion_abort_requested=false;robot_support_reset(r);
@@ -117,10 +117,10 @@ RobotResult robot_supervised_pose(RobotController *r,const uint16_t to[12]) {
   lead[i]=POSE_LEAD_TICKS;
   from[i]=cmd[i]=anchor[i]=previous[i]=s[i].position;progress_at[i]=HAL_GetTick();
  }
- uint32_t duration=pose_duration(from,to);
+ uint32_t duration=pose_transition_duration(from,to,stand_requested);
  /* Restore the original single profiled goal for Landing -> Stand only.
   * Other poses retain measured-progress interpolation. */
- const bool fast=pose_fast_stand(from,to); if(!duration)duration=300;
+ const bool fast=pose_fast_stand(from,stand_requested); if(!duration)duration=300;
  r->pose_diagnostics.nominal_ms=fast?0:duration;
  uint32_t begin=HAL_GetTick(),phase=0,last=begin,settled_since=0;
  /* Seed positions before enabling any axis. Failed enable never rolls other

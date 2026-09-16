@@ -1,0 +1,220 @@
+F...FF...F.FF..F...............F..........F.F..                          [100%]
+================================== FAILURES ===================================
+___________ test_stow_roundtrip_uses_physics_and_restores_encoding ____________
+
+    def test_stow_roundtrip_uses_physics_and_restores_encoding():
+        r=controller();before=r.plant.data.qpos.copy()
+        r.command('stow',0)
+        np.testing.assert_array_equal(r.plant.data.qpos,before)
+        assert r.stow_path and r.plant.stow_active
+        for _ in range(1200):
+            tick(r,1)
+            if r.pose=='stow':break
+>       assert r.pose=='stow' and r.transition is None
+E       AssertionError: assert ('stow-paused' == 'stow'
+E         
+E         - stow
+E         + stow-paused)
+
+simulation\mujoco\tests\test_stow_controller.py:33: AssertionError
+_______ test_stow_can_resume_either_direction_from_interrupted_position _______
+
+    def test_stow_can_resume_either_direction_from_interrupted_position():
+        for next_command, expected in [('stow',FOLDED),('landing',LANDING)]:
+            r=controller();r.command('stow',0);tick(r,400)
+            r.command('\x03',float(r.plant.data.time));tick(r,25)
+            before=r.plant.data.qpos.copy()
+            held=np.degrees(before[r.plant.q]) if next_command=='landing' else r.target.copy()
+            r.command(next_command,float(r.plant.data.time))
+            np.testing.assert_array_equal(r.plant.data.qpos,before)
+            np.testing.assert_array_equal(r.transition[0],held)
+            assert r.transition[3]==12
+            for _ in range(1200):
+                tick(r,1)
+                if r.pose==next_command:break
+>           assert r.pose==next_command
+E           AssertionError: assert 'stow-paused' == 'stow'
+E             
+E             - stow
+E             + stow-paused
+
+simulation\mujoco\tests\test_stow_controller.py:97: AssertionError
+_____ test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque _____
+
+    def test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque():
+        r=controller();r.command('stow',0);tick(r,1100)
+>       assert r.pose=='stow' and not r.torque
+E       AssertionError: assert ('stow-paused' == 'stow'
+E         
+E         - stow
+E         + stow-paused)
+
+simulation\mujoco\tests\test_stow_controller.py:103: AssertionError
+_____ test_selected_gait_improves_speed_with_bounded_tilt_and_motor_load ______
+
+    def test_selected_gait_improves_speed_with_bounded_tilt_and_motor_load():
+        selected=json.loads((RESULTS/'selected.json').read_text())
+        params=np.array([selected['params'][k] for k in NAMES])
+        p,model=make_scenario()
+        baseline=evaluate(None,p,model,duration=20,baseline=True)
+        result=evaluate(params,p,model,duration=20)
+>       assert not result['fallen']
+E       assert not True
+
+simulation\mujoco\tests\test_optimized_gait.py:43: AssertionError
+______ test_low_speed_turn_lifts_each_foot_without_excessive_tilt[-221] _______
+
+yaw = -221
+
+    @pytest.mark.parametrize('yaw',[-221,221])
+    def test_low_speed_turn_lifts_each_foot_without_excessive_tilt(yaw):
+        summary,_=run(177,yaw,14)
+>       assert summary['safety']=='ok'
+E       AssertionError: assert 'tilt' == 'ok'
+E         
+E         - ok
+E         + tilt
+
+simulation\mujoco\tests\test_turn_clearance.py:15: AssertionError
+_______ test_low_speed_turn_lifts_each_foot_without_excessive_tilt[221] _______
+
+yaw = 221
+
+    @pytest.mark.parametrize('yaw',[-221,221])
+    def test_low_speed_turn_lifts_each_foot_without_excessive_tilt(yaw):
+        summary,_=run(177,yaw,14)
+>       assert summary['safety']=='ok'
+E       AssertionError: assert 'tilt' == 'ok'
+E         
+E         - ok
+E         + tilt
+
+simulation\mujoco\tests\test_turn_clearance.py:15: AssertionError
+___________________ test_upright_actually_lifts_front_feet ____________________
+
+    def test_upright_actually_lifts_front_feet():
+        from simulation.mujoco.scripts.analysis.diagnose_turn_clearance import run
+        profile=json.loads(PROFILE.read_text())['profiles']['upright']
+        result,_=run(1000,0,18,profile='upright',override=profile)
+>       assert result['safety']=='ok'
+E       AssertionError: assert 'tilt' == 'ok'
+E         
+E         - ok
+E         + tilt
+
+simulation\mujoco\tests\test_upright_profile.py:41: AssertionError
+__________ test_balance_enabled_by_default_and_suspended_for_landing __________
+
+robot = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x0000025147C81150>
+
+    def test_balance_enabled_by_default_and_suspended_for_landing(robot):
+        tick(robot,60)
+        assert robot.balance.applied
+        robot.command('syncstate',1.2)
+        assert b'balance=active' in robot.drain()
+        robot.command('landing',1.2)
+        tick(robot,60,1.2)
+        assert not robot.balance.applied
+        tick(robot,300,2.4)
+        robot.command('stand',float(robot.plant.data.time))
+        tick(robot,350,float(robot.plant.data.time))
+>       assert robot.balance.applied
+E       assert False
+E        +  where False = <simulation.mujoco.runtime.balance_controller.BalanceController object at 0x0000025147C82BC0>.applied
+E        +    where <simulation.mujoco.runtime.balance_controller.BalanceController object at 0x0000025147C82BC0> = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x0000025147C81150>.balance
+
+simulation\mujoco\tests\test_virtual_robot.py:156: AssertionError
+________ test_directional_cruise_blends_without_neutral_discontinuity _________
+
+robot = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x0000025147D7F250>
+
+    def test_directional_cruise_blends_without_neutral_discontinuity(robot):
+        forward=[.8,.64,.065,.007,.20175,-.035,.75]
+        base=[1.05,.6,.08,.012,.20175,-.035,.75]
+        robot.profiles['cruise']['params']=forward
+        robot.profiles['cruise']['turn_reverse_params']=base
+        robot.linear=-1
+>       np.testing.assert_allclose(robot.active_profile_params(),base)
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-07, atol=0
+E       
+E       Mismatched elements: 4 / 7 (57.1%)
+E       Max absolute difference among violations: 0.75
+E       Max relative difference among violations: 1.
+E        ACTUAL: array([ 1.     ,  0.5    ,  0.145  ,  0.012  ,  0.20175, -0.035  ,
+E               0.     ])
+E        DESIRED: array([ 1.05   ,  0.6    ,  0.08   ,  0.012  ,  0.20175, -0.035  ,
+E               0.75   ])
+
+simulation\mujoco\tests\test_virtual_robot.py:229: AssertionError
+_______________ test_heading_does_not_override_manual_steering ________________
+
+robot = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x000002514EA39360>
+
+    def test_heading_does_not_override_manual_steering(robot):
+        robot.command('drive 800 0 1',0)
+        for i in range(100):
+            if i%10==0:robot.command(f'@D {i+2} 800 0',i*.02)
+>           robot.tick(i*.02)
+
+simulation\mujoco\tests\test_virtual_robot.py:257: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+simulation\mujoco\runtime\virtual_robot.py:559: in tick
+    self.target=shared_drive_step(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+robot = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x000002514EA39360>
+
+    def step(robot):
+        options=_arc_options(robot.plant.p) if robot.profile=='arcturn' else None
+        support=robot.profile=='arcsupport'
+        fn=robot.plant.policy._library.spot_drive_step_stateful if support else robot.plant.policy._library.spot_drive_step_timed
+        fp=ctypes.POINTER(ctypes.c_float)
+        fn.argtypes=(fp,ctypes.c_int,ctypes.c_float,ctypes.c_float,ctypes.c_float,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_float,ctypes.c_float,fp)
+        extra=[]
+        if support:
+            fn.argtypes=(fp,*fn.argtypes)
+            if not hasattr(robot,'arc_support_state'):robot.arc_support_state=(ctypes.c_float*12)()
+            extra=[robot.arc_support_state]
+        fn.restype=ctypes.c_int
+        v=(ctypes.c_float*11)(robot.phase,robot.linear,robot.yaw,robot.elapsed,*robot.heading.state,robot.turn_assist)
+        out=(ctypes.c_float*12)()
+        now=float(robot.plant.data.time)
+        if robot.elapsed==0:robot.tracking.reset(now)
+        rate=robot.tracking.step(now,.02,bool(robot.stopping_reason)) if robot.tracking_enabled else 1.
+        if robot.tracking_enabled and robot.tracking.diagnostic.get('fault'):
+            robot.motion=None;robot.transition=None;robot.stopping_reason=None
+            robot.request=(0.,0.);robot.linear=robot.yaw=0.
+            robot.safety='tracking';robot.pose='custom'
+            robot.reply('$SPOTDRIVE stopped reason=tracking feedback fault')
+            return robot.command_target.copy()
+        sample=robot.imu_reading
+        valid=sample is not None and sample['age_ms']<=100
+        if robot.plant.p.get('arc_observer_trial') is not None:
+            from types import SimpleNamespace
+            if not hasattr(robot,'arc_observer'):
+                from simulation.mujoco.runtime.arc_observer import ArcObserver
+                robot.arc_observer=ArcObserver()
+            robot.arc_observer.update(sample,now)
+            estimate=robot.arc_observer.read(now,lookahead_s=float(robot.plant.p['arc_observer_trial']))
+            robot.arc_sensor_available=estimate is not None
+            if estimate:
+                robot.arc_sensor=SimpleNamespace(filtered=np.array(estimate['angle_deg'])*10,rate=np.array(estimate['rate_deg_s'])*10)
+        if not fn(v,*extra,NAMES.index(robot.profile),*robot.request,sample['yaw_tenths']/10 if valid else 0,
+                  valid,robot.heading.enabled and robot.safety=='ok',bool(robot.stopping_reason),.02,rate,out):
+>           raise ValueError('Invalid shared drive target')
+E           ValueError: Invalid shared drive target
+
+simulation\mujoco\runtime\drive_controller.py:88: ValueError
+=========================== short test summary info ===========================
+FAILED simulation/mujoco/tests/test_stow_controller.py::test_stow_roundtrip_uses_physics_and_restores_encoding
+FAILED simulation/mujoco/tests/test_stow_controller.py::test_stow_can_resume_either_direction_from_interrupted_position
+FAILED simulation/mujoco/tests/test_stow_controller.py::test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque
+FAILED simulation/mujoco/tests/test_optimized_gait.py::test_selected_gait_improves_speed_with_bounded_tilt_and_motor_load
+FAILED simulation/mujoco/tests/test_turn_clearance.py::test_low_speed_turn_lifts_each_foot_without_excessive_tilt[-221]
+FAILED simulation/mujoco/tests/test_turn_clearance.py::test_low_speed_turn_lifts_each_foot_without_excessive_tilt[221]
+FAILED simulation/mujoco/tests/test_upright_profile.py::test_upright_actually_lifts_front_feet
+FAILED simulation/mujoco/tests/test_virtual_robot.py::test_balance_enabled_by_default_and_suspended_for_landing
+FAILED simulation/mujoco/tests/test_virtual_robot.py::test_directional_cruise_blends_without_neutral_discontinuity
+FAILED simulation/mujoco/tests/test_virtual_robot.py::test_heading_does_not_override_manual_steering
+10 failed, 37 passed in 55.74s

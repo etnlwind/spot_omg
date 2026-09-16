@@ -53,12 +53,12 @@ def attitude_ok(reading):
     return bool(fn(reading is not None,0 if reading is None else reading["roll_tenths"],0 if reading is None else reading["pitch_tenths"]))
 
 
-def pose_frame(start,end,elapsed_s=0):
+def pose_frame(start,end,elapsed_s=0,*,stand_requested=False):
     fn=_library().spot_pose_frame
     fp=ctypes.POINTER(ctypes.c_float)
-    fn.argtypes=[fp,fp,ctypes.c_uint32,fp];fn.restype=ctypes.c_int
+    fn.argtypes=[fp,fp,ctypes.c_uint32,ctypes.c_int,fp];fn.restype=ctypes.c_int
     values=(ctypes.c_float*12)()
-    duration=fn((ctypes.c_float*12)(*start),(ctypes.c_float*12)(*end),round(elapsed_s*1000),values)
+    duration=fn((ctypes.c_float*12)(*start),(ctypes.c_float*12)(*end),round(elapsed_s*1000),stand_requested,values)
     if duration<0:raise ValueError('Pose outside physical encoder range')
     return list(values),duration/1000
 

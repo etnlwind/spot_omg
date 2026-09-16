@@ -97,11 +97,13 @@ enum RobotConnectionTarget: String, CaseIterable {
 
 
 enum SimulatorGaitProfile: String, CaseIterable {
-    case s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
+    case s_native_v6_2_7, s_native_v6_2_6, s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
     static var newest: Self { .allCases[0] }
     case attitudepd, centerpivot, arcsupport, arcturn, legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
     case cushion_reach, cushion_j2lift, cushion_wbc, cushion_forward, cushion_support_shift, cushion_support_shift_v2, cushion_v2_push, cushion_diagonal_sync_wide80
     func isSupported(capabilities: Set<String>) -> Bool {
+        (self != .s_native_v6_2_7 || capabilities.contains("s_native_v6_2_7")) &&
+        (self != .s_native_v6_2_6 || capabilities.contains("s_native_v6_2_6")) &&
         (self != .s_native_v6_2_5 || capabilities.contains("s_native_v6_2_5")) &&
         (self != .s_native_v6_2_4 || capabilities.contains("s_native_v6_2_4")) &&
         (self != .s_native_v6_2_3 || capabilities.contains("s_native_v6_2_3")) &&
@@ -122,6 +124,8 @@ enum SimulatorGaitProfile: String, CaseIterable {
     var simulatorOnly: Bool { [.s_native_v6_2, .s_native_v6, .s_native_v5, .s_native_v4, .s_native_v3, .s_native_v2, .s_native_v1, .cushion_reach, .cushion_j2lift, .cushion_wbc, .cushion_forward, .cushion_support_shift, .cushion_support_shift_v2, .cushion_v2_push, .cushion_diagonal_sync_wide80].contains(self) }
     var title: String {
         switch self {
+        case .s_native_v6_2_7: return "S 출발 · 이른 접힘 V6.2.7"
+        case .s_native_v6_2_6: return "S 출발 · 연속 내딛기 V6.2.6"
         case .s_native_v6_2_5: return "S 출발 · 신속 회수 V6.2.5"
         case .s_native_v6_2_4: return "S 출발 · 도달 확인 V6.2.4"
         case .s_native_v6_2_3: return "S 출발 · 확장 V6.2.3"
@@ -168,7 +172,7 @@ enum SimulatorGaitProfile: String, CaseIterable {
 extension SimulatorGaitProfile {
     var benchmarkSpeedMetersPerSecond: Double? {
         switch self {
-        case .s_native_v6_2_5, .s_native_v6_2_4, .s_native_v6_2_3, .s_native_v6_2_2, .s_native_v6_2_1, .s_native_v6_2, .s_native_v6_1, .s_native_v6, .s_native_v5, .s_native_v4, .s_native_v3, .s_native_v2, .s_native_v1: return nil
+        case .s_native_v6_2_7, .s_native_v6_2_6, .s_native_v6_2_5, .s_native_v6_2_4, .s_native_v6_2_3, .s_native_v6_2_2, .s_native_v6_2_1, .s_native_v6_2, .s_native_v6_1, .s_native_v6, .s_native_v5, .s_native_v4, .s_native_v3, .s_native_v2, .s_native_v1: return nil
         case .legacy: return 0.047956415
         case .crawl: return 0.028477535
         case .cruise: return 0.157175313
@@ -201,7 +205,7 @@ extension SimulatorGaitProfile {
         return "(\(String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), speed))m/s)"
     }
 
-    var titleWithSpeed: String { if self == .s_native_v6_2_5 || self == .s_native_v6_2_4 || self == .s_native_v6_2_3 || self == .s_native_v6_2_2 || self == .s_native_v6_2_1 || self == .s_native_v6_2 || self == .s_native_v6_1 || self == .s_native_v6 || self == .s_native_v5 || self == .s_native_v4 || self == .s_native_v3 || self == .s_native_v2 || self == .s_native_v1 { return "\(title) · 실험" }; return "\(title) \(Self.speedSuffix(benchmarkSpeedMetersPerSecond))" }
+    var titleWithSpeed: String { if self == .s_native_v6_2_7 || self == .s_native_v6_2_6 || self == .s_native_v6_2_5 || self == .s_native_v6_2_4 || self == .s_native_v6_2_3 || self == .s_native_v6_2_2 || self == .s_native_v6_2_1 || self == .s_native_v6_2 || self == .s_native_v6_1 || self == .s_native_v6 || self == .s_native_v5 || self == .s_native_v4 || self == .s_native_v3 || self == .s_native_v2 || self == .s_native_v1 { return "\(title) · 실험" }; return "\(title) \(Self.speedSuffix(benchmarkSpeedMetersPerSecond))" }
 }
 // END GENERATED GAIT SPEEDS
 

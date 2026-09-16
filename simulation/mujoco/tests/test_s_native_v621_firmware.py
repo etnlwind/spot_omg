@@ -33,7 +33,7 @@ def test_v621_keeps_v61_reset_and_profile_indices(kernel,plant):
     manifest=json.loads((ROOT/'config/locomotion_profiles.json').read_text())
     names=['legacy',*manifest['profiles']]
     assert names[16:18]==['s_native_v6_1','s_native_v6_2_1']
-    assert manifest['default']=='s_native_v6_2_5'
+    assert manifest['default']=='s_native_v6_2_7'
     assert manifest['profiles']['s_native_v6_1']['params'][:4]==[1.2,.5,.085,.012]
 
 def test_v621_uses_existing_front_j1_physical_transform(kernel,plant):

@@ -54,3 +54,19 @@ def test_plant_internal_reference_obeys_register_acceleration_and_speed():
         assert np.max(np.abs(plant.filtered-previous))<=300*2*np.pi/4096*.02+1e-9
         assert np.max(np.abs(plant.target_velocity))<=300*2*np.pi/4096+1e-9
         previous=plant.filtered.copy()
+
+
+def test_reference_brakes_at_goal_and_preserves_kinematics_on_reversal():
+    profile=ServoProfile(3400,254,[50,254,50]*4)
+    q=np.zeros(12);v=np.zeros(12);dt=.002
+    speed=np.full(12,np.radians(300))
+    limit=profile.acceleration_limit()
+    for i in range(1000):
+        goal=np.full(12,np.radians(20 if i<50 else -5))
+        next_q,next_v=profile.advance_reference(q,v,goal,dt,speed)
+        np.testing.assert_allclose((next_q-q)/dt,next_v,atol=1e-12)
+        assert np.all(abs(next_v-v)<=limit*dt+1e-12)
+        assert np.all(abs(next_v)<=profile.velocity_limit(speed)+1e-12)
+        q,v=next_q,next_v
+    np.testing.assert_allclose(q,goal,atol=1e-6)
+    np.testing.assert_allclose(v,0,atol=1e-6)

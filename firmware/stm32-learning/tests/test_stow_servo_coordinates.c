@@ -27,9 +27,22 @@ int main(void){
  assert(frame[0]==455 && pose_duration(to,to)==0);
  uint16_t landing[12],stand[12],straight[12];
  assert(robot_landing_targets(landing) && robot_stand_targets(stand) && robot_straight_targets(straight));
- assert(pose_duration(landing,stand)==0);
+ assert(pose_transition_duration(landing,stand,true)==0);
+ assert(pose_transition_duration(landing,stand,false)>0);
  assert(pose_duration(stand,landing)>=5400);
  assert(pose_duration(stand,straight)>0 && pose_duration(straight,stand)>0);
+ uint16_t near_landing[12],other_stand[12];
+ memcpy(other_stand,stand,sizeof stand);other_stand[1]-=50;
+ assert(pose_transition_duration(landing,other_stand,true)==0);
+ assert(pose_transition_duration(landing,other_stand,false)>0);
+ assert(!pose_fast_stand(stand,true) && pose_duration(stand,landing)>0);
+ assert(!pose_fast_stand(straight,true) && pose_duration(straight,stand)>0);
+ for(unsigned i=0;i<12;i++)for(int sign=-1;sign<=1;sign+=2) {
+  memcpy(near_landing,landing,sizeof landing);near_landing[i]=(uint16_t)(landing[i]+sign*80);
+  assert(pose_fast_stand(near_landing,true));
+  near_landing[i]=(uint16_t)(landing[i]+sign*81);
+  assert(!pose_fast_stand(near_landing,true));
+ }
  ServoBus b={0};Sts3215State s;
  for(int32_t raw=-32767;raw<=32767;raw++)assert(stow_unwire(stow_wire(raw))==raw);
  for(unsigned id=2;id<=5;id+=3)for(int turns=-2;turns<=2;turns++) {

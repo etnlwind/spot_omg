@@ -149,7 +149,7 @@ class RobotController:
 
     def blend_pose(self,target,completion):
         self.capture_current_target()
-        _,duration=shared_pose_frame(self.target,target)
+        _,duration=shared_pose_frame(self.target,target,stand_requested=completion=='OK stand')
         self.plant.servo_profile.set(self.profile_speed if duration==0 else 300,
                                      self.profile_acceleration if duration==0 else 30)
         self.blend(target,completion,max(.02,duration))
@@ -218,8 +218,8 @@ class RobotController:
             raise ValueError('unknown profile: '+name)
         if self.motion or self.transition:
             raise ValueError('stop before changing profile')
-        if self.profile in ("s_native_v6_2_4","s_native_v6_2_5") or name in ("s_native_v6_2_4","s_native_v6_2_5"):
-            self.tracking_enabled=name in ("s_native_v6_2_4","s_native_v6_2_5")
+        if self.profile in ("s_native_v6_2_4","s_native_v6_2_5","s_native_v6_2_6","s_native_v6_2_7") or name in ("s_native_v6_2_4","s_native_v6_2_5","s_native_v6_2_6","s_native_v6_2_7"):
+            self.tracking_enabled=name in ("s_native_v6_2_4","s_native_v6_2_5","s_native_v6_2_6","s_native_v6_2_7")
         self.profile = name
         if name=='attitudepd':
             from simulation.mujoco.runtime.body_stabilizer import BodyStabilizer
@@ -263,7 +263,7 @@ class RobotController:
                 self.reply(f'$STABILIZE enabled={int(self.body_stabilizer.enabled)} status={status} policy={self.profile} rate_hz=50')
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-5-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'profile':
@@ -524,7 +524,7 @@ class RobotController:
                     self.stow_prepared=True
                 self.target=np.asarray((direct_unfold(start,elapsed) if completion=='OK landing' and self.stow_prepared else stow_frame(start,completion=='OK stow',elapsed))[0])
             elif completion in ('OK stand','OK stand11','OK landing','STOW landing'):
-                self.target=np.asarray(shared_pose_frame(start,end,elapsed)[0])
+                self.target=np.asarray(shared_pose_frame(start,end,elapsed,stand_requested=completion=='OK stand')[0])
             else:
                 self.target=start+(end-start)*t
             self.transition=(start,end,elapsed,duration,completion)
@@ -561,7 +561,7 @@ class RobotController:
                 rate=1.
                 if self.profiles.get(self.profile,{}).get('s_native') and self.tracking_enabled:
                     if self.elapsed==0:self.tracking.reset(float(self.plant.data.time))
-                    rate=self.tracking.step(float(self.plant.data.time),.02,bool(self.stopping_reason),responsive=self.profiles[self.profile].get("tracking_responsive",False))
+                    rate=self.tracking.step(float(self.plant.data.time),.02,bool(self.stopping_reason),responsive=self.profiles[self.profile].get("tracking_responsive",False),deceleration=self.profiles[self.profile].get('tracking_deceleration'))
                     if self.tracking.diagnostic.get('fault'):
                         self.capture_current_target();self.motion=None;self.transition=None
                         self.request=(0.,0.);self.linear=self.yaw=0.;self.torque=False
@@ -727,7 +727,7 @@ class RobotController:
                 self.tracking.sample(float(self.plant.data.time),self.command_target,
                     np.degrees(self.plant.data.qpos[self.plant.q]),drop=self.plant.p.get('tracking_feedback_drop',False))
         self.plant.step(targets_deg=self.command_target,balance=False,torque_enabled=self.torque,
-                        native_servo=self.profile in ('s_native_v6_1','s_native_v6_2','s_native_v6_2_1','s_native_v6_2_2','s_native_v6_2_3','s_native_v6_2_4','s_native_v6_2_5'))
+                        native_servo=self.profile in ('s_native_v6_1','s_native_v6_2','s_native_v6_2_1','s_native_v6_2_2','s_native_v6_2_3','s_native_v6_2_4','s_native_v6_2_5','s_native_v6_2_6','s_native_v6_2_7'))
         self.imu_reading = self.imu.read(float(self.plant.data.time))
         # Ignore configured sensor-entry warmup; subsequent missing reads fail
         # after three control polls, as in firmware. Ground truth is display only.

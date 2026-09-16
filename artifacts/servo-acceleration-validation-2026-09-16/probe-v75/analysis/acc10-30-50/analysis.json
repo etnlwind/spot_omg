@@ -1,0 +1,107 @@
+{
+  "trials": [
+    {
+      "path": "D:\\project\\spot_omg\\artifacts\\servo-acceleration-validation-2026-09-16\\probe-v75\\trials\\acc10-pilot02",
+      "success": false,
+      "metadata": {
+        "version": 1,
+        "commands": 2,
+        "samples": 167,
+        "armed": 0,
+        "full": 0,
+        "profile": 22,
+        "speed": 3400,
+        "acceleration": 10,
+        "revision": "s-native-v6-2-6-v75"
+      },
+      "peak_temperature_c": 150,
+      "excluded_rr_samples": 3,
+      "failed_reads": 0,
+      "phases": [
+        {
+          "command": 1,
+          "direction": "fold",
+          "commanded_delta_deg": -2.021484375,
+          "observed_delta_deg": -0.087890625,
+          "first_3tick_displacement_bounds_ms": null,
+          "final_goal_error_deg": 3.251953125
+        }
+      ],
+      "sampling": {
+        "median_gap_ms": 5.0,
+        "max_gap_ms": 25.0,
+        "max_transaction_width_ms": 2
+      }
+    },
+    {
+      "path": "D:\\project\\spot_omg\\artifacts\\servo-acceleration-validation-2026-09-16\\probe-v75\\trials\\acc30-pilot01",
+      "success": false,
+      "metadata": {
+        "version": 1,
+        "commands": 2,
+        "samples": 166,
+        "armed": 0,
+        "full": 0,
+        "profile": 22,
+        "speed": 3400,
+        "acceleration": 30,
+        "revision": "s-native-v6-2-6-v75"
+      },
+      "peak_temperature_c": 150,
+      "excluded_rr_samples": 1,
+      "failed_reads": 0,
+      "phases": [
+        {
+          "command": 1,
+          "direction": "fold",
+          "commanded_delta_deg": -2.021484375,
+          "observed_delta_deg": -0.087890625,
+          "first_3tick_displacement_bounds_ms": null,
+          "final_goal_error_deg": 3.251953125
+        }
+      ],
+      "sampling": {
+        "median_gap_ms": 5.0,
+        "max_gap_ms": 26.0,
+        "max_transaction_width_ms": 3
+      }
+    },
+    {
+      "path": "D:\\project\\spot_omg\\artifacts\\servo-acceleration-validation-2026-09-16\\probe-v75\\trials\\acc50-pilot01",
+      "success": false,
+      "metadata": {
+        "version": 1,
+        "commands": 2,
+        "samples": 167,
+        "armed": 0,
+        "full": 0,
+        "profile": 22,
+        "speed": 3400,
+        "acceleration": 50,
+        "revision": "s-native-v6-2-6-v75"
+      },
+      "peak_temperature_c": 92,
+      "excluded_rr_samples": 1,
+      "failed_reads": 0,
+      "phases": [
+        {
+          "command": 1,
+          "direction": "fold",
+          "commanded_delta_deg": -2.021484375,
+          "observed_delta_deg": -0.87890625,
+          "first_3tick_displacement_bounds_ms": [
+            96,
+            104
+          ],
+          "final_goal_error_deg": 2.4609375
+        }
+      ],
+      "sampling": {
+        "median_gap_ms": 5.0,
+        "max_gap_ms": 26.0,
+        "max_transaction_width_ms": 2
+      }
+    }
+  ],
+  "limitation": "MCU bus transaction bounds, not internal encoder timestamps. Small loaded step does not establish universal acceleration or maximum capability."
+}

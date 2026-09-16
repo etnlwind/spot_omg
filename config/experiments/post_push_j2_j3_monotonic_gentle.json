@@ -1,0 +1,16 @@
+{
+  "label": "V6.2.7 CANDIDATE r3b - continuous X, coordinated lift",
+  "pack_open_circuit_voltage": 11.1,
+  "j1_mode": "fixed_j1",
+  "notes": "Offline candidate. Retain monotonic recovery X; generate a shared vertical envelope with J2 and J3 pulses peaking together at 22% of recovery and immediately releasing. Final joints are coordinated by CAD IK. Scheduled push completes before the envelope starts. Actual servo dynamics and contact timing remain unvalidated on hardware.",
+  "trajectory": {
+    "height": 0.006,
+    "rise": 0.25,
+    "fall": 0.35,
+    "tuck_j2": 3.0,
+    "tuck_j3": 6.0,
+    "j2_timing": [0.0, 0.22, 1.0],
+    "j3_timing": [0.0, 0.22, 1.0],
+    "tuck_projection": "vertical"
+  }
+}

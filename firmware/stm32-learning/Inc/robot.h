@@ -91,7 +91,7 @@ typedef struct {
 void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
-#define ROBOT_CONTROL_REV "s-native-v6-2-5-v71"
+#define ROBOT_CONTROL_REV "s-native-v6-2-7-v76"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -328,7 +328,8 @@ RobotResult robot_hold(RobotController *robot);
 RobotResult robot_relax(RobotController *robot);
 RobotResult robot_relax_servo(RobotController *robot, uint8_t servo_id);
 RobotResult robot_stand(RobotController *robot);
-RobotResult robot_supervised_pose(RobotController *robot, const uint16_t targets[12]);
+/* stand_requested is set only by the Stand command/Stand entry path. */
+RobotResult robot_supervised_pose(RobotController *robot, const uint16_t targets[12], bool stand_requested);
 RobotResult robot_landing(RobotController *robot);
 RobotResult robot_stand_straight(RobotController *robot);
 /* From stand only: synchronized J2=-90/J3=0 transition (24 s).

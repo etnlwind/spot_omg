@@ -1,0 +1,100 @@
+[
+  {
+    "command": "syncstate",
+    "host_begin": 100300.218,
+    "lines": [
+      "$SPOTSTATE pose=landing error=30 torque=on safety=ok balance=suspended rev=s-native-v6-2-5-v70 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=s_native_v6_2_5 heading=on reverse_limit=600 recovery=new-command fault_code=0 support=observing mass_g=2754"
+    ],
+    "text": "$SPOTSTATE pose=landing error=30 torque=on safety=ok balance=suspended rev=s-native-v6-2-5-v70 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=s_native_v6_2_5 heading=on reverse_limit=600 recovery=new-command fault_code=0 support=observing mass_g=2754",
+    "status": "info",
+    "host_end": 100300.343
+  },
+  {
+    "command": "read 4",
+    "host_begin": 100300.343,
+    "lines": [
+      "ID 4 pos=2068 speed=0 load=-176 voltage=12500mV temp=32C current=14 moving=0 hw=0x00"
+    ],
+    "text": "ID 4 pos=2068 speed=0 load=-176 voltage=12500mV temp=32C current=14 moving=0 hw=0x00",
+    "status": "info",
+    "host_end": 100300.39
+  },
+  {
+    "command": "read 4",
+    "host_begin": 100300.515,
+    "lines": [
+      "ID 4 pos=2068 speed=0 load=-176 voltage=12500mV temp=32C current=13 moving=0 hw=0x00"
+    ],
+    "text": "ID 4 pos=2068 speed=0 load=-176 voltage=12500mV temp=32C current=13 moving=0 hw=0x00",
+    "status": "info",
+    "host_end": 100300.546
+  },
+  {
+    "command": "read 4",
+    "host_begin": 100300.687,
+    "lines": [
+      "ID 4 pos=2068 speed=0 load=-176 voltage=12400mV temp=32C current=13 moving=0 hw=0x00"
+    ],
+    "text": "ID 4 pos=2068 speed=0 load=-176 voltage=12400mV temp=32C current=13 moving=0 hw=0x00",
+    "status": "info",
+    "host_end": 100300.718
+  },
+  {
+    "command": "stand",
+    "host_begin": 100300.843,
+    "lines": [
+      "Starting slow synchronized stand move",
+      "POSE stand reason=complete elapsed=6371 nominal=5520 retries=0 waits=99 hold=0",
+      "POSE_HEALTH id=4 temp=74 hw=0x00 transient=6",
+      "POSE_PROBE count=2 mask=0x900 max_lead=120",
+      "OK",
+      "$MECHLOG label=stand complete=1; saved: log show 64"
+    ],
+    "text": "Starting slow synchronized stand move\nPOSE stand reason=complete elapsed=6371 nominal=5520 retries=0 waits=99 hold=0\nPOSE_HEALTH id=4 temp=74 hw=0x00 transient=6\nPOSE_PROBE count=2 mask=0x900 max_lead=120\nOK\n$MECHLOG label=stand complete=1; saved: log show 64",
+    "status": "ok",
+    "host_end": 100307.406
+  },
+  {
+    "command": "syncstate",
+    "host_begin": 100307.406,
+    "lines": [
+      "$SPOTSTATE pose=stand error=20 torque=on safety=ok balance=suspended rev=s-native-v6-2-5-v70 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=s_native_v6_2_5 heading=on reverse_limit=600 recovery=new-command fault_code=0 support=adjusting mass_g=2754"
+    ],
+    "text": "$SPOTSTATE pose=stand error=20 torque=on safety=ok balance=suspended rev=s-native-v6-2-5-v70 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,balancecontrol,commandretry,stow,headinghold profile=s_native_v6_2_5 heading=on reverse_limit=600 recovery=new-command fault_code=0 support=adjusting mass_g=2754",
+    "status": "info",
+    "host_end": 100307.703
+  },
+  {
+    "command": "status",
+    "host_begin": 100307.703,
+    "lines": [
+      "Servo status (12 configured IDs):",
+      "ID 1 pos=1938 speed=0 load=80 voltage=12300mV temp=31C current=3 moving=0 hw=0x00",
+      "ID 2 pos=1558 speed=0 load=32 voltage=12400mV temp=30C current=2 moving=0 hw=0x00",
+      "ID 3 pos=3004 speed=0 load=128 voltage=12500mV temp=33C current=8 moving=0 hw=0x00",
+      "ID 4 pos=2081 speed=0 load=-72 voltage=12500mV temp=33C current=3 moving=0 hw=0x00",
+      "ID 5 pos=2443 speed=0 load=-16 voltage=12400mV temp=29C current=0 moving=0 hw=0x00",
+      "ID 6 pos=1038 speed=0 load=-160 voltage=12400mV temp=31C current=11 moving=0 hw=0x00",
+      "ID 7 pos=2087 speed=0 load=-144 voltage=12300mV temp=32C current=10 moving=0 hw=0x00",
+      "ID 8 pos=1420 speed=0 load=8 voltage=12300mV temp=28C current=0 moving=0 hw=0x00",
+      "ID 9 pos=3007 speed=0 load=160 voltage=12300mV temp=34C current=11 moving=0 hw=0x00",
+      "ID 10 pos=1964 speed=0 load=112 voltage=12400mV temp=32C current=6 moving=0 hw=0x00",
+      "ID 11 pos=2776 speed=0 load=-16 voltage=12400mV temp=30C current=0 moving=0 hw=0x00",
+      "ID 12 pos=1002 speed=0 load=-168 voltage=12300mV temp=33C current=17 moving=0 hw=0x00",
+      "Bus read retries: attempts=0 recovered=0 failed=0"
+    ],
+    "text": "Servo status (12 configured IDs):\nID 1 pos=1938 speed=0 load=80 voltage=12300mV temp=31C current=3 moving=0 hw=0x00\nID 2 pos=1558 speed=0 load=32 voltage=12400mV temp=30C current=2 moving=0 hw=0x00\nID 3 pos=3004 speed=0 load=128 voltage=12500mV temp=33C current=8 moving=0 hw=0x00\nID 4 pos=2081 speed=0 load=-72 voltage=12500mV temp=33C current=3 moving=0 hw=0x00\nID 5 pos=2443 speed=0 load=-16 voltage=12400mV temp=29C current=0 moving=0 hw=0x00\nID 6 pos=1038 speed=0 load=-160 voltage=12400mV temp=31C current=11 moving=0 hw=0x00\nID 7 pos=2087 speed=0 load=-144 voltage=12300mV temp=32C current=10 moving=0 hw=0x00\nID 8 pos=1420 speed=0 load=8 voltage=12300mV temp=28C current=0 moving=0 hw=0x00\nID 9 pos=3007 speed=0 load=160 voltage=12300mV temp=34C current=11 moving=0 hw=0x00\nID 10 pos=1964 speed=0 load=112 voltage=12400mV temp=32C current=6 moving=0 hw=0x00\nID 11 pos=2776 speed=0 load=-16 voltage=12400mV temp=30C current=0 moving=0 hw=0x00\nID 12 pos=1002 speed=0 load=-168 voltage=12300mV temp=33C current=17 moving=0 hw=0x00\nBus read retries: attempts=0 recovered=0 failed=0",
+    "status": "info",
+    "host_end": 100308.187
+  },
+  {
+    "command": "imu status",
+    "host_begin": 100308.187,
+    "lines": [
+      "IMU log: off"
+    ],
+    "text": "IMU log: off",
+    "status": "info",
+    "host_end": 100308.312
+  }
+]

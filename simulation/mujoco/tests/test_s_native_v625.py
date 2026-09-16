@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 from servo import SharedGaitPolicy
 from simulation.mujoco.tests.test_s_native_v623 import plant,kernel
-from simulation.mujoco.runtime.s_native_gait import SNativeGait,PROFILES,NAME
+from simulation.mujoco.runtime.s_native_gait import SNativeGait,PROFILES
+NAME="s_native_v6_2_5"
 from simulation.mujoco.runtime.gait_tracking import GaitTracking
 from simulation.mujoco.runtime.virtual_robot import RobotController
 from simulation.mujoco.scripts.validation.validate_s_native_firmware import compare,ROOT
@@ -43,7 +44,7 @@ def test_faster_recovery_retains_stop_error_and_stale_faults():
     new.reset(3);feed(new,3000,14);assert new.step(3,.02,True,True)==1
 
 def test_default_and_old_profile_selection_preserve_capability(plant):
-    robot=RobotController(plant);assert robot.profile==NAME=='s_native_v6_2_5'
+    robot=RobotController(plant);robot.select_profile(NAME);assert robot.profile==NAME
     assert robot.profiles[NAME]['tracking_samples_per_frame']==2
     robot.select_profile('s_native_v6_2_4');assert robot.tracking_enabled
     assert robot.profiles[robot.profile].get('tracking_samples_per_frame',1)==1
@@ -51,4 +52,4 @@ def test_default_and_old_profile_selection_preserve_capability(plant):
     robot.select_profile('s_native_v6_2_3');assert not robot.tracking_enabled
     robot.select_profile(NAME);assert robot.tracking_enabled
     manifest=json.loads((ROOT/'config/locomotion_profiles.json').read_text())
-    assert list(manifest['profiles'])[-2:]==['s_native_v6_2_4',NAME]
+    assert list(manifest['profiles'])[19:21]==['s_native_v6_2_4',NAME]

@@ -1,5 +1,7 @@
 #include "robot.h"
 #include "sts3215.h"
+#include "s_native_servo.h"
+#include "s_native_data.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,9 +9,15 @@
 static RobotController r;static ServoBus bus;
 static uint32_t tick;static unsigned writes,off,reads,transient;
 static uint16_t actual[12],cmd[12];
-typedef enum {NORMAL,SLOW,BLOCKED,FREE_STUCK,LOSS,TRANSIENT,WRITE_FAIL,DROOP,HOT,TILT,IMU_LOST,ABORT,INVALID,SLOW_BUS,RESIDUAL,HEALTH_GLITCH,START_EFFORT,EARLY_RESIDUAL,LOADED_SUPPORT,ENTRY,ENTRY_STOP,NEAR_BLOCKED,FAST_STAND} Case;
+typedef enum {NORMAL,SLOW,BLOCKED,FREE_STUCK,LOSS,TRANSIENT,WRITE_FAIL,DROOP,HOT,TILT,IMU_LOST,ABORT,INVALID,SLOW_BUS,RESIDUAL,HEALTH_GLITCH,START_EFFORT,EARLY_RESIDUAL,LOADED_SUPPORT,ENTRY,ENTRY_STOP,NEAR_BLOCKED,FAST_STAND,FAST_NATIVE_STAND} Case;
 static Case scenario;
 static bool direct_write;static unsigned fast_goals;
+static bool selected_stand(uint16_t out[12]) {
+ if(scenario!=FAST_NATIVE_STAND)return robot_stand_targets(out);
+ GaitPolicyLegTarget legs[4];
+ for(unsigned i=0;i<4;i++)legs[i]=(GaitPolicyLegTarget){sn_standing[i][0],sn_standing[i][1],sn_standing[i][2],true};
+ return s_native_servo_targets(legs,out);
+}
 RobotResult robot_reference_pose(RobotController *x){(void)x;return ROBOT_OK;}
 uint32_t HAL_GetTick(void){return tick;}
 void HAL_Delay(uint32_t n){tick+=n;assert(tick<300000);}
@@ -31,8 +39,8 @@ ServoBusResult sts3215_sync_positions(ServoBus *b,const uint8_t *ids,const uint1
  return SERVO_BUS_OK;
 }
 ServoBusResult sts3215_sync_move(ServoBus *b,const uint8_t *ids,const uint16_t *p,size_t n,uint16_t speed,uint8_t acc){
- uint16_t stand[12];assert(robot_stand_targets(stand));
- direct_write=scenario==FAST_STAND && memcmp(p,stand,sizeof stand)==0;
+ uint16_t stand[12];assert(selected_stand(stand));
+ direct_write=(scenario==FAST_STAND || scenario==FAST_NATIVE_STAND) && memcmp(p,stand,sizeof stand)==0;
  if(direct_write){assert(speed==3400 && acc==254);fast_goals++;}
  ServoBusResult result=sts3215_sync_positions(b,ids,p,n);direct_write=false;return result;
 }
@@ -64,13 +72,13 @@ static RobotResult run(Case c){
  memset(&r,0,sizeof(r));memset(&bus,0,sizeof(bus));r.bus=&bus;
  safety_init(&r.safety,NULL);r.profile_speed=3400;r.profile_acceleration=254;
  r.attitude_reader=attitude;scenario=c;tick=writes=reads=off=transient=0;
- assert(c==FAST_STAND?robot_landing_targets(actual):robot_straight_targets(actual));
+ assert((c==FAST_STAND || c==FAST_NATIVE_STAND)?robot_landing_targets(actual):robot_straight_targets(actual));
  fast_goals=0;memcpy(cmd,actual,sizeof(cmd));
- uint16_t to[12];assert(robot_stand_targets(to));
+ uint16_t to[12];assert(selected_stand(to));
  if(scenario==EARLY_RESIDUAL)to[2]=actual[2]-30;
  if(scenario==NEAR_BLOCKED)to[2]=actual[2]-80;
  if(c==ENTRY || c==ENTRY_STOP){r.drive_active=true;r.drive_pose_entry=true;r.drive_stop_requested=c==ENTRY_STOP;}
- RobotResult result=robot_supervised_pose(&r,to);assert(off==0);return result;
+ RobotResult result=robot_supervised_pose(&r,to,true);assert(off==0);return result;
 }
 static void test_support_windows(void) {
  SupportWindow w={0};
@@ -91,6 +99,7 @@ static void test_support_windows(void) {
 int main(void){
  test_support_windows();
  assert(run(FAST_STAND)==ROBOT_OK);assert(fast_goals==1 && r.pose_diagnostics.nominal_ms==0);
+ assert(run(FAST_NATIVE_STAND)==ROBOT_OK);assert(fast_goals==1 && r.pose_diagnostics.nominal_ms==0);
  assert(run(NORMAL)==ROBOT_OK);assert(r.pose_diagnostics.reason==POSE_COMPLETE);
  assert(run(SLOW)==ROBOT_OK);assert(r.pose_diagnostics.elapsed_ms>r.pose_diagnostics.nominal_ms+2000);
  assert(r.pose_diagnostics.waits>0);
@@ -127,6 +136,6 @@ int main(void){
  assert(!robot_support_observe(&r,cmd));
  assert(!r.shared_idle && r.support_decision==SUPPORT_VOLTAGE && off==off_before);
  r.drive_active=true;r.drive_pose_entry=false;uint16_t rejected[12];assert(robot_stand_targets(rejected));
- assert(robot_supervised_pose(&r,rejected)==ROBOT_INVALID_ARGUMENT);
+ assert(robot_supervised_pose(&r,rejected,false)==ROBOT_INVALID_ARGUMENT);
  puts("pose supervisor: 16 scenarios passed; no torque-off; slow progress completes");
 }

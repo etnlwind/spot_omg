@@ -1,6 +1,6 @@
 {
   "status": "Shared deployment manifest for STM32 and MuJoCo; physical parameters require hardware measurement",
-  "default": "s_native_v6_2_5",
+  "default": "s_native_v6_2_7",
   "profiles": {
     "crawl": {
       "label": "Crawl / four-beat",
@@ -396,6 +396,42 @@
       "turn_input_limit": 0.5,
       "reverse_input_limit": 0.6,
       "validation": "Lift before swing translation; faster tracking recovery and 120ms encoder sweep. Hardware validation pending."
+    },
+    "s_native_v6_2_6": {
+      "label": "S 출발 · 연속 내딛기 V6.2.6 · 실험",
+      "family": "trot",
+      "params": [
+        1.0,
+        0.5,
+        0.145,
+        0.012,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Full-stroke recovery and earlier tracking deceleration; supported 30s and eight nominal floor cases passed in estimated physics; hardware validation pending."
+    },
+    "s_native_v6_2_7": {
+      "label": "S 출발 · 이른 접힘 V6.2.7 · 실험",
+      "family": "trot",
+      "params": [
+        1.8,
+        0.5,
+        0.145,
+        0.016,
+        0.20175,
+        -0.035,
+        0.0
+      ],
+      "experimental": true,
+      "stateful_native": true,
+      "turn_input_limit": 0.5,
+      "reverse_input_limit": 0.6,
+      "validation": "Early continuous recovery, 16mm lift, J1 holds after FR entry; nominal 30s floor screen passed. Drag remains; physical walking unvalidated."
     }
   }
 }

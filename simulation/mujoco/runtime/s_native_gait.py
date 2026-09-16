@@ -8,7 +8,7 @@ if __package__ in (None, ""):
 import numpy as np
 from simulation.mujoco.runtime.standing_pose import SoleKinematics
 
-NAME = 's_native_v6_2_5'
+NAME = 's_native_v6_2_7'
 # Preserve the 0.4s swing, halve the hold at each diagonal exchange from
 # 0.6s to 0.3s (at full input). Duty describes each leg's actual stance time.
 PERIOD = 1.4
@@ -52,13 +52,22 @@ V623_PROFILE = dict(V622_PROFILE, params=[1., .5, .155, .012], rear_extension_m=
 # Retain V623 lateral support reference for the supported-body reach trial.
 V624_PROFILE = dict(V623_PROFILE, params=[1., .5, .145, .012], rear_extension_m=.105,
                support_reference_profile='s_native_v6_2_3', feedback_tracking=True)
-PROFILE = dict(V624_PROFILE, params=list(V624_PROFILE['params']),
+V625_PROFILE = dict(V624_PROFILE, params=list(V624_PROFILE['params']),
                placement_swing=(.2,.8),smooth_lift_fraction=.3,
                tracking_responsive=True,tracking_samples_per_frame=2)
+V626_PROFILE = dict(V625_PROFILE, params=list(V625_PROFILE['params']),
+               uniform_recovery=True, tracking_deceleration=6.)
+V626_PROFILE.pop('placement_swing')
+# Advance recovery travel while lifting/folding, then extend continuously on
+# approach. The old push endpoints and tracking protections are unchanged.
+# 16 mm / 1.8 s survived the 30 s floor screen; larger folds tipped or dragged.
+PROFILE = dict(V626_PROFILE, params=[1.8, .5, .145, .016],
+               recovery_frontload=True, smooth_lift_fraction=.25,
+               steady_j1_hold=True)
 PROFILES = {'s_native_v1': V1_PROFILE, 's_native_v2': V2_PROFILE,
             's_native_v3': V3_PROFILE, 's_native_v4': V4_PROFILE,
             's_native_v5': V5_PROFILE, 's_native_v6': V6_PROFILE,
-            's_native_v6_1': V61_PROFILE, 's_native_v6_2': V62_PROFILE, 's_native_v6_2_1': V621_PROFILE, 's_native_v6_2_2': V622_PROFILE, 's_native_v6_2_3': V623_PROFILE, 's_native_v6_2_4':V624_PROFILE, NAME: PROFILE}
+            's_native_v6_1': V61_PROFILE, 's_native_v6_2': V62_PROFILE, 's_native_v6_2_1': V621_PROFILE, 's_native_v6_2_2': V622_PROFILE, 's_native_v6_2_3': V623_PROFILE, 's_native_v6_2_4':V624_PROFILE, 's_native_v6_2_5':V625_PROFILE, 's_native_v6_2_6':V626_PROFILE, NAME: PROFILE}
 
 class SNativeGait:
     def __init__(self, model, standing, profile=None):
@@ -121,6 +130,17 @@ class SNativeGait:
             # Both X and knee flexion continue throughout recovery.
             progress=(1-c)/2
             delta[:,0]=stride*c-extra*linear*progress**3
+        if self.profile.get('uniform_recovery'):
+            # Same +20/-125mm endpoints; distribute travel across the complete
+            # quintic stroke instead of concentrating the rear reach in time.
+            delta[:,0]=-extra*linear/2+(stride+extra*linear/2)*c
+        if self.profile.get('recovery_frontload'):
+            # Beta(3,5) CDF: no X reversal/dwell, zero velocity and
+            # acceleration at endpoints. Yaw retains its existing oscillator.
+            u=np.clip((q-.5)*2,0.,1.)
+            progress=1-(1-u)**5*(1+5*u+15*u*u)
+            old=u**3*(10+u*(-15+6*u))
+            delta[:,0]+=linear*self.profile['params'][2]*(progress-old)*(q>=.5)
         # Protocol yaw is right-positive. During stance c decreases, and
         # planted feet move opposite the body's rotation: use clockwise
         # placement here so positive yaw turns the body clockwise too.
@@ -214,6 +234,8 @@ class SNativeGait:
         correction_blend=u**3*(10+u*(-15+6*u))
         locked=(self.standing[::3]+self.placement_fraction*self.normal_adduction
                 +correction_blend*(self.normal_j1-self.standing[::3]-self.normal_adduction))
+        if self.profile.get('steady_j1_hold'):
+            locked=self.standing[::3]+self.placement_fraction*self.normal_adduction
         # Re-solve J2/J3 with J1 fixed so extra FR adduction cannot shorten
         # its stride or lift it relative to its diagonal partner RL.
         result,error=self.kin.solve_xz(points,self.previous,locked,iterations=60)

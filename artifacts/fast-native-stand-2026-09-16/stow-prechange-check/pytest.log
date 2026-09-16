@@ -1,0 +1,57 @@
+F...FF.                                                                  [100%]
+================================== FAILURES ===================================
+___________ test_stow_roundtrip_uses_physics_and_restores_encoding ____________
+
+    def test_stow_roundtrip_uses_physics_and_restores_encoding():
+        r=controller();before=r.plant.data.qpos.copy()
+        r.command('stow',0)
+        np.testing.assert_array_equal(r.plant.data.qpos,before)
+        assert r.stow_path and r.plant.stow_active
+        for _ in range(1200):
+            tick(r,1)
+            if r.pose=='stow':break
+>       assert r.pose=='stow' and r.transition is None
+E       AssertionError: assert ('stow-paused' == 'stow'
+E         
+E         - stow
+E         + stow-paused)
+
+simulation\mujoco\tests\test_stow_controller.py:33: AssertionError
+_______ test_stow_can_resume_either_direction_from_interrupted_position _______
+
+    def test_stow_can_resume_either_direction_from_interrupted_position():
+        for next_command, expected in [('stow',FOLDED),('landing',LANDING)]:
+            r=controller();r.command('stow',0);tick(r,400)
+            r.command('\x03',float(r.plant.data.time));tick(r,25)
+            before=r.plant.data.qpos.copy()
+            held=np.degrees(before[r.plant.q]) if next_command=='landing' else r.target.copy()
+            r.command(next_command,float(r.plant.data.time))
+            np.testing.assert_array_equal(r.plant.data.qpos,before)
+            np.testing.assert_array_equal(r.transition[0],held)
+            assert r.transition[3]==12
+            for _ in range(1200):
+                tick(r,1)
+                if r.pose==next_command:break
+>           assert r.pose==next_command
+E           AssertionError: assert 'stow-paused' == 'stow'
+E             
+E             - stow
+E             + stow-paused
+
+simulation\mujoco\tests\test_stow_controller.py:97: AssertionError
+_____ test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque _____
+
+    def test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque():
+        r=controller();r.command('stow',0);tick(r,1100)
+>       assert r.pose=='stow' and not r.torque
+E       AssertionError: assert ('stow-paused' == 'stow'
+E         
+E         - stow
+E         + stow-paused)
+
+simulation\mujoco\tests\test_stow_controller.py:103: AssertionError
+=========================== short test summary info ===========================
+FAILED simulation/mujoco/tests/test_stow_controller.py::test_stow_roundtrip_uses_physics_and_restores_encoding
+FAILED simulation/mujoco/tests/test_stow_controller.py::test_stow_can_resume_either_direction_from_interrupted_position
+FAILED simulation/mujoco/tests/test_stow_controller.py::test_unfold_restarts_from_gravity_settled_pose_and_reenables_torque
+3 failed, 4 passed in 21.42s

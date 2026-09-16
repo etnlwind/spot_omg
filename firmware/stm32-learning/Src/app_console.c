@@ -10,6 +10,8 @@
 #include "safety.h"
 #include "sts3215.h"
 #include "stow_control.h"
+#include "pose_control.h"
+#include "servo_response_probe.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -669,7 +671,7 @@ static void command_sync_state(AppConsole *console)
             pose_error = straight_error;
             pose = "stand11";
         }
-        if (pose_error > 80U) {
+        if (pose_error > POSE_RECOGNITION_TICKS) {
             pose = "custom";
         }
     }
@@ -687,7 +689,7 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,jointtrace,jointtracepage,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -2536,7 +2538,7 @@ static void execute_line(AppConsole *console)
             print_robot_result(console, result);
         }
     } else if (strcmp(command, "stand") == 0) {
-        write_text(console, "Starting slow synchronized stand move\r\n");
+        write_text(console, "Starting supervised stand move\r\n");
         run_mechanical_pose(console, robot_stand, "stand");
     } else if (strcmp(command, "stowdiag") == 0) {
         command_stow_diagnostics(console);
@@ -2630,6 +2632,26 @@ static void execute_line(AppConsole *console)
         command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "safety") == 0) {
         command_safety(console);
+    } else if (strcmp(command, "responseprobe") == 0) {
+        uint32_t acceleration=0,delta=0;
+        char *a=strtok(NULL," \t"),*b=strtok(NULL," \t");
+        if(!parse_u32(a,10,50,&acceleration) || !parse_u32(b,12,34,&delta) || strtok(NULL," \t")) {
+            write_text(console,"usage: responseprobe ACC(10|30|50) DELTA_TICKS(12..34); RR J3 floor trial\r\n");return;
+        }
+        ServoResponseProbeReport report;
+        RobotResult result=robot_probe_rr_j3(console->robot,(uint8_t)acceleration,(uint16_t)delta,&report);
+        char line[220];
+        snprintf(line,sizeof line,"$RESPONSE stage=%u failed_id=%u restored=%u hold_sent=%u roll10=%d pitch10=%d delta=%lu acc=%lu\r\n",
+            report.stage,report.failed_id,report.restored,report.hold_sent,report.peak_roll_tenths,report.peak_pitch_tenths,
+            (unsigned long)delta,(unsigned long)acceleration);write_text(console,line);
+        const uint8_t *blocks[3]={report.original,report.applied,report.final};
+        snprintf(line,sizeof line,"$RESPONSE_HEALTH temperature_suspects=%u recovered=%u\r\n",
+            report.temperature_suspects,report.temperature_recovered);write_text(console,line);
+        for(unsigned n=0;n<3;n++) {
+            const uint8_t *p=blocks[n];
+            snprintf(line,sizeof line,"$RESPONSE_REG block=%u bytes=%u,%u,%u,%u,%u,%u,%u\r\n",n,p[0],p[1],p[2],p[3],p[4],p[5],p[6]);write_text(console,line);
+        }
+        print_robot_result(console,result);
     } else if (strcmp(command, "jointtrace") == 0) {
         char *action=strtok(NULL," \t");JointTrace *t=&console->robot->joint_trace;
         if(!action || (strcmp(action,"arm") && strcmp(action,"stop") && strcmp(action,"dump") && strcmp(action,"status") && strcmp(action,"off"))) {
@@ -2750,9 +2772,9 @@ static void execute_line(AppConsole *console)
         int profile=locomotion_profile_id(strtok(NULL," \t"));
         if(profile<0 || robot_drive_is_active(console->robot)) write_text(console,"ERROR: stop before selecting a valid gait profile\r\n");
         else {
-            int reach=locomotion_profile_id("s_native_v6_2_4"),fast=locomotion_profile_id("s_native_v6_2_5");
-            if(profile==reach || profile==fast || console->robot->locomotion_profile==reach || console->robot->locomotion_profile==fast)
-                console->robot->tracking_enabled=profile==reach || profile==fast;
+            int reach=locomotion_profile_id("s_native_v6_2_4"),fast=locomotion_profile_id("s_native_v6_2_5"),smooth=locomotion_profile_id("s_native_v6_2_6"),fold=locomotion_profile_id("s_native_v6_2_7");
+            if(profile==reach || profile==fast || profile==smooth || profile==fold || console->robot->locomotion_profile==reach || console->robot->locomotion_profile==fast || console->robot->locomotion_profile==smooth || console->robot->locomotion_profile==fold)
+                console->robot->tracking_enabled=profile==reach || profile==fast || profile==smooth || profile==fold;
             console->robot->shared_idle=false;console->robot->locomotion_profile=profile;write_text(console,"OK\r\n");
         }
     } else if (strcmp(command, "heading") == 0) {
