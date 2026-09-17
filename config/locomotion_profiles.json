@@ -1,6 +1,6 @@
 {
   "status": "Shared deployment manifest for STM32 and MuJoCo; physical parameters require hardware measurement",
-  "default": "attitudepd_v2",
+  "default": "attitudepd_v3",
   "profiles": {
     "crawl": {
       "label": "Crawl / four-beat",
@@ -456,6 +456,31 @@
       ],
       "experimental": true,
       "validation": "Front-only forward swing clearance candidate. Rear steady-state targets unchanged; hardware gait unverified.",
+      "turn_input_limit": 0.5
+    },
+    "attitudepd_v3": {
+      "label": "IMU 자세 안정화 V3 · 보행 대기 Stand · 실험",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "experimental": true,
+      "validation": "V2 steady gait and front clearance retained. Stand, zero-amplitude entry and stop share the zero-command gait posture B. Hardware validation pending.",
       "turn_input_limit": 0.5
     }
   }

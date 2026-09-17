@@ -6,7 +6,7 @@
 #include <string.h>
 typedef struct { uint16_t lift_mm, linear, duration_ms; uint8_t leg; int16_t width_mm; uint16_t fr_extra; } ProbeConfig;
 static inline ProbeConfig probe_config_default(void) {
-    return (ProbeConfig){20,344,4000,0,0};
+    return (ProbeConfig){20,344,4000,0,0,0};
 }
 static inline bool probe_uint(const char *s,unsigned lo,unsigned hi,uint16_t *out) {
     if(!s || !*s)return false;

@@ -11,7 +11,7 @@ def test_v2_front_clearance_and_rear_preservation(tmp_path):
 #include "locomotion.h"
 int main(void) {
  int old=locomotion_profile_id("attitudepd"), v2=locomotion_profile_id("attitudepd_v2");
- assert(old==15 && v2==24 && LOCOMOTION_DEFAULT_PROFILE==v2);
+ assert(old==15 && v2==24 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v3"));
  for(int c=-10;c<=10;c++)for(int t=0;t<=200;t++) {
   float linear=c/10.f,phase=t/200.f;
   GaitPolicyLegTarget a[4],b[4];

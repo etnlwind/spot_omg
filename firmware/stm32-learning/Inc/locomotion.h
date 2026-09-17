@@ -12,7 +12,10 @@ static inline int locomotion_profile_id(const char *name) {
     return -1;
 }
 static inline bool locomotion_is_attitude_pd(int profile) {
-    return profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2");
+    return profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3");
+}
+static inline bool locomotion_has_gait_stand(int profile) {
+    return profile==locomotion_profile_id("attitudepd_v3");
 }
 static inline bool locomotion_is_native(int profile) {
     return profile==locomotion_profile_id("s_native_v6_1") ||
@@ -69,6 +72,16 @@ static inline bool locomotion_foot_targets(const float p[7],float phase,float sc
 }
 /* Uses the planar base above, then CAD cushion IK. */
 #include "center_pivot.h"
+/* B is V2's settled zero-command gait posture, not its S entry ramp.
+ * One definition serves Stand, entry, stopping, idle and state readback.
+ * Native profiles retain their separate calibrated CAD/servo boundary. */
+static inline bool locomotion_stand_targets(int profile,GaitPolicyLegTarget out[4]) {
+    if(locomotion_has_gait_stand(profile)) {
+        if(!center_pivot_targets(locomotion_parameters[profile][1],0,1,0,0,out))return false;
+        for(int i=0;i<4;i++)out[i].stance=true;
+    } else for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
+    return true;
+}
 static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(linear) || !isfinite(yaw))return 0;
     return locomotion_turn_lift_m[profile]>0?
@@ -84,6 +97,11 @@ static inline bool locomotion_targets_assisted(int profile,float phase,float sca
     if(profile==locomotion_profile_id("arcsupport"))return arc_support_targets(phase,scale,linear,yaw,out);
     if(profile==0) return gait_policy_drive_walk_targets(phase,scale,linear,yaw,out);
     float p[7];locomotion_params(profile,linear,p);
+    if(locomotion_has_gait_stand(profile)) {
+        GaitPolicyLegTarget ready[4];
+        if(!locomotion_stand_targets(profile,ready))return false;
+        return attitude_clearance_targets(p,phase,scale,linear,yaw,ready,out);
+    }
     if(profile==locomotion_profile_id("attitudepd_v2"))return attitude_v2_targets(p,phase,scale,linear,yaw,out);
     if(profile==locomotion_profile_id("centerpivot") || profile==locomotion_profile_id("attitudepd"))return center_pivot_targets(p,phase,scale,linear,yaw,out);
     /* Recenter the stance as the legs straighten: lift alone left the

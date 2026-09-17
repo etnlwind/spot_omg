@@ -389,7 +389,7 @@ def test_shared_drive_diagnostics_do_not_add_motor_reads_or_flash_writes() -> No
     assert "sts3215_read_state" not in body
     assert "flight_log" not in body and "mechanical_log" not in body
     assert body.index("gait_target_history_push(robot,positions)") < body.index("sample_next_joint(")
-    assert body.index("robot->gait_support_mask=gait_policy_support_mask(nominal)") < body.index("sample_next_joint(")
+    assert body.index("robot->gait_support_mask=gait_policy_support_mask(robot->rear_probe_leg?command:nominal)") < body.index("sample_next_joint(")
 
 
 def test_command_recovery_runtime() -> None:

@@ -472,15 +472,23 @@ static RobotResult robot_move_to_pose(RobotController *robot, RobotPoseTargets b
     return robot_supervised_pose(robot,target,false);
 }
 
+bool robot_selected_stand_targets(const RobotController *robot,uint16_t positions[ROBOT_JOINT_COUNT])
+{
+    if(!robot)return false;
+    GaitPolicyLegTarget q[4];
+    if(locomotion_is_native(robot->locomotion_profile)) {
+        s_native_stand(q);
+        return s_native_servo_targets(q,positions);
+    }
+    return locomotion_stand_targets(robot->locomotion_profile,q) && locomotion_servo_targets(q,positions);
+}
+
 RobotResult robot_stand(RobotController *robot)
 {
     if(!robot)return ROBOT_INVALID_ARGUMENT;
     if(safety_is_faulted(&robot->safety) || robot->locomotion_fault)return ROBOT_SAFETY_FAULT;
     uint16_t positions[12];
-    if(robot && locomotion_is_native(robot->locomotion_profile)) {
-        GaitPolicyLegTarget q[4];s_native_stand(q);
-        if(!s_native_servo_targets(q,positions))return ROBOT_CONFIG_ERROR;
-    } else if(!robot_stand_targets(positions))return ROBOT_CONFIG_ERROR;
+    if(!robot_selected_stand_targets(robot,positions))return ROBOT_CONFIG_ERROR;
     RobotResult result=robot_supervised_pose(robot,positions,true);
     if(robot) robot->shared_idle=result==ROBOT_OK;
     return result;
@@ -809,7 +817,7 @@ static void return_to_stand_best_effort(RobotController *robot)
         return;
     }
     if (robot != NULL && robot->bus != NULL &&
-        robot_stand_targets(stand_targets)) {
+        robot_selected_stand_targets(robot,stand_targets)) {
         (void)sts3215_sync_positions(robot->bus,
                                      g_robot_servo_ids,
                                      stand_targets,
@@ -1196,7 +1204,7 @@ static RobotResult transition_gait_pose(RobotController *robot, bool to_stand, b
         return result;
     }
     if (to_stand) {
-        if (!robot_stand_targets(destination)) {
+        if (!robot_selected_stand_targets(robot,destination)) {
             return ROBOT_CONFIG_ERROR;
         }
     } else if (!(drive ? gait_policy_drive_walk_targets(0, 0, 0, 0, neutral) :
@@ -2057,13 +2065,14 @@ static RobotResult robot_shared_drive(RobotController *robot)
     body_stabilizer_reset(&robot->attitude_pd.body);
     robot->stabilization_trace_write=robot->stabilization_trace_count=0;
     GaitPolicyLegTarget stand[4],neutral[4],nominal[4],from[4],command[4];
-    for(int i=0;i<4;i++)stand[i]=nominal[i]=from[i]=(GaitPolicyLegTarget){0,45,90,true};
-    if(native) {
-        s_native_stand(stand);
-        for(int i=0;i<4;i++)neutral[i]=nominal[i]=from[i]=stand[i];
+    if(!locomotion_stand_targets(robot->locomotion_profile,stand))return ROBOT_CONFIG_ERROR;
+    for(int i=0;i<4;i++)command[i]=nominal[i]=from[i]=stand[i];
+    if(native || locomotion_has_gait_stand(robot->locomotion_profile)) {
+        if(native)s_native_stand(stand);
+        for(int i=0;i<4;i++)neutral[i]=command[i]=nominal[i]=from[i]=stand[i];
     } else if(!locomotion_targets(robot->locomotion_profile,0,0,0,0,neutral))return ROBOT_CONFIG_ERROR;
     result=shared_observe(robot);if(result!=ROBOT_OK)return result;
-    bool stopping=false,watchdog=false;int stage=native?2:1;float transition=0;
+    bool stopping=false,watchdog=false;int stage=(native || locomotion_has_gait_stand(robot->locomotion_profile))?2:1;float transition=0;
     unsigned step_half=0;robot->gait_steps_completed=0;
     uint32_t started=HAL_GetTick(),deadline=started;
     gait_tracking_reset(&robot->tracking,started);
@@ -2239,7 +2248,8 @@ void robot_control_idle(RobotController *robot)
     uint32_t now=HAL_GetTick();if((uint32_t)(now-robot->shared_idle_at)<20U)return;
     robot->shared_idle_at=now;
     if(shared_observe(robot)!=ROBOT_OK)return;
-    GaitPolicyLegTarget out[4];for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
+    GaitPolicyLegTarget out[4];
+    if(!locomotion_stand_targets(robot->locomotion_profile,out)) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
     const bool native=locomotion_is_native(robot->locomotion_profile);
     if(native)s_native_stand(out);
     uint16_t positions[12];

@@ -348,7 +348,7 @@ class Window(QMainWindow):
         buttons.addWidget(self.probe_save);buttons.addWidget(self.probe_load)
         self.load_probe()
         self.probe_apply = QPushButton("설정 적용 + 조회")
-        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78") else "")))
+        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79") else "")))
         self.probe_read = QPushButton("설정 조회"); self.probe_read.clicked.connect(lambda: self.send("probeconfig show"))
         self.probe_start = QPushButton("시험 시작"); self.probe_start.clicked.connect(lambda: self.send("app_probe_start"))
         for button in [self.probe_apply,self.probe_read,self.probe_start]:buttons.addWidget(button)
@@ -509,7 +509,7 @@ class Window(QMainWindow):
         self.probe_mode.setEnabled(idle)
         probe_idle = idle and parameter_mode and state.get('supports_probe',False) and not stowed
         for field in [self.probe_lift,self.probe_linear,self.probe_duration,self.probe_legs,self.probe_save,self.probe_load]:field.setEnabled(probe_idle)
-        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78"))
+        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79"))
         self.probe_fr_extra.setEnabled(self.probe_width.isEnabled())
         self.probe_fr_extra.setToolTip("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 복귀")
         self.probe_width.setToolTip("수직 0mm · 안쪽 음수 · 바깥 양수. 한쪽 발 기준입니다.")
@@ -532,7 +532,7 @@ class Window(QMainWindow):
         self.profile_button.setEnabled(profiles_ok)
         for index, profile in enumerate(PROFILES):
             allowed = not (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) or state.get("simulator", False)
-            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
+            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
             self.profiles.model().item(index).setEnabled(allowed)
         self.balance_button.setEnabled(idle and not stowed and bool(caps & {"balancecontrol", "simbalance"}))
         self.heading_button.setEnabled(idle and not stowed and "headinghold" in caps)

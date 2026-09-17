@@ -4,6 +4,17 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testV79AdvertisesV3AndKeepsOlderFirmwareCompatible() {
+        let manager = RobotBluetoothManager(commandWriter: { _ in })
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v3-v79 caps=gaitprofiles,attitudepd_v2,attitudepd_v3 profile=attitudepd_v3\r\n# ")
+        XCTAssertTrue(manager.supportsProbe)
+        XCTAssertTrue(manager.supportsProbeWidth)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v3)
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: manager.runtimeState.capabilities))
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: ["attitudepd_v2"]))
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v2.isSupported(capabilities: ["attitudepd_v2"]))
+    }
+
     func testV78RetainsParameterModeAndAdvertisesV2() {
         let manager = RobotBluetoothManager(commandWriter: { _ in })
         manager.receiveConsoleText("$SPOTSTATE pose=landing torque=off safety=ok rev=attitudepd-v2-v78 caps=gaitprofiles,attitudepd_v2 profile=attitudepd_v2\r\n# ")
@@ -74,7 +85,7 @@ final class RobotCommandTests: XCTestCase {
         XCTAssertFalse(manager.canStartProbe);manager.startProbe();XCTAssertFalse(commands.contains("walkprobe\n"))
     }
     func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v2)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v3)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.simulatorOnly)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_2"]))
         XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_3"]))

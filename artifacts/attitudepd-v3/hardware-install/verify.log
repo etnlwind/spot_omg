@@ -1,0 +1,36 @@
+$SPOTSTATE pose=landing error=77 torque=off safety=ok balance=suspended rev=attitudepd-v3-v79 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v3 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754
+Servo status (12 configured IDs):
+ID 1 pos=1928 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00
+ID 2 pos=1598 speed=0 load=0 voltage=11400mV temp=33C current=1 moving=0 hw=0x00
+ID 3 pos=3484 speed=0 load=0 voltage=11500mV temp=45C current=0 moving=0 hw=0x00
+ID 4 pos=2076 speed=0 load=0 voltage=11400mV temp=36C current=0 moving=0 hw=0x00
+ID 5 pos=2433 speed=0 load=0 voltage=11400mV temp=36C current=0 moving=0 hw=0x00
+ID 6 pos=525 speed=0 load=0 voltage=11500mV temp=48C current=0 moving=0 hw=0x00
+ID 7 pos=2098 speed=0 load=0 voltage=11300mV temp=37C current=0 moving=0 hw=0x00
+ID 8 pos=1467 speed=0 load=0 voltage=11400mV temp=38C current=0 moving=0 hw=0x00
+ID 9 pos=3484 speed=0 load=0 voltage=11400mV temp=58C current=0 moving=0 hw=0x00
+ID 10 pos=1959 speed=0 load=0 voltage=11400mV temp=38C current=0 moving=0 hw=0x00
+ID 11 pos=2736 speed=0 load=0 voltage=11400mV temp=35C current=0 moving=0 hw=0x00
+ID 12 pos=513 speed=0 load=0 voltage=11300mV temp=56C current=0 moving=0 hw=0x00
+Bus read retries: attempts=0 recovered=0 failed=0
+Starting slow synchronized landing move
+POSE landing reason=complete-residual elapsed=2060 nominal=1500 retries=0 waits=19 hold=0
+POSE_HEALTH id=0 temp=0 hw=0x00 transient=0
+POSE_PROBE count=0 mask=0x000 max_lead=120
+OK
+$MECHLOG label=landing complete=1; saved: log show 64
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/spot_omg/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/opt/anaconda3/envs/spot_omg/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/Users/etnlwind/project/spot_omg/scripts/hardware/install_attitudepd_v3.py", line 98, in <module>
+    if __name__=='__main__':main()
+  File "/Users/etnlwind/project/spot_omg/scripts/hardware/install_attitudepd_v3.py", line 71, in main
+    assert re.search(r'POSE landing reason=complete(?: |$)',landed),landed
+AssertionError: Starting slow synchronized landing move
+POSE landing reason=complete-residual elapsed=2060 nominal=1500 retries=0 waits=19 hold=0
+POSE_HEALTH id=0 temp=0 hw=0x00 transient=0
+POSE_PROBE count=0 mask=0x000 max_lead=120
+OK
+$MECHLOG label=landing complete=1; saved: log show 64

@@ -278,9 +278,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var probeTimeout: DispatchWorkItem?
     private var probeStopAt: Date?
     var supportsProbe: Bool {
-        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78"].contains(runtimeState.revision)
+        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79"].contains(runtimeState.revision)
     }
-    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78"].contains(runtimeState.revision) && !target.isSimulator }
+    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79"].contains(runtimeState.revision) && !target.isSimulator }
     var probeConfigurationBlockReason: String? {
         if !state.isReady { return "로봇에 연결한 뒤 설정을 적용할 수 있습니다." }
         if target.isSimulator { return "직접 설정 보행은 현재 실제 로봇 연결에서만 지원합니다." }
@@ -796,7 +796,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
         let profile = SimulatorGaitProfile.allCases.first {
-            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
+            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
             (target != .robot || !$0.simulatorOnly) && $0.isSupported(capabilities: runtimeState.capabilities)
         } ?? .centerpivot
         guard defaultValidationProfilePending, state.isReady,

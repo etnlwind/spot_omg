@@ -1,0 +1,56 @@
+{
+  "stage": "verify",
+  "firmware_sha256": "01a15370a467fe0c436806712af613e8e10db3c4e9aae51b08ca97613c6f513c",
+  "success": false,
+  "completed_landing": false,
+  "all_torque_off": false,
+  "physical_walk_test": false,
+  "error": "Starting slow synchronized landing move\nPOSE landing reason=complete-residual elapsed=2060 nominal=1500 retries=0 waits=19 hold=0\nPOSE_HEALTH id=0 temp=0 hw=0x00 transient=0\nPOSE_PROBE count=0 mask=0x000 max_lead=120\nOK\n$MECHLOG label=landing complete=1; saved: log show 64",
+  "events": [
+    {
+      "command": "syncstate",
+      "started_at": "2026-09-17T18:02:50.111271+00:00",
+      "lines": [
+        "$SPOTSTATE pose=landing error=77 torque=off safety=ok balance=suspended rev=attitudepd-v3-v79 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v3 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754"
+      ],
+      "status": "info",
+      "text": "$SPOTSTATE pose=landing error=77 torque=off safety=ok balance=suspended rev=attitudepd-v3-v79 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v3 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754"
+    },
+    {
+      "command": "status",
+      "started_at": "2026-09-17T18:02:50.322354+00:00",
+      "lines": [
+        "Servo status (12 configured IDs):",
+        "ID 1 pos=1928 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00",
+        "ID 2 pos=1598 speed=0 load=0 voltage=11400mV temp=33C current=1 moving=0 hw=0x00",
+        "ID 3 pos=3484 speed=0 load=0 voltage=11500mV temp=45C current=0 moving=0 hw=0x00",
+        "ID 4 pos=2076 speed=0 load=0 voltage=11400mV temp=36C current=0 moving=0 hw=0x00",
+        "ID 5 pos=2433 speed=0 load=0 voltage=11400mV temp=36C current=0 moving=0 hw=0x00",
+        "ID 6 pos=525 speed=0 load=0 voltage=11500mV temp=48C current=0 moving=0 hw=0x00",
+        "ID 7 pos=2098 speed=0 load=0 voltage=11300mV temp=37C current=0 moving=0 hw=0x00",
+        "ID 8 pos=1467 speed=0 load=0 voltage=11400mV temp=38C current=0 moving=0 hw=0x00",
+        "ID 9 pos=3484 speed=0 load=0 voltage=11400mV temp=58C current=0 moving=0 hw=0x00",
+        "ID 10 pos=1959 speed=0 load=0 voltage=11400mV temp=38C current=0 moving=0 hw=0x00",
+        "ID 11 pos=2736 speed=0 load=0 voltage=11400mV temp=35C current=0 moving=0 hw=0x00",
+        "ID 12 pos=513 speed=0 load=0 voltage=11300mV temp=56C current=0 moving=0 hw=0x00",
+        "Bus read retries: attempts=0 recovered=0 failed=0"
+      ],
+      "status": "info",
+      "text": "Servo status (12 configured IDs):\nID 1 pos=1928 speed=0 load=0 voltage=11300mV temp=34C current=0 moving=0 hw=0x00\nID 2 pos=1598 speed=0 load=0 voltage=11400mV temp=33C current=1 moving=0 hw=0x00\nID 3 pos=3484 speed=0 load=0 voltage=11500mV temp=45C current=0 moving=0 hw=0x00\nID 4 pos=2076 speed=0 load=0 voltage=11400mV temp=36C current=0 moving=0 hw=0x00\nID 5 pos=2433 speed=0 load=0 voltage=11400mV temp=36C current=0 moving=0 hw=0x00\nID 6 pos=525 speed=0 load=0 voltage=11500mV temp=48C current=0 moving=0 hw=0x00\nID 7 pos=2098 speed=0 load=0 voltage=11300mV temp=37C current=0 moving=0 hw=0x00\nID 8 pos=1467 speed=0 load=0 voltage=11400mV temp=38C current=0 moving=0 hw=0x00\nID 9 pos=3484 speed=0 load=0 voltage=11400mV temp=58C current=0 moving=0 hw=0x00\nID 10 pos=1959 speed=0 load=0 voltage=11400mV temp=38C current=0 moving=0 hw=0x00\nID 11 pos=2736 speed=0 load=0 voltage=11400mV temp=35C current=0 moving=0 hw=0x00\nID 12 pos=513 speed=0 load=0 voltage=11300mV temp=56C current=0 moving=0 hw=0x00\nBus read retries: attempts=0 recovered=0 failed=0"
+    },
+    {
+      "command": "landing",
+      "started_at": "2026-09-17T18:02:50.712247+00:00",
+      "lines": [
+        "Starting slow synchronized landing move",
+        "POSE landing reason=complete-residual elapsed=2060 nominal=1500 retries=0 waits=19 hold=0",
+        "POSE_HEALTH id=0 temp=0 hw=0x00 transient=0",
+        "POSE_PROBE count=0 mask=0x000 max_lead=120",
+        "OK",
+        "$MECHLOG label=landing complete=1; saved: log show 64"
+      ],
+      "status": "ok",
+      "text": "Starting slow synchronized landing move\nPOSE landing reason=complete-residual elapsed=2060 nominal=1500 retries=0 waits=19 hold=0\nPOSE_HEALTH id=0 temp=0 hw=0x00 transient=0\nPOSE_PROBE count=0 mask=0x000 max_lead=120\nOK\n$MECHLOG label=landing complete=1; saved: log show 64"
+    }
+  ]
+}

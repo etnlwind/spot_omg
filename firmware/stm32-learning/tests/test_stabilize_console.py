@@ -273,7 +273,7 @@ def console_executable(tmp_path_factory):
     unit = directory / "console.c"
     prefix = PREFIX.replace("/* ATTITUDE_PD_TYPES */", adapter_types)
     locomotion = (PROJECT / "Inc/locomotion.h").read_text()
-    helper = locomotion[locomotion.index("static inline bool locomotion_is_attitude_pd"):locomotion.index("static inline bool locomotion_is_native")]
+    helper = locomotion[locomotion.index("static inline bool locomotion_is_attitude_pd"):locomotion.index("static inline bool locomotion_has_gait_stand")]
     prefix = prefix.replace("/* LOCOMOTION_PD_HELPER */", helper)
     harness = HARNESS.replace("/* ROUND_ROBIN_SERVICE */", round_service).replace("/* BUDGETED_SERVICE */", budget_service)
     unit.write_text("\n".join([prefix, macros, frame_macro, structure, echo, service, realtime, harness]))

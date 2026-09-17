@@ -648,13 +648,12 @@ static void command_sync_state(AppConsole *console)
     const RobotResult position_result =
         robot_read_positions(console->robot, positions);
     if (position_result == ROBOT_OK &&
-        robot_stand_targets(stand) &&
+        robot_selected_stand_targets(console->robot,stand) &&
         robot_landing_targets(landing) &&
         robot_straight_targets(straight)) {
         uint16_t stand_error = pose_max_error(positions, stand);
         if(locomotion_is_native(console->robot->locomotion_profile)) {
-            GaitPolicyLegTarget native[4];s_native_stand(native);
-            if(s_native_servo_targets(native,stand)) {
+            if(robot_stand_targets(stand)) {
                 const uint16_t native_error=pose_max_error(positions,stand);
                 if(native_error<stand_error)stand_error=native_error;
             }
@@ -685,11 +684,11 @@ static void command_sync_state(AppConsole *console)
     }
 
     if(console->robot->stow_active)pose=console->robot->stow_complete?"stow":"stow-paused";
-    char message[640];
+    char message[672];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,

@@ -66,7 +66,9 @@ static inline float body_stabilizer_clip(float value,float limit) {
 }
 static inline float body_stabilizer_smooth(float value) {
     float x=fmaxf(0.f,fminf(1.f,value));
-    return x*x*x*(10.f+x*(-15.f+6.f*x));
+    /* Float roundoff near one can produce 1.0000006 and falsely trip the
+     * stance-weight geometry contract, even with stabilization disabled. */
+    return fmaxf(0.f,fminf(1.f,x*x*x*(10.f+x*(-15.f+6.f*x))));
 }
 static inline void body_stabilizer_reset(BodyStabilizerState *state) {
     if(state) {

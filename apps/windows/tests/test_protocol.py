@@ -268,3 +268,18 @@ def test_v627_is_first_only_when_firmware_advertises_support(simulator):
     c.validate('gaitprofile s_native_v6_2_7')
     c.caps.remove('s_native_v6_2_7')
     with pytest.raises(ValueError):c.validate('gaitprofile s_native_v6_2_7')
+
+
+@pytest.mark.parametrize('supported,expected', [
+    ('attitudepd_v2,attitudepd_v3','attitudepd_v3'),
+    ('attitudepd_v2','attitudepd_v2'),
+])
+def test_attitudepd_default_respects_firmware_capability(supported,expected):
+    from spot_controller.protocol import PROFILES
+    assert PROFILES[:2]==('attitudepd_v3','attitudepd_v2')
+    c=Controller(simulator=False);c.opened(0);drain(c)
+    c.feed(STATE.replace(b'trot5',supported.encode())+b'# ',.1)
+    drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
+    assert drain(c)==f'gaitprofile {expected}\n'.encode()
+    if expected=='attitudepd_v2':
+        with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v3')

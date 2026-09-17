@@ -1,6 +1,8 @@
 # Spot OMG
 
-최신 실기는 `attitudepd-v2-v78`입니다. [IMU 자세 안정화 V2 · 앞발 들림 +4mm 및 실기 8걸음 기록](docs/ATTITUDEPD-V2-FRONT-CLEARANCE-2026-09-18.md)을 먼저 확인하세요. 8걸음 정상 종료와 사용자 관찰 양호를 확인했으며, 반복·회전 및 실제 발높이 비교는 미검증입니다. 이전 파라미터 시험은 [V77-T1 기록](docs/V77-T1-REAR-PROBE.md)을 참고하세요.
+최신 실기는 `attitudepd-v3-v79`입니다. [V3 Stand(B) 구현·설치 기록](docs/ATTITUDEPD-V3-GAIT-STAND-2026-09-18.md)에서 설치 readback과 미실시한 Stand(B)·보행 시험을 구분해 확인하세요. 직전 V2의 8걸음 정상 종료와 사용자 관찰은 [V2 실기 기록](docs/ATTITUDEPD-V2-FRONT-CLEARANCE-2026-09-18.md)에 있습니다. 이전 파라미터 시험은 [V77-T1 기록](docs/V77-T1-REAR-PROBE.md)을 참고하세요.
+
+V3는 Stand와 보행 대기 자세를 B로 통일했습니다. [V3 구현·검증 기록](docs/ATTITUDEPD-V3-GAIT-STAND-2026-09-18.md)을 참고하세요. 앱·펌웨어 빌드, 가상 로봇 시험, iPhone 앱·실기 펌웨어 설치를 마쳤습니다. V3 Stand(B) 유지·실기 보행 시험은 아직입니다.
 
 Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
 
