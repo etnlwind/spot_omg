@@ -8,6 +8,56 @@ Spot Micro 기반의 12-DOF 4족 로봇 프로젝트입니다. 현재 STM32 실�
 URT-2/STS3215 서보 버스, BNO086 자세 피드백, MuJoCo 공용 보행 정책을 구현했으며
 Jetson/ROS2와 RL 정책 연동은 다음 단계입니다.
 
+## Mac·Windows 조종 앱 실행
+
+### Mac (Mac Catalyst)
+
+최신 소스로 빌드하려면 Xcode가 필요합니다. 저장소 루트에서 실행하세요.
+
+```bash
+cd /Users/etnlwind/project/spot_omg
+xcodebuild -project apps/ios/SpotOMGController/SpotOMGController.xcodeproj \
+  -scheme SpotOMGController -destination 'platform=macOS,variant=Mac Catalyst' \
+  -derivedDataPath artifacts/mac-app CODE_SIGNING_ALLOWED=NO build
+open artifacts/mac-app/Build/Products/Debug-maccatalyst/SpotOMGController.app
+```
+
+빌드한 뒤에는 마지막 `open` 명령만 실행하면 됩니다. 소스를 업데이트했다면 다시 빌드하세요.
+기존에 `~/Applications`에 배치한 앱은 다음 명령으로 열 수 있습니다.
+이 복사본은 Git pull만으로 갱신되지 않습니다.
+
+```bash
+open ~/Applications/SpotOMGController.app
+```
+
+[Mac 앱 상세 안내](apps/macos/README.md).
+
+### Windows (PowerShell)
+
+저장소 위치에 맞게 경로를 바꾸세요. `spot_omg` 환경이 없다면 먼저
+`conda env create -f config/environment.yml`로 생성합니다.
+
+```powershell
+cd D:/project/spot_omg
+conda activate spot_omg
+./apps/windows/setup.ps1
+./apps/windows/run.ps1
+```
+
+`setup.ps1`은 최초 설정 또는 의존성 갱신 때 실행합니다. 이후에는 환경 활성화 후
+`./apps/windows/run.ps1`만 실행하면 됩니다.
+
+V6.2.7 실행 파일 배포 폴더가 있는 컴퓨터에서는 다음으로 실행할 수 있습니다.
+배포 파일은 Git에 포함되지 않으며 `_internal`이 있는 폴더 전체가 필요합니다.
+
+```powershell
+& ./apps/windows/dist/v627/SpotOMGController/SpotOMGController.exe
+```
+
+앱에서 **실제 로봇 · BLE**를 선택해 연결합니다. 다른 Mac·Windows·iPhone 앱의
+로봇 연결은 먼저 해제하세요. Windows 앱의 **MuJoCo 시작 + 연결**은 로컬
+시뮬레이터를 실행합니다. [Windows 앱 상세 안내](apps/windows/README.md).
+
 ## 시뮬레이터 실행 (Mac)
 
 ### 기본 시뮬레이터
