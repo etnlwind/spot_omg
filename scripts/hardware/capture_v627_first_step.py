@@ -1,4 +1,4 @@
-"""Explicitly authorized bounded V76 floor start; preserve trace and never retry motion."""
+"""Explicitly authorized bounded floor start; preserve traces and never retry motion."""
 import argparse,json,re,threading,time
 from pathlib import Path
 from servo.console import Stm32Console
@@ -11,9 +11,12 @@ def main():
     ap.add_argument('--execute-authorized',action='store_true',required=True)
     ap.add_argument('--output',type=Path,required=True)
     ap.add_argument('--revision',default='s-native-v6-2-7-v76')
+    ap.add_argument('--landing-first',action='store_true')
+    ap.add_argument('--drive-window',type=float,default=4.,help='Wall seconds after started, including internal Stand preparation')
     a=ap.parse_args();a.output.mkdir(parents=True,exist_ok=False)
+    if not 0<a.drive_window<=9:raise ValueError('Drive window must be within 0..9 seconds')
     start=time.monotonic();done=threading.Event();begun=threading.Event();lock=threading.Lock()
-    result=dict(command=[344,0],host_drive_window_s=4,automatic_retry=False);worker=None;motion=False
+    result=dict(command=[344,0],host_drive_window_s=a.drive_window,automatic_retry=False);worker=None;motion=False
     def record(kind,text):
         with lock:
             with (a.output/'events.jsonl').open('a') as f:f.write(json.dumps(dict(host_s=time.monotonic()-start,kind=kind,text=text))+'\n')
@@ -36,9 +39,9 @@ def main():
             t=time.monotonic();seq=2
             while not done.is_set():
                 elapsed=time.monotonic()-t
-                cmd=f'@D {seq} 344 0' if elapsed<4 else f'@S {seq}'
+                cmd=f'@D {seq} 344 0' if elapsed<a.drive_window else f'@S {seq}'
                 record('tx',cmd);transport.write((cmd+'\n').encode());seq+=1
-                if elapsed>10:c.abort();record('abort','stop deadline exceeded');return
+                if elapsed>a.drive_window+8:c.abort();record('abort','stop deadline exceeded');return
                 done.wait(.15)
         try:
             state=send('syncstate')
@@ -53,13 +56,18 @@ def main():
             if int(m[1]):download(c,a.output/'previous-jointtrace.txt')
             send('balance status')
             motion=True
+            if a.landing_first:
+                send('landing',timeout=60)
+                landed=send('syncstate')
+                if 'pose=landing' not in landed or 'safety=ok' not in landed:
+                    raise RuntimeError('Landing arrival not confirmed; no Stand or gait')
             send('stand',timeout=30)
             ready=send('syncstate')
             if 'pose=stand' not in ready or 'safety=ok' not in ready:raise RuntimeError('Stand not confirmed')
             send('imu on');send('jointtrace arm')
             worker=threading.Thread(target=heartbeat,daemon=True);worker.start()
             motion=True;record('tx','drive 344 0 1');transport.write(b'drive 344 0 1\n')
-            deadline=time.monotonic()+20;pending='';last=time.monotonic()
+            deadline=time.monotonic()+a.drive_window+16;pending='';last=time.monotonic()
             while time.monotonic()<deadline:
                 chunk=transport.read(max(1,transport.in_waiting))
                 if chunk:
@@ -73,10 +81,15 @@ def main():
             if not done.is_set():raise RuntimeError('No stopped response')
             worker.join(timeout=2);motion=False
             send('imu off');result['final_state']=send('syncstate')
-            download(c,a.output/'jointtrace.txt');write_report(a.output/'jointtrace.txt',a.output/'joint-analysis')
-            result['trace_validated']=True
             if has_imu:
-                download_imu(c,a.output/'imutrace.txt');result['imu_trace_validated']=True
+                try:
+                    download_imu(c,a.output/'imutrace.txt');result['imu_trace_validated']=True
+                except Exception as exc:result['imu_trace_error']=str(exc)
+            try:
+                download(c,a.output/'jointtrace.txt')
+                result['trace_validated']=True
+                write_report(a.output/'jointtrace.txt',a.output/'joint-analysis')
+            except Exception as exc:result['joint_trace_error']=str(exc)
             for cmd in ('baldiag','gaitdiag','trackingdiag','status','balance status'):
                 try:send(cmd,timeout=8)
                 except Exception as exc:result[cmd+'_error']=str(exc)

@@ -43,7 +43,7 @@ def main():
         capture(args,parser)
 
 
-def capture(args,parser,experiment=None):
+def capture(args,parser,experiment=None,target_adjustment=None,gait_setup=None):
     if not 1 <= args.command <= 1000:
         parser.error('command must be 1..1000')
     if not 3 <= args.walk_seconds <= 120:
@@ -67,6 +67,13 @@ def capture(args,parser,experiment=None):
         t = i * .02
         if i == 100:
             robot.command(f'drive {args.command} 0 1', t)
+            if gait_setup:gait_setup(robot)
+            if target_adjustment:
+                original=robot.s_native_gait.targets
+                def adjusted(phase,amplitude,linear,yaw):
+                    nominal=original(phase,amplitude,linear,yaw)
+                    return target_adjustment(robot,robot.s_native_gait,phase,nominal)
+                robot.s_native_gait.targets=adjusted
         elif i == stop_tick:
             robot.command(f'@S {i}', t)
         elif 100 < i < stop_tick and i % 10 == 0:
@@ -95,8 +102,10 @@ def capture(args,parser,experiment=None):
         records.append(dict(time_s=t, since_drive_s=t-2,
             stop_placement=placement,
             phase=float(getattr(robot, 'nominal_phase', 0)),
+            leg_phase=(getattr(gait,'experimental_leg_phase',None).tolist() if getattr(gait,'experimental_leg_phase',None) is not None else None),
             entry_phase=float(getattr(gait,'entry_phase',0.)),
             roll_deg=state['roll_deg'], pitch_deg=state['pitch_deg'],
+            torso_height_m=float(data.xipos[model.body('cad_base').id,2]),
             tilt_deg=max(abs(state['roll_deg']), abs(state['pitch_deg'])),
             clearance_mm=[foot_clearance(model, data, foot)*1000 for foot in kin.feet],
             normal_force_n=load.tolist(),
@@ -255,7 +264,7 @@ def capture(args,parser,experiment=None):
                 row=records[index]
                 draw.text((10,888), f"Safety: {row['safety'].upper()} | Battery {row['voltage_v']:.2f} V | phase rate {row['phase_rate']:.2f} | tracking error {row['tracking'].get('peak_error_deg',0):.1f} deg | J1/J2/J3: commanded / actual",font=font,fill='white')
                 for j,leg in enumerate(legs):
-                    q=(row['phase']+[.5,0,0,.5][j])%1
+                    q=row['leg_phase'][j] if row.get('leg_phase') is not None else (row['phase']+[.5,0,0,.5][j])%1
                     # The added pulse peak is not the final IK joint's reversal.
                     # Report the final commanded J3 trend, independently of phase.
                     previous=records[max(0,index-2)]

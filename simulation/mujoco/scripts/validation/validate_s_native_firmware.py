@@ -8,7 +8,8 @@ import ctypes as ct
 import json
 from pathlib import Path
 import numpy as np
-from simulation.mujoco.runtime.cad_physics import Simulation
+from simulation.mujoco.runtime.cad_physics import Simulation,foot_clearance
+from simulation.mujoco.runtime.gait_evidence import foot_loads,swing_quality
 from simulation.mujoco.runtime.virtual_robot import RobotController, load_parameters, parse_args
 from simulation.mujoco.runtime.s_native_gait import SNativeGait, V61_PROFILE as PROFILE,PROFILES
 from servo.host_build import build_shared, library_suffix
@@ -57,7 +58,7 @@ def compare(lib,plant,request,stop_after,profile='s_native_v6_1'):
     return dict(request=request,stop_after_s=stop_after,max_target_error_deg=error)
 
 
-def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1',walk_seconds=8.,voltage=None):
+def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1',walk_seconds=8.,voltage=None,target_adjustment=None):
     """Replay protocol input with tilt protection; None selects Python targets."""
     parameters=load_parameters(parse_args([]))
     if voltage is not None:parameters['pack_open_circuit_voltage']=voltage
@@ -79,8 +80,10 @@ def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1',
         assert np.max(abs(decoded-np.array(output)))<.095
         if stopping and lib.stopped():gait.stop_progress=1.
         gait.previous=np.array(output)
-        return gait.previous.copy()
+        nominal=gait.previous.copy()
+        return target_adjustment(robot,gait,phase,nominal) if target_adjustment else nominal
     stop_tick=100+round(walk_seconds/.02)
+    contact_evidence=[]
     for i in range(stop_tick+200):
         t=i*.02
         if i==100:
@@ -91,6 +94,10 @@ def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1',
         elif i==stop_tick:robot.command('@S 1000',t)
         elif 100<i<stop_tick and i%10==0:robot.command(f'@D {i} {command[0]} {command[1]}',t)
         robot.tick(t);state=plant.row()
+        if 100<=i<stop_tick:
+            contact_evidence.append(dict(phase=float(getattr(robot,'nominal_phase',robot.phase)),
+                clearance_mm=[foot_clearance(plant.model,plant.data,plant.model.geom(leg+'_foot').id)*1000 for leg in ('fl','fr','rl','rr')],
+                loads_n=foot_loads(plant.model,plant.data)))
         rotation=plant.data.xmat[plant.model.body('robot').id].reshape(3,3)
         rows.append(dict(time_s=t,roll_deg=state['roll_deg'],pitch_deg=state['pitch_deg'],
                          body_yaw_deg=float(np.degrees(np.arctan2(rotation[1,0],rotation[0,0]))),
@@ -98,16 +105,16 @@ def physical_replay(lib, command=(1000,0), heading=True,profile='s_native_v6_1',
                          heading=robot.heading.diagnostic(),safety=robot.safety,
                          reply=robot.drain().decode(),target=robot.command_target.tolist()))
     actual_error=float(np.max(abs(np.degrees(plant.data.qpos[plant.q])-robot.stand_target)))
-    assert not robot.motion and not robot.transition and robot.safety=='ok'
-    assert np.max(abs(robot.command_target-robot.stand_target))<.01 and actual_error<1.1
+    stop_pose_pass=not robot.motion and not robot.transition and robot.safety=='ok' and np.max(abs(robot.command_target-robot.stand_target))<.01 and actual_error<1.1
     yaw=np.degrees(np.unwrap(np.radians([r['body_yaw_deg'] for r in rows])))
     return dict(command=list(command),heading_enabled=heading,backend='c' if lib is not None else 'python',
+                gait_quality=swing_quality(contact_evidence),no_protection_stop=all(r['safety']=='ok' for r in rows),stop_pose_pass=bool(stop_pose_pass),
                 walk_yaw_change_deg=float(yaw[stop_tick-1]-yaw[99]),
                 final_yaw_change_deg=float(yaw[-1]-yaw[99]),
                 walk_displacement_m=(np.array(rows[stop_tick-1]['position_m'])-rows[99]['position_m']).tolist(),
                 max_tilt_deg=max(max(abs(r['roll_deg']),abs(r['pitch_deg'])) for r in rows[100:]),
                 final_actual_s_error_deg=actual_error,
-                stopped_video_s=next(r['time_s'] for r in rows if '$SPOTDRIVE stopped' in r['reply'])),rows
+                stopped_video_s=next((r['time_s'] for r in rows if '$SPOTDRIVE stopped' in r['reply']),None)),rows
 
 
 def main():

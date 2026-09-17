@@ -1,0 +1,102 @@
+{
+  "revision": "s-native-v6-2-7-v77",
+  "input": "D:\\project\\spot_omg\\artifacts\\imu-trace-v77\\alignment-2026-09-17\\floor01\\jointtrace.txt",
+  "plant_mode": "estimated replay; optional empirical parameter overrides",
+  "mass_kg": 2.7540000000000004,
+  "command_delay_s": 0.02,
+  "replay_step_ms": 20,
+  "excluded_startup_ms": 1000,
+  "max_sim_roll_deg": 6.752839042464628,
+  "max_sim_pitch_deg": 1.5298810083823315,
+  "joints": {
+    "FL-J1": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.49621776396491124,
+      "first_second_prediction_rmse_deg": 0.5699458162501878
+    },
+    "FL-J2": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.5855699301254049,
+      "first_second_prediction_rmse_deg": 0.821466680333143
+    },
+    "FL-J3": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.46462945034759845,
+      "first_second_prediction_rmse_deg": 0.4981627863016951
+    },
+    "FR-J1": {
+      "samples": 35,
+      "prediction_rmse_deg": 0.6565759372639267,
+      "first_second_prediction_rmse_deg": 0.49230495770412125
+    },
+    "FR-J2": {
+      "samples": 35,
+      "prediction_rmse_deg": 0.988737182908363,
+      "first_second_prediction_rmse_deg": 0.6577273114717457
+    },
+    "FR-J3": {
+      "samples": 35,
+      "prediction_rmse_deg": 0.9154905748080812,
+      "first_second_prediction_rmse_deg": 0.6708935740304842
+    },
+    "RL-J1": {
+      "samples": 35,
+      "prediction_rmse_deg": 0.8023271015290757,
+      "first_second_prediction_rmse_deg": 0.4208334665316975
+    },
+    "RL-J2": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.9095861485791045,
+      "first_second_prediction_rmse_deg": 0.767766276775171
+    },
+    "RL-J3": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.668078901462932,
+      "first_second_prediction_rmse_deg": 0.4657247577638336
+    },
+    "RR-J1": {
+      "samples": 34,
+      "prediction_rmse_deg": 1.0716233576521927,
+      "first_second_prediction_rmse_deg": 0.2809064253318371
+    },
+    "RR-J2": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.9370219753291721,
+      "first_second_prediction_rmse_deg": 0.36996825665691985
+    },
+    "RR-J3": {
+      "samples": 34,
+      "prediction_rmse_deg": 0.7543837566389295,
+      "first_second_prediction_rmse_deg": 0.8231665643477809
+    }
+  },
+  "initial_attitude_source": "level assumption",
+  "startup_validation_excluded": false,
+  "limitations": [
+    "Command-driven replay, not independent closed-loop prediction.",
+    "Absolute initial body height/contact, floor carpet properties and physical IMU offsets are unmeasured.",
+    "Servo and cushion mechanics remain estimates; no fitting to force agreement.",
+    "Contact counts are model evidence, not real contact measurements."
+  ],
+  "imu_rmse_deg": {
+    "roll": 2.1723245746389575,
+    "pitch": 0.5279603997852997
+  },
+  "first_swing_midphase": {
+    "fr": {
+      "samples": 32,
+      "contact_fraction": 0.03125,
+      "loaded_fraction": 0.03125,
+      "min_clearance_mm": -0.13951984906446224,
+      "max_clearance_mm": 18.195386831173696
+    },
+    "rl": {
+      "samples": 32,
+      "contact_fraction": 0.3125,
+      "loaded_fraction": 0.3125,
+      "min_clearance_mm": -0.9439447657589861,
+      "max_clearance_mm": 8.680712570676
+    }
+  },
+  "first_swing_clearance_pass": false
+}
