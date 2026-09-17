@@ -4,6 +4,7 @@ import UIKit
 
 struct ControlView: View {
     @EnvironmentObject private var bluetooth: RobotBluetoothManager
+    @State private var probeDraft = RobotProbeConfig()
     @State private var showRelaxConfirmation = false
     @State private var acknowledgedBatteryLevel = 0
     @State private var consoleCommand = ""
@@ -26,7 +27,7 @@ struct ControlView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if bluetooth.batteryWarning.level > 0 { batteryWarningBanner }
+            if bluetooth.target == .robot && bluetooth.state.isReady && bluetooth.batteryWarning.level > 0 { batteryWarningBanner }
             TabView(selection: $terminalPage) {
                 terminalPanel.tag(0)
                 SimulatorVideoView(active: terminalPage == 1, controlHost: bluetooth.target == .simulator ? bluetooth.simulatorHost : nil).tag(1)
@@ -115,6 +116,15 @@ struct ControlView: View {
                     }
                 }
 
+                Section("보행 방식") {
+                    Picker("보행 방식", selection: $bluetooth.parameterWalking) {
+                        Text("모델 보행").tag(false)
+                        Text("직접 설정 보행").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(!bluetooth.canSelectWalkingMode)
+                }
+
                 if bluetooth.runtimeState.capabilities.contains("headinghold") {
                     Section("직진 보정") {
                         Toggle("IMU 직진 방향 유지", isOn: Binding(
@@ -136,18 +146,71 @@ struct ControlView: View {
                             Text("지연된 IMU 측정으로 다리를 보정합니다. 설정 변경 시 먼저 정지합니다.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        Picker("보행 정책", selection: Binding(
-                            get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
-                            set: { bluetooth.send(.simulatorProfile($0)) })) {
-                            ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0).disabled(!$0.isSupported(capabilities: bluetooth.runtimeState.capabilities)) }
-                        }.disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
-                        Text("괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 정책을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
+                        if !bluetooth.parameterWalking {
+                        ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { profile in
+                            let selected = bluetooth.runtimeState.simulationProfile == profile.rawValue
+                            Button {
+                                bluetooth.send(.simulatorProfile(profile))
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(selected ? Color.accentColor : .secondary)
+                                    Text(profile.titleWithSpeed)
+                                        .foregroundStyle(.primary)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer(minLength: 0)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                            .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked || !profile.isSupported(capabilities: bluetooth.runtimeState.capabilities))
+                        }
+                        Text("V1–V6 계열은 S 자세에서 출발합니다. 괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 모델을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
                             .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
 
+            if bluetooth.parameterWalking {
+            Section("직접 설정 보행 · V6.2.5") {
+                Text("전진 전용 · 저장과 로봇 적용은 별도 · 설정 시간 또는 조이스틱 해제로 정지").font(.caption)
+                Button("설정 저장") { bluetooth.saveProbe(probeDraft) }
+                Button("저장값 불러오기") { probeDraft=bluetooth.savedProbe }
+                Stepper("들림 목표: \(probeDraft.lift) mm", value:$probeDraft.lift,in:12...40)
+                Stepper("전진 입력: \(probeDraft.linear) / 1000", value:$probeDraft.linear,in:1...1000)
+                Stepper("실행 시간: \(probeDraft.duration) ms", value:$probeDraft.duration,in:500...30000,step:500)
+                Picker("대상 다리",selection:$probeDraft.legs) {
+                    Text("전체").tag("all");Text("왼쪽 뒤 RL").tag("rl");Text("오른쪽 뒤 RR").tag("rr")
+                }
+                Stepper("좌우 간격: \(probeDraft.width ?? 0) mm / 한쪽",value:Binding(get:{probeDraft.width ?? 0},set:{probeDraft.width=$0}),in:-40...20)
+                    .disabled(!bluetooth.supportsProbeWidth)
+                Toggle("출발 시 FR만 추가 오므림",isOn:$probeDraft.frExtra)
+                    .disabled(!bluetooth.supportsProbeWidth)
+                Text("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 공통 간격으로 복귀.").font(.caption)
+                Text("수직 0 · 안쪽 − · 바깥 +. −20mm는 양쪽 합계 40mm 좁힘. 기존 정상 기준은 약 −38mm입니다.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("V6.2.5 선택") { bluetooth.send(.simulatorProfile(.s_native_v6_2_5)) }
+                    .disabled(!bluetooth.canConfigureProbe)
+                if let reason = bluetooth.probeConfigurationBlockReason {
+                    Text(reason).font(.caption).foregroundStyle(.orange)
+                }
+                Button("설정 적용 + 조회") { var value=probeDraft;value.width=bluetooth.supportsProbeWidth ? (probeDraft.width ?? 0) : nil;bluetooth.configureProbe(value) }
+                    .disabled(!bluetooth.canConfigureProbe)
+                Button("설정 조회") { bluetooth.configureProbe(nil) }
+                    .disabled(!bluetooth.canConfigureProbe)
+                Text(bluetooth.probeConfig.map { "적용값: " + $0.summary } ?? "설정 조회 필요")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("시험 시작") { bluetooth.startProbe() }.disabled(!bluetooth.canStartProbe)
+                Button("시험 정지",role:.destructive) { bluetooth.stopWalkingOrHold() }.disabled(!bluetooth.state.isReady)
+                Text(bluetooth.supportsProbe ? "V6.2.5 선택 → Stand → 설정 적용 → 시험 시작. 직접 설정 보행의 조이스틱 전진에도 적용됩니다(전체 다리 선택). 몸체를 지지하고 시험하세요." : "실기 V77-T1-param 펌웨어가 필요합니다.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            }
+
             Section("조이스틱 사용법") {
-                Text("위·아래는 전진·후진, 대각선은 이동과 회전, 좌우는 제자리 회전입니다. 중심에서 멀수록 빨라지고 손을 떼면 정지합니다.")
+                Text(bluetooth.parameterWalking ? "위로 밀면 직접 설정한 값으로 전진합니다. 설정 시간이 끝나거나 손을 떼면 정지합니다." : "위·아래는 전진·후진, 대각선은 이동과 회전, 좌우는 제자리 회전입니다. 중심에서 멀수록 빨라지고 손을 떼면 정지합니다.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("안전 자세") {
@@ -168,6 +231,7 @@ struct ControlView: View {
             }
             .disabled(!bluetooth.state.isReady)
 
+            if !bluetooth.parameterWalking {
             Section("보행") {
                 Button("개선 전진 · 3회 · 844 ms") {
                     bluetooth.send(.trot5(cycles: 3, periodMilliseconds: 844))
@@ -193,6 +257,8 @@ struct ControlView: View {
             }
             .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
 
+            }
+
             Section("진단") {
                 Button("Targets") { bluetooth.send(.targets) }
                 Button("Servo Scan") { bluetooth.send(.scan) }
@@ -212,6 +278,7 @@ struct ControlView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             }
         }
+        .onAppear { probeDraft = bluetooth.savedProbe }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -220,7 +287,7 @@ struct ControlView: View {
         }
         .onChange(of: bluetooth.batteryWarning.level) { oldLevel, newLevel in
             if newLevel == 0 { acknowledgedBatteryLevel = 0 }
-            if newLevel > oldLevel {
+            if bluetooth.target == .robot && bluetooth.state.isReady && newLevel > oldLevel {
                 AudioServicesPlayAlertSound(1005)
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 UIAccessibility.post(notification: .announcement, argument: bluetooth.batteryWarning.title)
@@ -238,7 +305,7 @@ struct ControlView: View {
     private var batteryWarningBanner: some View {
         let warning = bluetooth.batteryWarning
         return VStack(alignment: .leading, spacing: 8) {
-            Label((bluetooth.target.isSimulator ? "[가상] " : "") + warning.title,
+            Label("실제 로봇 · " + warning.title,
                   systemImage: "battery.0percent")
                 .font(.headline.bold())
             if acknowledgedBatteryLevel < warning.level {
@@ -279,9 +346,13 @@ struct ControlView: View {
             .font(.caption2.monospacedDigit())
             Text((SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy).titleWithSpeed)
                 .font(.caption).lineLimit(1).minimumScaleFactor(0.7)
+            Button(bluetooth.joystickAutoReturn ? "자동 복귀 ON" : "자동 복귀 OFF · 입력 유지") {
+                bluetooth.joystickAutoReturn.toggle()
+                if bluetooth.joystickAutoReturn { bluetooth.stopDrive(reason:"auto-return-enabled") }
+            }.font(.caption2).buttonStyle(.bordered).frame(maxWidth:.infinity,alignment:.leading)
             GeometryReader { area in
                 let diameter = max(72, min(250, area.size.width, area.size.height))
-                VirtualJoystick(enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked) { x, y in
+                VirtualJoystick(enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked && (!bluetooth.probeRunning || bluetooth.parameterWalking) && !bluetooth.probeBusy, autoReturn:bluetooth.joystickAutoReturn, resetToken:bluetooth.joystickResetToken) { x, y in
                     bluetooth.updateDrive(x: x, y: y)
                 } onRelease: { reason in
                     bluetooth.stopDrive(reason: reason)
@@ -334,18 +405,7 @@ struct ControlView: View {
                                  bluetooth.runtimeState.capabilities.contains("simbalance")), toggle: true) {
                     bluetooth.send(.simulatorBalance(["off", "unknown"].contains(bluetooth.runtimeState.balance)))
                 }
-                Menu {
-                    Picker("보행 정책", selection: Binding(
-                        get: { SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy },
-                        set: { bluetooth.send(.simulatorProfile($0)) })) {
-                        ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { Text($0.titleWithSpeed).tag($0).disabled(!$0.isSupported(capabilities: bluetooth.runtimeState.capabilities)) }
-                    }
-                } label: {
-                    compactLabel("정책", icon: "figure.walk", selected: false)
-                }
-                .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked || !supportsProfiles)
-                .accessibilityLabel("보행 정책 선택")
-                .accessibilityValue((SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy).titleWithSpeed)
+
             }
             HStack(spacing: 0) {
                 compactButton("Landing", icon: "arrow.down.to.line", selected: bluetooth.runtimeState.pose == "landing",

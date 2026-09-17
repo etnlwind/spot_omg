@@ -2,6 +2,8 @@ import SwiftUI
 
 struct VirtualJoystick: View {
     let enabled: Bool
+    var autoReturn = true
+    var resetToken = 0
     let onChange: (Double, Double) -> Void
     let onRelease: (String) -> Void
 
@@ -59,6 +61,8 @@ struct VirtualJoystick: View {
         .onChange(of: enabled) { _, isEnabled in
             if !isEnabled { resetToCenter(reason: "control-disabled") }
         }
+        .onChange(of:autoReturn) { _, value in if value { resetToCenter(reason:"auto-return-enabled") } }
+        .onChange(of:resetToken) { _, _ in resetToCenter(reason:"external-stop") }
         .onDisappear { resetToCenter(reason: "view-disappeared") }
         .onChange(of: gestureActive) { _, active in
             // SwiftUI also resets GestureState when a parent cancels a drag;
@@ -68,6 +72,7 @@ struct VirtualJoystick: View {
     }
 
     private func resetToCenter(reason: String) {
+        if !autoReturn && reason.hasPrefix("gesture-ended") { return }
         guard touchActive else { return }
         touchActive = false
         withAnimation(.spring(response: 0.22, dampingFraction: 0.72)) {

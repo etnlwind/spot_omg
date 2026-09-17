@@ -121,12 +121,12 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     @Published private(set) var supplyVoltageMillivolts: Int?
     @Published private(set) var lastVoltageRead: Date?
     @Published private(set) var batteryWarning = RobotBatteryWarning()
-    private var pendingConsoleResponses = 0
+    @Published private var pendingConsoleResponses = 0
     private var lastBatteryPoll = Date.distantPast
 
     /// Short idle-only read. Realtime motion receives firmware $BATTERY events.
     func pollBattery(now: Date = Date()) {
-        guard state.isReady, lastStateSync != nil, !driveSessionActive,
+        guard target == .robot, state.isReady, lastStateSync != nil, !driveSessionActive,
               !motionControlsLocked, pendingConsoleResponses == 0,
               now.timeIntervalSince(lastBatteryPoll) >= 5,
               now.timeIntervalSince(lastVoltageRead ?? .distantPast) >= 5 else { return }
@@ -254,6 +254,75 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var initialSyncTimeout: DispatchWorkItem?
     private var initialSyncAttempts = 0
     private var defaultValidationProfilePending = true
+    @Published var joystickAutoReturn = true
+    @Published private(set) var joystickResetToken = 0
+    @Published var parameterWalking = false
+    var canSelectWalkingMode: Bool { !driveSessionActive && !motionControlsLocked && !probeBusy }
+    private var probeFromJoystick = false
+    var savedProbe: RobotProbeConfig {
+        guard let data=UserDefaults.standard.data(forKey:"savedWalkingParameters"),
+              let config=try? JSONDecoder().decode(RobotProbeConfig.self,from:data),config.valid else { return RobotProbeConfig() }
+        return config
+    }
+    func saveProbe(_ config: RobotProbeConfig) {
+        guard config.valid,let data=try? JSONEncoder().encode(config) else { return }
+        UserDefaults.standard.set(data,forKey:"savedWalkingParameters")
+        appendConsole("파라미터 저장 완료 · " + config.summary + "\n")
+    }
+    @Published private(set) var probeConfig: RobotProbeConfig?
+    @Published private(set) var probeRunning = false
+    @Published private(set) var probeBusy = false
+    private var probeExpected: RobotProbeConfig?
+    private var probeStage = 0
+    private var probeReadback: RobotProbeConfig?
+    private var probeTimeout: DispatchWorkItem?
+    private var probeStopAt: Date?
+    var supportsProbe: Bool {
+        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78"].contains(runtimeState.revision)
+    }
+    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78"].contains(runtimeState.revision) && !target.isSimulator }
+    var probeConfigurationBlockReason: String? {
+        if !state.isReady { return "로봇에 연결한 뒤 설정을 적용할 수 있습니다." }
+        if target.isSimulator { return "직접 설정 보행은 현재 실제 로봇 연결에서만 지원합니다." }
+        if !supportsProbe { return "직접 설정 보행 미지원 펌웨어: \(runtimeState.revision)" }
+        if probeBusy { return "설정 적용·조회 응답을 기다리고 있습니다." }
+        if motionControlsLocked { return "자세 전환 또는 정지 확인이 끝난 뒤 설정을 적용할 수 있습니다." }
+        if driveSessionActive { return "보행 종료를 확인한 뒤 설정을 적용할 수 있습니다." }
+        if pendingConsoleResponses > 0 { return "로봇 명령 응답을 기다리고 있습니다." }
+        return nil
+    }
+    var canConfigureProbe: Bool { probeConfigurationBlockReason == nil }
+    var canStartProbe: Bool {
+        canConfigureProbe && probeConfig != nil && runtimeState.pose == "stand" && runtimeState.safety == "ok" && runtimeState.simulationProfile == "s_native_v6_2_5"
+    }
+    func configureProbe(_ config: RobotProbeConfig?) {
+        guard canConfigureProbe, config?.valid != false else { return }
+        if config?.width != nil && !supportsProbeWidth { lastError="간격 지원 펌웨어가 필요합니다.";return }
+        var config=config
+        if supportsProbeWidth, config != nil, config?.width == nil { config?.width=0 }
+        defaultValidationProfilePending = false
+        stateRefreshWorkItem?.cancel();stateRefreshWorkItem=nil
+        probeExpected=config;probeConfig=nil;probeReadback=nil;probeBusy=true
+        probeStage=config == nil ? 2 : 1
+        sendCommandNow(.raw(config?.command ?? "probeconfig show"))
+        let work=DispatchWorkItem { [weak self] in
+            guard let self,self.probeBusy else { return }
+            self.probeBusy=false;self.probeStage=0;self.probeExpected=nil;self.probeConfig=nil
+            self.lastError="시험 설정 응답 시간 초과 · 다시 연결해 주세요."
+        }
+        probeTimeout=work;DispatchQueue.main.asyncAfter(deadline:.now()+10,execute:work)
+    }
+    func startProbe() {
+        guard canStartProbe,let config=probeConfig else { return }
+        stateRefreshWorkItem?.cancel();stateRefreshWorkItem=nil
+        probeRunning=true;probeStopAt=Date().addingTimeInterval(Double(config.duration)/1000+3)
+        driveVector=RobotDriveVector(linearPerMille:config.linear,yawPerMille:0,speedFraction:Double(config.linear)/1000)
+        drivePhase = .controlling
+        driveStatus="시험 중 · " + config.summary
+        appendConsole("> walkprobe\n");pendingConsoleResponses += 1;write(Data("walkprobe\n".utf8))
+        startDriveHeartbeat()
+    }
+
     private var driveHeartbeat: Timer?
     private var driveVector: RobotDriveVector?
     private var driveRequiresRelease = false
@@ -261,7 +330,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var recoveryRequested = false
     private var driveSequence: UInt32 = 0
     private enum DrivePhase: String { case idle, controlling, stopping, draining }
-    private var drivePhase: DrivePhase = .idle {
+    @Published private var drivePhase: DrivePhase = .idle {
         didSet {
             if oldValue != drivePhase {
                 trace?.record("phase", "\(oldValue.rawValue) -> \(drivePhase.rawValue)")
@@ -397,6 +466,14 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func send(_ command: RobotCommand) {
+        let first = command.consoleLine.split(separator:" ").first.map(String.init) ?? ""
+        if ["walkprobe","rearprobe","probeconfig"].contains(first) {
+            lastError="파라미터 시험 패널을 사용하십시오.";return
+        }
+        if probeBusy && command != .hold { lastError="설정 조회 완료를 기다려 주세요.";return }
+        if command == .hold && probeBusy {
+            probeBusy=false;probeStage=0;probeExpected=nil;probeTimeout?.cancel();probeConfig=nil
+        }
         if (command.consoleLine == "hold" || command.consoleLine == "\u{03}"),
            motionControlsLocked || driveSessionActive {
             guard state.isReady else { return }
@@ -564,6 +641,16 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func updateDrive(x: Double, y: Double) {
+        if parameterWalking {
+            if probeBusy { return }
+            let forward = RobotDriveVector.make(x:x,y:y).map { $0.linearPerMille>0 && abs($0.yawPerMille)<100 } ?? false
+            if !forward { if probeFromJoystick { stopDrive(reason:"parameter-joystick-release") };driveRequiresRelease=false;return }
+            if probeRunning { return }
+            guard !driveRequiresRelease,canStartProbe,probeConfig?.legs == "all" else { return }
+            startProbe();probeFromJoystick=probeRunning;driveRequiresRelease=probeRunning
+            return
+        }
+        guard !probeRunning && !probeBusy else { return }
         guard !motionControlsLocked else { return }
         guard state.isReady, x.isFinite, y.isFinite else {
             stopDrive(reason: "invalid-or-disconnected")
@@ -616,6 +703,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func stopDrive(reason: String = "joystick-release") {
+        if reason != "external-stop" { joystickResetToken += 1 }
+        if probeRunning && !probeFromJoystick && ["gesture-ended","joystick-release","joystick-neutral-or-disconnected"].contains(reason) { return }
+        probeRunning=false;probeFromJoystick=false;probeStopAt=nil
         if reason == "gesture-ended" || reason == "joystick-release" || reason == "joystick-neutral-or-disconnected" {
             driveRequiresRelease = false
         }
@@ -657,6 +747,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func resetConnection(keepingState: Bool = false) {
+        joystickAutoReturn=true;joystickResetToken += 1
+        parameterWalking=false;probeFromJoystick=false
+        probeConfig=nil;probeExpected=nil;probeReadback=nil;probeBusy=false;probeStage=0
+        probeRunning=false;probeStopAt=nil;probeTimeout?.cancel();probeTimeout=nil
         cancelLandingRelease()
         postureInProgress = nil
         postureQueued = false
@@ -702,7 +796,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
         let profile = SimulatorGaitProfile.allCases.first {
-            ($0.rawValue.hasPrefix("s_native_v") || $0 == .centerpivot) &&
+            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
             (target != .robot || !$0.simulatorOnly) && $0.isSupported(capabilities: runtimeState.capabilities)
         } ?? .centerpivot
         guard defaultValidationProfilePending, state.isReady,
@@ -769,6 +863,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func sendDriveUpdate() {
+        if probeRunning,let end=probeStopAt,Date()>=end { stopDrive(reason:"시험 시간 완료");return }
         guard let vector = driveVector, driveSessionActive else { return }
         sendDrivePacket(.update(sequence: nextDriveSequence(),
                                 linearPerMille: vector.linearPerMille,
@@ -808,6 +903,16 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     private func processConsolePrompt() {
         pendingConsoleResponses = max(0, pendingConsoleResponses - 1)
+        if probeBusy && pendingConsoleResponses == 0 {
+            if probeStage == 1 {
+                probeStage=2;probeReadback=nil;sendCommandNow(.raw("probeconfig show"));return
+            }
+            if probeStage == 2 {
+                if let value=probeReadback,probeExpected == nil || probeExpected == value { probeConfig=value }
+                else { probeConfig=nil;lastError="시험 설정 조회 불일치" }
+                probeExpected=nil;probeStage=0;probeBusy=false;probeTimeout?.cancel()
+            }
+        }
         guard driveSessionActive, driveAwaitingPrompt else { return }
         driveCompletionTimeout?.cancel()
         driveCompletionTimeout = nil
@@ -828,6 +933,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             guard case .line(let line) = event else {
                 processConsolePrompt()
                 continue
+            }
+            if probeBusy && line.hasPrefix("$PROBECONFIG ") && probeStage == 2 { probeReadback=RobotProbeConfig.parse(line) }
+            if probeBusy && (line.hasPrefix("ERROR:") || line == "unknown command; type help") {
+                probeConfig=nil;probeExpected=nil;probeBusy=false;probeStage=0;probeTimeout?.cancel()
             }
             if target.isSimulator, line.hasPrefix("$SIMLINK disconnected") {
                 disconnect(); fail("MuJoCo 연결이 종료되었습니다."); return
@@ -881,7 +990,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 // Informational only: never arm/cancel the stop timeout here.
                 continue
             }
-            if let reading = RobotBatteryWarning.reading(in: line) {
+            if target == .robot, state.isReady, let reading = RobotBatteryWarning.reading(in: line) {
                 let now = Date()
                 batteryWarning.observe(reading.millivolts, at: now.timeIntervalSince1970, historical: reading.historical)
                 if !reading.historical {
@@ -890,6 +999,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 }
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
+                joystickResetToken += 1
+                probeRunning=false;probeStopAt=nil
                 let stopReason = line.lowercased()
                 let safetyStop = stopReason.contains("reason=tilt") || stopReason.contains("reason=imu") || stopReason.contains("reason=safety")
                 if safetyStop {
@@ -914,6 +1025,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                     driveSafetyLatched = !runtimeState.capabilities.contains("commandretry")
                     recoveryRequested = false
                 }
+                probeRunning=false;probeStopAt=nil
                 // A rejected drive has no started/stopped banner. Its error
                 // and prompt must still terminate the local session.
                 driveHeartbeat?.invalidate()
@@ -973,7 +1085,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             selectDefaultValidationProfileIfIdle()
             // Existing firmware exposes voltage via a read-only servo snapshot.
             // Never enqueue a console read while realtime drive is active.
-            if !driveSessionActive {
+            if target == .robot && !driveSessionActive {
                 sendCommandNow(.raw("read 1"))
             }
         }

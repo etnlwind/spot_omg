@@ -30,7 +30,7 @@ const RobotJointConfig g_robot_joints[ROBOT_JOINT_COUNT] = {
     {1U,  0U, 1U, 1929U, 0U, 4095U, -1},
     {2U,  0U, 2U, 2077U, 0U, 4095U, -1},
     {3U,  0U, 3U, 1965U, 0U, 4095U,  1},
-    {4U,  1U, 1U, 2089U, 0U, 4095U,  1},
+    {4U,  1U, 1U, 2073U, 0U, 4095U,  1},
     {5U,  1U, 2U, 1922U, 0U, 4095U,  1},
     {6U,  1U, 3U, 2081U, 0U, 4095U, -1},
     {7U,  2U, 1U, 2104U, 0U, 4095U, -1},

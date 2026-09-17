@@ -11,6 +11,9 @@ static inline int locomotion_profile_id(const char *name) {
     for(int i=0;i<LOCOMOTION_PROFILE_COUNT;i++) if(strcmp(name,locomotion_names[i])==0) return i;
     return -1;
 }
+static inline bool locomotion_is_attitude_pd(int profile) {
+    return profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2");
+}
 static inline bool locomotion_is_native(int profile) {
     return profile==locomotion_profile_id("s_native_v6_1") ||
            profile==locomotion_profile_id("s_native_v6_2_1") ||
@@ -81,6 +84,7 @@ static inline bool locomotion_targets_assisted(int profile,float phase,float sca
     if(profile==locomotion_profile_id("arcsupport"))return arc_support_targets(phase,scale,linear,yaw,out);
     if(profile==0) return gait_policy_drive_walk_targets(phase,scale,linear,yaw,out);
     float p[7];locomotion_params(profile,linear,p);
+    if(profile==locomotion_profile_id("attitudepd_v2"))return attitude_v2_targets(p,phase,scale,linear,yaw,out);
     if(profile==locomotion_profile_id("centerpivot") || profile==locomotion_profile_id("attitudepd"))return center_pivot_targets(p,phase,scale,linear,yaw,out);
     /* Recenter the stance as the legs straighten: lift alone left the
      * front feet loaded against the floor in the estimated physical plant. */

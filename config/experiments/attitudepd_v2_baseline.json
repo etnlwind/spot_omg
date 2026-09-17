@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "name": "attitudepd_v2",
+  "label": "IMU 자세 안정화 V2 · 개발 중",
+  "status": "baseline-copy-not-deployed",
+  "source_profile": "attitudepd",
+  "profile": {
+    "label": "IMU 자세 안정화 · PD · 실험 (검증실패)",
+    "family": "trot",
+    "params": [
+      1.35,
+      0.52,
+      0.08,
+      0.024,
+      0.22,
+      -0.035,
+      0.75
+    ],
+    "turn_reverse_params": [
+      1.05,
+      0.52,
+      0.07,
+      0.022,
+      0.20175,
+      -0.035,
+      0.75
+    ],
+    "experimental": true,
+    "validation": "Separate attitude-PD experiment using unchanged centerpivot nominal kinematics; physical gait validation pending.",
+    "turn_input_limit": 0.5
+  },
+  "body_stabilization": {
+    "schema_version": 1,
+    "target_roll_rad": 0.0,
+    "target_pitch_rad": 0.0,
+    "kp_roll": 0.1,
+    "kp_pitch": 0.1,
+    "kd_roll_s": 0.01,
+    "kd_pitch_s": 0.01,
+    "angle_alpha": 0.5,
+    "gyro_alpha": 0.2,
+    "max_roll_rad": 0.05,
+    "max_pitch_rad": 0.05,
+    "max_foot_offset_m": 0.005,
+    "max_error_rad": 0.1745329252,
+    "max_gyro_rad_s": 3.141592654,
+    "timeout_ms": 100,
+    "slew_rad_s": 0.15,
+    "stance_transition_s": 0.08
+  },
+  "notes": [
+    "Original profile and PD settings copied unchanged. Not registered as a selectable gait or default.",
+    "Forward nominal diagonal joint trajectories already match. Determine whether the observed front mismatch is swing clearance, reach, or stance tracking before choosing compensation.",
+    "Hardware body-axis verification remains disabled; do not bypass it.",
+    "Before registering a new gait, implement and verify the repository S-start requirement; preserve existing firmware indices.",
+    "Implemented selectable attitudepd_v2 in the shared manifest with a 4mm front swing addition. This file retains the unmodified baseline for comparison. Simulation did not establish overall improvement; see docs/ATTITUDEPD-V2-FRONT-CLEARANCE-2026-09-18.md."
+  ],
+  "objective": "Preserve the observed good rear-leg forward motion; improve front-leg execution to match it."
+}

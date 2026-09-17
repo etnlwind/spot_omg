@@ -34,10 +34,10 @@ def metrics(rows,start,end):
         tracking_max_deg=float(np.max(abs(a('command')-a('actual')))),
         correction_peak_mm=float(max(max(abs(x) for x in r['placement'].get('applied_dz',[0]*4)) for r in selected)*1000))
 
-def run(enabled,destination,config=None,duration=30,linear=1.,yaw=0.):
+def run(enabled,destination,config=None,duration=30,linear=1.,yaw=0.,profile="attitudepd"):
     p=parameters()
     if config is not None:p['body_stabilizer']=config
-    plant=Simulation(p);robot=RobotController(plant);robot.select_profile('attitudepd')
+    plant=Simulation(p);robot=RobotController(plant);robot.select_profile(profile)
     robot.balance.enabled=False;robot.heading.enabled=False
     robot.body_stabilizer.enabled=enabled
     m,d=plant.model,plant.data;feet=[m.geom(l+'_foot').id for l in ('fl','fr','rl','rr')]
@@ -71,7 +71,7 @@ def run(enabled,destination,config=None,duration=30,linear=1.,yaw=0.):
         validation_passed=False,validation_note='OFF/ON comparison; physical robot not tested')
     result=dict(summary=summary,parameters=p,records=rows,
         config=json.loads((ROOT/'config/body_stabilization.json').read_text()) if config is None else config,
-        gait=dict(period_s=1.35,duty=.52,stride_m=.08,lift_m=.024,profile='attitudepd',base='centerpivot',linear=linear,yaw=yaw),
+        gait=dict(period_s=1.35,duty=.52,stride_m=.08,lift_m=.024,profile=profile,base='centerpivot',linear=linear,yaw=yaw),
         feedback='Only delayed/quantized Euler + separately delayed body gyro; contact forces/truth are evaluation only',
         recording='Physical qpos/qvel 50Hz; no target substitution')
     destination.parent.mkdir(parents=True,exist_ok=True);destination.write_text(json.dumps(result,indent=2))
@@ -92,6 +92,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('mode',choices=['on','off'])
     parser.add_argument('--output',type=Path,required=True);parser.add_argument('--config',type=Path)
     parser.add_argument('--duration',type=float,default=30);parser.add_argument('--linear',type=float,default=1)
-    parser.add_argument('--yaw',type=float,default=0);args=parser.parse_args()
+    parser.add_argument('--yaw',type=float,default=0)
+    parser.add_argument('--profile',choices=['attitudepd','attitudepd_v2'],default='attitudepd');args=parser.parse_args()
     if not 10<args.duration<=120:parser.error('duration must be >10 and <=120 s')
-    run(args.mode=='on',args.output,json.loads(args.config.read_text()) if args.config else None,args.duration,args.linear,args.yaw)
+    run(args.mode=='on',args.output,json.loads(args.config.read_text()) if args.config else None,args.duration,args.linear,args.yaw,args.profile)

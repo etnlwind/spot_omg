@@ -52,8 +52,19 @@ Python 검사: 페이지 검증, 손상·누락 거부, 읽기 전용 다운로�
 기존 C 검사의 단일 관절 조회 가정은 V625부터 적용된 두 조회와 맞지 않아 수정했다.
 이번 IMU 변경으로 추가된 서보 조회는 없다.
 
-**실제 보드는 V76이다. V77 OTA 및 실기 기록 검증은 아직 하지 않았다.**
+**2026-09-17 V77 OTA 및 설치 readback 완료. 보행 중 기록 검증은 아직 하지 않았다.**
 사용자가 충전하기로 했으며 마지막 시험 후 Landing 확인/토크 OFF 상태로 마쳤다.
 충전 후 설치할 때도 AGENTS.md의 Landing 도착 확인 → torque OFF → OTA →
 Landing 확인 절차를 따른다. 설치 후 짧은 구동에서 IMU/관절 시간축 일치와
 실제 프레임 지연을 검증해야 한다. 보행 전도 원인이 해결됐다는 의미는 아니다.
+
+
+## 2026-09-17 실기 설치
+
+사용자 요청으로 설치했다. 설치 전 Landing 완료 및12개 토크 레지스터 OFF를 확인했다.
+전압12.3~12.5V, hw오류0. SHA256 검증된 V77을 BLE로 전송하고 STM32 플래시 검증/재부팅 완료.
+설치 후 revision `s-native-v6-2-7-v77`, capability `imutrace`, 기본 V627을 확인했다.
+Landing 재도착,12개 서보 설정 주소0..39 불변 및 새 imutrace status/dump 응답 확인.
+보행은 실행하지 않았다. 최종 Landing/torque off/safety ok/fault0.
+원본 증거: `artifacts/imu-trace-v77/hardware-2026-09-17/`의 prepare.json, ota.log, verify.json.
+설치 도구: `scripts/hardware/install_v77.py`.

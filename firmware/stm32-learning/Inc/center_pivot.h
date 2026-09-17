@@ -82,6 +82,25 @@ static inline bool center_pivot_targets(const float p[7],float phase,float scale
     }
     return true;
 }
+/* V2 retains the rear targets and adds only forward front swing clearance.
+ * S is the zero-amplitude entry posture. Full-amplitude rear motion is exact.
+ * CAD FK/IK preserves front X/Y; no motor limits or calibrations change. */
+#include "s_native_data.h"
+static inline bool attitude_v2_targets(const float p[7],float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
+    GaitPolicyLegTarget base[4],result[4];
+    if(!center_pivot_targets(p,phase,scale,linear,yaw,base))return false;
+    float entry=gait_policy_smootherstep(scale);
+    for(int i=0;scale<1 && i<4;i++) {
+        base[i].j1_deg=sn_standing[i][0]+entry*(base[i].j1_deg-sn_standing[i][0]);
+        base[i].j2_deg=sn_standing[i][1]+entry*(base[i].j2_deg-sn_standing[i][1]);
+        base[i].j3_deg=sn_standing[i][2]+entry*(base[i].j3_deg-sn_standing[i][2]);
+    }
+    const float offsets[4]={0,.5f,.5f,0},extra[4]={.004f,.004f,0,0};
+    float forward=gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));
+    if(!arc_swing_shape_apply(base,phase,p[1],scale*forward,offsets,extra,result))return false;
+    for(int i=0;i<4;i++)out[i]=result[i];
+    return true;
+}
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC pop_options
 #endif

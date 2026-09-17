@@ -8,6 +8,11 @@ typedef struct {
     bool stop_first_fl_rr;
     float support_linear, support_yaw;
     float extended_rear_m;
+    unsigned diagnostic_leg; /* 0 disabled, 3 RL, 4 RR, 5 all legs */
+    float diagnostic_lift_extra_m;
+    bool diagnostic_width_active;
+    bool diagnostic_fr_extra;
+    float diagnostic_width_m;
     bool have_phase, have_support, continuous_recovery, extended_reach, placement_swing, uniform_recovery, early_fold_recovery;
 } SNativeControl;
 void s_native_reset(SNativeControl *s);

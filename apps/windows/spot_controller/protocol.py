@@ -7,7 +7,7 @@ from .battery import BatteryWarning, reading as battery_reading
 
 NATIVE_PROFILES = ("s_native_v6_2_7", "s_native_v6_2_6", "s_native_v6_2_5", "s_native_v6_2_4", "s_native_v6_2_3", "s_native_v6_2_2", "s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
 SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1", "s_native_v6_2_2", "s_native_v6_2_3", "s_native_v6_2_4", "s_native_v6_2_5", "s_native_v6_2_6", "s_native_v6_2_7"}
-PROFILES = NATIVE_PROFILES + (
+PROFILES = ("attitudepd_v2",) + NATIVE_PROFILES + (
     "attitudepd", "centerpivot", "arcsupport", "arcturn", "legacy", "crawl",
     "cruise", "trot", "highstep", "lift", "imu", "level", "level15", "joint",
     "jointfast", "jointsport", "cushion_reach", "cushion_j2lift", "cushion_wbc",
@@ -90,10 +90,48 @@ class Controller:
         self.voltage_at = None
         self.battery = BatteryWarning()
         self.next_voltage_poll = 5.
+        self.parameter_walking = False
+        self.probe_from_joystick = False
         self.state_at = None
         self.fatal = False
         self.disconnect_requested = False
         self.default_profile_pending = True
+        self.probe_config = None
+        self.probe_expected = None
+        self.probe_running = False
+        self.probe_stop_at = None
+
+    @property
+    def supports_probe(self):
+        return not self.simulator and self.state.get('rev') in {
+            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78'}
+
+    @staticmethod
+    def parse_probe(values):
+        if len(values) not in {4,5,6}:
+            raise ValueError('들림, 전진 입력, 시간, 대상 다리가 필요합니다.')
+        lift, linear, duration = map(int, values[:3])
+        leg = values[3]
+        if not (12 <= lift <= 40 and 1 <= linear <= 1000 and 500 <= duration <= 30000 and leg in {'all','rl','rr'}):
+            raise ValueError('시험 파라미터 범위를 확인하십시오.')
+        width = int(values[4]) if len(values)>=5 else None
+        if width is not None and not -40 <= width <= 20:raise ValueError("간격은 -40..20mm입니다.")
+        fr=int(values[5]) if len(values)==6 else 0
+        if fr not in (0,1):raise ValueError("FR 옵션은 0 또는 1입니다.")
+        return (lift, linear, duration, leg) if width is None else (lift,linear,duration,leg,width,fr)
+
+    def start_probe(self, now):
+        if not (self.supports_probe and self.can_drive and self.phase == 'idle'
+                and self.state.get('pose') == 'stand' and self.state.get('profile') == 's_native_v6_2_5'
+                and self.probe_config is not None and self.probe_expected is None):
+            raise ValueError('V6.2.5 · Stand · 설정 조회 완료 후 시험을 시작하십시오.')
+        self.probe_running = True
+        self.probe_stop_at = now + self.probe_config[2] / 1000 + 3
+        self.vector = (self.probe_config[1], 0)
+        self.phase = 'drive'
+        self.refresh_at = None
+        self.next_heartbeat = now + .2
+        self.packet('walkprobe\n')
 
     def packet(self, text, kind="command"):
         data = text.encode("utf-8") if isinstance(text, str) else text
@@ -133,6 +171,14 @@ class Controller:
         if not line or len(line.encode("utf-8")) > 240 or any(ord(c) < 32 for c in line):
             raise ValueError("명령은 240바이트 이내의 한 줄이어야 합니다.")
         words = line.split()
+        if words[0] in {'walkprobe','rearprobe'}:
+            raise ValueError('시험 시작 버튼을 사용하십시오.')
+        if words[0] == 'probeconfig':
+            if not self.supports_probe:raise ValueError('파라미터 펌웨어가 필요합니다.')
+            if words[1:] not in [['show'], ['reset']]:
+                if len(words) not in {6,7,8} or words[1] != 'set':raise ValueError('잘못된 파라미터 명령')
+                self.parse_probe(words[2:])
+                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
         first = words[0]
         if first in POSTURES | {'relax', 'recover', 'hold'} and len(words) != 1:
             raise ValueError('자세 명령에는 추가 인자를 사용할 수 없습니다.')
@@ -153,11 +199,16 @@ class Controller:
             profile = words[1]
             if (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) and not self.simulator:
                 raise ValueError("이 보행 정책은 시뮬레이터 전용입니다.")
-            if profile in {*NATIVE_PROFILES, "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
+            if profile in {*NATIVE_PROFILES, "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
                 raise ValueError("제어기가 선택한 실험 정책을 지원하지 않습니다.")
 
     def request(self, line, now):
         line = line.strip()
+        if line in {'app_parameter_mode 0','app_parameter_mode 1'}:
+            if self.phase != 'idle':raise ValueError('정지 후 모드를 변경하십시오.')
+            self.parameter_walking=line.endswith('1');return
+        if line == 'app_probe_start':
+            self.start_probe(now);return
         if line == "hold" or line == "\x03":
             self.interrupt(now)
             return
@@ -179,6 +230,13 @@ class Controller:
             self._console(line, now)
 
     def _console(self, line, now):
+        if line.startswith('probeconfig set '):
+            self.probe_config = None
+            self.probe_expected = self.parse_probe(line.split()[2:])
+            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78"):self.probe_expected += (0,0)
+        elif line == 'probeconfig reset':
+            self.probe_config = None
+            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78") else ())
         self.command = line
         self.command_ok = self.command_error = False
         self.command_state_seen = False
@@ -189,6 +247,19 @@ class Controller:
 
     def update(self, x, y, now):
         vector = drive_vector(x, y)
+        if self.parameter_walking:
+            forward=vector is not None and vector[0]>0 and abs(vector[1])<100
+            if not forward:
+                if self.probe_from_joystick:self.release(now)
+                self.requires_release=False
+                return
+            if self.probe_running or self.requires_release:return
+            if self.phase!='idle' or self.probe_config is None or self.probe_config[3]!='all':return
+            try:self.start_probe(now)
+            except ValueError as exc:self.error=str(exc);return
+            self.probe_from_joystick=True;self.requires_release=True
+            return
+        if self.probe_running:return
         if vector is None:
             self.release(now)
             return
@@ -206,6 +277,9 @@ class Controller:
             self.next_heartbeat = now + .2
 
     def release(self, now):
+        self.probe_from_joystick=False
+        self.probe_running = False
+        self.probe_stop_at = None
         self.requires_release = False
         self.vector = None
         if self.phase == "drive":
@@ -224,6 +298,9 @@ class Controller:
             self.interrupt(now)
 
     def interrupt(self, now):
+        self.probe_running = False
+        self.probe_stop_at = None
+        self.probe_expected = None
         if not self.connected:
             return
         if self.phase == 'idle':
@@ -248,6 +325,8 @@ class Controller:
             self.interrupt(now)
 
     def tick(self, now):
+        if self.probe_running and self.probe_stop_at is not None and now >= self.probe_stop_at:
+            self.stop(now)
         if self.phase == "drive" and self.vector is not None and now >= self.next_heartbeat:
             a, b = self.vector
             self.packet(f"@D {self.next_sequence()} {a} {b}\n", "update")
@@ -258,7 +337,7 @@ class Controller:
             self.fatal = True
         if self.phase == "idle" and self.refresh_at is not None and now >= self.refresh_at:
             self._console("syncstate", now)
-        if (self.phase == "idle" and self.synced and self.connected and not self.fatal
+        if (not self.simulator and self.phase == "idle" and self.synced and self.connected and not self.fatal
                 and not self.disconnect_requested and now >= self.next_voltage_poll
                 and (self.voltage_at is None or now - self.voltage_at >= 5)):
             self.next_voltage_poll = now + 5
@@ -279,8 +358,16 @@ class Controller:
                 self.synced = True
                 if self.command == 'syncstate':
                     self.command_state_seen = True
+            if line.startswith('$PROBECONFIG '):
+                try:
+                    fields = dict(v.split('=',1) for v in line.split()[1:] if '=' in v)
+                    parsed = self.parse_probe([fields[k] for k in ['lift_mm','linear','duration_ms','legs']] + ([fields['width_mm'],fields.get('fr_extra','0')] if 'width_mm' in fields else []))
+                    if self.command == 'probeconfig show':self.probe_config = parsed
+                except (ValueError,KeyError):
+                    self.command_error = True
+                    self.probe_config = None
             value = battery_reading(line)
-            if value:
+            if value and self.connected and not self.simulator:
                 mv, historical = value
                 self.battery.observe(mv, now, historical=historical)
                 if not historical:
@@ -296,6 +383,8 @@ class Controller:
                 self.relax_pending = False
                 self.confirm_pose = None
             if failed or stopped:
+                self.probe_running = False
+                self.probe_stop_at = None
                 self.relax_pending = False
                 if self.phase in {"drive", "stopping", "draining"}:
                     self.vector = None
@@ -333,11 +422,22 @@ class Controller:
             self.fatal = True
             return
         if self.command_error:
+            self.probe_expected = None
+            self.probe_config = None
             self.confirm_pose = None
             if command == 'syncstate':
                 self.fatal = True
             else:
                 self._console('syncstate', now)
+            return
+        if command and command.startswith(('probeconfig set ', 'probeconfig reset')):
+            self._console('probeconfig show',now)
+            return
+        if command == 'probeconfig show':
+            if self.probe_config is None or (self.probe_expected is not None and self.probe_config != self.probe_expected):
+                self.probe_config = None
+                self.error = '시험 설정 조회 불일치'
+            self.probe_expected = None
             return
         if command in POSTURES:
             if not self.command_ok:
@@ -368,7 +468,7 @@ class Controller:
                 self._console("read 1", now)
         elif command == "read 1" and self.default_profile_pending and self.synced and self.state.get('safety') == 'ok' and self.state.get('pose') in {'stand', 'stand11', 'landing'}:
             self.default_profile_pending = False
-            profile = next((p for p in NATIVE_PROFILES if p in self.caps and
+            profile = next((p for p in ("attitudepd_v2",) + NATIVE_PROFILES if p in self.caps and
                             (self.simulator or p not in SIMULATOR_NATIVE_PROFILES)), None)
             if profile and self.state.get('profile') != profile and self.caps & {'gaitprofiles', 'simprofiles'}:
                 prefix = 'gaitprofile' if 'gaitprofiles' in self.caps else 'simprofile'
@@ -379,7 +479,8 @@ class Controller:
     def snapshot(self):
         return dict(connected=self.connected and not self.fatal, synced=self.synced,
                     phase=self.phase, state=dict(self.state), caps=sorted(self.caps),
-                    error=self.error, can_drive=self.can_drive, voltage=self.voltage,
+                    error=self.error, can_drive=self.can_drive, voltage=self.voltage if self.connected and not self.simulator else None,
                     voltage_at=self.voltage_at, state_at=self.state_at,
-                    battery_warning=self.battery.snapshot() if self.connected else {},
-                    simulator=self.simulator, vector=self.vector, motion_active=self.motion_active)
+                    battery_warning=self.battery.snapshot() if self.connected and not self.simulator else {},
+                    simulator=self.simulator, vector=self.vector, motion_active=self.motion_active,
+                    parameter_walking=self.parameter_walking, supports_probe=self.supports_probe, probe_config=self.probe_config, probe_running=self.probe_running)

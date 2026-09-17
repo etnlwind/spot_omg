@@ -123,7 +123,8 @@ class Joystick(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.release()
+            self.held = False
+            if getattr(self,"auto_return",True):self.release()
 
     def release(self):
         self.held = False
@@ -326,12 +327,45 @@ class Window(QMainWindow):
             self.metrics[key] = value
             metrics.addWidget(frame)
         right.addLayout(metrics)
+        probe_card, probe_layout = card("파라미터 보행 시험 · V6.2.5")
+        self.probe_mode=QComboBox();self.probe_mode.addItems(["기본 보행","파라미터 보행"])
+        self.probe_mode.currentIndexChanged.connect(lambda index:self.send(f"app_parameter_mode {index}"))
+        probe_layout.addWidget(self.probe_mode)
+        fields = QGridLayout()
+        self.probe_lift = QSpinBox(); self.probe_lift.setRange(12,40); self.probe_lift.setValue(28); self.probe_lift.setSuffix(" mm")
+        self.probe_linear = QSpinBox(); self.probe_linear.setRange(1,1000); self.probe_linear.setValue(344)
+        self.probe_duration = QSpinBox(); self.probe_duration.setRange(500,30000); self.probe_duration.setValue(4000); self.probe_duration.setSuffix(" ms")
+        self.probe_fr_extra = QCheckBox("출발 시 FR만 추가 오므림")
+        self.probe_width = QSpinBox();self.probe_width.setRange(-40,20);self.probe_width.setValue(0);self.probe_width.setSuffix(" mm")
+        self.probe_legs = QComboBox(); self.probe_legs.addItems(["all","rl","rr"])
+        for index, (title, widget) in enumerate([("들림",self.probe_lift),("전진 입력",self.probe_linear),("시간",self.probe_duration),("다리",self.probe_legs),("좌우 간격 · 한쪽 기준",self.probe_width),("첫걸음 옵션",self.probe_fr_extra)]):
+            row, col = divmod(index,2)
+            fields.addWidget(QLabel(title),row,col*2); fields.addWidget(widget,row,col*2+1)
+        probe_layout.addLayout(fields)
+        buttons = QHBoxLayout()
+        self.probe_save=QPushButton("파라미터 저장");self.probe_save.clicked.connect(self.save_probe)
+        self.probe_load=QPushButton("저장값 불러오기");self.probe_load.clicked.connect(self.load_probe)
+        buttons.addWidget(self.probe_save);buttons.addWidget(self.probe_load)
+        self.load_probe()
+        self.probe_apply = QPushButton("설정 적용 + 조회")
+        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78") else "")))
+        self.probe_read = QPushButton("설정 조회"); self.probe_read.clicked.connect(lambda: self.send("probeconfig show"))
+        self.probe_start = QPushButton("시험 시작"); self.probe_start.clicked.connect(lambda: self.send("app_probe_start"))
+        for button in [self.probe_apply,self.probe_read,self.probe_start]:buttons.addWidget(button)
+        probe_layout.addLayout(buttons)
+        self.probe_status = label("V6.2.5 선택 → Stand → 설정 적용 → 시험 시작. 정지는 기존 Stop 버튼.", "muted")
+        self.probe_status.setWordWrap(True);probe_layout.addWidget(self.probe_status)
+        right.addWidget(probe_card)
+
         center = QHBoxLayout()
         drive_card, layout = card("조종 스틱")
         drive_card.setMinimumWidth(280)
         drive_card.setMinimumHeight(340)
         self.joystick = Joystick()
         self.joystick.vectorChanged.connect(self.set_vector)
+        self.auto_return_button=QPushButton("자동 복귀 ON");self.auto_return_button.setCheckable(True);self.auto_return_button.setChecked(True)
+        self.auto_return_button.toggled.connect(self.toggle_auto_return)
+        layout.addWidget(self.auto_return_button,0,Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self.joystick, 1)
         self.keyboard = QCheckBox("키보드 조종 켜기  ·  WASD / 방향키")
         self.keyboard.toggled.connect(lambda _: self.release_input())
@@ -470,6 +504,22 @@ class Window(QMainWindow):
         self.send_button.setEnabled(ready)
         self.joystick.setEnabled(state.get("can_drive", False))
         self.keyboard.setEnabled(state.get("can_drive", False))
+        parameter_mode=state.get('parameter_walking',False)
+        self.probe_mode.blockSignals(True);self.probe_mode.setCurrentIndex(int(parameter_mode));self.probe_mode.blockSignals(False)
+        self.probe_mode.setEnabled(idle)
+        probe_idle = idle and parameter_mode and state.get('supports_probe',False) and not stowed
+        for field in [self.probe_lift,self.probe_linear,self.probe_duration,self.probe_legs,self.probe_save,self.probe_load]:field.setEnabled(probe_idle)
+        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78"))
+        self.probe_fr_extra.setEnabled(self.probe_width.isEnabled())
+        self.probe_fr_extra.setToolTip("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 복귀")
+        self.probe_width.setToolTip("수직 0mm · 안쪽 음수 · 바깥 양수. 한쪽 발 기준입니다.")
+        self.probe_apply.setEnabled(probe_idle); self.probe_read.setEnabled(probe_idle)
+        self.probe_start.setEnabled(probe_idle and bool(state.get('probe_config')) and robot.get('pose')=='stand' and robot.get('profile')=='s_native_v6_2_5' and robot.get('safety')=='ok')
+        if state.get('probe_running') and not parameter_mode:
+            self.joystick.setEnabled(False);self.keyboard.setEnabled(False)
+        applied=state.get('probe_config')
+        self.probe_status.setText((f"적용값: 들림 {applied[0]}mm / 입력 {applied[1]} / {applied[2]}ms / {applied[3]} / 간격 {str(applied[4])+'mm' if len(applied)>4 else '기존 로직'} / FR 추가 {'ON' if len(applied)>5 and applied[5] else 'OFF'} · " if applied else "설정 조회 필요 · ")+"V6.2.5 → Stand → 시험 시작 / Stop으로 정지")
+
         for cmd, button in self.motion_buttons.items():
             allowed = ready and phase in {"idle", "drive"}
             if stowed:
@@ -482,7 +532,7 @@ class Window(QMainWindow):
         self.profile_button.setEnabled(profiles_ok)
         for index, profile in enumerate(PROFILES):
             allowed = not (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) or state.get("simulator", False)
-            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd", "centerpivot", "arcsupport"} or profile in caps
+            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
             self.profiles.model().item(index).setEnabled(allowed)
         self.balance_button.setEnabled(idle and not stowed and bool(caps & {"balancecontrol", "simbalance"}))
         self.heading_button.setEnabled(idle and not stowed and "headinghold" in caps)
@@ -509,7 +559,7 @@ class Window(QMainWindow):
         self.show_error(state.get("error", ""))
 
     def show_battery_warning(self, warning, simulator=False):
-        level = warning.get('level', 0)
+        level = 0 if simulator else warning.get('level', 0)
         if level > self.battery_level:
             QApplication.beep()
             QApplication.alert(self, 5000)
@@ -559,6 +609,24 @@ class Window(QMainWindow):
         key = "balance" if "balancecontrol" in self.snapshot.get("caps", []) else "simbalance"
         enabled = self.snapshot.get("state", {}).get("balance") not in {"off", "unknown", None}
         self.send(key + (" off" if enabled else " on"))
+
+    def save_probe(self):
+        import json
+        value=[self.probe_lift.value(),self.probe_linear.value(),self.probe_duration.value(),self.probe_legs.currentText(),self.probe_width.value(),int(self.probe_fr_extra.isChecked())]
+        self.settings.setValue("walkingParameters",json.dumps(value));self.settings.sync()
+        self.probe_status.setText("이 앱에 저장 완료 · 로봇에는 설정 적용 + 조회를 실행하세요.")
+
+    def load_probe(self):
+        import json
+        from .protocol import Controller
+        try:value=Controller.parse_probe(json.loads(self.settings.value("walkingParameters","[28,344,4000,\"all\",0,0]")))
+        except (ValueError,TypeError):return
+        self.probe_lift.setValue(value[0]);self.probe_linear.setValue(value[1]);self.probe_duration.setValue(value[2]);self.probe_legs.setCurrentText(value[3]);self.probe_width.setValue(value[4]);self.probe_fr_extra.setChecked(bool(value[5]))
+
+    def toggle_auto_return(self, enabled):
+        self.joystick.auto_return=enabled
+        self.auto_return_button.setText("자동 복귀 ON" if enabled else "자동 복귀 OFF · 입력 유지")
+        if enabled:self.release_input()
 
     def set_vector(self, vector):
         if vector is None:

@@ -4,8 +4,77 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testV78RetainsParameterModeAndAdvertisesV2() {
+        let manager = RobotBluetoothManager(commandWriter: { _ in })
+        manager.receiveConsoleText("$SPOTSTATE pose=landing torque=off safety=ok rev=attitudepd-v2-v78 caps=gaitprofiles,attitudepd_v2 profile=attitudepd_v2\r\n# ")
+        XCTAssertTrue(manager.supportsProbe)
+        XCTAssertTrue(manager.supportsProbeWidth)
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v2.isSupported(capabilities: manager.runtimeState.capabilities))
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v2.isSupported(capabilities: ["attitudepd"]))
+    }
+
+    func testProbeConfigurationWaitsForPromptThenBecomesAvailable() {
+        let manager = RobotBluetoothManager(commandWriter: { _ in })
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=s-native-v6-2-7-v77-t1-width caps= profile=s_native_v6_2_5\r\n")
+        manager.receiveConsoleText("ID 1 voltage=12000mV\r\n# ")
+        XCTAssertTrue(manager.canConfigureProbe)
+        manager.send(.raw("read 1"))
+        XCTAssertFalse(manager.canConfigureProbe)
+        XCTAssertEqual(manager.probeConfigurationBlockReason, "로봇 명령 응답을 기다리고 있습니다.")
+        manager.receiveConsoleText("ID 1 voltage=11200mV\r\n# ")
+        XCTAssertTrue(manager.canConfigureProbe)
+        XCTAssertNil(manager.probeConfigurationBlockReason)
+    }
+
+    func testProbeConfigParsingAndBounds() {
+        let value=RobotProbeConfig.parse("$PROBECONFIG lift_mm=28 linear=344 duration_ms=4000 legs=rl storage=ram")
+        XCTAssertEqual(value?.command,"probeconfig set 28 344 4000 rl")
+        XCTAssertNil(RobotProbeConfig.parse("$PROBECONFIG lift_mm=41 linear=344 duration_ms=4000 legs=all"))
+        XCTAssertNil(RobotProbeConfig.parse("$PROBECONFIG lift_mm=28 linear=344 duration_ms=4000"))
+    }
+    func testParameterJoystickUsesAppliedConfigAndStopsOnRelease() {
+        var commands:[String]=[]
+        let manager=RobotBluetoothManager(commandWriter:{ commands.append(String(decoding:$0,as:UTF8.self)) })
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=s-native-v6-2-7-v77-t1-width caps= profile=s_native_v6_2_5\r\n")
+        manager.receiveConsoleText("ID 1 voltage=12000mV\r\n# ")
+        manager.configureProbe(RobotProbeConfig(width:0))
+        let reply="$PROBECONFIG lift_mm=28 linear=344 duration_ms=4000 legs=all width_mm=0 fr_extra=0\r\n# "
+        manager.receiveConsoleText(reply);manager.receiveConsoleText(reply)
+        manager.parameterWalking=true;manager.updateDrive(x:0,y:0);manager.updateDrive(x:0,y:1)
+        XCTAssertEqual(commands.last,"walkprobe\n")
+        manager.stopDrive(reason:"gesture-ended")
+        XCTAssertTrue(commands.last?.hasPrefix("@S ")==true)
+    }
+
+    func testProbeReadbackAndDedicatedSession() {
+        var commands: [String]=[]
+        let manager=RobotBluetoothManager(commandWriter:{ commands.append(String(decoding:$0,as:UTF8.self)) })
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=s-native-v6-2-7-v77-t1-param-j1 caps= profile=s_native_v6_2_5\r\n")
+        manager.receiveConsoleText("ID 1 voltage=12000mV\r\n# ")
+        XCTAssertTrue(manager.canConfigureProbe)
+        manager.configureProbe(RobotProbeConfig())
+        manager.receiveConsoleText("$PROBECONFIG lift_mm=28 linear=344 duration_ms=4000 legs=all storage=ram\r\n# ")
+        XCTAssertEqual(commands.last,"probeconfig show\n")
+        XCTAssertFalse(manager.canStartProbe)
+        manager.receiveConsoleText("$PROBECONFIG lift_mm=28 linear=344 duration_ms=4000 legs=all storage=ram\r\n# ")
+        XCTAssertTrue(manager.canStartProbe)
+        manager.startProbe();XCTAssertEqual(commands.last,"walkprobe\n")
+        let count=commands.count;manager.updateDrive(x:1,y:1);XCTAssertEqual(commands.count,count)
+        manager.stopWalkingOrHold();XCTAssertTrue(commands.last?.hasPrefix("@S ")==true)
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=ok elapsed=6500ms\r\n# ")
+        XCTAssertFalse(manager.probeRunning)
+    }
+    func testProbeMismatchedReadbackPreventsMotion() {
+        var commands:[String]=[]
+        let manager=RobotBluetoothManager(commandWriter:{commands.append(String(decoding:$0,as:UTF8.self))})
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=s-native-v6-2-7-v77-t1-param-j1 caps= profile=s_native_v6_2_5\r\n")
+        manager.receiveConsoleText("ID 1 voltage=12000mV\r\n# ")
+        manager.configureProbe(RobotProbeConfig());manager.receiveConsoleText("# ")
+        manager.receiveConsoleText("$PROBECONFIG lift_mm=20 linear=344 duration_ms=4000 legs=all\r\n# ")
+        XCTAssertFalse(manager.canStartProbe);manager.startProbe();XCTAssertFalse(commands.contains("walkprobe\n"))
+    }
     func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
-        XCTAssertEqual(SimulatorGaitProfile.newest, .s_native_v6_2_5)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v2)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.simulatorOnly)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_2"]))
         XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_3"]))

@@ -240,3 +240,30 @@ enum RobotDriveRealtimePacket: Equatable {
         return Data(line.utf8)
     }
 }
+
+
+struct RobotProbeConfig: Equatable, Codable {
+    var lift = 28
+    var linear = 344
+    var duration = 4000
+    var legs = "all"
+    var width: Int? = nil
+    var frExtra = false
+    var valid: Bool { (12...40).contains(lift) && (1...1000).contains(linear) && (500...30000).contains(duration) && ["all","rl","rr"].contains(legs) && (width.map { (-40...20).contains($0) } ?? true) }
+    var command: String { "probeconfig set \(lift) \(linear) \(duration) \(legs)" + (width.map { " \($0) \(frExtra ? 1 : 0)" } ?? "") }
+    var summary: String { "들림 \(lift)mm / 입력 \(linear) / \(duration)ms / \(legs) / 간격 " + (width.map { "\($0)mm" } ?? "기존 로직") + " / FR 추가 \(frExtra ? "ON" : "OFF")" }
+    static func parse(_ line: String) -> Self? {
+        guard line.hasPrefix("$PROBECONFIG ") else { return nil }
+        var fields: [String:String] = [:]
+        for item in line.split(separator:" ").dropFirst() {
+            let pair = item.split(separator:"=",maxSplits:1)
+            if pair.count == 2 { fields[String(pair[0])] = String(pair[1]) }
+        }
+        guard let lift=Int(fields["lift_mm"] ?? ""),let linear=Int(fields["linear"] ?? ""),
+              let duration=Int(fields["duration_ms"] ?? ""),let legs=fields["legs"] else { return nil }
+        if fields["width_mm"] != nil && Int(fields["width_mm"]!) == nil { return nil }
+        if let fr=fields["fr_extra"], !["0","1"].contains(fr) { return nil }
+        let config=Self(lift:lift,linear:linear,duration:duration,legs:legs,width:fields["width_mm"].flatMap(Int.init),frExtra:fields["fr_extra"] == "1")
+        return config.valid ? config : nil
+    }
+}

@@ -114,3 +114,13 @@ V69는 이 기체의 관측값에 맞춰 J1/J3에 최대 50, J2에 최대 254를
 - [실기 로그와 버전별 진단 기록](./STOW-LANDING-DIAG-2026-09-10.md)
 
 최종 V34에서 실제 수납→Landing 왕복1회가 각각 `OK stow`, `OK landing`으로 완료됐다. 최종 상태는Landing, 토크ON, safetyOK, 최대오차10틱(약0.9도)이었다. 원점 확인·순환 오차 비교·Landing 토크 유지와 일반 자세 완료 기준 회귀 수정을 반영했다. 모든 하중/전원 재인가 조건을 실기로 시험한 것은 아니다. 버전별 증거는 진단 기록을 참고한다.
+
+## FR J1 영점 변경 (2026-09-17)
+
+사용자가 토크 OFF 상태에서 확인한 ID4 위치2073틱을 새 영점으로 저장하도록 요청했다.
+FR J1 center2089→2073, direction+1 유지, 호스트 offset41→25(2048기준), neutral ID4도2073으로 동기화했다.
+서보 EEPROM offset은 변경하지 않았다. 로봇 보정값을 포함한 펌웨어
+`s-native-v6-2-7-v77-t1-param-j1`을 설치했고 재부팅 후 `targets`의 ID4 target2073을 확인했다.
+서보 영구 레지스터 보존 확인, 새 보정값의 Landing 완료, 최종 torqueOFF/safetyOK.
+별도 Stand11 위치 유지와 전체 보행은 아직 검증하지 않았다. J1 추가 오므림 로직은 그대로다.
+근거: `artifacts/v77-t1/fr-j1-install/verify.json`.

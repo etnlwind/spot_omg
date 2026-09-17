@@ -1,3 +1,4 @@
+#include "probe_config.h"
 #include "joint_trace.h"
 #include "imu_trace.h"
 #include "battery_telemetry.h"
@@ -92,7 +93,7 @@ typedef struct {
 void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
-#define ROBOT_CONTROL_REV "s-native-v6-2-7-v77"
+#define ROBOT_CONTROL_REV "attitudepd-v2-v78"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -243,6 +244,12 @@ typedef struct
      * prompt. Values are normalized per mille in [-1000, 1000].
      */
     volatile bool drive_active;
+    ProbeConfig probe_config;
+    uint32_t probe_duration_ms;
+    uint8_t gait_step_limit, gait_steps_completed;
+    uint8_t walk_probe_active;
+    uint8_t rear_probe_lift_mm;
+    uint8_t rear_probe_leg; /* 0=normal; 3=RL, 4=RR; diagnostic only */
     volatile bool drive_stop_requested;
     volatile int16_t drive_target_linear;
     volatile int16_t drive_target_yaw;

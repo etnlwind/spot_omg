@@ -75,3 +75,14 @@ def test_old_recovery_samples_do_not_count_after_telemetry_gap():
     assert b.level == 2
     b.observe(12000, 32); b.observe(12000, 35)
     assert b.level == 0
+
+
+def test_simulator_neither_polls_nor_warns_for_low_voltage():
+    c=ready();c.simulator=True;c.voltage=None
+    c.feed(b'$BATTERY mv=10300\r\n',1)
+    c.feed(b'ID 1 voltage=10300mV\r\n',2)
+    c.tick(6)
+    assert c.battery.level==0 and c.voltage is None
+    assert b'read 1' not in drain(c)
+    c.battery.observe(10300,7)  # Even stale real-robot state cannot surface.
+    assert c.snapshot()['battery_warning']=={}

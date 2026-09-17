@@ -1,6 +1,6 @@
 {
   "status": "Shared deployment manifest for STM32 and MuJoCo; physical parameters require hardware measurement",
-  "default": "s_native_v6_2_7",
+  "default": "attitudepd_v2",
   "profiles": {
     "crawl": {
       "label": "Crawl / four-beat",
@@ -432,6 +432,31 @@
       "turn_input_limit": 0.5,
       "reverse_input_limit": 0.6,
       "validation": "Early continuous recovery, 16mm lift, J1 holds after FR entry; nominal 30s floor screen passed. Drag remains; physical walking unvalidated."
+    },
+    "attitudepd_v2": {
+      "label": "IMU 자세 안정화 V2 · 앞발 들림 +4mm · 실험",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "experimental": true,
+      "validation": "Front-only forward swing clearance candidate. Rear steady-state targets unchanged; hardware gait unverified.",
+      "turn_input_limit": 0.5
     }
   }
 }

@@ -23,6 +23,7 @@ PREFIX = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "body_stabilizer.h"
+#include "battery_telemetry.h"
 /* ATTITUDE_PD_TYPES */
 typedef struct { volatile uint32_t DR; } UART_Registers;
 typedef struct { UART_Registers *Instance; } UART_HandleTypeDef;
@@ -35,6 +36,7 @@ typedef struct {
     uint32_t drive_sequence;
     int16_t linear,yaw;
     AttitudePd attitude_pd;
+    BatteryTelemetry battery_telemetry;
     void (*realtime_service)(void);
 } RobotController;
 #define RESET 0
@@ -60,7 +62,8 @@ static int HAL_UART_Transmit(UART_HandleTypeDef *u,uint8_t *b,uint16_t n,uint32_
     if (tx_injection) { void (*callback)(void)=tx_injection;tx_injection=NULL;callback(); }
     return 0;
 }
-static int locomotion_profile_id(const char *name) { assert(!strcmp(name,"attitudepd"));return 42; }
+static int locomotion_profile_id(const char *name) { return !strcmp(name,"attitudepd")?42:43; }
+/* LOCOMOTION_PD_HELPER */
 static void robot_request_motion_abort(RobotController *r) { if(r)r->motion_abort_requested=true; }
 static bool robot_drive_update_realtime(RobotController *r,uint32_t sequence,int16_t x,int16_t y,uint32_t at) {
     assert(r && at==700);++drive_updates;r->drive_sequence=sequence;r->linear=x;r->yaw=y;return true;
@@ -269,6 +272,9 @@ def console_executable(tmp_path_factory):
     directory = tmp_path_factory.mktemp("stabilize-console")
     unit = directory / "console.c"
     prefix = PREFIX.replace("/* ATTITUDE_PD_TYPES */", adapter_types)
+    locomotion = (PROJECT / "Inc/locomotion.h").read_text()
+    helper = locomotion[locomotion.index("static inline bool locomotion_is_attitude_pd"):locomotion.index("static inline bool locomotion_is_native")]
+    prefix = prefix.replace("/* LOCOMOTION_PD_HELPER */", helper)
     harness = HARNESS.replace("/* ROUND_ROBIN_SERVICE */", round_service).replace("/* BUDGETED_SERVICE */", budget_service)
     unit.write_text("\n".join([prefix, macros, frame_macro, structure, echo, service, realtime, harness]))
     output = directory / "console"

@@ -12,7 +12,8 @@ from simulation.mujoco.scripts.visualization.run_calculated_placement import par
 from simulation.mujoco.runtime.cad_physics import Simulation
 from simulation.mujoco.runtime.virtual_robot import RobotController, ConsoleServer
 
-def test_tcp_policy_runtime_toggle_and_stop():
+@pytest.mark.parametrize("profile", ["attitudepd", "attitudepd_v2"])
+def test_tcp_policy_runtime_toggle_and_stop(profile):
     robot=RobotController(Simulation(parameters()))
     server=ConsoleServer(robot,'127.0.0.1',0)
     client=socket.create_connection(server.listener.getsockname());client.setblocking(False)
@@ -28,7 +29,7 @@ def test_tcp_policy_runtime_toggle_and_stop():
         return result.decode()
     try:
         assert 'attitudepd' in exchange('syncstate')
-        assert 'OK profile=attitudepd' in exchange('gaitprofile attitudepd')
+        assert 'OK profile='+profile in exchange('gaitprofile '+profile)
         assert 'enabled=0' in exchange('@B 0')
         assert 'balance=off' in exchange('syncstate')
         # The app's existing leveling switch addresses this policy's controller.

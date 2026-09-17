@@ -216,7 +216,38 @@ bool s_native_step(SNativeControl *s,float phase,float amplitude,float linear,fl
             if(s->early_fold_recovery)locked[i]=sn_standing[i][0]+placement*sn_adduction[i];
         }
     }
-    if(!solve(goal,q,locked))return false;
+    /* Keep the baseline X path, phase and J1 lock; change only swing Z. */
+    if(s->diagnostic_leg) {
+        if((s->diagnostic_leg!=3 && s->diagnostic_leg!=4 && s->diagnostic_leg!=5) ||
+           !isfinite(s->diagnostic_lift_extra_m) || s->diagnostic_lift_extra_m<0 ||
+           s->diagnostic_lift_extra_m>.028001f)return false;
+        for(unsigned i=0;i<4;i++) {
+        if(s->diagnostic_leg!=5 && i+1!=s->diagnostic_leg)continue;
+        float swing=(fmodf(phase+offsets[i],1)-.5f)/.5f;
+        goal[i][2]+=s->diagnostic_lift_extra_m*activity*
+            smooth(fminf(swing,1-swing)/(s->early_fold_recovery?.25f:.3f));
+        }
+    }
+    if(s->diagnostic_width_active) {
+        if(!isfinite(s->diagnostic_width_m) || s->diagnostic_width_m<-.040001f || s->diagnostic_width_m>.020001f)return false;
+        float entry=smooth(s->entry_phase/.5f)*activity;
+        for(int i=0;i<4;i++) {
+            /* Absolute per-foot Y from calibrated vertical S, not a delta
+             * from the old adduction. Width replaces the FR-only entry lock. */
+            goal[i][1]=sn_origin[i][1]+(i%2==0?1:-1)*s->diagnostic_width_m*entry;
+        }
+        if(!solve(goal,q,NULL))return false;
+        if(s->diagnostic_fr_extra && s->diagnostic_width_m<0 && s->entry_phase<1) {
+            /* Double the mechanical J1 change, not the foot Y distance.
+             * First half-cycle: FR only. Second: blend to common spacing. */
+            float blend=smooth((s->entry_phase-.5f)/.5f);
+            for(int i=0;i<4;i++) {
+                float factor=i==1?2-blend:blend;
+                locked[i]=sn_standing[i][0]+factor*(q[i][0]-sn_standing[i][0]);
+            }
+            if(!solve(goal,q,locked))return false;
+        }
+    } else if(!solve(goal,q,locked))return false;
     memcpy(s->previous,q,sizeof(q));
     for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){q[i][0],q[i][1],q[i][2],fmodf(phase+offsets[i],1)<.5f};
     return true;

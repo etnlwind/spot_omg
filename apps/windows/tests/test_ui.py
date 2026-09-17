@@ -89,3 +89,22 @@ def test_battery_banner_persists_after_ack_and_escalates(monkeypatch, tmp_path):
         assert not window.battery_panel.isVisible()
     finally:
         window.close(); app.processEvents()
+
+
+def test_joystick_latch_keeps_vector_until_explicit_release():
+    from PySide6.QtTest import QTest
+    from PySide6.QtCore import QPoint
+    from spot_controller.ui import Joystick
+    app=QApplication.instance() or QApplication([])
+    stick=Joystick();stick.resize(200,200);stick.show();app.processEvents()
+    values=[];stick.vectorChanged.connect(values.append)
+    stick.auto_return=False
+    QTest.mousePress(stick,Qt.MouseButton.LeftButton,pos=QPoint(100,40))
+    QTest.mouseRelease(stick,Qt.MouseButton.LeftButton,pos=QPoint(100,40))
+    assert stick.vector[1]>0 and values[-1] is not None
+    stick.release();assert stick.vector==(0.,0.) and values[-1] is None
+    stick.auto_return=True
+    QTest.mousePress(stick,Qt.MouseButton.LeftButton,pos=QPoint(100,40))
+    QTest.mouseRelease(stick,Qt.MouseButton.LeftButton,pos=QPoint(100,40))
+    assert values[-1] is None
+    stick.close()

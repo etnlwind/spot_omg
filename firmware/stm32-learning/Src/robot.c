@@ -70,6 +70,12 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->support_event=0;robot->drive_pose_entry=false;robot_support_reset(robot);
     memset(&robot->joint_trace,0,sizeof(robot->joint_trace));
     memset(&robot->imu_trace,0,sizeof(robot->imu_trace));
+    robot->rear_probe_leg=0;
+    robot->rear_probe_lift_mm=0;
+    robot->walk_probe_active=0;
+    robot->probe_config=probe_config_default();
+    robot->probe_duration_ms=4000;
+    robot->gait_step_limit=robot->gait_steps_completed=0;
     memset(&robot->battery_telemetry,0,sizeof(robot->battery_telemetry));
     robot->locomotion_profile = LOCOMOTION_DEFAULT_PROFILE;
     robot->heading_enabled = true;
@@ -1936,7 +1942,7 @@ static RobotResult shared_observe(RobotController *robot)
 {
     int16_t roll=0,pitch=0;
     bool valid=false;
-    if(robot->locomotion_profile==locomotion_profile_id("attitudepd") && robot->body_imu_reader) {
+    if(locomotion_is_attitude_pd(robot->locomotion_profile) && robot->body_imu_reader) {
         robot->body_imu.valid=false;
         valid=robot->body_imu_reader(robot->attitude_context,&robot->body_imu);
         if(valid) {
@@ -1965,7 +1971,7 @@ static bool shared_correct(RobotController *robot,GaitPolicyLegTarget out[4],boo
 {
     /* This policy owns its Cartesian residual. OFF must not pass through the
      * legacy balance implementation, which can also clamp or decay joints. */
-    if(robot->locomotion_profile==locomotion_profile_id("attitudepd") ||
+    if(locomotion_is_attitude_pd(robot->locomotion_profile) ||
        locomotion_is_native(robot->locomotion_profile)) {
         memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
         return true;
@@ -2034,6 +2040,16 @@ static RobotResult robot_shared_drive(RobotController *robot)
     else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_4"))s_native_reset_v624(&robot->s_native);
     else if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_3"))s_native_reset_v623(&robot->s_native);
     else s_native_reset_profile(&robot->s_native,robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_1") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_2"));
+    if((robot->rear_probe_leg || robot->walk_probe_active) && robot->rear_probe_lift_mm) {
+        robot->s_native.diagnostic_leg=robot->rear_probe_leg?robot->rear_probe_leg:5;
+        robot->s_native.diagnostic_lift_extra_m=(robot->rear_probe_lift_mm-
+            (robot->s_native.early_fold_recovery?16:12))*.001f;
+    }
+    if(robot->walk_probe_active) {
+        robot->s_native.diagnostic_width_active=true;
+        robot->s_native.diagnostic_fr_extra=robot->probe_config.fr_extra != 0;
+        robot->s_native.diagnostic_width_m=robot->probe_config.width_mm*.001f;
+    }
     if(native)robot->drive_control.phase=.5f;
     memset(&robot->shared_attitude,0,sizeof(robot->shared_attitude));
     memset(&robot->shared_balance,0,sizeof(robot->shared_balance));
@@ -2048,6 +2064,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
     } else if(!locomotion_targets(robot->locomotion_profile,0,0,0,0,neutral))return ROBOT_CONFIG_ERROR;
     result=shared_observe(robot);if(result!=ROBOT_OK)return result;
     bool stopping=false,watchdog=false;int stage=native?2:1;float transition=0;
+    unsigned step_half=0;robot->gait_steps_completed=0;
     uint32_t started=HAL_GetTick(),deadline=started;
     gait_tracking_reset(&robot->tracking,started);
     uint32_t previous_frame=started;
@@ -2070,7 +2087,25 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if(robot->motion_abort_requested) {result=ROBOT_MOTION_ABORTED;break;}
         if(drive_watchdog_due(HAL_GetTick(),request.updated_at_ms,ROBOT_DRIVE_WATCHDOG_MS,stopping || request.stop_requested)) {stopping=true;watchdog=true;}
         if(request.stop_requested)stopping=true;
+        if((robot->rear_probe_leg || robot->walk_probe_active) && (uint32_t)(compute_started-started)>=robot->probe_duration_ms)stopping=true;
+        if((robot->rear_probe_leg || robot->walk_probe_active) && (uint32_t)(compute_started-started)>=robot->probe_duration_ms+4000U){result=ROBOT_MOTION_ABORTED;break;}
         if(stopping && robot->joint_trace.arm_on_stop){joint_trace_arm(&robot->joint_trace);imu_trace_arm(&robot->imu_trace);}
+        if(robot->gait_step_limit && stage==2 && !stopping) {
+            if(robot->gait_steps_completed>=robot->gait_step_limit) {
+                /* Last frame already commanded the eighth nominal touchdown.
+                 * Return without scheduling another swing or a deceleration cycle. */
+                for(int i=0;i<4;i++)from[i]=command[i];
+                memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
+                body_stabilizer_reset(&robot->attitude_pd.body);
+                stopping=true;stage=3;transition=0;
+            } else {
+                unsigned half=target_phase>=.5f;
+                if(half!=step_half) {++robot->gait_steps_completed;step_half=half;}
+            }
+        }
+        if(robot->gait_step_limit && (uint32_t)(compute_started-started)>20000U) {
+            result=ROBOT_MOTION_ABORTED;break;
+        }
         if(stage==1 && stopping) {
             for(int i=0;i<4;i++) {from[i]=nominal[i];}
             stage=3;transition=0;
@@ -2109,8 +2144,8 @@ static RobotResult robot_shared_drive(RobotController *robot)
             if(!target_ok){result=ROBOT_CONFIG_ERROR;break;}
             if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f &&
                (!native || s_native_stopped(&robot->s_native))) {
-                for(int i=0;i<4;i++) {from[i]=robot->locomotion_profile==locomotion_profile_id("attitudepd")?command[i]:nominal[i];}
-                if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
+                for(int i=0;i<4;i++) {from[i]=locomotion_is_attitude_pd(robot->locomotion_profile)?command[i]:nominal[i];}
+                if(locomotion_is_attitude_pd(robot->locomotion_profile)) {
                     memset(&robot->attitude_pd,0,sizeof(robot->attitude_pd));
     body_stabilizer_reset(&robot->attitude_pd.body);
                     for(int i=0;i<4;i++)nominal[i]=from[i];
@@ -2120,7 +2155,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         }
         for(int i=0;i<4;i++)command[i]=nominal[i];
         if(!shared_correct(robot,command,false,stage==2)) {result=ROBOT_CONFIG_ERROR;break;}
-        if(robot->locomotion_profile==locomotion_profile_id("attitudepd")) {
+        if(locomotion_is_attitude_pd(robot->locomotion_profile)) {
             float p[7];locomotion_params(robot->locomotion_profile,robot->drive_control.linear,p);
             if(!attitude_pd_apply(&robot->attitude_pd,&robot->stabilization_config,
                     &robot->body_imu,compute_started,frame_dt,robot->stabilization_enabled,
@@ -2129,6 +2164,9 @@ static RobotResult robot_shared_drive(RobotController *robot)
                 stabilization_trace_push(robot,compute_started);result=ROBOT_CONFIG_ERROR;break;
             }
             stabilization_trace_push(robot,compute_started);
+        }
+        if(robot->rear_probe_leg) {
+            for(unsigned leg=0;leg<4;leg++)if(leg+1!=robot->rear_probe_leg)command[leg]=stand[leg];
         }
         uint16_t positions[12];
         if(!(native?s_native_servo_targets(command,positions):gait_policy_to_servo_targets(command,positions))) {result=ROBOT_CONFIG_ERROR;break;}
@@ -2140,7 +2178,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         capture_joint_command(robot,io_started,HAL_GetTick(),positions);
         /* Tag the existing safety read with this command, not stale legacy
          * gait history. No additional bus transaction is added. */
-        robot->gait_support_mask=gait_policy_support_mask(nominal);
+        robot->gait_support_mask=gait_policy_support_mask(robot->rear_probe_leg?command:nominal);
         int32_t frame_ms=(int32_t)(frame_dt*1000+.5f);if(frame_ms<1)frame_ms=1;
         for(size_t j=0;j<ROBOT_JOINT_COUNT;j++) {
             int32_t velocity=have_previous_command ?

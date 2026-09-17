@@ -689,13 +689,13 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
         safety_is_faulted(&console->robot->safety) ? "fault" : console->robot->locomotion_fault ? (console->robot->locomotion_fault_reason==ROBOT_TILT_LIMIT ? "tilt":"fault") : "ok",
         locomotion_is_native(console->robot->locomotion_profile) ? "suspended" :
-        console->robot->locomotion_profile==locomotion_profile_id("attitudepd") ?
+        locomotion_is_attitude_pd(console->robot->locomotion_profile) ?
             (console->robot->stabilization_enabled ?
                 (console->robot->attitude_pd.body.diagnostics.status==BODY_STABILIZER_ACTIVE ? "active" : "suspended") : "off") :
             (console->robot->balance_enabled ? robot_balance_mode_string(console->robot->balance_mode) : "off"),
@@ -1649,7 +1649,7 @@ static void command_imucal(AppConsole *console, char *mode)
 static void command_stabilize(AppConsole *console,char *mode);
 static void command_balance(AppConsole *console, char *mode)
 {
-    if(console->robot->locomotion_profile==locomotion_profile_id("attitudepd") &&
+    if(locomotion_is_attitude_pd(console->robot->locomotion_profile) &&
        (!mode || !strcmp(mode,"on") || !strcmp(mode,"off") || !strcmp(mode,"status"))) {
         command_stabilize(console,mode);return;
     }
@@ -1779,7 +1779,7 @@ void app_console_service_realtime(AppConsole *console) {
     console->stabilize_reply_pending=false;
     RobotController *r=console->robot;
     char message[128];
-    const char *state=r->locomotion_profile!=locomotion_profile_id("attitudepd")?"other-policy":
+    const char *state=!locomotion_is_attitude_pd(r->locomotion_profile)?"other-policy":
         attitude_pd_status_name(&r->attitude_pd);
     int n=snprintf(message,sizeof(message),"$STABILIZE enabled=%u status=%s rate_hz=50\r\n# ",r->stabilization_enabled?1:0,state);
     /* Foreground only, bounded service budget; no printf or bus I/O in ISR. */
@@ -2632,6 +2632,70 @@ static void execute_line(AppConsole *console)
         command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "safety") == 0) {
         command_safety(console);
+    } else if (strcmp(command, "probeconfig") == 0) {
+        char *action=strtok(NULL," \t");
+        if(action && strcmp(action,"show")) {
+            if(robot_drive_is_active(console->robot) || console->robot->stow_active || console->robot->gait_diagnostics_active) {
+                write_text(console,"ERROR: stop before probeconfig changes\r\n");return;
+            }
+            if(!strcmp(action,"reset")) {
+                if(strtok(NULL," \t")){write_text(console,"ERROR: extra arguments\r\n");return;}
+                console->robot->probe_config=probe_config_default();
+            } else if(!strcmp(action,"set")) {
+                char *lift=strtok(NULL," \t"),*linear=strtok(NULL," \t"),*duration=strtok(NULL," \t"),*leg=strtok(NULL," \t");
+                char *width=strtok(NULL," \t"),*fr=strtok(NULL," \t");ProbeConfig candidate;
+                if(strtok(NULL," \t") || (!probe_config_parse(&candidate,lift,linear,duration,leg) || !probe_width_parse(width,&candidate.width_mm) || (fr && !probe_uint(fr,0,1,&candidate.fr_extra)))) {
+                    write_text(console,"ERROR: probeconfig set LIFT_MM(12..40) LINEAR(1..1000) MS(500..30000) all|rl|rr [WIDTH_MM -40..20] [FR_EXTRA 0|1]\r\n");return;
+                }
+                console->robot->probe_config=candidate;
+            } else {write_text(console,"ERROR: probeconfig show|reset|set\r\n");return;}
+        } else if(action && strtok(NULL," \t")){write_text(console,"ERROR: extra arguments\r\n");return;}
+        ProbeConfig *p=&console->robot->probe_config;char line[150];
+        snprintf(line,sizeof line,"$PROBECONFIG lift_mm=%u linear=%u duration_ms=%u legs=%s width_mm=%d width_ref=vertical fr_extra=%u storage=ram\r\n",
+            p->lift_mm,p->linear,p->duration_ms,p->leg==3?"rl":p->leg==4?"rr":"all",p->width_mm,p->fr_extra);write_text(console,line);
+    } else if (strcmp(command, "gaitsteps") == 0) {
+        char *count=strtok(NULL," \t");
+        if(!count || strcmp(count,"8") || strtok(NULL," \t") ||
+           robot_drive_is_active(console->robot) || console->robot->stow_active ||
+           console->robot->locomotion_profile!=locomotion_profile_id("attitudepd_v2")) {
+            write_text(console,"ERROR: gaitsteps 8 requires idle attitudepd_v2\r\n");return;
+        }
+        console->robot->gait_step_limit=8;console->robot->gait_steps_completed=0;
+        command_drive(console,"1000","0","1");
+        char report[80];snprintf(report,sizeof report,"$GAITSTEPS planned_completed=%u requested=8\r\n",console->robot->gait_steps_completed);
+        write_text(console,report);console->robot->gait_step_limit=0;
+    } else if (strcmp(command, "walkprobe") == 0) {
+        if(strtok(NULL," \t") || robot_drive_is_active(console->robot) ||
+           console->robot->stow_active || console->robot->locomotion_profile!=locomotion_profile_id("s_native_v6_2_5")) {
+            write_text(console,"ERROR: walkprobe requires idle V625; configure with probeconfig\r\n");return;
+        }
+        ProbeConfig p=console->robot->probe_config;
+        console->robot->walk_probe_active=1;
+        console->robot->rear_probe_leg=p.leg;
+        console->robot->rear_probe_lift_mm=p.lift_mm;
+        console->robot->probe_duration_ms=p.duration_ms;
+        char linear[8];snprintf(linear,sizeof linear,"%u",p.linear);
+        command_drive(console,linear,"0","1");
+        console->robot->walk_probe_active=0;
+        console->robot->rear_probe_leg=0;
+        console->robot->rear_probe_lift_mm=0;
+        console->robot->probe_duration_ms=4000;
+    } else if (strcmp(command, "rearprobe") == 0) {
+        char *leg=strtok(NULL," \t"),*height=strtok(NULL," \t");
+        uint32_t lift=0;
+        if((height && !parse_u32(height,16,40,&lift)) || !leg || (strcmp(leg,"rl") && strcmp(leg,"rr")) || strtok(NULL," \t")){
+            write_text(console,"usage: rearprobe rl|rr [LIFT_MM 16..40]; one rear leg, others S, input344, max4s+stop\r\n");return;
+        }
+        if(robot_drive_is_active(console->robot) || console->robot->stow_active ||
+           (console->robot->locomotion_profile!=locomotion_profile_id("s_native_v6_2_5") &&
+            console->robot->locomotion_profile!=locomotion_profile_id("s_native_v6_2_7"))){
+            write_text(console,"ERROR: rearprobe requires idle V625 or V627\r\n");return;
+        }
+        console->robot->rear_probe_leg=!strcmp(leg,"rl")?3:4;
+        console->robot->rear_probe_lift_mm=(uint8_t)lift;
+        command_drive(console,"344","0","1");
+        console->robot->rear_probe_leg=0;
+        console->robot->rear_probe_lift_mm=0;
     } else if (strcmp(command, "responseprobe") == 0) {
         uint32_t acceleration=0,delta=0;
         char *a=strtok(NULL," \t"),*b=strtok(NULL," \t");
@@ -3123,6 +3187,9 @@ void app_console_print_help(AppConsole *console)
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
+               "  probeconfig show|reset|set LIFT_MM LINEAR MS all|rl|rr\r\n"
+               "  walkprobe        execute configured bounded V625 probe\r\n"
+               "  rearprobe rl|rr  original rear trajectory; other three legs S\r\n"
                "  jointtrace arm|off|status|dump  raw timed gait feedback (RAM)\r\n"
                "  gaitdiag         last gait tracking/current/voltage report\r\n"
                "  imutrace status|dump  paged timed gait IMU; armed with jointtrace\r\n"
