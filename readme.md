@@ -8,6 +8,35 @@ Spot Micro 기반의 12-DOF 4족 로봇 프로젝트입니다. 현재 STM32 실�
 URT-2/STS3215 서보 버스, BNO086 자세 피드백, MuJoCo 공용 보행 정책을 구현했으며
 Jetson/ROS2와 RL 정책 연동은 다음 단계입니다.
 
+## 시뮬레이터 실행 (Mac)
+
+### 기본 시뮬레이터
+
+저장소 위치에 맞게 `cd` 경로를 바꾼 뒤 실행합니다.
+
+```bash
+cd /Users/etnlwind/project/spot_omg
+conda activate spot_omg
+mjpython simulation/mujoco/virtual_robot.py
+```
+
+### 큰 회수 비교 후보 재현·녹화
+
+위와 같이 저장소 루트에서 `spot_omg` 환경을 활성화한 뒤 실행합니다.
+영상·그림 도구가 없다면 먼저 `python -m pip install imageio-ffmpeg matplotlib`로 설치합니다.
+
+```bash
+python simulation/mujoco/scripts/analysis/capture_large_recovery_candidate.py \
+  --config config/standard_height_final_comparison.json \
+  --case x20-short-lead-j270 \
+  --output artifacts/home-resume/standard-height-video
+```
+
+두 번째 명령은 기본 높이·정상 J1을 유지하는 **J2 70° 비교 후보**를 재현하고
+4방향 영상을 저장합니다. 목표 J2 85°를 달성한 모델이나 보행 품질 검증을
+통과한 모델은 아닙니다. 이전 결과를 보존하려면 재실행 시 `--output`을 새 경로로 지정하세요.
+자세한 조건과 한계는 [기본 높이 유지 분석](docs/STANDARD-HEIGHT-BALANCE-2026-09-17.md)을 참고하세요.
+
 ## 🎯 목표
 
 - STM32 펌웨어 개발
