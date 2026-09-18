@@ -1,6 +1,7 @@
 """Shared production C contracts for gait-ready Stand; no physical robot I/O."""
 from pathlib import Path
 import subprocess
+from servo.host_build import build_executable
 
 ROOT = Path(__file__).resolve().parents[3]
 INC = ROOT/'firmware/stm32-learning/Inc'
@@ -27,7 +28,7 @@ int main(void) {
   for(int i=0;i<4;i++)assert(weights[i]>=0 && weights[i]<=1);
  }
  int v2=locomotion_profile_id("attitudepd_v2"),v3=locomotion_profile_id("attitudepd_v3");
- assert(v2==24 && v3==25 && LOCOMOTION_DEFAULT_PROFILE==v3);
+ assert(v2==24 && v3==25 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v4"));
  assert(locomotion_is_attitude_pd(v3) && !locomotion_is_native(v3));
  GaitPolicyLegTarget a[4],b[4],stand[4],original[4];uint16_t ticks[12],old_ticks[12];
  assert(locomotion_stand_targets(v3,stand));
@@ -63,9 +64,9 @@ int main(void) {
  }
 }
 '''
-    unit=tmp_path/'v3.c';unit.write_text(source);exe=tmp_path/'v3'
-    subprocess.run(['clang','-O2','-ffp-contract=off','-I',str(INC),str(unit),
-                    str(ROOT/'firmware/stm32-learning/Src/robot_config.c'),'-o',str(exe)],check=True)
+    unit=tmp_path/'v3.c';unit.write_text(source)
+    exe=build_executable([unit,ROOT/'firmware/stm32-learning/Src/robot_config.c'],
+                         INC,tmp_path/'v3',extra=('-ffp-contract=off',))
     subprocess.run([str(exe)],check=True)
 
 
@@ -132,7 +133,7 @@ int main(void) {
  r.shared_idle_at=0;robot_control_idle(&r);assert(sent==2 && !memcmp(commanded,expected,sizeof expected));
 }
 '''
-    unit=tmp_path/'stand.c';unit.write_text(code);exe=tmp_path/'stand'
-    subprocess.run(['clang','-O1','-I',str(INC),'-include',str(INC.parent/'tests/host_hal.h'),
-        str(unit),str(INC.parent/'Src/robot_config.c'),str(INC.parent/'Src/safety.c'),'-o',str(exe)],check=True)
+    unit=tmp_path/'stand.c';unit.write_text(code)
+    exe=build_executable([unit,INC.parent/'Src/robot_config.c',INC.parent/'Src/safety.c'],
+                         INC,tmp_path/'stand',extra=('-O1','-include',str(INC.parent/'tests/host_hal.h')))
     subprocess.run([str(exe)],check=True)

@@ -7,19 +7,21 @@ from simulation.mujoco.runtime.cad_physics import Simulation
 from simulation.mujoco.runtime.virtual_robot import RobotController
 
 
-@pytest.fixture
-def robot():
+@pytest.fixture(params=['attitudepd_v3','attitudepd_v4'])
+def robot(request):
     parameters=json.loads((SIM_ROOT/'cad_300mm/physics_parameters_measured_total_2754g.json').read_text())
     parameters['foot_cushion']=json.loads((SIM_ROOT/'config/foot_cushion_d37p3_l27mm.json').read_text())
     controller=RobotController(Simulation(parameters))
+    assert controller.profile=='attitudepd_v4'
+    controller.select_profile(request.param)
     yield controller
     controller.body_stabilizer.close()
 
 
 def test_default_stand_command_and_stop_share_b(robot):
-    assert robot.profile=='attitudepd_v3'
+    assert robot.profile in ('attitudepd_v3','attitudepd_v4')
     robot.command('syncstate',0.)
-    assert 'attitudepd_v3' in robot.drain().decode().split(' caps=')[1].split(' ')[0]
+    assert robot.profile in robot.drain().decode().split(' caps=')[1].split(' ')[0]
     b=robot.stand_target.copy()
     assert b[1]>50 and not np.allclose(b,robot.base_stand_target)
     robot.command('stand',0.)
@@ -35,6 +37,7 @@ def test_default_stand_command_and_stop_share_b(robot):
 
 
 def test_already_at_b_starts_without_preparation_and_selection_never_teleports(robot):
+    profile=robot.profile
     b=robot.stand_target.copy()
     # Fixture-only encoder input: explicitly test the measured-at-B branch.
     robot.plant.data.qpos[robot.plant.q]=np.radians(b)
@@ -48,7 +51,7 @@ def test_already_at_b_starts_without_preparation_and_selection_never_teleports(r
     np.testing.assert_array_equal(robot.stand_target,robot.base_stand_target)
     np.testing.assert_array_equal(robot.plant.data.qpos,qpos)
     np.testing.assert_array_equal(robot.plant.data.qvel,qvel)
-    robot.select_profile('attitudepd_v3')
+    robot.select_profile(profile)
     np.testing.assert_array_equal(robot.stand_target,b)
     np.testing.assert_array_equal(robot.plant.data.qpos,qpos)
 

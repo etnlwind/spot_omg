@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_held_half_to_full_drive_then_lost_tail_recovery _____________
+apps\windows\tests\test_held_drive_session.py:109: in test_held_half_to_full_drive_then_lost_tail_recovery
+    asyncio.run(scenario())
+C:\Users\etnlw\miniforge3\envs\spot_omg\lib\asyncio\runners.py:44: in run
+    return loop.run_until_complete(main)
+C:\Users\etnlw\miniforge3\envs\spot_omg\lib\asyncio\base_events.py:649: in run_until_complete
+    return future.result()
+apps\windows\tests\test_held_drive_session.py:98: in scenario
+    assert 'resync' in phases
+E   AssertionError: assert 'resync' in ['connecting', 'busy', 'idle', 'drive', 'drive', 'drive', ...]
+=========================== short test summary info ===========================
+FAILED apps/windows/tests/test_held_drive_session.py::test_held_half_to_full_drive_then_lost_tail_recovery
+1 failed in 16.60s

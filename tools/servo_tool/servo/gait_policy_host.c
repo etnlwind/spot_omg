@@ -321,6 +321,7 @@ SPOT_GAIT_EXPORT int spot_foot_targets(const float params[7],float phase,float s
     pack_targets(targets,values);return 1;
 }
 SPOT_GAIT_EXPORT float spot_locomotion_period(int profile,float linear,float yaw) {return locomotion_period(profile,linear,yaw);}
+SPOT_GAIT_EXPORT void spot_locomotion_params(int profile,float linear,float params[7]) {locomotion_params(profile,linear,params);}
 
 #include "balance_control.h"
 SPOT_GAIT_EXPORT int spot_balance_control(float state[16],float values[12],const float imu[4],int enabled,int standing,float kp,float kd,float ki) {

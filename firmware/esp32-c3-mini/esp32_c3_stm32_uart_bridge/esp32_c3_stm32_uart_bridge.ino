@@ -16,6 +16,16 @@ static constexpr const char* SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9
 static constexpr const char* RX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 static constexpr const char* TX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 static constexpr const char* DIAG_UUID = "6e400004-b5a3-f393-e0a9-e50e24dcca9e";
+static constexpr const char* CONTROL_RX_UUID = "6e400005-b5a3-f393-e0a9-e50e24dcca9e";
+static constexpr const char* CONTROL_TX_UUID = "6e400006-b5a3-f393-e0a9-e50e24dcca9e";
+static BLECharacteristic* controlTx = nullptr;
+static uint8_t logQueue[16384];
+static size_t logHead=0,logTail=0;
+static uint32_t logLost=0,lastLogNotify=0;
+static uint8_t controlFrame[768];
+static size_t controlLength=0;
+static bool inControl=false,controlOverflow=false;
+static volatile uint16_t blePayload=20;
 static constexpr uint32_t STM32_BAUD = 115200;
 static constexpr int STM32_RX = 16;
 static constexpr int STM32_TX = 17;
@@ -335,11 +345,15 @@ static void acceptStm32Chunk(const uint8_t* data, size_t size) {
 class ServerCallbacks final : public BLEServerCallbacks {
  public:
   void onConnect(BLEServer*) override {
+    blePayload=20;
     clientConnected = true;
     advertisingActive = false;
     advertisingRestartPending = false;
     advertisingAttemptsSinceSuccess = 0;
     Serial.println("BLE client connected");
+  }
+  void onMtuChanged(BLEServer*, esp_ble_gatts_cb_param_t* param) override {
+    blePayload=param->mtu.mtu>23 ? param->mtu.mtu-3 : 20;
   }
   void onDisconnect(BLEServer*) override {
     clientConnected = false;
@@ -384,6 +398,38 @@ class RxCallbacks final : public BLECharacteristicCallbacks {
   }
 };
 
+class ControlRxCallbacks final : public BLECharacteristicCallbacks {
+ public:
+  void onWrite(BLECharacteristic* characteristic) override {
+    if(esp32UploadActive || stm32UploadActive || stm32FlashPending || esp32RestartPending)return;
+    const std::string value=characteristic->getValue();
+    if(!value.empty())STM32Serial.write(reinterpret_cast<const uint8_t*>(value.data()),value.size());
+  }
+};
+
+static void routeUartByte(uint8_t byte) {
+  if(byte==0x1e) {inControl=true;controlOverflow=false;controlLength=0;}
+  if(inControl) {
+    if(controlLength<sizeof(controlFrame))controlFrame[controlLength++]=byte;
+    else controlOverflow=true;
+    if(byte==0x1f) {
+      inControl=false;
+      if(!controlOverflow && clientConnected) {
+        size_t budget=std::min(BLE_NOTIFY_CHUNK,static_cast<size_t>(blePayload));
+        for(size_t offset=0;offset<controlLength;offset+=budget) {
+          size_t count=std::min(budget,controlLength-offset);
+          controlTx->setValue(controlFrame+offset,count);
+          controlTx->indicate();
+        }
+      }
+    }
+    return;
+  }
+  size_t next=(logHead+1)%sizeof(logQueue);
+  if(next==logTail)++logLost;
+  else {logQueue[logHead]=byte;logHead=next;}
+}
+
 void setup() {
   Serial.begin(115200);
   delay(POWER_STABILIZE_MS);
@@ -403,7 +449,7 @@ void setup() {
   BLEDevice::setMTU(185);
   BLEServer* server = BLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
-  BLEService* service = server->createService(SERVICE_UUID);
+  BLEService* service = server->createService(BLEUUID(SERVICE_UUID),24);
   txCharacteristic = service->createCharacteristic(
       TX_UUID, BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ);
   txCharacteristic->setCallbacks(new TxCallbacks());
@@ -414,6 +460,10 @@ void setup() {
   BLECharacteristic* rxCharacteristic = service->createCharacteristic(
       RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   rxCharacteristic->setCallbacks(new RxCallbacks());
+  controlTx=service->createCharacteristic(CONTROL_TX_UUID,BLECharacteristic::PROPERTY_INDICATE);
+  controlTx->addDescriptor(new BLE2902());
+  BLECharacteristic* controlRx=service->createCharacteristic(CONTROL_RX_UUID,BLECharacteristic::PROPERTY_WRITE);
+  controlRx->setCallbacks(new ControlRxCallbacks());
   service->start();
   BLEAdvertising* advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(SERVICE_UUID);
@@ -567,23 +617,40 @@ void loop() {
     stm32FlashPending = false;
     programStm32FromFile();
   }
-  if (!clientConnected || STM32Serial.available() <= 0) {
+  if (!clientConnected) {
+    while(STM32Serial.available()>0)STM32Serial.read();
+    logHead=logTail=0;inControl=false;
     delay(1);
     return;
   }
-  uint8_t buffer[BLE_NOTIFY_CHUNK];
-  size_t count = 0;
-  while (count < sizeof(buffer) && STM32Serial.available() > 0) {
+  size_t received=0;
+  while (received<4096 && STM32Serial.available() > 0) {
     const int value = STM32Serial.read();
-    if (value >= 0) buffer[count++] = static_cast<uint8_t>(value);
+    if (value >= 0) {routeUartByte(static_cast<uint8_t>(value));++received;}
+  }
+  portENTER_CRITICAL(&diagnosticMux);
+  consoleRxBytes+=received;if(received)consoleRxAt=millis();
+  portEXIT_CRITICAL(&diagnosticMux);
+  // Logs have their own buffer/rate budget; indications are never queued
+  // behind this diagnostic backlog. UART framing preserves partial lines.
+  uint8_t buffer[BLE_NOTIFY_CHUNK];size_t count=0;
+  if(static_cast<uint32_t>(millis()-lastLogNotify)>=20U) {
+    const size_t budget=std::min(sizeof(buffer),static_cast<size_t>(blePayload));
+    while(count<budget && logTail!=logHead) {
+      buffer[count++]=logQueue[logTail];logTail=(logTail+1)%sizeof(logQueue);
+    }
+    if(!count && logLost) {
+      char notice[80];
+      size_t length=snprintf(notice,sizeof(notice),"\r\n[BRIDGE LOG overflow: %lu bytes lost]\r\n",static_cast<unsigned long>(logLost));logLost=0;
+      for(size_t i=0;i<length;++i) {logQueue[logHead]=notice[i];logHead=(logHead+1)%sizeof(logQueue);}
+    }
   }
   if (count > 0) {
     portENTER_CRITICAL(&diagnosticMux);
-    consoleRxBytes += count;
-    consoleRxAt = millis();
     portEXIT_CRITICAL(&diagnosticMux);
     txCharacteristic->setValue(buffer, count);
     txCharacteristic->notify();
+    lastLogNotify=millis();
   }
   delay(1);
 }

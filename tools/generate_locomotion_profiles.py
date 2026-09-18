@@ -34,6 +34,11 @@ def render():
   posture=p[name].get('turn_posture_m',[0,0])
   assert len(posture)==2 and (posture==[0,0] or (.18<=posture[0]<=.25 and abs(posture[1])<=.05))
   rows.append('  '+fmt(posture)+',')
+ rows+=['};','static const float locomotion_half_stick_linear[LOCOMOTION_PROFILE_COUNT] = {','  0.0f,']
+ for name in p:
+  half=p[name].get('half_stick_linear',0.)
+  assert half==0 or .5<=half<1
+  rows.append('  '+format(half,'.10f')+'f,')
  return '\n'.join(rows+['};','#endif',''])
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--check',action='store_true');args=parser.parse_args()

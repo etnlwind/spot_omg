@@ -4,12 +4,174 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testSlowV80DiagnosticsKeepConnectionUntilPrompt() throws {
+        // Actual V80 diagnostic prefix, truncated by the old Windows timeout.
+        // Chunk pacing and the final CRLF/prompt below are simulated inputs.
+        let url = try XCTUnwrap(Bundle(for: RobotCommandTests.self)
+            .url(forResource: "V80StopDiagnostics", withExtension: "txt"))
+        let bytes = Array(try Data(contentsOf: url))
+        for (chunkSize, interval) in [(20, 0.03), (180, 0.30)] {
+            var now = 0.0
+            var sent: [String] = []
+            let manager = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+            manager.driveCompletionClock = { now }
+            defer { manager.disconnect() }
+            manager.updateDrive(x: 0, y: 1)
+            manager.stopDrive(reason: "gesture-ended")
+            let count = sent.count
+            for offset in stride(from: 0, to: bytes.count, by: chunkSize) {
+                now += interval
+                let end = min(bytes.count, offset + chunkSize)
+                manager.receiveConsoleText(String(decoding: bytes[offset..<end], as: UTF8.self))
+                manager.checkDriveCompletionTimeout()
+                XCTAssertEqual(manager.state, .ready)
+                XCTAssertEqual(sent.count, count)
+            }
+            XCTAssertGreaterThan(now, 6)
+            manager.updateDrive(x: 0, y: -1)
+            XCTAssertEqual(sent.count, count)
+            manager.receiveConsoleText("\r\n#")
+            manager.updateDrive(x: 0, y: -1)
+            XCTAssertEqual(sent.count, count)
+            manager.receiveConsoleText(" ")
+            // An obsolete timeout callback must not disconnect an idle session.
+            now += 60
+            manager.checkDriveCompletionTimeout()
+            XCTAssertEqual(manager.state, .ready)
+            manager.updateDrive(x: 0, y: -1)
+            XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count, 2)
+            XCTAssertFalse(sent.contains("\u{03}"))
+        }
+    }
+
+    func testPartialDiagnosticsRenewIdleDeadlineButEmptyDataDoesNot() {
+        var now = 0.0
+        var sent: [String] = []
+        let manager = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+        manager.driveCompletionClock = { now }
+        defer { manager.disconnect() }
+        manager.updateDrive(x: 0, y: 1)
+        manager.stopDrive()
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=ok\r\n")
+        for time in [4.0, 8.0, 12.0] {
+            now = time
+            manager.receiveConsoleText("part of an unfinished diagnostic line ")
+            manager.checkDriveCompletionTimeout()
+            XCTAssertEqual(manager.state, .ready)
+        }
+        now = 16.9
+        manager.receiveConsoleText("")
+        manager.checkDriveCompletionTimeout()
+        XCTAssertEqual(manager.state, .ready)
+        now = 17.1
+        manager.checkDriveCompletionTimeout()
+        XCTAssertEqual(manager.state, .disconnected)
+        XCTAssertEqual(sent.last, "\u{03}")
+        XCTAssertTrue(manager.lastError?.contains("종료 로그") == true)
+    }
+
+    func testTelemetryCannotExtendUnconfirmedStopDeadline() {
+        var now = 0.0
+        var sent: [String] = []
+        let manager = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+        manager.driveCompletionClock = { now }
+        defer { manager.disconnect() }
+        manager.updateDrive(x: 0, y: 1)
+        manager.stopDrive()
+        for time in [2.0, 4.0, 5.1] {
+            now = time
+            manager.receiveConsoleText("$BATTERY mv=12000\r\n")
+            manager.checkDriveCompletionTimeout()
+        }
+        XCTAssertEqual(manager.state, .disconnected)
+        XCTAssertEqual(sent.last, "\u{03}")
+        XCTAssertTrue(manager.lastError?.contains("보행 종료 확인") == true)
+    }
+
+    func testContinuousDiagnosticsAndDuplicateStopHaveThirtySecondLimit() {
+        var now = 0.0
+        var sent: [String] = []
+        let manager = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+        manager.driveCompletionClock = { now }
+        defer { manager.disconnect() }
+        manager.updateDrive(x: 0, y: 1)
+        manager.stopDrive()
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=ok\r\n")
+        for second in 1...29 {
+            now = Double(second)
+            manager.receiveConsoleText(second.isMultiple(of: 3)
+                ? "$SPOTDRIVE stopped reason=ok\r\n" : "$BATTERY mv=12000\r\n")
+            manager.checkDriveCompletionTimeout()
+            XCTAssertEqual(manager.state, .ready)
+        }
+        now = 30.1
+        manager.receiveConsoleText("$BATTERY mv=12000\r\n")
+        manager.checkDriveCompletionTimeout()
+        XCTAssertEqual(manager.state, .disconnected)
+        XCTAssertEqual(sent.last, "\u{03}")
+    }
+
+    func testPromptCancelsDrainDeadlineBeforeQueuedPosture() {
+        var now = 0.0
+        var sent: [String] = []
+        let manager = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+        manager.driveCompletionClock = { now }
+        defer { manager.disconnect() }
+        manager.updateDrive(x: 0, y: 1)
+        manager.send(.stand)
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=ok\r\n")
+        for time in [4.0, 8.0] {
+            now = time
+            manager.receiveConsoleText("diagnostic fragment ")
+            manager.checkDriveCompletionTimeout()
+            XCTAssertFalse(sent.contains("stand\n"))
+        }
+        manager.receiveConsoleText("\r\n# ")
+        XCTAssertEqual(sent.last, "stand\n")
+        now = 40
+        manager.checkDriveCompletionTimeout()
+        XCTAssertEqual(manager.state, .ready)
+        XCTAssertFalse(sent.contains("\u{03}"))
+    }
+
+    func testRealDispatchTimerDoesNotExpireWhileDiagnosticsArrive() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager(commandWriter: {
+            sent.append(String(decoding: $0, as: UTF8.self))
+        })
+        defer { manager.disconnect() }
+        manager.updateDrive(x: 0, y: 1)
+        manager.stopDrive()
+        manager.receiveConsoleText("$SPOTDRIVE stopped reason=ok\r\n")
+        for _ in 0..<6 {
+            RunLoop.main.run(until: Date().addingTimeInterval(1))
+            manager.receiveConsoleText("diagnostic fragment ")
+            XCTAssertEqual(manager.state, .ready)
+        }
+        manager.receiveConsoleText("\r\n# ")
+        XCTAssertFalse(sent.contains("\u{03}"))
+    }
+
+    func testV80AdvertisesV4AndHalfStickMapsToTemplateBoundary() {
+        let manager = RobotBluetoothManager(commandWriter: { _ in })
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v4-v80 caps=gaitprofiles,attitudepd_v2,attitudepd_v3,attitudepd_v4 profile=attitudepd_v4\r\n# ")
+        XCTAssertTrue(manager.supportsProbe)
+        XCTAssertTrue(manager.supportsProbeWidth)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v4)
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v4.isSupported(capabilities: manager.runtimeState.capabilities))
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v4.isSupported(capabilities: ["attitudepd_v3"]))
+        XCTAssertEqual(RobotDriveVector.make(x: 0, y: 0.5)?.linearPerMille, 588)
+        XCTAssertEqual(RobotDriveVector.make(x: 0, y: -0.5)?.linearPerMille, -588)
+        XCTAssertEqual(RobotDriveVector.make(x: 0, y: 1)?.linearPerMille, 1000)
+        XCTAssertEqual(RobotDriveVector.make(x: 0, y: -1)?.linearPerMille, -1000)
+    }
+
     func testV79AdvertisesV3AndKeepsOlderFirmwareCompatible() {
         let manager = RobotBluetoothManager(commandWriter: { _ in })
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v3-v79 caps=gaitprofiles,attitudepd_v2,attitudepd_v3 profile=attitudepd_v3\r\n# ")
         XCTAssertTrue(manager.supportsProbe)
         XCTAssertTrue(manager.supportsProbeWidth)
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v3)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v4)
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: manager.runtimeState.capabilities))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: ["attitudepd_v2"]))
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v2.isSupported(capabilities: ["attitudepd_v2"]))
@@ -85,7 +247,7 @@ final class RobotCommandTests: XCTestCase {
         XCTAssertFalse(manager.canStartProbe);manager.startProbe();XCTAssertFalse(commands.contains("walkprobe\n"))
     }
     func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v3)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v4)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.simulatorOnly)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_2"]))
         XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_3"]))

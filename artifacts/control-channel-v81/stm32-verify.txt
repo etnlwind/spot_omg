@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 134, in <module>
+    if __name__=='__main__':main()
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 58, in main
+    with Stm32Console('SpotOMG-Bridge',transport=BleTransport('SpotOMG-Bridge')) as c:
+  File "D:\project\spot_omg\tools\servo_tool\servo\console.py", line 192, in __enter__
+    return self.open()
+  File "D:\project\spot_omg\tools\servo_tool\servo\console.py", line 185, in open
+    self._transport.open()
+  File "D:\project\spot_omg\tools\servo_tool\servo\transport.py", line 163, in open
+    self._submit(self._connect(), timeout=15.0)
+  File "D:\project\spot_omg\tools\servo_tool\servo\transport.py", line 132, in _submit
+    return future.result(timeout=timeout)
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\concurrent\futures\_base.py", line 458, in result
+    return self.__get_result()
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\concurrent\futures\_base.py", line 403, in __get_result
+    raise self._exception
+  File "D:\project\spot_omg\tools\servo_tool\servo\transport.py", line 150, in _connect
+    await self._client.start_notify(self.TX_UUID, self._on_notification)
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\site-packages\bleak\__init__.py", line 799, in start_notify
+    await self._backend.start_notify(
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\site-packages\bleak\backends\winrt\client.py", line 1010, in start_notify
+    await winrt_char.write_client_characteristic_configuration_descriptor_with_result_async(
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\site-packages\winrt\runtime\_internals.py", line 245, in wait
+    return op.get_results()
+OSError: [WinError -2147023673] 사용자가 작업을 취소했습니다.

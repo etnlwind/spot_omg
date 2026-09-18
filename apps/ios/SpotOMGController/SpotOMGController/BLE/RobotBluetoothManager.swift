@@ -278,9 +278,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var probeTimeout: DispatchWorkItem?
     private var probeStopAt: Date?
     var supportsProbe: Bool {
-        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79"].contains(runtimeState.revision)
+        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80"].contains(runtimeState.revision)
     }
-    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79"].contains(runtimeState.revision) && !target.isSimulator }
+    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80"].contains(runtimeState.revision) && !target.isSimulator }
     var probeConfigurationBlockReason: String? {
         if !state.isReady { return "로봇에 연결한 뒤 설정을 적용할 수 있습니다." }
         if target.isSimulator { return "직접 설정 보행은 현재 실제 로봇 연결에서만 지원합니다." }
@@ -341,6 +341,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var driveStopRequested: Bool { drivePhase == .stopping }
     private var driveAwaitingPrompt: Bool { drivePhase == .draining }
     private var driveCompletionTimeout: DispatchWorkItem?
+    private var driveCompletionDeadline: TimeInterval?
+    private var driveDrainDeadline: TimeInterval?
+    // Injectable monotonic clock for timeout tests; no wall-clock adjustments.
+    var driveCompletionClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     private var lastDrivePacketAt = Date.distantPast
     private var pendingCommandAfterDrive: RobotCommand?
 
@@ -781,6 +785,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         drivePhase = .idle
         driveCompletionTimeout?.cancel()
         driveCompletionTimeout = nil
+        driveCompletionDeadline = nil
+        driveDrainDeadline = nil
         pendingCommandAfterDrive = nil
         consoleStream = RobotConsoleStream()
         writes = RobotBLEWriteQueue()
@@ -796,7 +802,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
         let profile = SimulatorGaitProfile.allCases.first {
-            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
+            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v4 || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
             (target != .robot || !$0.simulatorOnly) && $0.isSupported(capabilities: runtimeState.capabilities)
         } ?? .centerpivot
         guard defaultValidationProfilePending, state.isReady,
@@ -889,16 +895,46 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func armDriveCompletionTimeout() {
+        let now = driveCompletionClock()
+        if driveAwaitingPrompt {
+            // Stop is already acknowledged. UART diagnostics can take more
+            // than five seconds over BLE; wait for progress, bounded overall.
+            let limit = driveDrainDeadline ?? now + 30
+            driveDrainDeadline = limit
+            driveCompletionDeadline = min(now + 5, limit)
+        } else {
+            // Telemetry must never extend an unconfirmed Stop request.
+            driveDrainDeadline = nil
+            driveCompletionDeadline = now + 5
+        }
+        scheduleDriveCompletionTimeout(after: max(0, (driveCompletionDeadline ?? now) - now))
+    }
+
+    private func scheduleDriveCompletionTimeout(after delay: TimeInterval) {
         driveCompletionTimeout?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.driveSessionActive,
-                  self.driveStopRequested || self.driveAwaitingPrompt else { return }
-            self.sendMotionInterrupt()
-            self.disconnect()
-            self.fail("보행 종료 확인 시간 초과: 안전 정지 요청 후 연결을 해제했습니다. 다시 연결해 주세요.")
+            self?.checkDriveCompletionTimeout()
         }
         driveCompletionTimeout = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    // The timer and deterministic host tests exercise this same expiry path.
+    func checkDriveCompletionTimeout() {
+        guard driveSessionActive, driveStopRequested || driveAwaitingPrompt,
+              let deadline = driveCompletionDeadline else { return }
+        let remaining = deadline - driveCompletionClock()
+        if remaining > 0 {
+            // A cancelled/early callback must not expire a renewed deadline.
+            scheduleDriveCompletionTimeout(after: remaining)
+            return
+        }
+        let message = driveAwaitingPrompt
+            ? "종료 로그 또는 프롬프트 수신 시간 초과: 연결을 해제했습니다. 다시 연결해 주세요."
+            : "보행 종료 확인 시간 초과: 안전 정지 요청 후 연결을 해제했습니다. 다시 연결해 주세요."
+        sendMotionInterrupt()
+        disconnect()
+        fail(message)
     }
 
     private func processConsolePrompt() {
@@ -916,6 +952,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         guard driveSessionActive, driveAwaitingPrompt else { return }
         driveCompletionTimeout?.cancel()
         driveCompletionTimeout = nil
+        driveCompletionDeadline = nil
+        driveDrainDeadline = nil
         drivePhase = .idle
         if let pending = pendingCommandAfterDrive {
             pendingCommandAfterDrive = nil
@@ -927,6 +965,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func receiveConsoleText(_ text: String) {
+        // Count partial lines too. Before the Stop response this does nothing;
+        // after it, duplicate responses still retain the first 30-second cap.
+        if !text.isEmpty, driveAwaitingPrompt { armDriveCompletionTimeout() }
         trace?.record("rx", text)
         appendConsole(text)
         for event in consoleStream.append(text) {

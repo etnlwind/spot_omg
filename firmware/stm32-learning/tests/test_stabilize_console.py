@@ -9,12 +9,18 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
 PROJECT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(PROJECT.parents[1]/'tools/servo_tool'))
+from servo.host_build import build_executable
 
 PREFIX = r'''
+#undef NDEBUG
+#define HAL_MAX_DELAY 0xffffffffu
+#define HAL_OK 0
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -257,7 +263,7 @@ def console_executable(tmp_path_factory):
     # Whole live production function ranges, not reimplemented parser logic.
     macros = "\n".join(re.findall(r"^#define APP_CONSOLE_.*$", header, re.M))
     structure = header[header.index("typedef struct"):header.index("} AppConsole;") + len("} AppConsole;")]
-    echo = source[source.index("static void echo_byte("):source.index("static bool parse_u32(")]
+    echo = source[source.index("static void write_wire("):source.index("static bool parse_u32(")]
     service_start = source.index("void app_console_service_realtime(")
     service = source[service_start:source.index("static void command_stabilize(", service_start)]
     realtime = source[source.index("static bool realtime_next_i32("):source.index("void app_console_poll(")]
@@ -277,12 +283,8 @@ def console_executable(tmp_path_factory):
     prefix = prefix.replace("/* LOCOMOTION_PD_HELPER */", helper)
     harness = HARNESS.replace("/* ROUND_ROBIN_SERVICE */", round_service).replace("/* BUDGETED_SERVICE */", budget_service)
     unit.write_text("\n".join([prefix, macros, frame_macro, structure, echo, service, realtime, harness]))
-    output = directory / "console"
-    subprocess.run([
-        shutil.which("cc"), "-std=c11", "-O1", "-Wall", "-Wextra", "-Werror",
-        "-fsanitize=undefined", "-fno-sanitize-recover=all",
-        f"-I{PROJECT / 'Inc'}", str(unit), "-lm", "-o", str(output),
-    ], check=True, capture_output=True, text=True)
+    output = build_executable([unit], PROJECT/'Inc', directory/'console',
+                              extra=['-Wall','-Wextra','-Werror'])
     return output
 
 

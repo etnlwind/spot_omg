@@ -14,6 +14,7 @@ def run(output):
     results=[]
     for name,linear,yaw in [('forward',1000,0),('reverse',-1000,0),('left',0,500),('right',0,-500)]:
         robot=RobotController(Simulation(parameters()))
+        robot.select_profile("attitudepd_v3")
         robot.body_stabilizer.enabled=False  # Same axis-unverified PD state as V2 hardware trial.
         robot.heading.enabled=False
         records=[];drive_at=None;stop_at=None;fault=None

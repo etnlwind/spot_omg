@@ -12,10 +12,10 @@ static inline int locomotion_profile_id(const char *name) {
     return -1;
 }
 static inline bool locomotion_is_attitude_pd(int profile) {
-    return profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3");
+    return profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
 }
 static inline bool locomotion_has_gait_stand(int profile) {
-    return profile==locomotion_profile_id("attitudepd_v3");
+    return profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
 }
 static inline bool locomotion_is_native(int profile) {
     return profile==locomotion_profile_id("s_native_v6_1") ||
@@ -37,8 +37,22 @@ static inline float locomotion_linear(int profile,float linear) {
             profile==locomotion_profile_id("s_native_v6_2_6") ||
            profile==locomotion_profile_id("s_native_v6_2_7")) ? fmaxf(-.6f,linear) : linear;
 }
+/* Old profiles select the lift-hold template by direction. V4 selects it by
+ * magnitude: both directions use the old forward shape through half stick,
+ * then smoothly approach the old reverse shape at full stick. The existing
+ * low-input blend starts from B and also preserves zero-linear pivot turns.
+ * Half stick maps to 588 per mille after the apps' dead zone/minimum motion. */
+static inline float locomotion_forward_template_weight(int profile,float linear) {
+    float half=locomotion_half_stick_linear[profile];
+    if(half>0) {
+        float magnitude=fabsf(linear);
+        return gait_policy_smootherstep(gait_policy_clampf(magnitude/.5f,0,1))*
+            (1-gait_policy_smootherstep(gait_policy_clampf((magnitude-half)/(1-half),0,1)));
+    }
+    return gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));
+}
 static inline void locomotion_params(int profile,float linear,float p[7]) {
-    float w=gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));
+    float w=locomotion_forward_template_weight(profile,linear);
     for(int j=0;j<7;j++) p[j]=locomotion_parameters[profile][1][j]+w*(locomotion_parameters[profile][0][j]-locomotion_parameters[profile][1][j]);
 }
 /* family: 0 trot, 1 crawl/amble, 2 pace, 3 bound. */
@@ -100,7 +114,8 @@ static inline bool locomotion_targets_assisted(int profile,float phase,float sca
     if(locomotion_has_gait_stand(profile)) {
         GaitPolicyLegTarget ready[4];
         if(!locomotion_stand_targets(profile,ready))return false;
-        return attitude_clearance_targets(p,phase,scale,linear,yaw,ready,out);
+        return attitude_clearance_targets_weighted(p,phase,scale,linear,yaw,
+            locomotion_forward_template_weight(profile,linear),ready,out);
     }
     if(profile==locomotion_profile_id("attitudepd_v2"))return attitude_v2_targets(p,phase,scale,linear,yaw,out);
     if(profile==locomotion_profile_id("centerpivot") || profile==locomotion_profile_id("attitudepd"))return center_pivot_targets(p,phase,scale,linear,yaw,out);

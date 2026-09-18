@@ -35,7 +35,8 @@ static inline bool center_pivot_solve(const float goal[4][3],float q[4][3]) {
     }
     return true;
 }
-static inline bool center_pivot_targets(const float p[7],float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
+static inline bool center_pivot_targets_weighted(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,GaitPolicyLegTarget out[4]) {
+    if(!isfinite(forward_weight) || forward_weight<0 || forward_weight>1)return false;
     GaitPolicyLegTarget nominal[4],lifted[4];
     if(!locomotion_foot_targets(p,phase,scale,0,linear,yaw,nominal))return false;
     const float offsets[4]={0,.5f,.5f,0};
@@ -49,7 +50,7 @@ static inline bool center_pivot_targets(const float p[7],float phase,float scale
         float x=p[2]*(-.5f+(1+k)*gait_policy_smootherstep(u)-k*u);
         float held=u<.4f?gait_policy_smootherstep(u/.4f):u>.7f?gait_policy_smootherstep((1-u)/.3f):1.f;
         float arch=64*u*u*u*(1-u)*(1-u)*(1-u);
-        float envelope=arch+(held-arch)*gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));
+        float envelope=arch+(held-arch)*forward_weight;
         float z=p[4]-scale*activity*p[3]*envelope;
         float lateral=-scale*yaw*x*(i<2?1.6f:-1.6f)*pivot;
         x=p[5]+scale*gait_policy_clampf(linear+(i%2==0?yaw:-yaw),-1,1)*x;
@@ -82,14 +83,18 @@ static inline bool center_pivot_targets(const float p[7],float phase,float scale
     }
     return true;
 }
+static inline bool center_pivot_targets(const float p[7],float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
+    return center_pivot_targets_weighted(p,phase,scale,linear,yaw,
+        gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1)),out);
+}
 /* V2 retains the rear targets and adds only forward front swing clearance.
  * S is the zero-amplitude entry posture. Full-amplitude rear motion is exact.
  * CAD FK/IK preserves front X/Y; no motor limits or calibrations change. */
 #include "s_native_data.h"
-static inline bool attitude_clearance_targets(const float p[7],float phase,float scale,float linear,float yaw,
+static inline bool attitude_clearance_targets_weighted(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,
         const GaitPolicyLegTarget ready[4],GaitPolicyLegTarget out[4]) {
     GaitPolicyLegTarget base[4],result[4];
-    if(!center_pivot_targets(p,phase,scale,linear,yaw,base))return false;
+    if(!center_pivot_targets_weighted(p,phase,scale,linear,yaw,forward_weight,base))return false;
     float entry=gait_policy_smootherstep(scale);
     for(int i=0;scale<1 && i<4;i++) {
         base[i].j1_deg=ready[i].j1_deg+entry*(base[i].j1_deg-ready[i].j1_deg);
@@ -97,10 +102,14 @@ static inline bool attitude_clearance_targets(const float p[7],float phase,float
         base[i].j3_deg=ready[i].j3_deg+entry*(base[i].j3_deg-ready[i].j3_deg);
     }
     const float offsets[4]={0,.5f,.5f,0},extra[4]={.004f,.004f,0,0};
-    float forward=gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1));
-    if(!arc_swing_shape_apply(base,phase,p[1],scale*forward,offsets,extra,result))return false;
+    if(!arc_swing_shape_apply(base,phase,p[1],scale*forward_weight,offsets,extra,result))return false;
     for(int i=0;i<4;i++)out[i]=result[i];
     return true;
+}
+static inline bool attitude_clearance_targets(const float p[7],float phase,float scale,float linear,float yaw,
+        const GaitPolicyLegTarget ready[4],GaitPolicyLegTarget out[4]) {
+    return attitude_clearance_targets_weighted(p,phase,scale,linear,yaw,
+        gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1)),ready,out);
 }
 static inline bool attitude_v2_targets(const float p[7],float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
     GaitPolicyLegTarget ready[4];

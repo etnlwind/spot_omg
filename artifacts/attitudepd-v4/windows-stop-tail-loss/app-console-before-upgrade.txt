@@ -1,0 +1,173 @@
+> syncstate
+$SPOTSTATE pose=stand error=16 torque=on safety=ok balance=suspended rev=attitudepd-v4-v80 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=load-supported mass_g=2754
+# > read 1
+ID 1 pos=1923 speed=0 load=32 voltage=12000mV temp=33C current=1 moving=0 hw=0x00
+# > read 1
+ID 1 pos=1923 speed=0 load=32 voltage=11900mV temp=33C current=1 moving=0 hw=0x00
+# > read 1
+ID 1 pos=1923 speed=0 load=32 voltage=12000mV temp=33C current=1 moving=0 hw=0x00
+# > drive 206 257 1
+$SPOTDRIVE started seq=1 linear=206 yaw=257 watchdog=800ms rev=attitudepd-v4-v80
+$BATTERY mv=12100
+$BATTERY mv=11700
+$BATTERY mv=11800
+$BATTERY mv=11900
+$BATTERY mv=11800
+$BATTERY mv=11800
+$BATTERY mv=11700
+$BATTERY mv=11700
+$BATTERY mv=11800
+> @S 51
+$BATTERY mv=11600
+$SPOTDRIVE stopped reason=ok elapsed=10008ms
+OK
+Gait diagnostics: samples=500 min_voltage=11600mV lag=19 lag+droop=0 derate=recommended fall=no late_frames=1 limited_frames=0
+Bus read retries: attempts=3 recovered=3 failed=0
+Gait timing: balance=off nominal=0ms elapsed=10008ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=451 cmd=1920 pos=1920 err=0 speed_raw=0 current=0 load=0 voltage=11900mV peak_err=12(1.1deg)@326 mean_err=4(0.4deg) peak_current=4 peak_load=104 min_v=11800mV lag=0 lag_rule=96/2 samples=41
+    peak_ctx=stance cmd=1920 pos=1932 err=-12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-12ticks
+  ID2 FL J2 phase=451 cmd=1430 pos=1424 err=6 speed_raw=50 current=4 load=-48 voltage=12100mV peak_err=69(6.1deg)@892 mean_err=14(1.2deg) peak_current=65 peak_load=252 min_v=11800mV lag=0 lag_rule=144/3 samples=41
+    peak_ctx=swing cmd=1479 pos=1410 err=69 target_v=-96deg/s target_a=250deg/s2 match_age=3fr(~60ms) match_err=0ticks
+  ID3 FL J3 phase=451 cmd=2996 pos=2999 err=-3 speed_raw=0 current=1 load=32 voltage=12100mV peak_err=122(10.7deg)@756 mean_err=43(3.8deg) peak_current=53 peak_load=348 min_v=11900mV lag=6 lag_rule=96/2 samples=41
+    peak_ctx=swing cmd=3114 pos=2992 err=122 target_v=65deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=-4ticks
+  ID4 FR J1 phase=451 cmd=2082 pos=2078 err=4 speed_raw=0 current=1 load=-40 voltage=12100mV peak_err=11(1.0deg)@930 mean_err=5(0.4deg) peak_current=4 peak_load=100 min_v=11900mV lag=0 lag_rule=96/2 samples=41
+    peak_ctx=stance cmd=2082 pos=2071 err=11 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=11ticks
+  ID5 FR J2 phase=451 cmd=2569 pos=2569 err=0 speed_raw=0 current=0 load=0 voltage=12100mV peak_err=107(9.4deg)@350 mean_err=18(1.6deg) peak_current=57 peak_load=296 min_v=11800mV lag=0 lag_rule=144/3 samples=41
+    peak_ctx=swing cmd=2552 pos=2659 err=-107 target_v=-127deg/s target_a=-200deg/s2 match_age=10fr(~200ms) match_err=0ticks
+  ID6 FR J3 phase=451 cmd=1050 pos=1040 err=10 speed_raw=0 current=4 load=-88 voltage=12100mV peak_err=143(12.6deg)@283 mean_err=42(3.7deg) peak_current=35 peak_load=332 min_v=11900mV lag=4 lag_rule=96/2 samples=42
+    peak_ctx=swing cmd=918 pos=1061 err=-143 target_v=43deg/s target_a=-1350deg/s2 match_age=7fr(~140ms) match_err=5ticks
+  ID7 RL J1 phase=451 cmd=2095 pos=2090 err=5 speed_raw=0 current=2 load=-48 voltage=12000mV peak_err=13(1.1deg)@845 mean_err=6(0.5deg) peak_current=6 peak_load=116 min_v=11900mV lag=0 lag_rule=96/2 samples=42
+    peak_ctx=stance cmd=2095 pos=2082 err=13 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=13ticks
+  ID8 RL J2 phase=451 cmd=1295 pos=1299 err=-4 speed_raw=0 current=1 load=32 voltage=12000mV peak_err=76(6.7deg)@407 mean_err=17(1.5deg) peak_current=32 peak_load=248 min_v=11900mV lag=0 lag_rule=144/3 samples=42
+    peak_ctx=swing cmd=1359 pos=1283 err=76 target_v=-79deg/s target_a=650deg/s2 match_age=4fr(~80ms) match_err=-11ticks
+  ID9 RL J3 phase=451 cmd=2995 pos=3005 err=-10 speed_raw=0 current=4 load=88 voltage=12100mV peak_err=123(10.8deg)@253 mean_err=37(3.3deg) peak_current=51 peak_load=348 min_v=11800mV lag=4 lag_rule=96/2 samples=42
+    peak_ctx=swing cmd=3111 pos=2988 err=123 target_v=70deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=-5ticks
+  ID10 RR J1 phase=451 cmd=1960 pos=1964 err=-4 speed_raw=0 current=1 load=40 voltage=12100mV peak_err=9(0.8deg)@272 mean_err=4(0.4deg) peak_current=4 peak_load=84 min_v=12000mV lag=0 lag_rule=96/2 samples=42
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=451 cmd=2902 pos=2904 err=-2 speed_raw=0 current=0 load=16 voltage=12000mV peak_err=77(6.8deg)@909 mean_err=19(1.7deg) peak_current=59 peak_load=288 min_v=11700mV lag=0 lag_rule=144/3 samples=42
+    peak_ctx=swing cmd=28> ^C
+> syncstate
+$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v80 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=servo-health mass_g=2754
+# > read 1
+ID 1 pos=1921 speed=0 load=0 voltage=11800mV temp=32C current=0 moving=0 hw=0x00
+# > drive -857 455 1
+$SPOTDRIVE started seq=1 linear=-857 yaw=455 watchdog=800ms rev=attitudepd-v4-v80
+> @S 2
+$SPOTDRIVE stopped reason=motion aborted elapsed=10008ms
+STOPPED: stand target requested
+Gait diagnostics: samples=500 min_voltage=11600mV lag=19 lag+droop=0 derate=recommended fall=no late_frames=1 limited_frames=0
+Bus read retries: attempts=3 recovered=3 failed=0
+Gait timing: balance=off nominal=0ms elapsed=10008ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=451 cmd=1920 pos=1920 err=0 speed_raw=0 current=0 load=0 voltage=11900mV peak_err=12(1.1deg)@326 mean_err=4(0.4deg) peak_current=4 peak_load=104 min_v=11800mV lag=0 lag_rule=96/2 samples=41
+    peak_ctx=stance cmd=1920 pos=1932 err=-12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-12ticks
+  ID2 FL J2 phase=451 cmd=1430 pos=1424 err=6 speed_raw=50 current=4 load=-48 voltage=12100mV peak_err=69(6.1deg)@892 mean_err=14(1.2deg) peak_current=65 peak_load=252 min_v=11800mV lag=0 lag_rule=144/3 samples=41
+    peak_ctx=swing cmd=1479 pos=1410 err=69 target_v=-96deg/s target_a=250deg/s2 match_age=3fr(~60ms) match_err=0ticks
+  ID3 FL J3 phase=451 cmd=2996 pos=2999 err=-3 speed_raw=0 current=1 load=32 voltage=12100mV peak_err=122(10.7deg)@756 mean_err=43(3.8deg) peak_current=53 peak_load=348 min_v=11900mV lag=6 lag_rule=96/2 samples=41
+    peak_ctx=swing cmd=3114 pos=2992 err=122 target_v=65deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=-4ticks
+  ID4 FR J1 phase=451 cmd=2082 pos=2078 err=4 speed_raw=0 current=1 load=-40 voltage=12100mV peak_err=11(1.0deg)@930 mean_err=5(0.4deg) peak_current=4 peak_load=100 min_v=11900mV lag=0 lag_rule=96/2 samples=41
+    peak_ctx=stance cmd=2082 pos=2071 err=11 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=11ticks
+  ID5 FR J2 phase=451 cmd=2569 pos=2569 err=0 speed_raw=0 current=0 load=0 voltage=12100mV peak_err=107(9.4deg)@350 mean_err=18(1.6deg) peak_current=57 peak_load=296 min_v=11800mV lag=0 lag_rule=144/3 samples=41
+    peak_ctx=swing cmd=2552 pos=2659 err=-107 target_v=-127deg/s target_a=-200deg/s2 match_age=10fr(~200ms) match_err=0ticks
+  ID6 FR J3 phase=451 cmd=1050 pos=1040 err=10 speed_raw=0 current=4 load=-88 voltage=12100mV peak_err=143(12.6deg)@283 mean_err=42(3.7deg) peak_current=35 peak_load=332 min_v=11900mV lag=4 lag_rule=96/2 samples=42
+    peak_ctx=swing cmd=918 pos=1061 err=-143 target_v=43deg/s target_a=-1350deg/s2 match_age=7fr(~140ms) match_err=5ticks
+  ID7 RL J1 phase=451 cmd=2095 pos=2090 err=5 speed_raw=0 current=2 load=-48 voltage=12000mV peak_err=13(1.1deg)@845 mean_err=6(0.5deg) peak_current=6 peak_load=116 min_v=11900mV lag=0 lag_rule=96/2 samples=42
+    peak_ctx=stance cmd=2095 pos=2082 err=13 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=13ticks
+  ID8 RL J2 phase=451 cmd=1295 pos=1299 err=-4 speed_raw=0 current=1 load=32 voltage=12000mV peak_err=76(6.7deg)@407 mean_err=17(1.5deg) peak_current=32 peak_load=248 min_v=11900mV lag=0 lag_rule=144/3 samples=42
+    peak_ctx=swing cmd=1359 pos=1283 err=76 target_v=-79deg/s target_a=650deg/s2 match_age=4fr(~80ms) match_err=-11ticks
+  ID9 RL J3 phase=451 cmd=2995 pos=3005 err=-10 speed_raw=0 current=4 load=88 voltage=12100mV peak_err=123(10.8deg)@253 mean_err=37(3.3deg) peak_current=51 peak_load=348 min_v=11800mV lag=4 lag_rule=96/2 samples=42
+    peak_ctx=swing cmd=3111 pos=2988 err=123 target_v=70deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=-5ticks
+  ID10 RR J1 phase=451 cmd=1960 pos=1964 err=-4 speed_raw=0 current=1 load=40 voltage=12100mV peak_err=9(0.8deg)@272 mean_err=4(0.4deg) peak_current=4 peak_load=84 min_v=12000mV lag=0 lag_rule=96/2 samples=42
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=451 cmd=2902 pos=2904 err=-2 speed_raw=0 current=0 load=16 voltage=12000mV peak_err=77(6.8deg)@909 mean_err=19(1.7deg) peak_current=59 peak_load=288 min_v=11700mV lag=0 lag_rule=144/3 samples=42
+    peak_ctx=swing cmd=2814 pos=2891 err=-77 target_v=-83deg/s target_a=1100deg/s2 match_age=3fr(~60ms) match_err=-7ticks
+  ID12 RR J3 phase=451 cmd=1015 pos=1008 err=7 speed_raw=0 current=2 load=-64 voltage=12000mV peak_err=151(13.3deg)@767 > ^C
+> syncstate
+$SPOTSTATE pose=stand error=17 torque=on safety=ok balance=suspended rev=attitudepd-v4-v80 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754
+# > read 1
+ID 1 pos=1921 speed=0 load=0 voltage=11800mV temp=32C current=0 moving=0 hw=0x00
+# > drive 263 -112 1
+$SPOTDRIVE started seq=1 linear=263 yaw=-112 watchdog=800ms rev=attitudepd-v4-v80
+$BATTERY mv=11800
+$BATTERY mv=11700
+$BATTERY mv=11500
+$BATTERY mv=11700
+$BATTERY mv=11600
+$BATTERY mv=11600
+$BATTERY mv=11500
+> @S 43
+$BATTERY mv=11600
+$SPOTDRIVE stopped reason=ok elapsed=8287ms
+OK
+Gait diagnostics: samples=415 min_voltage=11500mV lag=18 lag+droop=0 derate=recommended fall=no late_frames=0 limited_frames=0
+Bus read retries: attempts=4 recovered=4 failed=0
+Gait timing: balance=off nominal=0ms elapsed=8287ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=31 cmd=1920 pos=1926 err=-6 speed_raw=0 current=1 load=56 voltage=11800mV peak_err=10(0.9deg)@333 mean_err=4(0.4deg) peak_current=3 peak_load=92 min_v=11600mV lag=0 lag_rule=96/2 samples=35
+    peak_ctx=stance cmd=1920 pos=1930 err=-10 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-10ticks
+  ID2 FL J2 phase=31 cmd=1430 pos=1426 err=4 speed_raw=0 current=3 load=-32 voltage=11900mV peak_err=68(6.0deg)@831 mean_err=17(1.5deg) peak_current=123 peak_load=400 min_v=11600mV lag=0 lag_rule=144/3 samples=35
+    peak_ctx=swing cmd=1472 pos=1404 err=68 target_v=-52deg/s target_a=450deg/s2 match_age=4fr(~80ms) match_err=-6ticks
+  ID3 FL J3 phase=31 cmd=2996 pos=3001 err=-5 speed_raw=0 current=2 load=48 voltage=12000mV peak_err=111(9.8deg)@988 mean_err=38(3.3deg) peak_current=38 peak_load=292 min_v=11800mV lag=3 lag_rule=96/2 samples=35
+    peak_ctx=swing cmd=2972 pos=3083 err=-111 target_v=-48deg/s target_a=1100deg/s2 match_age=7fr(~140ms) match_err=-2ticks
+  ID4 FR J1 phase=31 cmd=2082 pos=2076 err=6 speed_raw=0 current=2 load=-56 voltage=11900mV peak_err=14(1.2deg)@34 mean_err=7(0.6deg) peak_current=7 peak_load=124 min_v=11800mV lag=0 lag_rule=96/2 samples=35
+    peak_ctx=stance cmd=2082 pos=2068 err=14 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=14ticks
+  ID5 FR J2 phase=31 cmd=2569 pos=2572 err=-3 speed_raw=0 current=1 load=24 voltage=11900mV peak_err=59(5.2deg)@405 mean_err=15(1.3deg) peak_current=43 peak_load=244 min_v=11700mV lag=0 lag_rule=144/3 samples=35
+    peak_ctx=swing cmd=2472 pos=2531 err=-59 target_v=-74deg/s target_a=650deg/s2 match_age=3fr(~60ms) match_err=0ticks
+  ID6 FR J3 phase=31 cmd=1050 pos=1045 err=5 speed_raw=0 current=1 load=-48 voltage=12000mV peak_err=141(12.4deg)@274 mean_err=55(4.8deg) peak_current=48 peak_load=360 min_v=11800mV lag=8 lag_rule=96/2 samples=35
+    peak_ctx=swing cmd=948 pos=1089 err=-141 target_v=43deg/s target_a=-900deg/s2 match_age=7fr(~140ms) match_err=-6ticks
+  ID7 RL J1 phase=31 cmd=2095 pos=2097 err=-2 speed_raw=0 current=0 load=24 voltage=11800mV peak_err=13(1.1deg)@57 mean_err=7(0.6deg) peak_current=6 peak_load=116 min_v=11700mV lag=0 lag_rule=96/2 samples=35
+    peak_ctx=swing cmd=2095 pos=2082 err=13 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=13ticks
+  ID8 RL J2 phase=31 cmd=1295 pos=1296 err=-1 speed_raw=50 current=1 load=24 voltage=11900mV peak_err=34(3.0deg)@463 mean_err=13(1.1deg) peak_current=20 peak_load=164 min_v=11700mV lag=0 lag_rule=144/3 samples=34
+    peak_ctx=swing cmd=1378 pos=1344 err=34 target_v=-48deg/s target_a=0deg/s2 match_age=3fr(~60ms) match_err=1ticks
+  ID9 RL J3 phase=31 cmd=2995 pos=3003 err=-8 speed_raw=0 current=2 load=72 voltage=11900mV peak_err=102(9.0deg)@474 mean_err=38(3.3deg) peak_current=50 peak_load=320 min_v=11700mV lag=2 lag_rule=96/2 samples=34
+    peak_ctx=swing cmd=2980 pos=3082 err=-102 target_v=-65deg/s target_a=900deg/s2 match_age=7fr(~140ms) match_err=-2ticks
+  ID10 RR J1 phase=31 cmd=1960 pos=1958 err=2 speed_raw=-100 current=0 load=-28 voltage=12000mV peak_err=9(0.8deg)@479 mean_err=4(0.4deg) peak_current=4 peak_load=84 min_v=11800mV lag=0 lag_rule=96/2 samples=34
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=31 cmd=2902 pos=2903 err=-1 speed_raw=0 current=0 load=8 voltage=11900mV peak_err=83(7.3deg)@792 mean_err=20(1.8deg) peak_current=37 peak_load=192 min_v=11600mV lag=0 lag_rule=144/3 samples=34
+    peak_ctx=swing cmd=2893 pos=2976 err=-83 target_v=-127deg/s target_a=1100deg/s2 match_age=11fr(~220ms) match_err=4ticks
+  ID12 RR J3 phase=31 cmd=1015 pos=1008 err=7 speed_raw=0 current=2 load=-64 voltage=11800mV peak_err=139(12.2deg)@760 mean_err=54(4.7deg) peak_current=120 peak_load=592 min_v=11500mV lag=5 lag_rule=96/2 samples=34
+    peak_ctx=swing cmd=9> ^C
+> syncstate
+$SPOTSTATE pose=stand error=8 torque=on safety=ok balance=suspended rev=attitudepd-v4-v80 caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=load-supported mass_g=2754
+# > read 1
+ID 1 pos=1926 speed=0 load=56 voltage=11800mV temp=32C current=1 moving=0 hw=0x00
+# > drive 302 0 1
+$SPOTDRIVE started seq=1 linear=302 yaw=0 watchdog=800ms rev=attitudepd-v4-v80
+$BATTERY mv=11900
+$BATTERY mv=11600
+$BATTERY mv=11600
+$BATTERY mv=11700
+$BATTERY mv=11600
+$BATTERY mv=11600
+$BATTERY mv=11600
+> @S 36
+$BATTERY mv=11300
+$BATTERY mv=11800
+$SPOTDRIVE stopped reason=ok elapsed=8248ms
+OK
+Gait diagnostics: samples=412 min_voltage=11300mV lag=8 lag+droop=0 derate=recommended fall=no late_frames=1 limited_frames=0
+Bus read retries: attempts=6 recovered=6 failed=0
+Gait timing: balance=off nominal=0ms elapsed=8248ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=379 cmd=1920 pos=1923 err=-3 speed_raw=0 current=0 load=32 voltage=11800mV peak_err=15(1.3deg)@434 mean_err=5(0.4deg) peak_current=9 peak_load=132 min_v=11700mV lag=0 lag_rule=96/2 samples=34
+    peak_ctx=stance cmd=1920 pos=1935 err=-15 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-15ticks
+  ID2 FL J2 phase=379 cmd=1430 pos=1424 err=6 speed_raw=50 current=4 load=-48 voltage=11900mV peak_err=76(6.7deg)@910 mean_err=14(1.2deg) peak_current=30 peak_load=264 min_v=11800mV lag=0 lag_rule=144/3 samples=34
+    peak_ctx=swing cmd=1519 pos=1443 err=76 target_v=-83deg/s target_a=900deg/s2 match_age=3fr(~60ms) match_err=7ticks
+  ID3 FL J3 phase=379 cmd=2996 pos=3000 err=-4 speed_raw=0 current=2 load=40 voltage=12000mV peak_err=168(14.8deg)@140 mean_err=37(3.3deg) peak_current=45 peak_load=396 min_v=11700mV lag=3 lag_rule=96/2 samples=34
+    peak_ctx=stance cmd=2913 pos=3081 err=-168 target_v=-87deg/s target_a=700deg/s2 match_age=11fr(~220ms) match_err=-50ticks
+  ID4 FR J1 phase=379 cmd=2082 pos=2077 err=5 speed_raw=0 current=2 load=-48 voltage=11900mV peak_err=9(0.8deg)@946 mean_err=5(0.4deg) peak_current=3 peak_load=80 min_v=11800mV lag=0 lag_rule=96/2 samples=34
+    peak_ctx=stance cmd=2082 pos=2073 err=9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=9ticks
+  ID5 FR J2 phase=379 cmd=2569 pos=2570 err=-1 speed_raw=0 current=0 load=8 voltage=11900mV peak_err=56(4.9deg)@282 mean_err=13(1.1deg) peak_current=74 peak_load=260 min_v=11600mV lag=0 lag_rule=144/3 samples=34
+    peak_ctx=swing cmd=2649 pos=2705 err=-56 target_v=-92deg/s target_a=-1550deg/s2 match_age=4fr(~80ms) match_err=-7ticks
+  ID6 FR J3 phase=379 cmd=1050 pos=1039 err=11 speed_raw=0 current=3 load=-96 voltage=12000mV peak_err=149(13.1deg)@301 mean_err=37(3.3deg) peak_current=40 peak_load=420 min_v=11700mV lag=2 lag_rule=96/2 samples=34
+    peak_ctx=swing cmd=915 pos=1064 err=-149 target_v=13deg/s target_a=-1500deg/s2 match_age=8fr(~160ms) match_err=3ticks
+  ID7 RL J1 phase=379 cmd=2095 pos=2090 err=5 speed_raw=0 current=1 load=-48 voltage=11800mV peak_err=12(1.1deg)@863 mean_err=5(0.4deg) peak_current=5 peak_load=104 min_v=11700mV lag=0 lag_rule=96/2 samples=34
+    peak_ctx=stance cmd=2095 pos=2083 err=12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=12ticks
+  ID8 RL J2 phase=379 cmd=1295 pos=1299 err=-4 speed_raw=0 current=1 load=32 voltage=11900mV peak_err=70(6.2deg)@339 mean_err=15(1.3deg) peak_current=57 peak_load=244 min_v=11600mV lag=0 lag_rule=144/3 samples=35
+    peak_ctx=swing cmd=1292 pos=1222 err=70 target_v=-118deg/s target_a=0deg/s2 match_age=3fr(~60ms) match_err=-7ticks
+  ID9 RL J3 phase=379 cmd=2995 pos=3007 err=-12 speed_raw=0 current=5 load=104 voltage=11900mV peak_err=108(9.5deg)@586 mean_err=36(3.2deg) peak_current=61 peak_load=388 min_v=11600mV lag=1 lag_rule=96/2 samples=35
+    peak_ctx=stance cmd=3013 pos=3121 err=-108 target_v=0deg/s target_a=200deg/s2 match_age=11fr(~220ms) match_err=-31ticks
+  ID10 RR J1 phase=379 cmd=1960 pos=1964 err=-4 speed_raw=0 current=1 load=40 voltage=12000mV peak_err=9(0.8deg)@353 mean_err=4(0.4deg) peak_current=3 peak_load=80 min_v=11600mV lag=0 lag_rule=96/2 samples=35
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=379 cmd=2902 pos=2901 err=1 speed_raw=50 current=0 load=-8 voltage=11900mV peak_err=73(6.4deg)@853 mean_err=16(

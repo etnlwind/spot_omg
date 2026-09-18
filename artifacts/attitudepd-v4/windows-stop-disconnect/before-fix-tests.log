@@ -1,0 +1,36 @@
+FFF.FF                                                                   [100%]
+================================== FAILURES ===================================
+_____ test_recorded_v80_diagnostics_keep_connection_until_prompt[20-0.03] _____
+apps\windows\tests\test_stop_diagnostics.py:42: in test_recorded_v80_diagnostics_keep_connection_until_prompt
+    assert not c.fatal, (now, c.error)
+E   AssertionError: (6.300000000000007, '완료 응답 시간 초과. 정지 요청 후 연결을 해제합니다.')
+E   assert not True
+E    +  where True = <spot_controller.protocol.Controller object at 0x0000029E6F4111E0>.fatal
+_____ test_recorded_v80_diagnostics_keep_connection_until_prompt[180-0.3] _____
+apps\windows\tests\test_stop_diagnostics.py:42: in test_recorded_v80_diagnostics_keep_connection_until_prompt
+    assert not c.fatal, (now, c.error)
+E   AssertionError: (6.599999999999998, '완료 응답 시간 초과. 정지 요청 후 연결을 해제합니다.')
+E   assert not True
+E    +  where True = <spot_controller.protocol.Controller object at 0x0000029E6F3C05E0>.fatal
+_______________ test_partial_diagnostic_bytes_count_as_progress _______________
+apps\windows\tests\test_stop_diagnostics.py:70: in test_partial_diagnostic_bytes_count_as_progress
+    assert not c.fatal and not drain(c)
+E   assert (not True)
+E    +  where True = <spot_controller.protocol.Controller object at 0x0000029E6F412110>.fatal
+________________ test_silent_diagnostic_stream_still_times_out ________________
+apps\windows\tests\test_stop_diagnostics.py:88: in test_silent_diagnostic_stream_still_times_out
+    assert not c.fatal and not drain(c)
+E   assert (not True)
+E    +  where True = <spot_controller.protocol.Controller object at 0x0000029E6F3C2170>.fatal
+__________ test_continuous_output_without_prompt_has_absolute_limit ___________
+apps\windows\tests\test_stop_diagnostics.py:103: in test_continuous_output_without_prompt_has_absolute_limit
+    assert c.fatal and drain(c) == b'\x03'
+E   assert (False)
+E    +  where False = <spot_controller.protocol.Controller object at 0x0000029E6F412E60>.fatal
+=========================== short test summary info ===========================
+FAILED apps/windows/tests/test_stop_diagnostics.py::test_recorded_v80_diagnostics_keep_connection_until_prompt[20-0.03]
+FAILED apps/windows/tests/test_stop_diagnostics.py::test_recorded_v80_diagnostics_keep_connection_until_prompt[180-0.3]
+FAILED apps/windows/tests/test_stop_diagnostics.py::test_partial_diagnostic_bytes_count_as_progress
+FAILED apps/windows/tests/test_stop_diagnostics.py::test_silent_diagnostic_stream_still_times_out
+FAILED apps/windows/tests/test_stop_diagnostics.py::test_continuous_output_without_prompt_has_absolute_limit
+5 failed, 1 passed in 0.09s

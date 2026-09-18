@@ -15,7 +15,8 @@ extern "C" {
 #include <stdint.h>
 
 #define APP_CONSOLE_LINE_CAPACITY 96U
-#define APP_CONSOLE_REALTIME_CAPACITY 48U
+#define APP_CONSOLE_REALTIME_CAPACITY 144U
+#define APP_CONSOLE_LOG_CAPACITY 8192U
 
 typedef struct
 {
@@ -36,6 +37,15 @@ typedef struct
     uint8_t realtime_length;
     bool realtime_overflow;
     volatile bool stabilize_reply_pending;
+    volatile bool control_pending;
+    volatile uint32_t control_sequence;
+    char control_command[APP_CONSOLE_LINE_CAPACITY];
+    bool control_mode;
+    volatile bool control_active;
+    uint32_t active_control_sequence;
+    char log_queue[APP_CONSOLE_LOG_CAPACITY];
+    size_t log_head, log_tail;
+    uint32_t log_dropped;
 } AppConsole;
 
 void app_console_init(AppConsole *console,

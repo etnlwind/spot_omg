@@ -23,7 +23,7 @@
 #define LINESTATE_WINDOW_MS     20U
 #define LINESTATE_SETTLE_MS      2U
 
-static void write_text(AppConsole *console, const char *text)
+static void write_wire(AppConsole *console, const char *text)
 {
     if (console == NULL || console->uart == NULL || text == NULL) {
         return;
@@ -33,6 +33,58 @@ static void write_text(AppConsole *console, const char *text)
                             (uint8_t *)text,
                             (uint16_t)strlen(text),
                             HAL_MAX_DELAY);
+}
+
+/* RS/US framed control records bypass the best-effort console log queue.
+ * Only foreground code transmits. The RX ISR merely fills a request mailbox. */
+static void control_reply(AppConsole *console, const char *kind, const char *text)
+{
+    char header[40];
+    snprintf(header,sizeof(header),"\036%lu %s ",
+             (unsigned long)console->active_control_sequence,kind);
+    write_wire(console,header);
+    write_wire(console,text);
+    write_wire(console,"\037");
+}
+
+static void flush_console_log(AppConsole *console)
+{
+    if (!console || !console->control_mode) return;
+    char chunk[33]; size_t count=0;
+    while(count<sizeof(chunk)-1 && console->log_tail!=console->log_head) {
+        chunk[count++]=console->log_queue[console->log_tail];
+        console->log_tail=(console->log_tail+1)%APP_CONSOLE_LOG_CAPACITY;
+    }
+    chunk[count]='\0';
+    if(count && console->uart) { /* <= 2.8 ms on wire, bounded on UART fault. */
+        if(HAL_UART_Transmit(console->uart,(uint8_t*)chunk,(uint16_t)count,5U)!=HAL_OK)
+            console->log_dropped+=(uint32_t)count;
+    }
+    else if(console->log_dropped) {
+        char notice[80];
+        snprintf(notice,sizeof(notice),"\r\n[LOG overflow: %lu bytes lost]\r\n",(unsigned long)console->log_dropped);
+        if(console->uart && HAL_UART_Transmit(console->uart,(uint8_t*)notice,(uint16_t)strlen(notice),5U)==HAL_OK)
+            console->log_dropped=0;
+    }
+}
+
+static void write_text(AppConsole *console, const char *text)
+{
+    if(!console || !text)return;
+    if(!console->control_mode) { write_wire(console,text); return; }
+    if(console->control_active && (
+       !strncmp(text,"$SPOTSTATE ",11) || !strncmp(text,"$SPOTDRIVE ",11) ||
+       !strncmp(text,"$PROBECONFIG ",13) || !strncmp(text,"OK",2) ||
+       !strncmp(text,"ERROR:",6) || !strncmp(text,"STOPPED:",8) ||
+       !strncmp(text,"ID ",3) || !strncmp(text,"unknown command",15))) {
+        control_reply(console,"DATA",text);
+    }
+    while(*text) {
+        size_t next=(console->log_head+1)%APP_CONSOLE_LOG_CAPACITY;
+        if(next==console->log_tail)++console->log_dropped;
+        else {console->log_queue[console->log_head]=*text;console->log_head=next;}
+        ++text;
+    }
 }
 
 static void echo_byte(AppConsole *console, uint8_t byte)
@@ -688,7 +740,7 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -1771,8 +1823,10 @@ void app_console_service_realtime(AppConsole *console) {
             int count=snprintf(battery,sizeof(battery),"$BATTERY mv=%u\r\n",(unsigned)mv);
             /* Foreground, bounded ~2ms at 115200 baud; never another servo read.
              * Defer telemetry when a realtime ACK owns this service slot. */
-            (void)HAL_UART_Transmit(console->uart,(uint8_t*)battery,(uint16_t)count,5U);
+            if(console->control_mode)write_text(console,battery);
+            else (void)HAL_UART_Transmit(console->uart,(uint8_t*)battery,(uint16_t)count,5U);
         }
+        flush_console_log(console);
         return;
     }
     console->stabilize_reply_pending=false;
@@ -2963,7 +3017,19 @@ static void process_realtime_line(AppConsole *console)
     if (console->realtime_overflow || console->realtime_length < 3U) {
         return;
     }
-    if (console->realtime_line[0]=='@' && console->realtime_line[1]=='B') {
+    if (console->realtime_line[0]=='@' && console->realtime_line[1]=='C') {
+        if(realtime_next_u32(&cursor,&sequence) && sequence && *cursor==' ') {
+            while(*cursor==' ')++cursor;
+            size_t length=strlen(cursor);
+            if(length && length<sizeof(console->control_command) &&
+               !console->control_pending && !console->control_active &&
+               sequence!=console->active_control_sequence) {
+                memcpy(console->control_command,cursor,length+1);
+                console->control_sequence=sequence;
+                console->control_pending=true;
+            }
+        }
+    } else if (console->realtime_line[0]=='@' && console->realtime_line[1]=='B') {
         int32_t action;
         if(realtime_next_i32(&cursor,&action) && realtime_at_end(cursor) && action>=0 && action<=2) {
             if(action!=2)console->robot->stabilization_enabled=action==1;
@@ -3024,6 +3090,12 @@ void app_console_init(AppConsole *console,
     console->realtime_length = 0U;
     console->realtime_overflow = false;
     console->stabilize_reply_pending = false;
+    console->control_pending=false;
+    console->control_sequence=0;
+    console->active_control_sequence=0;
+    console->control_active=console->control_mode=false;
+    console->log_head=console->log_tail=0;
+    console->log_dropped=0;
 
     if (uart != NULL) {
         (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
@@ -3039,6 +3111,7 @@ void app_console_on_rx_complete(AppConsole *console,
 
     const uint8_t byte = console->rx_byte;
     if (byte == 0x03U) {
+        console->control_pending=false;
         robot_request_motion_abort(console->robot);
     } else if (console->realtime_length != 0U ||
                (byte == '@' &&
@@ -3109,12 +3182,31 @@ void app_console_on_uart_error(AppConsole *console,
     console->overflow = false;
     console->realtime_length = 0U;
     console->realtime_overflow = false;
+    console->control_pending = false;
     __HAL_UART_CLEAR_OREFLAG(uart);
     (void)HAL_UART_Receive_IT(uart, &console->rx_byte, 1U);
 }
 
 void app_console_poll(AppConsole *console)
 {
+    if(console && console->control_pending && !console->line_ready) {
+        uint32_t mask=__get_PRIMASK();__disable_irq();
+        memcpy(console->line,console->control_command,sizeof(console->line));
+        console->active_control_sequence=console->control_sequence;
+        console->control_active=console->control_mode=true;
+        console->control_pending=false;
+        console->line_ready=true;
+        console->line_length=strlen(console->line);
+        if(!mask)__enable_irq();
+        bool drive=!strncmp(console->line,"drive ",6) || !strcmp(console->line,"walkprobe");
+        execute_line(console);
+        if(drive)command_sync_state(console);
+        console->line_length=0;console->line_ready=false;console->overflow=false;
+        control_reply(console,"DONE","");
+        console->control_active=false;
+        app_console_print_prompt(console);
+        return;
+    }
     app_console_service_realtime(console);
     if(console && console->robot && console->support_event_seen!=console->robot->support_event) {
         console->support_event_seen=console->robot->support_event;

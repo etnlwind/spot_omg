@@ -7,7 +7,7 @@ from .battery import BatteryWarning, reading as battery_reading
 
 NATIVE_PROFILES = ("s_native_v6_2_7", "s_native_v6_2_6", "s_native_v6_2_5", "s_native_v6_2_4", "s_native_v6_2_3", "s_native_v6_2_2", "s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
 SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1", "s_native_v6_2_2", "s_native_v6_2_3", "s_native_v6_2_4", "s_native_v6_2_5", "s_native_v6_2_6", "s_native_v6_2_7"}
-PROFILES = ("attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
+PROFILES = ("attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
     "attitudepd", "centerpivot", "arcsupport", "arcturn", "legacy", "crawl",
     "cruise", "trot", "highstep", "lift", "imu", "level", "level15", "joint",
     "jointfast", "jointsport", "cushion_reach", "cushion_j2lift", "cushion_wbc",
@@ -17,6 +17,9 @@ PROFILES = ("attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
 POSTURES = {"landing", "stow", "stand", "stand11"}
 READ_ONLY = {"syncstate", "targets", "gaitdiag", "baldiag", "imudiag",
              "locomotiondiag", "read 1", "identity", "log show 64", "stabilize status"}
+STOP_TIMEOUT = 5.
+DRAIN_IDLE_TIMEOUT = 5.
+DRAIN_TOTAL_TIMEOUT = 30.
 
 
 class ConsoleStream:
@@ -65,6 +68,8 @@ def drive_vector(x, y):
 class Controller:
     def __init__(self, simulator=False):
         self.simulator = simulator
+        self.separate_control = False
+        self.drain_state_seen = False
         self.stream = ConsoleStream()
         self.connected = False
         self.synced = False
@@ -78,6 +83,9 @@ class Controller:
         self.requires_release = True
         self.next_heartbeat = 0.
         self.deadline = 0.
+        self.drain_limit = 0.
+        self.stop_confirmed = False
+        self.resync_state_seen = False
         self.refresh_at = None
         self.pending = None
         self.command = None
@@ -104,7 +112,7 @@ class Controller:
     @property
     def supports_probe(self):
         return not self.simulator and self.state.get('rev') in {
-            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79'}
+            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81'}
 
     @staticmethod
     def parse_probe(values):
@@ -178,7 +186,7 @@ class Controller:
             if words[1:] not in [['show'], ['reset']]:
                 if len(words) not in {6,7,8} or words[1] != 'set':raise ValueError('잘못된 파라미터 명령')
                 self.parse_probe(words[2:])
-                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
+                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
         first = words[0]
         if first in POSTURES | {'relax', 'recover', 'hold'} and len(words) != 1:
             raise ValueError('자세 명령에는 추가 인자를 사용할 수 없습니다.')
@@ -199,7 +207,7 @@ class Controller:
             profile = words[1]
             if (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) and not self.simulator:
                 raise ValueError("이 보행 정책은 시뮬레이터 전용입니다.")
-            if profile in {*NATIVE_PROFILES, "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
+            if profile in {*NATIVE_PROFILES, "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
                 raise ValueError("제어기가 선택한 실험 정책을 지원하지 않습니다.")
 
     def request(self, line, now):
@@ -233,10 +241,10 @@ class Controller:
         if line.startswith('probeconfig set '):
             self.probe_config = None
             self.probe_expected = self.parse_probe(line.split()[2:])
-            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79"):self.probe_expected += (0,0)
+            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81"):self.probe_expected += (0,0)
         elif line == 'probeconfig reset':
             self.probe_config = None
-            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79") else ())
+            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81") else ())
         self.command = line
         self.command_ok = self.command_error = False
         self.command_state_seen = False
@@ -272,6 +280,7 @@ class Controller:
         self.vector = vector
         if self.phase == "idle":
             self.phase = "drive"
+            self.stop_confirmed = False
             self.refresh_at = None
             self.packet(f"drive {vector[0]} {vector[1]} {self.next_sequence()}\n")
             self.next_heartbeat = now + .2
@@ -285,7 +294,7 @@ class Controller:
         if self.phase == "drive":
             self.packet(f"@S {self.next_sequence()}\n", "stop")
             self.phase = "stopping"
-            self.deadline = now + 5
+            self.deadline = now + STOP_TIMEOUT
 
     def stop(self, now):
         """Normal walking STOP waits for the robot's return-to-stand completion."""
@@ -313,13 +322,14 @@ class Controller:
         self.vector = None
         self.requires_release = True
         self.command = None
+        self.stop_confirmed = False
         self.packet(b"\x03", "interrupt")
         self.phase = "stopping"
-        self.deadline = now + 5
+        self.deadline = now + STOP_TIMEOUT
 
     def disconnect(self, now):
         self.disconnect_requested = True
-        if self.phase == "idle" or not self.connected:
+        if self.phase in {"idle", "resync"} or not self.connected:
             self.fatal = True
         elif self.motion_active:
             self.interrupt(now)
@@ -331,9 +341,30 @@ class Controller:
             a, b = self.vector
             self.packet(f"@D {self.next_sequence()} {a} {b}\n", "update")
             self.next_heartbeat = now + .2
-        if self.phase in {"busy", "stopping", "draining"} and now >= self.deadline:
+        if (self.phase == "draining" and now >= self.deadline
+                and not self.separate_control
+                and now < self.drain_limit and self.stop_confirmed
+                and not self.disconnect_requested):
+            # A Stop ACK is already present, but its verbose diagnostic tail
+            # can be lost. Probe the console once; never restart queued motion.
+            self.pending = None
+            self.relax_pending = False
+            self.confirm_pose = None
+            self.command = None
+            self.command_error = False
+            self.synced = False
+            self.requires_release = True
+            self.resync_state_seen = False
+            self.stream = ConsoleStream()
+            self.phase = "resync"
+            self.deadline = now + STOP_TIMEOUT
+            self.packet("\nsyncstate\n")
+        if self.phase in {"busy", "stopping", "draining", "resync"} and now >= self.deadline:
+            message = ("종료 로그 또는 프롬프트 수신 시간 초과. 연결을 해제합니다."
+                       if self.phase == "draining" else
+                       "완료 응답 시간 초과. 정지 요청 후 연결을 해제합니다.")
             self.interrupt(now)
-            self.error = "완료 응답 시간 초과. 정지 요청 후 연결을 해제합니다."
+            self.error = message
             self.fatal = True
         if self.phase == "idle" and self.refresh_at is not None and now >= self.refresh_at:
             self._console("syncstate", now)
@@ -344,6 +375,12 @@ class Controller:
             self._console("read 1", now)
 
     def feed(self, data, now):
+        # STM32 prints all twelve servo diagnostics after reporting Stop.
+        # BLE may take more than five seconds to deliver them. Count each
+        # fragment as receive progress, but never extend the Stop ACK deadline
+        # or allow an endless stream without the command prompt.
+        if data and self.phase == "draining":
+            self.deadline = min(now + DRAIN_IDLE_TIMEOUT, self.drain_limit)
         for kind, line in self.stream.feed(data):
             if kind == "prompt":
                 self._prompt(now)
@@ -355,7 +392,12 @@ class Controller:
                 self.state = dict(word.split("=", 1) for word in line.split()[1:] if "=" in word)
                 self.caps = set(self.state.get("caps", "").split(","))
                 self.state_at = now
+                if self.phase == 'draining':
+                    self.drain_state_seen = True
                 self.synced = True
+                if self.phase == "resync":
+                    self.resync_state_seen = all(self.state.get(k) for k in ("pose", "torque", "safety"))
+                    self.synced = False  # A fresh prompt must follow this readback.
                 if self.command == 'syncstate':
                     self.command_state_seen = True
             if line.startswith('$PROBECONFIG '):
@@ -383,6 +425,8 @@ class Controller:
                 self.relax_pending = False
                 self.confirm_pose = None
             if failed or stopped:
+                if stopped and "reason=ok" in line.split():
+                    self.stop_confirmed = True
                 self.probe_running = False
                 self.probe_stop_at = None
                 self.relax_pending = False
@@ -394,13 +438,29 @@ class Controller:
                         self.pending = None
                         if stopped:
                             self.state['safety'] = 'fault'
+                    if self.phase != "draining":
+                        self.drain_state_seen = False
+                        self.drain_limit = now + DRAIN_TOTAL_TIMEOUT
                     self.phase = "draining"
-                    self.deadline = now + 5
+                    self.deadline = min(now + DRAIN_IDLE_TIMEOUT, self.drain_limit)
                 elif stopped and self.phase == "busy":
                     self.command_error = True
 
     def _prompt(self, now):
+        if self.phase == "resync":
+            # The leading newline may produce an empty prompt or finish a late
+            # diagnostic fragment. Neither proves that syncstate completed.
+            if not self.resync_state_seen or self.command_error:
+                return
+            self.synced = True
+            self.phase = "idle"
+            self.drain_limit = 0.
+            self.stop_confirmed = False
+            self.requires_release = True
+            self.refresh_at = None
+            return
         if self.phase == "draining":
+            self.drain_limit = 0.
             self.phase = "idle"
             if self.disconnect_requested:
                 self.fatal = True
@@ -411,7 +471,9 @@ class Controller:
                 except ValueError as exc:
                     self.error = str(exc)
             else:
-                self.refresh_at = now + .1
+                self.refresh_at = None if self.separate_control and self.drain_state_seen else now + .1
+                if self.separate_control and self.drain_state_seen:
+                    self.next_voltage_poll = now + 5
             return
         if self.phase != "busy":
             return
@@ -468,7 +530,7 @@ class Controller:
                 self._console("read 1", now)
         elif command == "read 1" and self.default_profile_pending and self.synced and self.state.get('safety') == 'ok' and self.state.get('pose') in {'stand', 'stand11', 'landing'}:
             self.default_profile_pending = False
-            profile = next((p for p in ("attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES if p in self.caps and
+            profile = next((p for p in ("attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES if p in self.caps and
                             (self.simulator or p not in SIMULATOR_NATIVE_PROFILES)), None)
             if profile and self.state.get('profile') != profile and self.caps & {'gaitprofiles', 'simprofiles'}:
                 prefix = 'gaitprofile' if 'gaitprofiles' in self.caps else 'simprofile'
@@ -480,6 +542,7 @@ class Controller:
         return dict(connected=self.connected and not self.fatal, synced=self.synced,
                     phase=self.phase, state=dict(self.state), caps=sorted(self.caps),
                     error=self.error, can_drive=self.can_drive, voltage=self.voltage if self.connected and not self.simulator else None,
+                    separate_control=self.separate_control,
                     voltage_at=self.voltage_at, state_at=self.state_at,
                     battery_warning=self.battery.snapshot() if self.connected and not self.simulator else {},
                     simulator=self.simulator, vector=self.vector, motion_active=self.motion_active,

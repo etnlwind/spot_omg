@@ -1,8 +1,8 @@
 # Spot OMG
 
-최신 실기는 `attitudepd-v3-v79`입니다. [V3 Stand(B) 구현·설치 기록](docs/ATTITUDEPD-V3-GAIT-STAND-2026-09-18.md)에서 설치 readback과 미실시한 Stand(B)·보행 시험을 구분해 확인하세요. 직전 V2의 8걸음 정상 종료와 사용자 관찰은 [V2 실기 기록](docs/ATTITUDEPD-V2-FRONT-CLEARANCE-2026-09-18.md)에 있습니다. 이전 파라미터 시험은 [V77-T1 기록](docs/V77-T1-REAR-PROBE.md)을 참고하세요.
+최신 실기는 `attitudepd-v4-v80`입니다. [V4 구현·설치 기록](docs/ATTITUDEPD-V4-COMMON-DIRECTION-GAITS-2026-09-18.md)에서 설치 후 V4 선택·Landing 도착·서보 설정 보존을 확인했습니다. V4 Stand 유지·보행 실기 시험은 아직입니다. 직전 V2의 8걸음 정상 종료와 사용자 관찰은 [V2 실기 기록](docs/ATTITUDEPD-V2-FRONT-CLEARANCE-2026-09-18.md)에 있습니다. 이전 파라미터 시험은 [V77-T1 기록](docs/V77-T1-REAR-PROBE.md)을 참고하세요.
 
-V3는 Stand와 보행 대기 자세를 B로 통일했습니다. [V3 구현·검증 기록](docs/ATTITUDEPD-V3-GAIT-STAND-2026-09-18.md)을 참고하세요. 앱·펌웨어 빌드, 가상 로봇 시험, iPhone 앱·실기 펌웨어 설치를 마쳤습니다. V3 Stand(B) 유지·실기 보행 시험은 아직입니다.
+현재 소스 기본은 [V4 전후 공통 2단 보행](docs/ATTITUDEPD-V4-COMMON-DIRECTION-GAITS-2026-09-18.md)입니다. 조이스틱 반에서는 V3 전진형, 끝에서는 V3 후진형을 양방향 공통으로 사용합니다. 기존 V3/B Stand를 보존했고 Windows 앱 갱신·시뮬레이션·V80 실기 설치를 완료했습니다. iPhone은 빌드 51 소스가 준비됐으며 Mac에서 빌드·설치해야 합니다. 기존 빌드 49에는 V4가 없습니다.
 
 Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
 

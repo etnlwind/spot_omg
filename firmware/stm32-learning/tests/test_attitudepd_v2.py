@@ -1,5 +1,6 @@
 """Shared C clearance contracts; not evidence of physical foot clearance."""
 import subprocess
+from servo.host_build import build_executable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -11,7 +12,7 @@ def test_v2_front_clearance_and_rear_preservation(tmp_path):
 #include "locomotion.h"
 int main(void) {
  int old=locomotion_profile_id("attitudepd"), v2=locomotion_profile_id("attitudepd_v2");
- assert(old==15 && v2==24 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v3"));
+ assert(old==15 && v2==24 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v4"));
  for(int c=-10;c<=10;c++)for(int t=0;t<=200;t++) {
   float linear=c/10.f,phase=t/200.f;
   GaitPolicyLegTarget a[4],b[4];
@@ -41,6 +42,6 @@ int main(void) {
 }
 '''
     c=tmp_path/'test.c';c.write_text(source)
-    exe=tmp_path/'test'
-    subprocess.run(['clang','-O2','-ffp-contract=off','-I',str(ROOT/'firmware/stm32-learning/Inc'),str(c),'-o',str(exe)],check=True)
+    exe=build_executable([c],ROOT/'firmware/stm32-learning/Inc',tmp_path/'test',
+                         extra=('-ffp-contract=off',))
     subprocess.run([str(exe)],check=True)

@@ -1,6 +1,7 @@
 """Exercise production phase-limit block without motors or transport."""
 from pathlib import Path
 import subprocess
+from servo.host_build import build_executable
 ROOT=Path(__file__).resolve().parents[3]
 
 def test_eight_nominal_placements_then_return(tmp_path):
@@ -28,6 +29,6 @@ int main(void) {
  }
 }
 '''
-    c=tmp_path/'counter.c';c.write_text(code);exe=tmp_path/'counter'
-    subprocess.run(['clang','-O1','-I',str(ROOT/'firmware/stm32-learning/Inc'),str(c),'-o',str(exe)],check=True)
+    c=tmp_path/'counter.c';c.write_text(code)
+    exe=build_executable([c],ROOT/'firmware/stm32-learning/Inc',tmp_path/'counter',extra=('-O1',))
     subprocess.run([str(exe)],check=True)

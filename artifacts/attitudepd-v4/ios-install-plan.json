@@ -1,0 +1,45 @@
+{
+  "device": "00008150-00141904267A401C",
+  "bundle": "com.etnlwind.spotomg.controller",
+  "build": "50",
+  "commands": [
+    [
+      "xcodebuild",
+      "-project",
+      "D:\\project\\spot_omg\\apps\\ios\\SpotOMGController\\SpotOMGController.xcodeproj",
+      "-scheme",
+      "SpotOMGController",
+      "-configuration",
+      "Debug",
+      "-destination",
+      "platform=iOS,id=00008150-00141904267A401C",
+      "-derivedDataPath",
+      "D:\\project\\spot_omg\\artifacts\\attitudepd-v4\\ios-install\\build",
+      "-allowProvisioningUpdates",
+      "build"
+    ],
+    [
+      "xcrun",
+      "devicectl",
+      "device",
+      "install",
+      "app",
+      "--device",
+      "00008150-00141904267A401C",
+      "D:\\project\\spot_omg\\artifacts\\attitudepd-v4\\ios-install\\build\\Build\\Products\\Debug-iphoneos\\SpotOMGController.app",
+      "--json-output",
+      "D:\\project\\spot_omg\\artifacts\\attitudepd-v4\\ios-install\\install.json"
+    ],
+    [
+      "xcrun",
+      "devicectl",
+      "device",
+      "info",
+      "apps",
+      "--device",
+      "00008150-00141904267A401C",
+      "--json-output",
+      "D:\\project\\spot_omg\\artifacts\\attitudepd-v4\\ios-install\\apps.json"
+    ]
+  ]
+}

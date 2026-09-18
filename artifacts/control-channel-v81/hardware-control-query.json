@@ -1,0 +1,129 @@
+{
+  "started": "2026-09-18T09:02:04.651029+00:00",
+  "motion_sent": false,
+  "success": true,
+  "commands": [
+    {
+      "command": "help",
+      "sequence": 3697353779,
+      "started": 290265.625,
+      "data": [],
+      "done": 290265.671,
+      "elapsed": 0.045999999972991645,
+      "console_bytes_at_done": 0
+    },
+    {
+      "command": "syncstate",
+      "sequence": 3697353780,
+      "started": 290265.671,
+      "data": [
+        "$SPOTSTATE pose=landing error=50 torque=off safety=ok balance=suspended rev=attitudepd-v4-v81 caps=controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754\r\n"
+      ],
+      "done": 290265.937,
+      "elapsed": 0.26600000000325963,
+      "console_bytes_at_done": 352
+    },
+    {
+      "command": "gaitdiag",
+      "sequence": 3697353781,
+      "started": 290267.453,
+      "data": [],
+      "done": 290267.562,
+      "elapsed": 0.10899999999674037,
+      "console_bytes_at_done": 3945
+    }
+  ],
+  "console": [
+    {
+      "at": 290265.718,
+      "text": "\r\nSpot OMG STM32 servo console\r\n  ping ID          ping one servo\r\n  scan             ping configured IDs 1..12\r\n  uarttest         USART1 loopback test (PA9 connected to PA10)\r\n  "
+    },
+    {
+      "at": 290265.734,
+      "text": "busprobe ID      send ping and print raw USART1 response bytes\r\n  linestate        sample the idle level of PA9/PA10\r\n  read ID          read position/load/current/state\r\n "
+    },
+    {
+      "at": 290266.0,
+      "text": " move ID RAW      safe single move, max delta 256 ticks\r\n  targets          print calibrated stand raw targets\r\n  status           read health state from all 12 servos\r\n  syncstate"
+    },
+    {
+      "at": 290266.031,
+      "text": "        compact mobile-app state snapshot\r\n  gaitprofile NAME legacy|crawl|cruise|trot|highstep|lift|imu|level|level15|joint|jointfast|jointsport (idle)\r\n  heading on|off   IMU for"
+    },
+    {
+      "at": 290266.046,
+      "text": "ward heading hold (idle)\r\n  tracking on|off  experimental tracking governor (idle; default off)\r\n  trackingdiag    tracking error, age and phase rate\r\n  profile [S A]   show/set sp"
+    },
+    {
+      "at": 290266.078,
+      "text": "eed 1..3400, acceleration 0..254\r\n  echo on|off     STM32 input echo control (default off)\r\n  hold             torque on at all current positions\r\n  stand            direct synchro"
+    },
+    {
+      "at": 290266.093,
+      "text": "nized stand move\r\n  stand11          straighten every leg (J2=0, J3=0)\r\n  forward11        from stand: J2=-90/J3=0 together, 24s\r\n  landing          calibrated landing pose (J2=40,"
+    },
+    {
+      "at": 290266.125,
+      "text": " J3=130)\r\n  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms\r\n  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop\r\n  trot2 [C [MS]]   circular-foot diagonal tr"
+    },
+    {
+      "at": 290266.14,
+      "text": "ot; Ctrl+C stop\r\n  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)\r\n  trot5 [C [MS]]   CAD optimized forward (3 cycles, 844ms); IMU monitor only\r\n  trot4 [C [MS]]   post"
+    },
+    {
+      "at": 290266.171,
+      "text": "ure-smooth reduced-path trot (default 1600ms)\r\n  trot4back [C [MS]] reverse trot4 with IMU pitch placement\r\n  turn left|right [C [MS]] differential trot turn (default 2200ms)\r\n  dr"
+    },
+    {
+      "at": 290266.187,
+      "text": "ive LINEAR YAW SEQ continuous 50Hz remote drive; @D update, @S stop\r\n  crab [left|right [C [MS]]] four-beat crawl (default left, 4000ms)\r\n  fwupdate         torque off and reboot i"
+    },
+    {
+      "at": 290266.218,
+      "text": "nto BLE update bootloader\r\n  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n  relax [ID]       torque off all servos, or only ID\r\n  safety           stall dete"
+    },
+    {
+      "at": 290266.234,
+      "text": "ctor state and the latched fault\r\n  probeconfig show|reset|set LIFT_MM LINEAR MS all|rl|rr\r\n  walkprobe        execute configured bounded V625 probe\r\n  rearprobe rl|rr  original re"
+    },
+    {
+      "at": 290266.25,
+      "text": "ar trajectory; other three legs S\r\n  jointtrace arm|off|status|dump  raw timed gait feedback (RAM)\r\n  gaitdiag         last gait tracking/current/voltage report\r\n  imutrace status|"
+    },
+    {
+      "at": 290266.281,
+      "text": "dump  paged timed gait IMU; armed with jointtrace\r\n  baldiag          recent balance frames and tilt snapshot\r\n  baltest          preview static balance correction; no servo motion"
+    },
+    {
+      "at": 290266.296,
+      "text": "\r\n  recover          clear a safety fault and hold where the legs are\r\n  i2cscan          scan I2C1 for the BNO055\r\n  spitest          SPI1 loopback test (BNO086 removed, PA7 conne"
+    },
+    {
+      "at": 290266.328,
+      "text": "cted to PA6)\r\n  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n  imursttest       hold PB2/BNO086 RST low for 5 seconds\r\n  imu on|off|status control 10 Hz"
+    },
+    {
+      "at": 290266.343,
+      "text": " IMU logging (default off)\r\n  imucal status|device|level|clear BNO055 persistent calibration\r\n  balance full|normal|on|off|status IMU balance (default full/on)\r\n  mechdiag capture "
+    },
+    {
+      "at": 290266.359,
+      "text": "LABEL  persist 12 motor readings; no motion\r\n  log status|time MS|show [N]|clear persistent flight recorder\r\n  help             show this help\r\n\r\nConsole echo: off\r\n# $SPOTSTATE po"
+    },
+    {
+      "at": 290266.375,
+      "text": "se=landing error=50 torque=off safety=ok balance=suspended rev=attitudepd-v4-v81 caps=controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,att"
+    },
+    {
+      "at": 290266.406,
+      "text": "itudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batteryt"
+    },
+    {
+      "at": 290266.421,
+      "text": "elemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754\r\n# "
+    }
+  ],
+  "initial_state": "$SPOTSTATE pose=landing error=50 torque=off safety=ok balance=suspended rev=attitudepd-v4-v81 caps=controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754",
+  "logs_after_help_done": true,
+  "logs_after_state_done": true
+}

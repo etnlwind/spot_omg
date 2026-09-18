@@ -1,0 +1,23 @@
+ports:[SpotOMG-Bridge] link=ble-esp32-ota
+ESP32 image: D:\project\spot_omg\artifacts\control-channel-v81\esp32\control-bridge-v1.bin (1185360 bytes, sha256=d52af40301d5970b4e272ac432d0bb9a5287f4866b558eecb9dd6137b7b53439)
+Torque off confirmed; updating without pose motion
+Traceback (most recent call last):
+Uploading: 10%
+Uploading: 20%
+Uploading: 30%
+Uploading: 40%
+Uploading: 50%
+Uploading: 60%
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "D:\project\spot_omg\scripts\hardware\install_control_bridge.py", line 42, in <module>
+    if __name__=='__main__':main()
+  File "D:\project\spot_omg\scripts\hardware\install_control_bridge.py", line 32, in main
+    result=update_esp32_firmware(SimpleNamespace(image=IMAGE,ble_name='SpotOMG-Bridge',
+  File "D:\project\spot_omg\tools\servo_tool\servo\cli.py", line 2222, in update_esp32_firmware
+    response = _read_esp32_ota_response(transport, 15.0)
+  File "D:\project\spot_omg\tools\servo_tool\servo\cli.py", line 2156, in _read_esp32_ota_response
+    raise RuntimeError("ESP32 BLE update response timed out")
+RuntimeError: ESP32 BLE update response timed out

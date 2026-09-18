@@ -1,4 +1,20 @@
-# V6.2.7 업데이트
+# V4 / Windows 0.1.4 업데이트
+
+V81 STM32와 새 ESP32 브리지에서는 콘솔 로그와 제어 응답을 별도 BLE 특성으로
+처리합니다. 앱에 `전용 제어 채널`이 표시되는지 확인하세요. 상세 로그는 계속
+출력되며, 로그 프롬프트를 기다리지 않고 명령 번호별 완료 응답으로 조작을 재개합니다.
+[구조·검증·설치 기록](../../docs/CONTROL-CHANNEL-V81-2026-09-18.md).
+구형 브리지/펌웨어에서는 아래 0.1.3 방식으로 연결됩니다.
+
+최신 모델은 `attitudepd_v4`이며 실제 로봇에는 `attitudepd-v4-v80`을 설치했습니다.
+[최신 인수인계](../../docs/HANDOFF-LATEST.md)와
+[V4 구현·검증](../../docs/ATTITUDEPD-V4-COMMON-DIRECTION-GAITS-2026-09-18.md)을 확인하세요.
+Windows 0.1.3은 정상 Stop 확인 후 진단 끝부분이 누락되면 상태를 재조회해 연결을 복구합니다.
+계속 누른 상태에서 불필요한 Stop이 발생한 원인은 조사 중이며 원인별 입력 로그를 추가했습니다.
+[원인·재현·설치 기록](../../docs/WINDOWS-STOP-DISCONNECT-2026-09-18.md).
+빌드 결과는 `dist/SpotOMGController/SpotOMGController.exe`입니다.
+
+## 과거 V6.2.7 기록
 
 **실기 첫걸음 전도 실패가 보고됐습니다.** [최신 인수인계](../../docs/HANDOFF-2026-09-16-V627-FIRST-STEP-FALL.md)를 확인하세요.
 
@@ -95,6 +111,9 @@ python -X utf8 simulation/mujoco/virtual_robot.py --viewer --no-ble --host 127.0
   iOS의 15% dead zone, 30% 최소 motion 및 축별 보정을 사용합니다.
 - 손을 놓으면 `@S SEQ`를 전송하고 heartbeat를 중단합니다. 종료 응답 뒤 `# `까지
   확인해야 새 동작을 시작합니다. 정지 확인 5초 초과 시 Ctrl+C 후 연결을 해제합니다.
+  정지/오류 종료 응답을 받은 후에는 남은 로그 수신을 별도로 기다립니다.
+  패킷마다 5초 무수신 제한을 갱신하되 전체 30초로 제한하며, `# ` 전에는
+  새 동작·상태 조회·heartbeat를 보내지 않습니다.
 - GUI pulse가 600ms 이상 끊기면 통신 스레드가 정지합니다. 제어기의 기존
   800ms watchdog은 그대로 유지합니다. 오래된 UI 명령은 전송하지 않습니다.
 - Relax는 사용자 확인 → Landing 명령 완료 ACK → 새 `syncstate`의 Landing 확인 →

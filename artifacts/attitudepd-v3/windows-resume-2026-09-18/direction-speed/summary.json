@@ -1,0 +1,374 @@
+{
+  "profile": "attitudepd_v3",
+  "source_commit": "2450d3268ffe313cf4b80213eaeef234a40bd9fb",
+  "manifest_sha256": "e7adbad5e38330ec71ad9bcec0b38a394ad6776b7f5479f065575625526c7674",
+  "physical_robot_test": false,
+  "backend": "MuJoCo estimated physics",
+  "PD": "off",
+  "heading_control": "off",
+  "drive_duration_s": 12.0,
+  "measurement": "50 Hz world X root position linear fit, walk +2s to before stop; world X is initial forward",
+  "deployed_forward_params": [
+    1.35,
+    0.52,
+    0.08,
+    0.024,
+    0.22,
+    -0.035,
+    0.75
+  ],
+  "deployed_reverse_params": [
+    1.05,
+    0.52,
+    0.07,
+    0.022,
+    0.20175,
+    -0.035,
+    0.75
+  ],
+  "physics_parameters": {
+    "status": "Measured total mass; estimated distribution, inertia, motor and contact dynamics",
+    "mass_kg": {
+      "chassis_without_battery_or_leg_groups": 1.1189631650750342,
+      "battery": 0.3729877216916781,
+      "j1_group": 0.07459754433833561,
+      "j2_group": 0.13955957253296955,
+      "j3_group": 0.09635516143701683
+    },
+    "mass_notes": "User-measured total robot mass, including battery and cushions: 2.754 kg. Non-cushion group masses were uniformly scaled from prior estimates; individual battery/chassis/leg masses and COM remain estimated.",
+    "battery_center_cad_m": [
+      0.05225,
+      0.1495,
+      0.06
+    ],
+    "battery_size_m": [
+      0.045,
+      0.14,
+      0.04
+    ],
+    "gravity_m_s2": 9.81,
+    "timestep_s": 0.0005,
+    "friction": [
+      0.8,
+      0.005,
+      0.0001
+    ],
+    "contact_time_constant_s": 0.01,
+    "contact_damping_ratio": 1.0,
+    "foot_radius_m": 0.015,
+    "joint_damping": 0.05,
+    "joint_friction_nm": 0.02,
+    "rotor_armature_kg_m2": 0.0001,
+    "servo_kp": 35.0,
+    "servo_kd": 0.8,
+    "command_delay_s": 0.02,
+    "target_acceleration_rad_s2": 25.0,
+    "pack_open_circuit_voltage": 11.1,
+    "pack_and_wiring_resistance_ohm": 0.06,
+    "electronics_current_a": 0.5,
+    "motor_3215": {
+      "stall_nm": 2.941995,
+      "rated_nm": 0.980665,
+      "speed_rad_s": 4.717106,
+      "stall_current_a": 2.7,
+      "idle_current_a": 0.18
+    },
+    "motor_3250": {
+      "stall_nm": 4.903325,
+      "rated_nm": 1.569064,
+      "speed_rad_s": 7.873666,
+      "stall_current_a": 4.2,
+      "idle_current_a": 0.28
+    },
+    "sources": [
+      "https://www.feetechrc.com/525603.html",
+      "https://www.feetechrc.com/en/562636.html"
+    ],
+    "limitations": [
+      "Rigid bodies only; no PLA/PETG bending, fracture or layer anisotropy",
+      "Collision primitives approximate CAD; no exact concave mesh contacts",
+      "Joint axes and exported zero remain provisional",
+      "PD gains, delays, armature, friction, battery resistance, COM and motor curve are estimates",
+      "No thermal protection, firmware watchdog, exact firmware actuator limiter, gear backlash or battery discharge chemistry",
+      "Rated torque is reported as overload exposure, not enforced as a peak torque limit; long runs are not thermally validated"
+    ],
+    "battery_pack": {
+      "chemistry": "LiPo",
+      "series_cells": 3,
+      "nominal_voltage_v": 11.1,
+      "source": "User confirmed 11.1V 3S; simulated source voltage is a reference operating point, not measured present voltage"
+    },
+    "foot_cushion": {
+      "thickness_m": 0.01,
+      "radius_m": 0.015,
+      "mass_kg": 0.005,
+      "friction": [
+        1.0,
+        0.005,
+        0.0001
+      ],
+      "contact_time_constant_s": 0.02,
+      "damping_ratio": 1.0,
+      "shape": "elastic_cap",
+      "side_wall_m": 0.003,
+      "total_length_m": 0.027,
+      "corner_radius_m": 0.004,
+      "align_to_triangle_base": true,
+      "sole_diameter_m": 0.0373
+    },
+    "mass_measurement": {
+      "total_kg": 2.754,
+      "includes_battery_and_cushions": true,
+      "distribution": "Estimated: non-cushion groups scaled uniformly; not individually measured"
+    },
+    "experimental_stow": true
+  },
+  "cases": [
+    {
+      "case": "forward_1000",
+      "linear_per_mille": 1000,
+      "drive_at": 7.0,
+      "stop_at": 19.0,
+      "fault": null,
+      "final_pose": "stand",
+      "final_target_b_error_deg": 0.0,
+      "commanded_cad_kinematics": {
+        "fl_stance_dx_mm": -83.69329833984375,
+        "rr_stance_dx_mm": -83.69322204589844,
+        "fl_stance_dz_mm": 2.0978524684906006
+      },
+      "steady_sample_count": 500,
+      "complete": true,
+      "steady_window_s": [
+        2.0,
+        11.98
+      ],
+      "signed_world_x_speed_m_s": 0.14303973580225987,
+      "speed_in_command_direction_m_s": 0.14303973580225987,
+      "endpoint_world_x_speed_m_s": 0.14368113376503364,
+      "lateral_speed_m_s": 0.002423609891291885,
+      "phase_hz": 0.7407402990750649,
+      "measured_phase_period_s": 1.3500008049361742,
+      "shared_c_period_s": 1.350000023841858,
+      "max_abs_heading_deg": 3.2355808872089225,
+      "heading_change_deg": 3.9617169321977936,
+      "max_abs_roll_deg": 5.682919117882276,
+      "max_abs_pitch_deg": 3.0501574082391234,
+      "mean_root_z_m": -0.0736001247225219,
+      "max_tracking_error_deg": 15.188695309798826,
+      "min_voltage_v": 10.299980119229396,
+      "load_weighted_contact_slip_m_s": 0.0497606520490452,
+      "tracking_enabled": false,
+      "middle_swing": {
+        "fl": {
+          "samples": 151,
+          "loaded_fraction": 0.5165562913907285,
+          "min_clearance_mm": -1.5420784127837521
+        },
+        "fr": {
+          "samples": 136,
+          "loaded_fraction": 0.5220588235294118,
+          "min_clearance_mm": -1.4783296396261822
+        },
+        "rl": {
+          "samples": 136,
+          "loaded_fraction": 0.10294117647058823,
+          "min_clearance_mm": -2.6689905163607976
+        },
+        "rr": {
+          "samples": 151,
+          "loaded_fraction": 0.10596026490066225,
+          "min_clearance_mm": -2.742392059590329
+        }
+      }
+    },
+    {
+      "case": "reverse_1000",
+      "linear_per_mille": -1000,
+      "drive_at": 7.0,
+      "stop_at": 19.0,
+      "fault": null,
+      "final_pose": "stand",
+      "final_target_b_error_deg": 0.0,
+      "commanded_cad_kinematics": {
+        "fl_stance_dx_mm": 73.85022735595703,
+        "rr_stance_dx_mm": 73.85022735595703,
+        "fl_stance_dz_mm": -2.8844475746154785
+      },
+      "steady_sample_count": 500,
+      "complete": true,
+      "steady_window_s": [
+        2.0,
+        11.98
+      ],
+      "signed_world_x_speed_m_s": -0.0891660918098866,
+      "speed_in_command_direction_m_s": 0.0891660918098866,
+      "endpoint_world_x_speed_m_s": -0.08922264116360212,
+      "lateral_speed_m_s": -0.001110164151470471,
+      "phase_hz": 0.9523810092731221,
+      "measured_phase_period_s": 1.0499999372763866,
+      "shared_c_period_s": 1.0499999523162842,
+      "max_abs_heading_deg": 2.2792545077146946,
+      "heading_change_deg": -1.9393117696351108,
+      "max_abs_roll_deg": 8.261961856790071,
+      "max_abs_pitch_deg": 4.093876169362978,
+      "mean_root_z_m": -0.08539236363267602,
+      "max_tracking_error_deg": 19.945735313318185,
+      "min_voltage_v": 10.408361576692231,
+      "load_weighted_contact_slip_m_s": 0.07254016335844247,
+      "tracking_enabled": false,
+      "middle_swing": {
+        "fl": {
+          "samples": 140,
+          "loaded_fraction": 0.9785714285714285,
+          "min_clearance_mm": -1.909656942735989
+        },
+        "fr": {
+          "samples": 146,
+          "loaded_fraction": 0.9931506849315068,
+          "min_clearance_mm": -1.864649291555727
+        },
+        "rl": {
+          "samples": 146,
+          "loaded_fraction": 0.2054794520547945,
+          "min_clearance_mm": -2.6758173759300306
+        },
+        "rr": {
+          "samples": 140,
+          "loaded_fraction": 0.22857142857142856,
+          "min_clearance_mm": -2.700426332943911
+        }
+      }
+    },
+    {
+      "case": "forward_500",
+      "linear_per_mille": 500,
+      "drive_at": 7.0,
+      "stop_at": 19.0,
+      "fault": null,
+      "final_pose": "stand",
+      "final_target_b_error_deg": 0.0,
+      "commanded_cad_kinematics": {
+        "fl_stance_dx_mm": -41.89482498168945,
+        "rr_stance_dx_mm": -41.89474868774414,
+        "fl_stance_dz_mm": 1.5240013599395752
+      },
+      "steady_sample_count": 500,
+      "complete": true,
+      "steady_window_s": [
+        2.0,
+        11.98
+      ],
+      "signed_world_x_speed_m_s": 0.04965147159734359,
+      "speed_in_command_direction_m_s": 0.04965147159734359,
+      "endpoint_world_x_speed_m_s": 0.04970101825631442,
+      "lateral_speed_m_s": 0.0006989668365839226,
+      "phase_hz": 0.6304175140012366,
+      "measured_phase_period_s": 1.5862503464617237,
+      "shared_c_period_s": 1.5862500667572021,
+      "max_abs_heading_deg": 2.345988313883776,
+      "heading_change_deg": 0.9928958449909221,
+      "max_abs_roll_deg": 3.8570121996774147,
+      "max_abs_pitch_deg": 1.9773472524547089,
+      "mean_root_z_m": -0.07147965110229336,
+      "max_tracking_error_deg": 5.657475758966509,
+      "min_voltage_v": 10.443255992592016,
+      "load_weighted_contact_slip_m_s": 0.01694196025772522,
+      "tracking_enabled": false,
+      "middle_swing": {
+        "fl": {
+          "samples": 137,
+          "loaded_fraction": 0.5547445255474452,
+          "min_clearance_mm": -2.3173690840738814
+        },
+        "fr": {
+          "samples": 149,
+          "loaded_fraction": 0.5838926174496645,
+          "min_clearance_mm": -2.3315103370834414
+        },
+        "rl": {
+          "samples": 149,
+          "loaded_fraction": 0.040268456375838924,
+          "min_clearance_mm": -0.5587412514197962
+        },
+        "rr": {
+          "samples": 137,
+          "loaded_fraction": 0.058394160583941604,
+          "min_clearance_mm": -0.5799149414038307
+        }
+      }
+    },
+    {
+      "case": "reverse_500",
+      "linear_per_mille": -500,
+      "drive_at": 7.0,
+      "stop_at": 19.0,
+      "fault": null,
+      "final_pose": "stand",
+      "final_target_b_error_deg": 0.0,
+      "commanded_cad_kinematics": {
+        "fl_stance_dx_mm": 36.960853576660156,
+        "rr_stance_dx_mm": 36.9608268737793,
+        "fl_stance_dz_mm": -1.5494227409362793
+      },
+      "steady_sample_count": 500,
+      "complete": true,
+      "steady_window_s": [
+        2.0,
+        11.98
+      ],
+      "signed_world_x_speed_m_s": -0.0365587463382187,
+      "speed_in_command_direction_m_s": 0.0365587463382187,
+      "endpoint_world_x_speed_m_s": -0.03640910185102143,
+      "lateral_speed_m_s": 0.0003286735118539129,
+      "phase_hz": 0.8105368223549709,
+      "measured_phase_period_s": 1.2337502410989227,
+      "shared_c_period_s": 1.2337499856948853,
+      "max_abs_heading_deg": 1.4606156936971697,
+      "heading_change_deg": 0.42282325461285425,
+      "max_abs_roll_deg": 1.6808396263578496,
+      "max_abs_pitch_deg": 0.92725757711133,
+      "mean_root_z_m": -0.08724469332355682,
+      "max_tracking_error_deg": 5.357919126586624,
+      "min_voltage_v": 10.609690058277655,
+      "load_weighted_contact_slip_m_s": 0.024924733573835057,
+      "tracking_enabled": false,
+      "middle_swing": {
+        "fl": {
+          "samples": 147,
+          "loaded_fraction": 0.9659863945578231,
+          "min_clearance_mm": -2.085128823834926
+        },
+        "fr": {
+          "samples": 141,
+          "loaded_fraction": 0.9858156028368794,
+          "min_clearance_mm": -2.049565706467259
+        },
+        "rl": {
+          "samples": 141,
+          "loaded_fraction": 0.3262411347517731,
+          "min_clearance_mm": -1.708046741676069
+        },
+        "rr": {
+          "samples": 147,
+          "loaded_fraction": 0.36054421768707484,
+          "min_clearance_mm": -1.715512057325015
+        }
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "input_magnitude": 1000,
+      "both_complete": true,
+      "reverse_forward_body_speed_ratio": 0.6233658871766308,
+      "reverse_forward_phase_rate_ratio": 1.2857151291246407
+    },
+    {
+      "input_magnitude": 500,
+      "both_complete": true,
+      "reverse_forward_body_speed_ratio": 0.7363074076574728,
+      "reverse_forward_phase_rate_ratio": 1.2857143152805572
+    }
+  ]
+}

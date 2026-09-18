@@ -97,11 +97,12 @@ enum RobotConnectionTarget: String, CaseIterable {
 
 
 enum SimulatorGaitProfile: String, CaseIterable {
-    case attitudepd_v3, attitudepd_v2, s_native_v6_2_7, s_native_v6_2_6, s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
+    case attitudepd_v4, attitudepd_v3, attitudepd_v2, s_native_v6_2_7, s_native_v6_2_6, s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
     static var newest: Self { .allCases[0] }
     case attitudepd, centerpivot, arcsupport, arcturn, legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
     case cushion_reach, cushion_j2lift, cushion_wbc, cushion_forward, cushion_support_shift, cushion_support_shift_v2, cushion_v2_push, cushion_diagonal_sync_wide80
     func isSupported(capabilities: Set<String>) -> Bool {
+        (self != .attitudepd_v4 || capabilities.contains("attitudepd_v4")) &&
         (self != .attitudepd_v3 || capabilities.contains("attitudepd_v3")) &&
         (self != .attitudepd_v2 || capabilities.contains("attitudepd_v2")) &&
         (self != .s_native_v6_2_7 || capabilities.contains("s_native_v6_2_7")) &&
@@ -141,6 +142,7 @@ enum SimulatorGaitProfile: String, CaseIterable {
         case .s_native_v3: return "V3 · 뒤로 밀기 60mm"
         case .s_native_v2: return "V2 · 연속 교대"
         case .s_native_v1: return "V1 · 대각선 동기"
+        case .attitudepd_v4: return "IMU 자세 안정화 V4 · 전후 공통 2단 보행 · 실험"
         case .attitudepd_v3: return "IMU 자세 안정화 V3 · 보행 대기 Stand · 실험"
         case .attitudepd_v2: return "IMU 자세 안정화 V2 · 앞발 들림 +4mm · 실험"
         case .attitudepd: return "IMU 자세 안정화 · PD · 실험"
@@ -195,6 +197,7 @@ extension SimulatorGaitProfile {
         case .attitudepd: return nil
         case .attitudepd_v2: return nil
         case .attitudepd_v3: return nil
+        case .attitudepd_v4: return nil
         case .cushion_reach: return 0.045898422
         case .cushion_j2lift: return 0.034639744
         case .cushion_forward: return nil

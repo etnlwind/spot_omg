@@ -12,7 +12,7 @@ from simulation.mujoco.scripts.visualization.run_calculated_placement import par
 from simulation.mujoco.runtime.cad_physics import Simulation
 from simulation.mujoco.runtime.virtual_robot import RobotController, ConsoleServer
 
-@pytest.mark.parametrize("profile", ["attitudepd", "attitudepd_v2", "attitudepd_v3"])
+@pytest.mark.parametrize("profile", ["attitudepd", "attitudepd_v2", "attitudepd_v3", "attitudepd_v4"])
 def test_tcp_policy_runtime_toggle_and_stop(profile):
     robot=RobotController(Simulation(parameters()))
     server=ConsoleServer(robot,'127.0.0.1',0)

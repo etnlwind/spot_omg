@@ -68,6 +68,7 @@ def card(title=None):
 
 class Joystick(QWidget):
     vectorChanged = Signal(object)
+    releaseReason = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -124,9 +125,11 @@ class Joystick(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.held = False
-            if getattr(self,"auto_return",True):self.release()
+            if getattr(self,"auto_return",True):self.release("mouseReleaseEvent")
 
-    def release(self):
+    def release(self, reason="explicit release"):
+        if self.held or self.vector != (0., 0.):
+            self.releaseReason.emit(f"스틱 해제: {reason}; held={self.held}; buttons={QApplication.mouseButtons()}")
         self.held = False
         self.vector = (0., 0.)
         self.vectorChanged.emit(None)
@@ -134,7 +137,7 @@ class Joystick(QWidget):
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.EnabledChange and not self.isEnabled():
-            self.release()
+            self.release("joystick disabled")
         super().changeEvent(event)
 
 
@@ -348,7 +351,7 @@ class Window(QMainWindow):
         buttons.addWidget(self.probe_save);buttons.addWidget(self.probe_load)
         self.load_probe()
         self.probe_apply = QPushButton("설정 적용 + 조회")
-        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79") else "")))
+        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81") else "")))
         self.probe_read = QPushButton("설정 조회"); self.probe_read.clicked.connect(lambda: self.send("probeconfig show"))
         self.probe_start = QPushButton("시험 시작"); self.probe_start.clicked.connect(lambda: self.send("app_probe_start"))
         for button in [self.probe_apply,self.probe_read,self.probe_start]:buttons.addWidget(button)
@@ -363,6 +366,7 @@ class Window(QMainWindow):
         drive_card.setMinimumHeight(340)
         self.joystick = Joystick()
         self.joystick.vectorChanged.connect(self.set_vector)
+        self.joystick.releaseReason.connect(self.connection.trace)
         self.auto_return_button=QPushButton("자동 복귀 ON");self.auto_return_button.setCheckable(True);self.auto_return_button.setChecked(True)
         self.auto_return_button.toggled.connect(self.toggle_auto_return)
         layout.addWidget(self.auto_return_button,0,Qt.AlignmentFlag.AlignLeft)
@@ -491,7 +495,7 @@ class Window(QMainWindow):
         caps = set(state.get("caps", []))
         robot = state.get("state", {})
         stowed = robot.get("pose") in {"stow", "stow-paused"}
-        names = {"offline": "연결 안 됨", "connecting": "연결 중", "busy": "응답 대기", "drive": "조종 중", "stopping": "정지 확인 중", "draining": "종료 응답 수신 중", "idle": "연결됨"}
+        names = {"offline": "연결 안 됨", "connecting": "연결 중", "busy": "응답 대기", "drive": "조종 중", "stopping": "정지 확인 중", "draining": "종료 응답 수신 중", "resync": "정지 후 상태 재확인", "idle": "연결됨"}
         self.connection_badge.setText("●  " + names.get(phase, phase))
         self.connect_button.setText("연결 해제" if connected else "연결 취소" if phase == "connecting" else "연결하기")
         locked = phase != "offline"
@@ -509,7 +513,7 @@ class Window(QMainWindow):
         self.probe_mode.setEnabled(idle)
         probe_idle = idle and parameter_mode and state.get('supports_probe',False) and not stowed
         for field in [self.probe_lift,self.probe_linear,self.probe_duration,self.probe_legs,self.probe_save,self.probe_load]:field.setEnabled(probe_idle)
-        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79"))
+        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81"))
         self.probe_fr_extra.setEnabled(self.probe_width.isEnabled())
         self.probe_fr_extra.setToolTip("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 복귀")
         self.probe_width.setToolTip("수직 0mm · 안쪽 음수 · 바깥 양수. 한쪽 발 기준입니다.")
@@ -532,7 +536,7 @@ class Window(QMainWindow):
         self.profile_button.setEnabled(profiles_ok)
         for index, profile in enumerate(PROFILES):
             allowed = not (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) or state.get("simulator", False)
-            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
+            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
             self.profiles.model().item(index).setEnabled(allowed)
         self.balance_button.setEnabled(idle and not stowed and bool(caps & {"balancecontrol", "simbalance"}))
         self.heading_button.setEnabled(idle and not stowed and "headinghold" in caps)
@@ -554,7 +558,8 @@ class Window(QMainWindow):
         stale = time.monotonic() - (state.get("voltage_at") or 0) > 15
         self.metrics["voltage"].setText(f"≈ {voltage:.1f} V" + (" · 이전" if stale else "") if voltage else "—")
         self.show_battery_warning(state.get("battery_warning", {}), state.get("simulator", False))
-        self.firmware.setText("펌웨어  " + robot.get("rev", "—") + "\n토크  " + robot.get("torque", "—"))
+        self.firmware.setText("펌웨어  " + robot.get("rev", "—") + "\n토크  " + robot.get("torque", "—") +
+                              (" · 전용 제어 채널" if state.get("separate_control") else ""))
         self.drive_status.setText("조종 중  /  놓으면 정지" if phase == "drive" else names.get(phase, phase))
         self.show_error(state.get("error", ""))
 
@@ -636,9 +641,9 @@ class Window(QMainWindow):
         self.joystick.update()
         self.connection.pulse(vector)
 
-    def release_input(self):
+    def release_input(self, reason="release_input"):
         self.keys.clear()
-        self.joystick.release()
+        self.joystick.release(reason)
         self.input_vector = None
         self.connection.pulse(None)
 
@@ -654,16 +659,16 @@ class Window(QMainWindow):
             self.sim_pulse_at = time.monotonic() + .4
 
     def walk_stop(self):
-        self.release_input()
+        self.release_input("Stop button")
         self.connection.stop(graceful=True)
 
     def emergency_stop(self):
-        self.release_input()
+        self.release_input("emergency button/key")
         self.connection.stop()
 
     def application_state(self, state):
         if state != Qt.ApplicationState.ApplicationActive:
-            self.release_input()
+            self.release_input(f"application state {state}")
             if self.snapshot.get("motion_active"):
                 self.connection.stop()
 
