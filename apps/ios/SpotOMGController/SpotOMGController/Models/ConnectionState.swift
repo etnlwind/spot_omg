@@ -97,11 +97,13 @@ enum RobotConnectionTarget: String, CaseIterable {
 
 
 enum SimulatorGaitProfile: String, CaseIterable {
-    case attitudepd_v4, attitudepd_v3, attitudepd_v2, s_native_v6_2_7, s_native_v6_2_6, s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
+    case attitudepd_v6, attitudepd_v5, attitudepd_v4, attitudepd_v3, attitudepd_v2, s_native_v6_2_7, s_native_v6_2_6, s_native_v6_2_5, s_native_v6_2_4, s_native_v6_2_3, s_native_v6_2_2, s_native_v6_2_1, s_native_v6_2, s_native_v6_1, s_native_v6, s_native_v5, s_native_v4, s_native_v3, s_native_v2, s_native_v1
     static var newest: Self { .allCases[0] }
     case attitudepd, centerpivot, arcsupport, arcturn, legacy, crawl, cruise, trot, highstep, lift, imu, level, level15, joint, jointfast, jointsport
     case cushion_reach, cushion_j2lift, cushion_wbc, cushion_forward, cushion_support_shift, cushion_support_shift_v2, cushion_v2_push, cushion_diagonal_sync_wide80
     func isSupported(capabilities: Set<String>) -> Bool {
+        (self != .attitudepd_v6 || capabilities.contains("attitudepd_v6")) &&
+        (self != .attitudepd_v5 || capabilities.contains("attitudepd_v5")) &&
         (self != .attitudepd_v4 || capabilities.contains("attitudepd_v4")) &&
         (self != .attitudepd_v3 || capabilities.contains("attitudepd_v3")) &&
         (self != .attitudepd_v2 || capabilities.contains("attitudepd_v2")) &&
@@ -142,6 +144,8 @@ enum SimulatorGaitProfile: String, CaseIterable {
         case .s_native_v3: return "V3 · 뒤로 밀기 60mm"
         case .s_native_v2: return "V2 · 연속 교대"
         case .s_native_v1: return "V1 · 대각선 동기"
+        case .attitudepd_v6: return "IMU 자세 안정화 V6 · 복귀 발들림 개선 · 실험"
+        case .attitudepd_v5: return "IMU 자세 안정화 V5 · 전진 추진 개선 · 실험"
         case .attitudepd_v4: return "IMU 자세 안정화 V4 · 전후 공통 2단 보행 · 실험"
         case .attitudepd_v3: return "IMU 자세 안정화 V3 · 보행 대기 Stand · 실험"
         case .attitudepd_v2: return "IMU 자세 안정화 V2 · 앞발 들림 +4mm · 실험"
@@ -198,6 +202,8 @@ extension SimulatorGaitProfile {
         case .attitudepd_v2: return nil
         case .attitudepd_v3: return nil
         case .attitudepd_v4: return nil
+        case .attitudepd_v5: return nil
+        case .attitudepd_v6: return nil
         case .cushion_reach: return 0.045898422
         case .cushion_j2lift: return 0.034639744
         case .cushion_forward: return nil
@@ -230,14 +236,12 @@ struct RobotBatteryWarning {
     private var recoveryCount = 0
 
     mutating func observe(_ mv: Int, at now: TimeInterval, historical: Bool = false) {
-        guard (1...60_000).contains(mv) else { return }
+        guard !historical, (1...60_000).contains(mv) else { return }
         let incoming = mv <= Self.criticalMV ? 2 : mv <= Self.chargeMV ? 1 : 0
         if incoming > 0 {
             if incoming >= level { detectedMV = min(detectedMV ?? mv, mv) }
             level = max(level, incoming)
         }
-        // A completed gait's minimum can raise a warning, never clear one.
-        if historical { return }
         guard level > 0, mv >= Self.recoveredMV else {
             recoveryStarted = nil; recoveryLast = nil; recoveryCount = 0; return
         }
@@ -254,7 +258,7 @@ struct RobotBatteryWarning {
 
     var title: String { level == 2 ? "즉시 사용 중단 · 배터리 충전" : "배터리 부족 · 지금 충전하세요" }
     var message: String {
-        let voltage = detectedMV.map { String(format: "감지 전압 %.1fV. ", Double($0) / 1000) } ?? ""
+        let voltage = detectedMV.map { String(format: "정지 후 안정 전압 %.1fV. ", Double($0) / 1000) } ?? ""
         return voltage + "보행을 멈추고 몸체를 지지한 뒤 전원 스위치를 끄고 충전하세요."
     }
 
@@ -273,5 +277,40 @@ struct RobotBatteryWarning {
         }
         guard let mv = Int(value), (1...60_000).contains(mv) else { return nil }
         return (mv, historical)
+    }
+}
+
+
+/// Same resting-voltage policy as Windows: settle 3s, three samples at least
+/// 1s apart, <=200mV spread. Historical/load readings never reach this model.
+struct RobotRestingVoltage {
+    private var restSince: TimeInterval?
+    private var samples: [(time: TimeInterval, mv: Int)] = []
+    mutating func invalidate() { restSince = nil; samples.removeAll() }
+    mutating func becameIdle(at now: TimeInterval) {
+        if restSince == nil { restSince = now }
+    }
+    mutating func observe(_ mv: Int, at now: TimeInterval) -> Int? {
+        guard let restSince, now - restSince >= 3, (1...60000).contains(mv) else { return nil }
+        if let last = samples.last, now - last.time < 1 { return nil }
+        samples.append((now, mv)); samples = Array(samples.suffix(3))
+        let values = samples.map(\.mv).sorted()
+        guard values.count == 3, values[2] - values[0] <= 200 else { return nil }
+        return values[1]
+    }
+}
+
+struct RobotMotionWarning {
+    let reason: String
+    var title: String {
+        let text = reason.lowercased()
+        if text.contains("tilt") || text.contains("unstable") { return "기울기 보호로 일시정지" }
+        if text.contains("imu") || text.contains("attitude") { return "IMU 상태 이상으로 일시정지" }
+        if text.contains("watchdog") { return "제어 명령 수신 지연으로 일시정지" }
+        if text.contains("voltage") { return "전압 이상으로 일시정지" }
+        return "동작이 중단되었습니다"
+    }
+    var message: String {
+        "주변과 로봇 상태를 확인하세요. 계속하려면 스틱을 놓고 다시 조작하거나 자세 명령을 선택하세요. 자동 재개하지 않습니다."
     }
 }

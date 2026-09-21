@@ -6,6 +6,9 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack { ControlView() }
+            .preferredColorScheme(.dark)
+            .tint(.mint)
+            .toggleStyle(.switch)
             .toolbar(.hidden, for: .navigationBar)
             .background(FirstScreenAppearance { bluetooth.start() })
     }

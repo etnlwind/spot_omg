@@ -321,6 +321,7 @@ SPOT_GAIT_EXPORT int spot_foot_targets(const float params[7],float phase,float s
     if(!locomotion_foot_targets(params,phase,scale,family,linear,yaw,targets)) return 0;
     pack_targets(targets,values);return 1;
 }
+SPOT_GAIT_EXPORT float spot_locomotion_start_scale(int profile,float elapsed,float linear) {return locomotion_start_scale(profile,elapsed,linear);}
 SPOT_GAIT_EXPORT float spot_locomotion_period(int profile,float linear,float yaw) {return locomotion_period(profile,linear,yaw);}
 SPOT_GAIT_EXPORT void spot_locomotion_params(int profile,float linear,float params[7]) {locomotion_params(profile,linear,params);}
 

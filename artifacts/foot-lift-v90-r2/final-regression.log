@@ -1,0 +1,21 @@
+.F...................................................................... [ 71%]
+.............................                                            [100%]
+=================================== FAILURES ===================================
+_______ test_flight_log_shares_sector_7_without_overwriting_calibration ________
+
+    def test_flight_log_shares_sector_7_without_overwriting_calibration() -> None:
+        logger = (APP / "Src" / "flight_log.c").read_text()
+        calibration = (APP / "Src" / "bno055.c").read_text()
+        assert "FLIGHT_LOG_SECTOR_ADDRESS       0x08060000UL" in logger
+        assert "FLIGHT_LOG_FLASH_ADDRESS        0x08060400UL" in logger
+        assert "FLIGHT_LOG_FLASH_END            0x08080000UL" in logger
+        assert "FLIGHT_LOG_PRESERVED_WORDS      256U" in logger
+        assert "sizeof(FlightLogRecord) == 128U" in logger
+        assert "BNO055_CAL_FLASH_ADDRESS   0x08060000UL" in calibration
+>       assert "flight_log_on_sector_reformatted();" in calibration
+E       assert 'flight_log_on_sector_reformatted();' in '#include "bno055.h"\n#include "bno_imu_config.h"\n#include "flight_log.h"\n\n#include <stddef.h>\n#include <stdlib.h>...(HAL_GetTick()-imu->cached_yaw_at)>100U) return false;\n    *yaw_tenths=imu->cached_yaw_tenths;\n    return true;\n}\n'
+
+firmware/stm32-learning/tests/test_ota_layout.py:33: AssertionError
+=========================== short test summary info ============================
+FAILED firmware/stm32-learning/tests/test_ota_layout.py::test_flight_log_shares_sector_7_without_overwriting_calibration
+1 failed, 100 passed in 5.25s

@@ -35,7 +35,27 @@ static inline bool center_pivot_solve(const float goal[4][3],float q[4][3]) {
     }
     return true;
 }
-static inline bool center_pivot_targets_weighted(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,GaitPolicyLegTarget out[4]) {
+/* Keep the central push at V5 velocity while giving the servos longer
+ * continuous lift/recovery ramps. Both stance and swing meet at zero speed. */
+static inline float attitude_recovery_stance_x(float u) {
+    const float ramp=.2f,speed=1.25f;
+    float s=u<ramp?u/ramp:(1-u)/ramp;
+    float area=s*s*s*s*(2.5f+s*(-3.f+s));
+    float travel=u<ramp?speed*ramp*area:
+        u>1-ramp?1-speed*ramp*area:speed*(u-ramp*.5f);
+    return .5f-travel;
+}
+static inline float attitude_recovery_x(float u,float k) {
+    (void)k;
+    const float lift_first=.18f;
+    return -.5f+gait_policy_smootherstep(gait_policy_clampf((u-lift_first)/(1-2*lift_first),0,1));
+}
+static inline float attitude_recovery_lift(float u) {
+    const float rise=.4f;
+    return gait_policy_smootherstep(gait_policy_clampf(fminf(u,1-u)/rise,0,1));
+}
+static inline bool center_pivot_targets_recovery(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,float recovery_weight,GaitPolicyLegTarget out[4]) {
+    if(!isfinite(recovery_weight) || recovery_weight<0 || recovery_weight>1)return false;
     if(!isfinite(forward_weight) || forward_weight<0 || forward_weight>1)return false;
     GaitPolicyLegTarget nominal[4],lifted[4];
     if(!locomotion_foot_targets(p,phase,scale,0,linear,yaw,nominal))return false;
@@ -45,12 +65,16 @@ static inline bool center_pivot_targets_weighted(const float p[7],float phase,fl
     float activity=fminf(1,fabsf(linear)+(1+pivot)*fabsf(yaw));
     for(int i=0;i<4;i++){
         float q=phase+offsets[i];q-=floorf(q);
-        if(q<p[1])continue;
+        if(q<p[1] && recovery_weight<=0)continue;
         float u=(q-p[1])/(1-p[1]),k=(1-p[1])/p[1];
-        float x=p[2]*(-.5f+(1+k)*gait_policy_smootherstep(u)-k*u);
+        float x=q<p[1]?p[2]*(.5f-q/p[1]):p[2]*(-.5f+(1+k)*gait_policy_smootherstep(u)-k*u);
         float held=u<.4f?gait_policy_smootherstep(u/.4f):u>.7f?gait_policy_smootherstep((1-u)/.3f):1.f;
         float arch=64*u*u*u*(1-u)*(1-u)*(1-u);
-        float envelope=arch+(held-arch)*forward_weight;
+        float envelope=q<p[1]?0:arch+(held-arch)*forward_weight;
+        if(recovery_weight>0) {
+            x+=recovery_weight*(p[2]*(q<p[1]?attitude_recovery_stance_x(q/p[1]):attitude_recovery_x(u,k))-x);
+            if(q>=p[1])envelope+=recovery_weight*(attitude_recovery_lift(u)-envelope);
+        }
         float z=p[4]-scale*activity*p[3]*envelope;
         float lateral=-scale*yaw*x*(i<2?1.6f:-1.6f)*pivot;
         x=p[5]+scale*gait_policy_clampf(linear+(i%2==0?yaw:-yaw),-1,1)*x;
@@ -71,6 +95,11 @@ static inline bool center_pivot_targets_weighted(const float p[7],float phase,fl
         float x;
         if(phase_i<p[1])x=.5f-phase_i/p[1];
         else {float u=(phase_i-p[1])/(1-p[1]),k=(1-p[1])/p[1];x=-.5f+(1+k)*gait_policy_smootherstep(u)-k*u;}
+        if(recovery_weight>0) {
+            float desired=phase_i<p[1]?attitude_recovery_stance_x(phase_i/p[1]):
+                attitude_recovery_x((phase_i-p[1])/(1-p[1]),(1-p[1])/p[1]);
+            x+=recovery_weight*(desired-x);
+        }
         float angle=-scale*yaw*.24f*x;
         goal[i][0]+=(1-cosf(angle))*.06f;goal[i][1]-=sinf(angle)*.06f;
     }
@@ -83,6 +112,9 @@ static inline bool center_pivot_targets_weighted(const float p[7],float phase,fl
     }
     return true;
 }
+static inline bool center_pivot_targets_weighted(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,GaitPolicyLegTarget out[4]) {
+    return center_pivot_targets_recovery(p,phase,scale,linear,yaw,forward_weight,0,out);
+}
 static inline bool center_pivot_targets(const float p[7],float phase,float scale,float linear,float yaw,GaitPolicyLegTarget out[4]) {
     return center_pivot_targets_weighted(p,phase,scale,linear,yaw,
         gait_policy_smootherstep(gait_policy_clampf(linear/.5f,0,1)),out);
@@ -91,10 +123,10 @@ static inline bool center_pivot_targets(const float p[7],float phase,float scale
  * S is the zero-amplitude entry posture. Full-amplitude rear motion is exact.
  * CAD FK/IK preserves front X/Y; no motor limits or calibrations change. */
 #include "s_native_data.h"
-static inline bool attitude_clearance_targets_weighted(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,
+static inline bool attitude_clearance_targets_recovery(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,float recovery_weight,
         const GaitPolicyLegTarget ready[4],GaitPolicyLegTarget out[4]) {
     GaitPolicyLegTarget base[4],result[4];
-    if(!center_pivot_targets_weighted(p,phase,scale,linear,yaw,forward_weight,base))return false;
+    if(!center_pivot_targets_recovery(p,phase,scale,linear,yaw,forward_weight,recovery_weight,base))return false;
     float entry=gait_policy_smootherstep(scale);
     for(int i=0;scale<1 && i<4;i++) {
         base[i].j1_deg=ready[i].j1_deg+entry*(base[i].j1_deg-ready[i].j1_deg);
@@ -105,6 +137,10 @@ static inline bool attitude_clearance_targets_weighted(const float p[7],float ph
     if(!arc_swing_shape_apply(base,phase,p[1],scale*forward_weight,offsets,extra,result))return false;
     for(int i=0;i<4;i++)out[i]=result[i];
     return true;
+}
+static inline bool attitude_clearance_targets_weighted(const float p[7],float phase,float scale,float linear,float yaw,float forward_weight,
+        const GaitPolicyLegTarget ready[4],GaitPolicyLegTarget out[4]) {
+    return attitude_clearance_targets_recovery(p,phase,scale,linear,yaw,forward_weight,0,ready,out);
 }
 static inline bool attitude_clearance_targets(const float p[7],float phase,float scale,float linear,float yaw,
         const GaitPolicyLegTarget ready[4],GaitPolicyLegTarget out[4]) {

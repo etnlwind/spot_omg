@@ -31,7 +31,8 @@ def commanded_kinematics(robot, linear):
     fn.argtypes = (ctypes.c_int, *([ctypes.c_float]*4), ctypes.POINTER(ctypes.c_float))
     fn.restype = ctypes.c_int
     endpoints = []
-    for phase in (0., .52-1.e-6):
+    duty=float(robot.active_profile_params()[1])
+    for phase in (0., duty-1.e-6):
         out = (ctypes.c_float*12)()
         if not fn(NAMES.index(robot.profile), phase, 1., linear/1000, 0., out):
             raise ValueError('Invalid nominal target')
@@ -42,11 +43,12 @@ def commanded_kinematics(robot, linear):
                 fl_stance_dz_mm=float((endpoints[1][0, 2]-endpoints[0][0, 2])*1000))
 
 
-def run_case(linear, output, duration, profile='attitudepd_v3'):
+def run_case(linear, output, duration, profile='attitudepd_v3', foot_lift_mm=None, yaw=0, balance=False, heading=False):
     robot = RobotController(Simulation(parameters()))
     robot.select_profile(profile)
-    robot.body_stabilizer.enabled = False
-    robot.heading.enabled = False
+    robot.foot_lift_mm=list(foot_lift_mm or [0,0,0,0])
+    robot.body_stabilizer.enabled = balance
+    robot.heading.enabled = heading
     period = robot.plant.policy._library.spot_locomotion_period
     period.argtypes = (ctypes.c_int, ctypes.c_float, ctypes.c_float)
     period.restype = ctypes.c_float
@@ -60,14 +62,14 @@ def run_case(linear, output, duration, profile='attitudepd_v3'):
         for i in range(round((7 + duration + 6) / .02)):
             t = i * .02
             if drive_at is None and t >= 7 and robot.transition is None:
-                robot.command(f'drive {linear} 0 1', t)
+                robot.command(f'drive {linear} {yaw} 1', t)
                 drive_at = t
             elif drive_at is not None and stop_at is None:
                 if t - drive_at >= duration:
                     robot.command('@S 100000', t)
                     stop_at = t
                 elif i % 10 == 0:
-                    robot.command(f'@D {i + 2} {linear} 0', t)
+                    robot.command(f'@D {i + 2} {linear} {yaw}', t)
             robot.tick(t)
             state = robot.plant.row()
             w, x, y, z = robot.plant.data.qpos[3:7]
@@ -116,14 +118,14 @@ def run_case(linear, output, duration, profile='attitudepd_v3'):
                 break
             if stop_at is not None and t-stop_at >= 3 and robot.motion is None and robot.transition is None:
                 break
-        name = ('forward' if linear > 0 else 'reverse') + f'_{abs(linear)}'
+        name = ('forward' if linear > 0 else 'reverse') + f'_{abs(linear)}' + (f'_yaw_{yaw}' if yaw else '')
         with (output / f'{name}.csv').open('w', newline='', encoding='utf-8') as stream:
             writer = csv.DictWriter(stream, fieldnames=rows[0])
             writer.writeheader()
             writer.writerows(rows)
         (output / f'{name}_events.json').write_text(json.dumps(events, indent=2)+'\n', encoding='utf-8')
         steady = [r for r in rows if r['walk_s'] is not None and 2 <= r['walk_s'] < duration]
-        summary = dict(case=name, linear_per_mille=linear, drive_at=drive_at, stop_at=stop_at,
+        summary = dict(case=name, profile=profile, foot_lift_mm=robot.foot_lift_mm, linear_per_mille=linear, yaw_per_mille=yaw, balance_enabled=balance, heading_enabled=heading, drive_at=drive_at, stop_at=stop_at,
                        fault=fault, final_pose=robot.pose,
                        final_target_b_error_deg=float(np.max(abs(robot.command_target-robot.stand_target))),
                        commanded_cad_kinematics=nominal,
@@ -154,8 +156,9 @@ def run_case(linear, output, duration, profile='attitudepd_v3'):
                 tracking_enabled=any(r['tracking_enabled'] for r in steady))
             summary['middle_swing'] = {}
             for leg in ('fl', 'fr', 'rl', 'rr'):
-                # Middle 60% of this profile's swing: local phase .616 to .904.
-                swing = [r for r in steady if .52+.48*.2 <= r[f'{leg}_phase'] <= .52+.48*.8]
+                # Middle 60% of the selected profile's swing.
+                duty=float(robot.active_profile_params()[1])
+                swing = [r for r in steady if duty+(1-duty)*.2 <= r[f'{leg}_phase'] <= duty+(1-duty)*.8]
                 summary['middle_swing'][leg] = dict(samples=len(swing),
                     loaded_fraction=sum(r[f'{leg}_load_n'] > .5 for r in swing)/len(swing) if swing else None,
                     min_clearance_mm=min((r[f'{leg}_clearance_mm'] for r in swing), default=None))

@@ -240,6 +240,7 @@ int main(void)
   servo_bus_init(&servo_bus, &huart1, 25U);
   robot_init(&robot, &servo_bus);
   flight_log_init(ROBOT_CONTROL_REV);
+  (void)flight_log_load_foot_lift(robot.foot_lift_mm);
   app_console_init(&console, &huart2, &robot, &imu055, &imu086, &imu_log_enabled);
   app_console_init(&wifi_console, &huart3, &robot, &imu055, &imu086, &imu_log_enabled);
   robot.realtime_service = service_realtime_console;
@@ -337,6 +338,7 @@ int main(void)
 
     app_console_poll(&console);
     app_console_poll(&wifi_console);
+    app_console_auto_imu_recovery(&wifi_console);
 
     bno086_service(&imu086);
 

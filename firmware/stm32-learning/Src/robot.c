@@ -2169,7 +2169,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
                     stopping?0:request.linear*.001f,stopping?0:request.yaw*.001f,
                     yaw*.1f,yaw_valid,robot->heading_enabled,stopping,frame_dt,phase_rate,nominal);
             if(target_ok && !native)target_ok=foot_lift_profile(robot->foot_lift_mm,robot->locomotion_profile,target_phase,
-                gait_policy_smootherstep(fminf(1,robot->drive_control.elapsed))*fminf(1,(fabsf(robot->drive_control.linear)+fabsf(robot->drive_control.yaw))/.15f),
+                locomotion_start_scale(robot->locomotion_profile,robot->drive_control.elapsed,robot->drive_control.linear)*fminf(1,(fabsf(robot->drive_control.linear)+fabsf(robot->drive_control.yaw))/.15f),
                 robot->drive_control.linear,robot->drive_control.yaw,nominal);
             if(!target_ok){result=ROBOT_CONFIG_ERROR;break;}
             if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f &&

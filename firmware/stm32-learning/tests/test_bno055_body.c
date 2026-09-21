@@ -44,7 +44,7 @@ HAL_StatusTypeDef HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *e,uint32_t *s) {
 HAL_StatusTypeDef HAL_FLASH_Program(uint32_t t,uint32_t a,uint64_t v) {
     (void)t;(void)a;(void)v;assert(0);return HAL_ERROR;
 }
-void flight_log_on_sector_reformatted(void) { assert(0); }
+bool flight_log_save_calibration(const void *record, size_t size) { (void)record; (void)size; assert(0); return false; }
 
 static Bno055BodyFrame identity(void) {
     Bno055BodyFrame frame={{1,2,3},0x24,0,0x80,false}; return frame;

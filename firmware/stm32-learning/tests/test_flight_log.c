@@ -56,5 +56,30 @@ int main(void) {
     flight_log_init("test");assert(flight_log_count()==51);
     assert(flight_log_clear());assert(flight_log_count()==0);
     for(unsigned i=0;i<1024;i++)assert(flash[i]==0xa5);
+    uint32_t values[4]={30,40,5,6}, loaded[4]={0};
+    assert(!flight_log_load_foot_lift(loaded));
+    assert(flight_log_save_foot_lift(values));
+    assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
+    before=flight_log_count();assert(flight_log_save_foot_lift(values));assert(flight_log_count()==before);
+    /* Every word-boundary interruption keeps the last committed settings. */
+    for (int cut=0;cut<32;cut++) {
+        uint32_t changed[4]={70,80,9,10};
+        budget=cut;assert(!flight_log_save_foot_lift(changed));budget=-1;
+        flight_log_init("restart");
+        assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
+    }
+    assert(flight_log_clear());
+    flight_log_init("after-clear");
+    assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
+    for(unsigned i=0;i<256;i++)assert(flash[i]==0xa5);
+    unsigned char calibration[44];memset(calibration,0x19,sizeof(calibration));
+    assert(flight_log_save_calibration(calibration,sizeof(calibration)));
+    assert(!memcmp(flash,calibration,sizeof(calibration)));
+    flight_log_init("after-imu-save");
+    assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
+    while(flight_log_count()<1000)assert(flight_log_append("fill"));
+    assert(flight_log_prepare_entries(50));
+    assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
+    uint32_t invalid[4]={0,0,0,0x80000000};assert(!flight_log_save_foot_lift(invalid));
     puts("flight log: partial reset recovery, erased gaps, batch rotation and calibration preservation passed");
 }

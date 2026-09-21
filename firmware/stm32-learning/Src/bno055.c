@@ -202,31 +202,7 @@ static bool save_record(const Bno055 *imu)
     }
     record.checksum = record_checksum(&record);
 
-    HAL_FLASH_Unlock();
-    FLASH_EraseInitTypeDef erase = {0};
-    uint32_t sector_error = 0U;
-    erase.TypeErase = FLASH_TYPEERASE_SECTORS;
-    erase.Sector = FLASH_SECTOR_7;
-    erase.NbSectors = 1U;
-    erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
-    bool ok = HAL_FLASHEx_Erase(&erase, &sector_error) == HAL_OK;
-
-    const uint8_t *bytes = (const uint8_t *)&record;
-    for (size_t offset = 0U; ok && offset < sizeof(record); offset += 4U) {
-        uint32_t word = 0xFFFFFFFFUL;
-        memcpy(&word, &bytes[offset],
-               sizeof(record) - offset < 4U ? sizeof(record) - offset : 4U);
-        ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD,
-                               BNO055_CAL_FLASH_ADDRESS + offset,
-                               word) == HAL_OK;
-    }
-    HAL_FLASH_Lock();
-    if (ok) {
-        /* Sector 7 is shared with the flight log. Calibration changes are
-         * rare and deliberately begin a fresh log after the sector erase. */
-        flight_log_on_sector_reformatted();
-    }
-    return ok;
+    return flight_log_save_calibration(&record, sizeof(record));
 }
 
 static uint16_t detect(Bno055 *imu)

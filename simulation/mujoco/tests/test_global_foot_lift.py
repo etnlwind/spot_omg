@@ -27,19 +27,19 @@ def test_native_lift_entry_and_stop_match_c(plant,kernel,name,reset):
 
 def test_simulator_atomic_configuration_and_readback(plant):
     robot=RobotController(plant)
-    robot.command('footlift set 30 300 0 4',0)
+    robot.command('footlift save 30 300 0 4',0)
     assert robot.foot_lift_mm==[30,300,0,4]
-    robot.command('footlift set 1 2 3 2147483648',0)
+    robot.command('footlift save 1 2 3 2147483648',0)
     assert robot.foot_lift_mm==[30,300,0,4]
     robot.command('gaitprofile attitudepd_v4',0)
     assert robot.foot_lift_mm==[30,300,0,4]
     robot.motion=('drive',)
-    robot.command('footlift set 0 0 0 0',0)
+    robot.command('footlift save 0 0 0 0',0)
     assert robot.foot_lift_mm==[30,300,0,4]
 
 def test_v4_extra_lift_in_actual_simulator_drive_pipeline(plant):
     robot=RobotController(plant)
-    robot.command('footlift set 10 10 0 0',0)
+    robot.command('footlift save 10 10 0 0',0)
     robot.command('gaitprofile attitudepd_v4',0)
     robot.command('drive -1000 0 1',0)
     for frame in range(120):
@@ -52,3 +52,18 @@ def test_v4_extra_lift_in_actual_simulator_drive_pipeline(plant):
     robot.command('@S 9999',2.4)
     for frame in range(150):robot.tick(2.4+frame*.02)
     assert robot.motion is None
+
+
+def test_settings_survive_controller_restart_and_failed_write(plant, tmp_path, monkeypatch):
+    path=tmp_path/'robot.json'
+    first=RobotController(plant, path)
+    first.command('footlift save 20 30 4 5',0)
+    second=RobotController(plant, path)
+    assert second.foot_lift_mm == [20,30,4,5]
+    second.command('footlift set 0 0 0 0',0) # Legacy apps cannot overwrite it.
+    assert second.foot_lift_mm == [20,30,4,5]
+    def fail(*args): raise OSError('write failure')
+    monkeypatch.setattr('simulation.mujoco.runtime.foot_lift_store.os.replace',fail)
+    second.command('footlift save 7 8 9 10',0)
+    assert second.foot_lift_mm == [20,30,4,5]
+    assert RobotController(plant,path).foot_lift_mm == [20,30,4,5]

@@ -12,6 +12,26 @@ final class RobotConnectionTrace {
         record("app-start", "joystick-link-v2")
     }
 
+    /// Snapshot on the same serial queue as writes, off the UI/control path.
+    func export(completion: @escaping (Result<URL, Error>) -> Void) {
+        queue.async { [folder] in
+            let result = Result<URL, Error> {
+                let output = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("SpotOMG-diagnostics-\(UUID().uuidString).jsonl")
+                var data = Data()
+                for name in ["previous.jsonl", "current.jsonl"] {
+                    let file = folder.appendingPathComponent(name)
+                    if FileManager.default.fileExists(atPath: file.path) {
+                        data.append(try Data(contentsOf: file))
+                    }
+                }
+                try data.write(to: output, options: .atomic)
+                return output
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
     func record(_ event: String, _ detail: String) {
         let row: [String: Any] = [
             "epoch_ms": Int64(Date().timeIntervalSince1970 * 1000),

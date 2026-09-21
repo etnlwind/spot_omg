@@ -6,8 +6,10 @@ import time
 import secrets
 
 from PySide6.QtCore import QObject, Signal
+from . import __version__
 from .protocol import Controller, ConsoleStream
 from .control_channel import ControlStream, request as control_request
+from .diagnostic_trace import ConnectionTrace
 
 
 class TcpLink:
@@ -163,6 +165,9 @@ class Connection(QObject):
     changed = Signal(dict)
     log = Signal(str)
     finished = Signal()
+    diagnostics_exporting = Signal(bool)
+    diagnostics_exported = Signal(str)
+    diagnostics_export_failed = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -174,6 +179,39 @@ class Connection(QObject):
         self.emergency = False
         self.walk_stop = False
         self.closing = False
+        self._diagnostic_trace = ConnectionTrace()
+        self._diagnostic_export_lock = threading.Lock()
+        self._diagnostic_exporting = False
+
+    def export_diagnostics(self, path=None):
+        with self._diagnostic_export_lock:
+            if self._diagnostic_exporting:
+                return False
+            self._diagnostic_exporting = True
+        self.diagnostics_exporting.emit(True)
+        self._diagnostic_trace.record('export-request', 'Windows ' + __version__)
+        future = self._diagnostic_trace.export(path)
+
+        def completed(result):
+            with self._diagnostic_export_lock:
+                self._diagnostic_exporting = False
+            try:
+                self.diagnostics_exporting.emit(False)
+                try:
+                    output = result.result()
+                except Exception as exc:
+                    self.diagnostics_export_failed.emit(str(exc))
+                else:
+                    self.diagnostics_exported.emit(str(output))
+            except RuntimeError:
+                # The window may already have destroyed its QObject.
+                pass
+        future.add_done_callback(completed)
+        return True
+
+    def close_trace(self):
+        """Nonblocking final shutdown after the connection has stopped."""
+        self._diagnostic_trace.close(wait=False)
 
     @property
     def running(self):
@@ -197,6 +235,7 @@ class Connection(QObject):
             self.pulse_at = time.monotonic()
 
     def trace(self, message):
+        self._diagnostic_trace.record('app', message)
         self.log.emit(f"\n[앱 {time.strftime('%H:%M:%S')} +{time.monotonic():.3f}] {message}\n")
 
     def command(self, line):
@@ -235,7 +274,47 @@ class Connection(QObject):
         control_mode = False
         control_sequence = secrets.randbelow(0xfffffffe) + 1
         active_control = None
+        active_control_command = None
         log_stream = ConsoleStream()
+        self._diagnostic_trace.record('connecting', f'Windows {__version__}; target={target} host={host} port={port} address={address}')
+
+        def show_reply(line):
+            if line.startswith('$SPOTSTATE '):
+                fields = dict(word.split('=', 1) for word in line.split()[1:] if '=' in word)
+                self.log.emit('[상태] ' + ' · '.join(fields.get(key, 'unknown') for key in ('pose', 'safety', 'rev')) + '\n')
+            elif line == 'OK' or line.startswith(('OK ', 'ERROR:', 'STOPPED:', '$SPOTDRIVE ', 'IMURECOVER ', 'unknown command')):
+                self.log.emit(line + '\n')
+
+        def consume_console(data, now):
+            nonlocal log_stream
+            text = data.decode('utf-8', errors='replace')
+            self._diagnostic_trace.record('diagnostic' if control_mode else 'rx', text)
+            if not control_mode:
+                model.feed(data, now)
+            try:
+                events = log_stream.feed(data)
+            except ValueError:
+                log_stream = ConsoleStream()
+                self.trace('미완성 진단 줄이 너무 길어 표시 파서를 초기화했습니다. 원문은 별도 기록했습니다.')
+                return
+            for kind, line in events:
+                if kind != 'line':
+                    continue
+                if not control_mode:
+                    show_reply(line)
+                elif line.startswith('$BATTERY '):
+                    # Retain telemetry parsing. Controller accepts warning
+                    # samples only from correlated idle read 1 replies.
+                    model.feed((line + '\n').encode(), now)
+                elif line.startswith('IMUAUTO '):
+                    # Recovery notices are not command failures.
+                    self.log.emit(line + '\n')
+                elif line.startswith('ERROR: support monitoring reason='):
+                    model.pause_reason = line
+                    self.log.emit(line + '\n')
+                elif line.startswith(('[LOG overflow:', '[BLE LOG overflow:')):
+                    self.log.emit('[진단] 로그 일부 누락 · 제어 채널은 별도 처리\n')
+
         self.changed.emit(dict(phase="connecting", connected=False, state={}, caps=[], error="", can_drive=False))
         try:
             opening = asyncio.create_task(link.open())
@@ -252,6 +331,7 @@ class Connection(QObject):
                         return
                     raise TimeoutError("연결 시간 초과")
             await opening
+            self._diagnostic_trace.record('connected', target)
             model.opened(time.monotonic())
             read_task = asyncio.create_task(link.read())
             next_snapshot = 0.
@@ -260,22 +340,35 @@ class Connection(QObject):
             last_rx = time.monotonic()
             while True:
                 now = time.monotonic()
+                # Correlated replies take priority over the best-effort log
+                # stream. Neither JSONL disk work nor raw logs enter Qt here.
+                if control_task is not None and control_task.done():
+                    data = control_task.result()
+                    last_rx = now
+                    self._diagnostic_trace.record('control-rx', data.decode('utf-8', errors='replace'))
+                    for sequence, kind, data in control_stream.feed(data):
+                        if sequence != active_control:
+                            continue
+                        if kind == 'DATA':
+                            for event, line in control_payload.feed(data):
+                                if event == 'line':
+                                    model.feed((line+'\n').encode(), now)
+                                    show_reply(line)
+                        else:
+                            completed = active_control_command
+                            failed = model.command_error
+                            active_control = active_control_command = None
+                            model.feed(b'\r\n# ', now)
+                            if completed and not failed and completed.split()[0] in {
+                                'targets', 'gaitdiag', 'baldiag', 'imudiag', 'locomotiondiag',
+                                'log', 'stabilize', 'status', 'servoconfig', 'scan', 'probeconfig', 'profile'
+                            }:
+                                self.log.emit(f'[완료] {completed} · 상세 내용은 진단 로그에 저장\n')
+                    control_task = asyncio.create_task(link.read_control())
                 if read_task.done():
                     data = read_task.result()
                     last_rx = now
-                    self.log.emit(data.decode("utf-8", errors="replace"))
-                    if not control_mode:
-                        model.feed(data, now)
-                    else:
-                        try:
-                            log_events = log_stream.feed(data)
-                        except ValueError:
-                            log_stream = ConsoleStream()
-                            log_events = []
-                            self.trace('콘솔의 미완성 줄이 너무 길어 배터리 파서만 초기화했습니다.')
-                        for kind, line in log_events:
-                            if kind == 'line' and line.startswith('$BATTERY '):
-                                model.feed((line+'\n').encode(), now)
+                    consume_console(data, now)
                     read_task = asyncio.create_task(link.read())
                 if (not control_mode and model.synced and model.command != 'syncstate'
                         and 'controlv1' in model.caps and getattr(link, 'control_characteristic', None)):
@@ -283,19 +376,8 @@ class Connection(QObject):
                     link.control_mode = True
                     model.separate_control = True
                     control_task = asyncio.create_task(link.read_control())
+                    log_stream = ConsoleStream()
                     self.trace('전용 제어 채널 활성화 · 콘솔 로그와 완료 응답 분리')
-                if control_task is not None and control_task.done():
-                    for sequence, kind, data in control_stream.feed(control_task.result()):
-                        if sequence != active_control:
-                            continue
-                        if kind == 'DATA':
-                            for event, line in control_payload.feed(data):
-                                if event == 'line':
-                                    model.feed((line+'\n').encode(), now)
-                        else:
-                            active_control = None
-                            model.feed(b'\r\n# ', now)
-                    control_task = asyncio.create_task(link.read_control())
                 with self.lock:
                     vector, pulse, closing = self.latest, self.pulse_at, self.closing
                     emergency, self.emergency = self.emergency, False
@@ -328,6 +410,7 @@ class Connection(QObject):
                         model.request(line, now)
                     except ValueError as exc:
                         model.error = str(exc)
+                        self._diagnostic_trace.record('command-rejected', str(exc))
                         self.log.emit("[거부] " + str(exc) + "\n")
                 model.tick(now)
                 if model.phase != previous_phase:
@@ -348,10 +431,13 @@ class Connection(QObject):
                         if kind == 'command':
                             control_sequence = control_sequence % 0xffffffff + 1
                             active_control = control_sequence
+                            active_control_command = data.decode('utf-8').strip()
                             control_payload = ConsoleStream()
                             data = control_request(active_control, data)
+                        self._diagnostic_trace.record('control-tx', data.decode('utf-8', errors='replace'))
                         await asyncio.wait_for(link.write_control(data), 2)
                     else:
+                        self._diagnostic_trace.record('tx', data.decode('utf-8', errors='replace'))
                         await asyncio.wait_for(link.write(data), 2)
                 if now >= next_snapshot:
                     self.changed.emit(model.snapshot())
@@ -361,6 +447,7 @@ class Connection(QObject):
                 await asyncio.sleep(.01)
         except Exception as exc:
             model.error = str(exc) or type(exc).__name__
+            self._diagnostic_trace.record('error', model.error)
             self.log.emit("[연결 오류] " + model.error + "\n")
         finally:
             if control_task:
@@ -384,4 +471,5 @@ class Connection(QObject):
             model.caps.clear()
             model.voltage = model.voltage_at = None
             model.phase = "offline"
+            self._diagnostic_trace.record('disconnected', model.error or 'no-error')
             self.changed.emit(model.snapshot())

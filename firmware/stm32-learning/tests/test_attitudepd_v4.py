@@ -39,7 +39,7 @@ static void planar(const GaitPolicyLegTarget *q,float *x,float *z) {
 }
 int main(void) {
  int old=locomotion_profile_id("attitudepd_v3"),v4=locomotion_profile_id("attitudepd_v4");
- assert(old==25 && v4==26 && LOCOMOTION_DEFAULT_PROFILE==v4);
+ assert(old==25 && v4==26 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v6"));
  assert(locomotion_is_attitude_pd(v4) && locomotion_has_gait_stand(v4));
  assert(locomotion_linear(v4,-1)==-1);
  GaitPolicyLegTarget a[4],b[4],ready[4],previous[4];

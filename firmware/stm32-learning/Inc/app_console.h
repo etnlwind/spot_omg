@@ -61,6 +61,7 @@ void app_console_on_uart_error(AppConsole *console,
                                UART_HandleTypeDef *uart);
 
 void app_console_poll(AppConsole *console);
+void app_console_auto_imu_recovery(AppConsole *console);
 void app_console_service_realtime(AppConsole *console);
 void app_console_print_help(AppConsole *console);
 void app_console_print_prompt(AppConsole *console);

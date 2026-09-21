@@ -4,56 +4,93 @@ from PySide6.QtCore import QSettings
 from spot_controller.foot_lift import FootLiftEditor
 from spot_controller.protocol import Controller
 
+
+def test_packaged_artwork_matches_apple_and_has_windows_icon():
+    from pathlib import Path
+    from PIL import Image
+    from spot_controller.assets import resource_path
+    assets=Path(__file__).resolve().parents[3]/'apps/ios/SpotOMGController/SpotOMGController/Resources/Assets.xcassets'
+    assert resource_path('robot-top.png').read_bytes()==(assets/'RobotTopView.imageset/robot-top.png').read_bytes()
+    assert resource_path('app-icon.png').read_bytes()==(assets/'AppIcon.appiconset/AppIcon-1024.png').read_bytes()
+    with Image.open(resource_path('SpotOMG.ico')) as icon:
+        assert icon.format=='ICO'
+        assert {(16,16),(32,32),(48,48),(256,256)}<=icon.ico.sizes()
+
+
+def test_dark_foot_editor_fits_640_pixel_dialog_and_preserves_leg_sides(tmp_path):
+    from PySide6.QtWidgets import QDialog,QVBoxLayout
+    from spot_controller.foot_lift import RobotTop
+    app=QApplication.instance() or QApplication([])
+    dialog=QDialog();dialog.resize(640,570)
+    editor=FootLiftEditor(QSettings(str(tmp_path/'layout.ini'),QSettings.IniFormat))
+    QVBoxLayout(dialog).addWidget(editor)
+    dialog.show();app.processEvents()
+    try:
+        assert dialog.width()==640
+        top=editor.findChild(RobotTop)
+        assert not top.pixmap.isNull() and top.height()>=310
+        assert editor.inputs[0].x()<top.x()<editor.inputs[1].x()
+        assert editor.inputs[2].x()<top.x()<editor.inputs[3].x()
+        assert editor.inputs[0].y()<editor.inputs[2].y()
+        for field in editor.inputs:
+            assert editor.rect().contains(field.geometry())
+        for button in (editor.apply,editor.load,editor.zero):
+            assert editor.rect().contains(button.geometry())
+        shot=editor.grab().toImage()
+        assert shot.pixelColor(0,0).name()=='#171c23'
+        assert editor.grab().save(str(tmp_path/'foot-lift-dark.png'))
+    finally:
+        dialog.close();app.processEvents()
+
 def test_editor_saves_only_fresh_matching_readback(tmp_path):
     app=QApplication.instance() or QApplication([])
     settings=QSettings(str(tmp_path/'settings.ini'),QSettings.IniFormat)
     editor=FootLiftEditor(settings);sent=[];editor.applyRequested.connect(sent.append)
-    state=dict(connected=True,synced=True,phase='idle',caps=['footlift'],state_at=1,
+    state=dict(connected=True,synced=True,phase='idle',caps=['footlift','footliftpersist'],state_at=1,
         state=dict(lift_fl='0',lift_fr='0',lift_rl='0',lift_rr='0'))
     editor.update_state(state)
     editor.inputs[0].setValue(300);editor.submit()
-    assert sent==['footlift set 300 0 0 0']
+    assert sent==['footlift save 300 0 0 0']
     editor.update_state(state)
     assert settings.value('footLiftMm') is None
-    state['state_at']=2;state['state']['lift_fl']='300';editor.update_state(state)
-    assert settings.value('footLiftMm')=='[300, 0, 0, 0]'
+    state['state_at']=2;state['state']['lift_fl']='300';state['foot_lift_result']=dict(ok=True,values=[300,0,0,0]);editor.update_state(state)
+    assert settings.value('footLiftMm') is None
+    assert editor.pending is None and editor.actual==[300,0,0,0]
     state['caps']=[];editor.update_state(state);assert not editor.apply.isEnabled()
     editor.close()
 
 def test_controller_rejects_unsupported_or_moving_lift():
     c=Controller();c.phase='idle';c.caps=set()
-    with pytest.raises(ValueError):c.validate('footlift set 10 0 0 0')
-    c.caps={'footlift'}
-    c.validate('footlift set 30 300 0 2147483647')
-    for command in ('footlift set 2147483648 0 0 0','footlift set -1 0 0 0','footlift set 1 2 3','footlift set 1 2 3 4 extra'):
+    with pytest.raises(ValueError):c.validate('footlift save 10 0 0 0')
+    c.caps={'footlift','footliftpersist'}
+    c.validate('footlift save 30 300 0 2147483647')
+    for command in ('footlift save 2147483648 0 0 0','footlift save -1 0 0 0','footlift save 1 2 3','footlift save 1 2 3 4 extra'):
         with pytest.raises(ValueError):c.validate(command)
     c.phase='drive'
-    with pytest.raises(ValueError):c.validate('footlift set 0 0 0 0')
+    with pytest.raises(ValueError):c.validate('footlift save 0 0 0 0')
 
 
-def test_saved_values_auto_apply_once_per_connection_when_idle(tmp_path):
+def test_legacy_local_values_never_overwrite_robot(tmp_path):
     app=QApplication.instance() or QApplication([])
     settings=QSettings(str(tmp_path/'auto.ini'),QSettings.IniFormat)
     settings.setValue('footLiftMm','[20, 20, 0, 0]')
     editor=FootLiftEditor(settings);sent=[];editor.applyRequested.connect(sent.append)
-    state=dict(connected=True,synced=True,phase='drive',caps=['footlift'],state_at=1,
-        state=dict(lift_fl='0',lift_fr='0',lift_rl='0',lift_rr='0'))
-    editor.update_state(state);assert not sent
-    state['phase']='idle';editor.update_state(state)
-    assert sent==['footlift set 20 20 0 0']
-    editor.update_state(state);assert len(sent)==1 and editor.pending is not None
-    state['state_at']=2;state['state'].update(lift_fl='20',lift_fr='20')
-    editor.update_state(state);assert editor.pending is None
-    editor.update_state(dict(connected=False))
-    state['state'].update(lift_fl='0',lift_fr='0');state['state_at']=3
-    editor.update_state(state);assert len(sent)==2
+    state=dict(connected=True,synced=True,phase='idle',caps=['footlift','footliftpersist'],state_at=1,
+        state=dict(lift_fl='3',lift_fr='4',lift_rl='5',lift_rr='6'))
+    editor.update_state(state)
+    assert not sent and [v.value() for v in editor.inputs]==[3,4,5,6]
+    editor.update_state(dict(connected=False));editor.update_state(state)
+    assert not sent
+    # A change made by another client becomes the clean editor's current value.
+    state['state_at']=2;state['state']['lift_fl']='10';editor.update_state(state)
+    assert editor.inputs[0].value()==10
     editor.close()
 
 
 def test_matching_or_invalid_saved_values_are_not_sent(tmp_path):
     app=QApplication.instance() or QApplication([])
     settings=QSettings(str(tmp_path/'equal.ini'),QSettings.IniFormat)
-    state=dict(connected=True,synced=True,phase='idle',caps=['footlift'],state_at=1,
+    state=dict(connected=True,synced=True,phase='idle',caps=['footlift','footliftpersist'],state_at=1,
         state=dict(lift_fl='0',lift_fr='0',lift_rl='0',lift_rr='0'))
     for saved in ('[0,0,0,0]','null','[-1,0,0,0]'):
         settings.setValue('footLiftMm',saved)
@@ -65,16 +102,34 @@ def test_reopen_discards_unsent_edits_and_shows_robot_values(tmp_path):
     app=QApplication.instance() or QApplication([])
     settings=QSettings(str(tmp_path/'reopen.ini'),QSettings.IniFormat)
     editor=FootLiftEditor(settings);sent=[];editor.applyRequested.connect(sent.append)
-    state=dict(connected=True,synced=True,phase='idle',caps=['footlift'],state_at=1,
+    state=dict(connected=True,synced=True,phase='idle',caps=['footlift','footliftpersist'],state_at=1,
         state=dict(lift_fl='10',lift_fr='20',lift_rl='0',lift_rr='0'))
     editor.update_state(state);editor.prepare_open()
     assert [v.value() for v in editor.inputs]==[10,20,0,0]
     editor.inputs[0].setValue(100)
     assert '아직 반영되지 않음' in editor.status.text()
     editor.prepare_open()
-    assert [v.value() for v in editor.inputs]==[10,20,0,0] and not sent
+    assert [v.value() for v in editor.inputs]==[10,20,0,0] and sent==['footlift show','footlift show']
     settings.setValue('footLiftMm','[5,6,0,0]')
     editor.update_state(dict(connected=False));editor.prepare_open()
-    assert [v.value() for v in editor.inputs]==[5,6,0,0]
+    assert [v.value() for v in editor.inputs]==[0,0,0,0]
     assert '연결 후' in editor.status.text()
     editor.close()
+
+
+def test_protocol_requires_saved_ack_and_fresh_readback():
+    c=Controller();c.connected=c.synced=True;c.phase='idle';c.caps={'footlift','footliftpersist'}
+    state=b'$SPOTSTATE pose=stand torque=on safety=ok caps=footlift,footliftpersist lift_fl=10 lift_fr=20 lift_rl=0 lift_rr=0\n'
+    c.request('footlift save 10 20 0 0',0)
+    c.feed(b'OK footlift saved\n'+state+b'# ',.1)
+    assert c.command=='footlift show' and c.foot_lift_result is None
+    c.feed(state+b'# ',.2)
+    assert c.foot_lift_result==dict(ok=True,values=[10,20,0,0])
+    c.request('footlift save 10 20 0 0',.3)
+    c.feed(b'ERROR: flash failed\n# ',.4)
+    c.feed(state+b'# ',.5)
+    assert c.foot_lift_result==dict(ok=False,values=[10,20,0,0])
+    c.phase='idle';c.request('footlift save 10 20 0 0',.6)
+    c.feed(b'OK footlift saved\n# ',.7)
+    c.feed(b'# ',.8) # Old matching state does not count as new readback.
+    assert c.foot_lift_result['ok'] is False

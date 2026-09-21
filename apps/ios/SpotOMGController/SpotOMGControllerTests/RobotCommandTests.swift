@@ -4,6 +4,28 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testLongStandWaitsForPromptBeforeRefreshAndAllowsDriveAndFootLift() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        defer { manager.disconnect() }
+        manager.send(.stand)
+        // Real Stand took 6.8 seconds: its old four-second refresh was discarded.
+        RunLoop.main.run(until: Date().addingTimeInterval(4.3))
+        XCTAssertEqual(sent, ["stand\n"])
+        manager.receiveConsoleText("POSE stand reason=complete\r\nOK\r\n")
+        // Mechanical diagnostics continue after OK; wait for the actual prompt.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(sent, ["stand\n"])
+        manager.receiveConsoleText("$MECHLOG label=stand complete=1\r\n# ")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(sent.last, "syncstate\n")
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,commandretry profile=attitudepd_v4 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0\r\n# ")
+        if sent.last == "read 1\n" { manager.receiveConsoleText("ID 1 voltage=11800mV moving=0\r\n# ") }
+        XCTAssertTrue(manager.canConfigureFootLift)
+        manager.updateDrive(x: 0, y: 1)
+        XCTAssertTrue(sent.contains { $0.hasPrefix("drive ") })
+    }
+
     func testSlowV80DiagnosticsKeepConnectionUntilPrompt() throws {
         // Actual V80 diagnostic prefix, truncated by the old Windows timeout.
         // Chunk pacing and the final CRLF/prompt below are simulated inputs.
@@ -152,12 +174,51 @@ final class RobotCommandTests: XCTestCase {
         XCTAssertFalse(sent.contains("\u{03}"))
     }
 
+    func testV92SelectsV6OnlyWhenAdvertisedAndWaitsForReadback() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        defer { manager.disconnect() }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v6-v92 caps=gaitprofiles,attitudepd_v4,attitudepd_v5,attitudepd_v6 profile=attitudepd_v5\r\n# ")
+        XCTAssertEqual(Array(SimulatorGaitProfile.allCases.prefix(3)), [.attitudepd_v6, .attitudepd_v5, .attitudepd_v4])
+        XCTAssertEqual(SimulatorGaitProfile.attitudepd_v6.title, "IMU 자세 안정화 V6 · 복귀 발들림 개선 · 실험")
+        XCTAssertTrue(sent.contains("gaitprofile attitudepd_v6\n"))
+        XCTAssertEqual(manager.runtimeState.simulationProfile, "attitudepd_v5", "Selection must continue to reflect firmware readback")
+        XCTAssertTrue(manager.supportsIMURecovery)
+        XCTAssertTrue(manager.supportsProbe)
+        XCTAssertTrue(manager.supportsProbeWidth)
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v6-v92 caps=gaitprofiles,attitudepd_v4,attitudepd_v5,attitudepd_v6 profile=attitudepd_v6\r\n# ")
+        XCTAssertEqual(manager.runtimeState.simulationProfile, "attitudepd_v6")
+    }
+
+    func testV91NeverSelectsUnsupportedV6() {
+        var sent: [String] = []
+        let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
+        defer { manager.disconnect() }
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v5-v91 caps=gaitprofiles,attitudepd_v4,attitudepd_v5 profile=attitudepd_v4\r\n# ")
+        XCTAssertTrue(sent.contains("gaitprofile attitudepd_v5\n"))
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v6.isSupported(capabilities: manager.runtimeState.capabilities))
+        sent.removeAll()
+        manager.send(.simulatorProfile(.attitudepd_v6))
+        XCTAssertFalse(sent.contains("gaitprofile attitudepd_v6\n"))
+        XCTAssertTrue(manager.lastError?.contains("업데이트") == true)
+    }
+
+    func testV91AdvertisesV5AndOlderFirmwareHidesIt() {
+        let manager = RobotBluetoothManager(commandWriter: { _ in })
+        manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v5-v91 caps=gaitprofiles,attitudepd_v4,attitudepd_v5 profile=attitudepd_v5\r\n# ")
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v5.isSupported(capabilities: manager.runtimeState.capabilities))
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v5.isSupported(capabilities: ["attitudepd_v4"]))
+        XCTAssertTrue(manager.supportsIMURecovery)
+        XCTAssertTrue(manager.supportsProbeWidth)
+    }
+
     func testV80AdvertisesV4AndHalfStickMapsToTemplateBoundary() {
         let manager = RobotBluetoothManager(commandWriter: { _ in })
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v4-v80 caps=gaitprofiles,attitudepd_v2,attitudepd_v3,attitudepd_v4 profile=attitudepd_v4\r\n# ")
         XCTAssertTrue(manager.supportsProbe)
         XCTAssertTrue(manager.supportsProbeWidth)
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v4)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v4.isSupported(capabilities: manager.runtimeState.capabilities))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd_v4.isSupported(capabilities: ["attitudepd_v3"]))
         XCTAssertEqual(RobotDriveVector.make(x: 0, y: 0.5)?.linearPerMille, 588)
@@ -171,7 +232,7 @@ final class RobotCommandTests: XCTestCase {
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v3-v79 caps=gaitprofiles,attitudepd_v2,attitudepd_v3 profile=attitudepd_v3\r\n# ")
         XCTAssertTrue(manager.supportsProbe)
         XCTAssertTrue(manager.supportsProbeWidth)
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v4)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: manager.runtimeState.capabilities))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: ["attitudepd_v2"]))
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v2.isSupported(capabilities: ["attitudepd_v2"]))
@@ -247,7 +308,7 @@ final class RobotCommandTests: XCTestCase {
         XCTAssertFalse(manager.canStartProbe);manager.startProbe();XCTAssertFalse(commands.contains("walkprobe\n"))
     }
     func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v4)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.simulatorOnly)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_2"]))
         XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_3"]))
@@ -359,13 +420,18 @@ final class RobotCommandTests: XCTestCase {
     }
 
     func testVoltageReadUsesSnapshotAndClearsOnDisconnect() {
-        var commands: [String] = []
+        var commands: [String] = []; var now = 0.0
         let manager = RobotBluetoothManager(commandWriter: { commands.append(String(decoding: $0, as: UTF8.self)) })
+        manager.telemetryClock = { now }
         manager.receiveConsoleText("$SPOTSTATE pose=custom rev=forward11-v12\r\n")
         XCTAssertEqual(commands, ["read 1\n"])
-        manager.receiveConsoleText("ID 1 pos=1941 voltage=98")
+        manager.receiveConsoleText("ID 1 voltage=9800mV\r\n# ")
         XCTAssertNil(manager.supplyVoltageMillivolts)
-        manager.receiveConsoleText("00mV temp=29C\r\n")
+        for time in [4.0, 6.0, 8.0] {
+            now = time; manager.send(.raw("read 1"))
+            manager.receiveConsoleText("ID 1 pos=1941 voltage=98")
+            manager.receiveConsoleText("00mV temp=29C moving=0\r\n# ")
+        }
         XCTAssertEqual(manager.supplyVoltageMillivolts, 9800)
         XCTAssertNotNil(manager.lastVoltageRead)
         manager.receiveConsoleText("ID 2 voltage=12000mV\n")
@@ -554,10 +620,11 @@ final class RobotCommandTests: XCTestCase {
     func testScheduledPostureRefreshCannotStopNewDrive() {
         var sent: [String] = []
         let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
-        manager.send(.relax) // schedules a snapshot after one second
+        manager.send(.hold) // schedules an idle snapshot after four seconds
+        manager.receiveConsoleText("OK\n# ")
         manager.updateDrive(x: 0, y: 1)
         manager.receiveConsoleText("# $SPOTDRIVE started seq=1\r\n")
-        RunLoop.main.run(until: Date().addingTimeInterval(1.2))
+        RunLoop.main.run(until: Date().addingTimeInterval(4.2))
         XCTAssertTrue(sent.contains { $0.hasPrefix("@D ") })
         XCTAssertFalse(sent.contains { $0.hasPrefix("@S ") || $0 == "syncstate\n" })
         manager.disconnect()
@@ -645,7 +712,7 @@ final class RobotCommandTests: XCTestCase {
         let inside = RobotDriveVector.make(x: 0.0999, y: 1)!
         let outside = RobotDriveVector.make(x: 0.1001, y: 1)!
         XCTAssertLessThanOrEqual(abs(outside.yawPerMille-inside.yawPerMille), 1)
-        XCTAssertGreaterThan(RobotDriveVector.make(x: 0.3, y: 1)!.yawPerMille, 100)
+        XCTAssertGreaterThan(RobotDriveVector.make(x: 0.4, y: 1)!.yawPerMille, 100)
         XCTAssertNil(RobotDriveVector.make(x: .nan, y: 1))
     }
 
@@ -754,11 +821,11 @@ extension RobotCommandTests {
         manager.simulatorPort = String(port.rawValue)
         defer { manager.disconnect(); peer?.cancel(); listener.cancel() }
         manager.connect()
-        while manager.lastVoltageRead == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        while manager.lastStateSync == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
         XCTAssertEqual(manager.state, .ready, manager.lastError ?? manager.consoleText)
         XCTAssertEqual(manager.runtimeState.revision, "test-sim")
-        XCTAssertEqual(manager.supplyVoltageMillivolts, 11100)
-        XCTAssertEqual(Array(lines.prefix(3)), ["identity", "syncstate", "read 1"])
+        XCTAssertNil(manager.supplyVoltageMillivolts, "Simulator telemetry must not become a real battery estimate")
+        XCTAssertEqual(Array(lines.prefix(2)), ["identity", "syncstate"])
     }
 }
 
@@ -903,6 +970,7 @@ extension RobotCommandTests {
         manager.send(.headingHold(true))
         XCTAssertTrue(sent.isEmpty)
         manager.receiveConsoleText("$SPOTSTATE pose=stand heading=on caps=headinghold\n")
+        manager.receiveConsoleText("ID 1 voltage=12000mV\n# ")
         XCTAssertEqual(manager.runtimeState.heading, "on")
         manager.send(.headingHold(false))
         XCTAssertTrue(sent.contains("heading off\n"))
@@ -916,6 +984,7 @@ extension RobotCommandTests {
         var sent = [String]()
         let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
         manager.receiveConsoleText("$SPOTSTATE pose=stand heading=on caps=headinghold\n")
+        manager.receiveConsoleText("ID 1 voltage=12000mV\n# ")
         manager.updateDrive(x: 0, y: 1)
         manager.receiveConsoleText("$SPOTDRIVE started seq=1 watchdog=800ms\n")
         manager.send(.headingHold(false))
@@ -960,5 +1029,375 @@ extension RobotCommandTests {
         XCTAssertTrue(sent.contains("gaitprofile joint\n"))
         XCTAssertEqual(manager.runtimeState.simulationProfile, "joint")
         manager.disconnect()
+    }
+}
+
+
+extension RobotCommandTests {
+    private func paritySettings() -> UserDefaults {
+        UserDefaults(suiteName: "SpotOMG-parity-" + UUID().uuidString)!
+    }
+    private var liftSnapshot: String {
+        "$SPOTSTATE pose=custom torque=off safety=ok rev=attitudepd-v4-v90-r1 caps=footlift,footliftpersist,commandretry lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0\n"
+    }
+    func testRobotOwnsFootLiftAndRequiresFreshReadback() {
+        let defaults = paritySettings(); defaults.set([30,30,10,10], forKey: "footLiftMm")
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) }, settings: defaults)
+        defer { m.disconnect() }
+        m.receiveConsoleText(liftSnapshot)
+        XCTAssertFalse(m.footLiftPending) // idle battery response still outstanding
+        m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
+        XCTAssertFalse(sent.contains { $0.hasPrefix("footlift ") })
+        XCTAssertEqual(m.savedFootLift,[0,0,0,0])
+        m.configureFootLift([30,30,10,10])
+        XCTAssertEqual(sent.last, "footlift save 30 30 10 10\n")
+        XCTAssertTrue(m.footLiftPending)
+        // Matching-looking snapshots before the SET completion cannot save/finish.
+        let expected = liftSnapshot.replacingOccurrences(of:"lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0",with:"lift_fl=30 lift_fr=30 lift_rl=10 lift_rr=10")
+        m.receiveConsoleText(expected)
+        XCTAssertTrue(m.footLiftPending)
+        m.receiveConsoleText("OK footlift saved\n# ")
+        XCTAssertEqual(sent.last,"syncstate\n")
+        m.receiveConsoleText(expected + "# ")
+        XCTAssertFalse(m.footLiftPending)
+        XCTAssertEqual(m.footLiftMessage,"로봇 저장·반영 완료")
+        XCTAssertEqual(m.footLiftApplied,[30,30,10,10])
+        XCTAssertEqual(defaults.array(forKey:"footLiftMm") as? [Int],[30,30,10,10])
+        m.receiveConsoleText(liftSnapshot)
+        m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
+        XCTAssertEqual(sent.filter { $0.hasPrefix("footlift save") }.count,1)
+    }
+    func testLegacyFirmwareFootLiftCannotBeSaved() {
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) })
+        defer { m.disconnect() }
+        m.receiveConsoleText(liftSnapshot.replacingOccurrences(of:"footliftpersist,",with:""));m.receiveConsoleText("# ")
+        m.configureFootLift([1,2,3,4])
+        XCTAssertFalse(sent.contains { $0.hasPrefix("footlift save") })
+        XCTAssertFalse(m.canConfigureFootLift)
+    }
+    func testFootLiftMismatchAndDisconnectNeverSaveDraft() {
+        let defaults = paritySettings(); var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) }, settings: defaults)
+        m.receiveConsoleText(liftSnapshot);m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
+        m.configureFootLift([300,20,0,0]);XCTAssertEqual(sent.last,"footlift save 300 20 0 0\n")
+        m.receiveConsoleText("OK footlift saved\n# ");m.receiveConsoleText(liftSnapshot + "# ")
+        XCTAssertNil(defaults.array(forKey:"footLiftMm"));XCTAssertFalse(m.footLiftPending)
+        XCTAssertTrue(m.footLiftMessage.contains("불일치"))
+        m.configureFootLift([1,2,3,4]);m.disconnect()
+        XCTAssertFalse(m.footLiftPending);XCTAssertNil(m.footLiftApplied)
+        XCTAssertNil(defaults.array(forKey:"footLiftMm"))
+    }
+    func testFootLiftRejectionCannotBeSavedByLaterMatchingTelemetry() {
+        let defaults = paritySettings()
+        let m = RobotBluetoothManager(commandWriter: { _ in }, settings: defaults)
+        defer { m.disconnect() }
+        m.receiveConsoleText(liftSnapshot);m.receiveConsoleText("# ")
+        m.configureFootLift([1,2,3,4]);m.receiveConsoleText("ERROR: rejected\n# ")
+        m.receiveConsoleText(liftSnapshot.replacingOccurrences(of:"lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0",with:"lift_fl=1 lift_fr=2 lift_rl=3 lift_rr=4"))
+        XCTAssertNil(defaults.array(forKey:"footLiftMm"));XCTAssertFalse(m.footLiftPending)
+    }
+    func testProtectivePausePersistsAcrossHealthyTelemetry() {
+        let m = RobotBluetoothManager(commandWriter: { _ in }, settings: paritySettings())
+        defer { m.disconnect() }
+        m.updateDrive(x:0,y:1)
+        m.receiveConsoleText("$SPOTDRIVE stopped reason=tilt\nOK\n# ")
+        XCTAssertTrue(m.motionWarning?.title.contains("기울기") == true)
+        m.receiveConsoleText("$SPOTSTATE safety=ok caps=commandretry\n")
+        XCTAssertTrue(m.motionWarning?.title.contains("기울기") == true)
+        m.receiveConsoleText("$SPOTDRIVE started seq=2\n")
+        XCTAssertNil(m.motionWarning)
+        XCTAssertTrue(RobotMotionWarning(reason:"ERROR: imu unavailable").title.contains("IMU"))
+    }
+    func testFreshPressDuringStopWaitResumesOnlyAfterPrompt() {
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) }, settings: paritySettings())
+        defer { m.disconnect() }
+        m.updateDrive(x:0,y:1);m.stopDrive(reason:"gesture-ended")
+        m.updateDrive(x:0,y:-1)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count,1)
+        m.receiveConsoleText("$SPOTDRIVE stopped reason=requested\nOK\n")
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count,1)
+        m.receiveConsoleText("# ")
+        XCTAssertEqual(sent.filter { $0.hasPrefix("drive ") }.count,2)
+        XCTAssertTrue(sent.last?.hasPrefix("drive -1000") == true)
+    }
+    func testReleasedPendingInputAndSafetyStoppedInputAreNotReplayed() {
+        for safety in [false,true] {
+            var sent:[String]=[]
+            let m = RobotBluetoothManager(commandWriter:{sent.append(String(decoding:$0,as:UTF8.self))},settings:paritySettings())
+            m.updateDrive(x:0,y:1);m.stopDrive(reason:"gesture-ended");m.updateDrive(x:0,y:-1)
+            if !safety {m.stopDrive(reason:"gesture-ended")}
+            m.receiveConsoleText("$SPOTDRIVE stopped reason=\(safety ? "tilt" : "requested")\nOK\n# ")
+            XCTAssertEqual(sent.filter{$0.hasPrefix("drive ")}.count,1)
+            m.disconnect()
+        }
+    }
+    func testFreshPressWaitsForIdleTelemetryReplyAndPosturesRemainExclusive() {
+        var sent:[String]=[]
+        let m=RobotBluetoothManager(commandWriter:{sent.append(String(decoding:$0,as:UTF8.self))},settings:paritySettings())
+        defer {m.disconnect()}
+        m.send(.raw("read 1"));m.updateDrive(x:0,y:1)
+        XCTAssertFalse(sent.contains{$0.hasPrefix("drive ")})
+        m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
+        XCTAssertTrue(sent.contains{$0.hasPrefix("drive ")})
+        m.send(.landing);XCTAssertFalse(m.joystickEnabled)
+    }
+    func testRestingVoltageRejectsSingleDipAndRequiresSettling() {
+        var r=RobotRestingVoltage();r.becameIdle(at:0)
+        XCTAssertNil(r.observe(9800,at:1))
+        XCTAssertNil(r.observe(11500,at:4));XCTAssertNil(r.observe(9800,at:6))
+        XCTAssertNil(r.observe(11500,at:8));XCTAssertNil(r.observe(11500,at:10))
+        XCTAssertEqual(r.observe(11600,at:12),11500)
+        r.invalidate();XCTAssertNil(r.observe(9800,at:15))
+        var warning=RobotBatteryWarning();warning.observe(9800,at:1,historical:true)
+        XCTAssertEqual(warning.level,0)
+    }
+    func testLoadAndHistoricalBatteryTelemetryCannotRaiseWarning() {
+        let m=RobotBluetoothManager(commandWriter:{_ in},settings:paritySettings())
+        defer {m.disconnect()}
+        m.updateDrive(x:0,y:1)
+        m.receiveConsoleText("$BATTERY mv=9800\nGait diagnostics: min_voltage=9700mV\nID 1 voltage=9600mV\n")
+        XCTAssertEqual(m.batteryWarning.level,0);XCTAssertNil(m.supplyVoltageMillivolts)
+    }
+}
+
+
+extension RobotCommandTests {
+    @MainActor
+    func testDarkControlScreensRender() throws {
+        let m = RobotBluetoothManager(commandWriter: { _ in }, settings: UserDefaults(suiteName: "SpotOMG-ui-" + UUID().uuidString)!)
+        defer { m.disconnect() }
+        m.receiveConsoleText("$SPOTSTATE pose=stand safety=ok torque=off rev=attitudepd-v4-v90-r1 caps=footlift,footliftpersist,commandretry,headinghold,balancecontrol,stow lift_fl=30 lift_fr=30 lift_rl=10 lift_rr=10\n# ")
+        m.parameterWalking = true
+        let screen = UIHostingController(rootView: ContentView().environmentObject(m))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let old = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene); window.rootViewController = screen; window.makeKeyAndVisible()
+        defer { window.isHidden = true; old?.makeKeyAndVisible() }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        screen.view.layoutIfNeeded()
+        XCTAssertEqual(screen.traitCollection.userInterfaceStyle, .dark)
+        func capture(_ name: String) {
+            let image = UIGraphicsImageRenderer(bounds: screen.view.bounds).image { _ in
+                screen.view.drawHierarchy(in: screen.view.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        }
+        capture("dark-controller")
+        let popup = UIHostingController(rootView: FootLiftSettingsView().environmentObject(m))
+        screen.present(popup, animated: false)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        let popupImage = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let popupAttachment = XCTAttachment(image: popupImage)
+        popupAttachment.name = "foot-lift-popup"; popupAttachment.lifetime = .keepAlways; add(popupAttachment)
+        screen.dismiss(animated: false)
+
+        func scrollViews(_ view: UIView) -> [UIScrollView] {
+            ([view as? UIScrollView].compactMap { $0 }) + view.subviews.flatMap(scrollViews)
+        }
+        if let list = scrollViews(screen.view).filter({ $0.contentSize.height > $0.bounds.height * 1.5 }).max(by: { $0.contentSize.height < $1.contentSize.height }) {
+            for (index, offset) in [list.bounds.height + 100, list.bounds.height + 450, list.bounds.height + 900].enumerated() {
+                list.setContentOffset(CGPoint(x:0,y:min(list.contentSize.height-list.bounds.height, offset)),animated:false)
+                RunLoop.main.run(until:Date().addingTimeInterval(0.4));capture("dark-settings-\(index)")
+            }
+        }
+    }
+}
+
+
+extension RobotCommandTests {
+    func testPostureDiscardsDeferredJoystickInput() {
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) })
+        defer { m.disconnect() }
+        m.send(.raw("read 1"));m.updateDrive(x:0,y:1)
+        m.requestSafeStand()
+        m.receiveConsoleText("ID 1 voltage=12000mV\n# OK\n# ")
+        m.receiveConsoleText("$SPOTSTATE pose=stand safety=ok torque=on\n# ")
+        m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
+        XCTAssertFalse(sent.contains { $0.hasPrefix("drive ") })
+    }
+}
+
+extension RobotCommandTests {
+    private func controlReply(_ sequence: UInt32, _ kind: String, _ payload: String = "") -> Data {
+        Data("\u{1e}\(sequence) \(kind) \(payload)\u{1f}".utf8)
+    }
+    private func requestSequence(_ text: String) -> UInt32 { UInt32(text.split(separator: " ")[1])! }
+
+    func testControlFramesSurviveEveryChunkBoundaryAndRejectMalformedReply() throws {
+        let frame = controlReply(42, "DATA", "OK\r\n") + controlReply(42, "DONE")
+        for split in 0...frame.count {
+            var stream = RobotControlStream()
+            let replies = try stream.append(Data(frame.prefix(split))) + stream.append(Data(frame.dropFirst(split)))
+            XCTAssertEqual(replies.count, 2)
+            XCTAssertEqual(replies[0].sequence, 42)
+            XCTAssertEqual(replies[0].payload, "OK\r\n")
+            XCTAssertTrue(replies[1].done)
+        }
+        var stream = RobotControlStream()
+        XCTAssertThrowsError(try stream.append(controlReply(0, "DONE")))
+        XCTAssertThrowsError(try RobotControlStream.request(Data("stand\nrelax\n".utf8), sequence: 1))
+    }
+
+    func testDedicatedControlIgnoresDelayedLogsAndOldCompletionWhileStopping() {
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+        defer { m.disconnect() }
+        m.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok caps=controlv1,commandretry\n")
+        m.receiveConsoleText("ID 1 voltage=11800mV\n# ")
+        m.activateSeparateControl()
+        XCTAssertTrue(m.separateControl)
+        sent.removeAll()
+        m.updateDrive(x: 0, y: 1)
+        let seq = requestSequence(sent[0])
+        m.receiveControlData(controlReply(seq, "DATA", "$SPOTDRIVE started seq=1\n"))
+        m.stopDrive(reason: "gesture-ended")
+        XCTAssertTrue(sent.last!.hasPrefix("@S "), "Stop must bypass the active command")
+        m.updateDrive(x: 0, y: -1)
+        for _ in 0..<50 { m.receiveDiagnosticText("OK\n# $SPOTDRIVE stopped reason=tilt\nGait diagnostics: min_voltage=9000mV\n") }
+        m.receiveControlData(controlReply(seq == 1 ? 2 : seq - 1, "DONE"))
+        XCTAssertEqual(sent.filter { $0.hasPrefix("@C ") }.count, 1)
+        XCTAssertNil(m.motionWarning)
+        m.receiveControlData(controlReply(seq, "DATA", "$SPOTDRIVE stopped reason=ok\nOK\n"))
+        m.receiveControlData(controlReply(seq, "DONE"))
+        XCTAssertEqual(sent.filter { $0.hasPrefix("@C ") }.count, 2)
+        XCTAssertTrue(sent.last!.contains("drive -1000"))
+        XCTAssertFalse(m.consoleText.contains("Gait diagnostics"))
+        m.receiveDiagnosticText("ERROR: support monitoring reason=lost servo=1; corrections paused; torque preserved\n")
+        XCTAssertNotNil(m.motionWarning)
+        XCTAssertEqual(sent.filter { $0.hasPrefix("@C ") }.count, 2)
+    }
+
+    func testDedicatedControlSerializesQueriesAndVoltageDoesNotDependOnLogs() {
+        let old = UserDefaults.standard.object(forKey: "robotTarget")
+        UserDefaults.standard.set("robot", forKey: "robotTarget")
+        defer { UserDefaults.standard.set(old, forKey: "robotTarget") }
+        var sent: [String] = []; var now = 0.0
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding: $0, as: UTF8.self)) })
+        defer { m.disconnect() }
+        m.telemetryClock = { now }
+        m.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok caps=controlv1\n")
+        m.receiveConsoleText("ID 1 voltage=11800mV\n# ")
+        m.activateSeparateControl(); sent.removeAll()
+        for time in [4.0, 6.0, 8.0] {
+            now = time
+            m.send(.raw("read 1"))
+            let seq = requestSequence(sent.last!)
+            m.receiveDiagnosticText("$BATTERY mv=9000\nGait diagnostics: min_voltage=8000mV\nID 1 voltage=7000mV\n# ")
+            m.receiveControlData(controlReply(seq, "DATA", "ID 1 voltage=11800mV moving=0\n"))
+            m.receiveControlData(controlReply(seq, "DONE"))
+        }
+        XCTAssertEqual(m.supplyVoltageMillivolts, 11800)
+        XCTAssertEqual(m.batteryWarning.level, 0)
+        sent.removeAll()
+        m.send(.raw("read 1")); m.send(.raw("targets"))
+        XCTAssertEqual(sent.count, 1)
+        let seq = requestSequence(sent[0])
+        m.receiveControlData(controlReply(seq, "DONE"))
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertTrue(sent[1].contains("targets"))
+    }
+
+    func testDiagnosticExportIncludesEarlierQueuedWrites() {
+        let trace = RobotConnectionTrace()
+        let marker = "export-test-" + UUID().uuidString
+        trace.record("diagnostic", marker)
+        let ready = expectation(description: "export")
+        trace.export { result in
+            do {
+                let url = try result.get()
+                XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).contains(marker))
+                try FileManager.default.removeItem(at: url)
+            } catch { XCTFail("\(error)") }
+            ready.fulfill()
+        }
+        wait(for: [ready], timeout: 5)
+    }
+}
+
+
+extension RobotCommandTests {
+    func testForwardReverseTwentyDegreeSnapPreservesSpeedAndOutsideSteering() {
+        for direction in [-1.0, 1.0] {
+            for radius in [0.3, 0.6, 1.0] {
+                let straight = RobotDriveVector.make(x: 0, y: direction * radius)!
+                for degrees in [-20.0, -10, 0, 10, 20] {
+                    let angle = degrees * Double.pi / 180
+                    let value = RobotDriveVector.make(x: radius * sin(angle), y: direction * radius * cos(angle))!
+                    XCTAssertEqual(value.linearPerMille, straight.linearPerMille)
+                    XCTAssertEqual(value.yawPerMille, 0)
+                    XCTAssertEqual(value.speedFraction, straight.speedFraction, accuracy: 1e-12)
+                }
+                for degrees in [-45.0, -20.1, 20.1, 45] {
+                    let angle = degrees * Double.pi / 180
+                    let value = RobotDriveVector.make(x: radius * sin(angle), y: direction * radius * cos(angle))!
+                    XCTAssertGreaterThan(Double(value.yawPerMille) * degrees, 0)
+                    XCTAssertGreaterThan(Double(value.linearPerMille) * direction, 0)
+                }
+            }
+        }
+    }
+}
+
+
+extension RobotCommandTests {
+    func testSidewaysTwentyDegreeSnapBothSides() {
+        for side in [-1.0, 1.0] {
+            for radius in [0.3, 0.6, 1.0] {
+                let pure = RobotDriveVector.make(x: side * radius, y: 0)!
+                for degrees in [70.0, 80, 90, 100, 110] {
+                    let a = degrees * Double.pi / 180
+                    let v = RobotDriveVector.make(x: side * radius * sin(a), y: radius * cos(a))!
+                    XCTAssertEqual(v.linearPerMille, 0)
+                    XCTAssertEqual(v.yawPerMille, pure.yawPerMille)
+                    XCTAssertEqual(v.speedFraction, pure.speedFraction, accuracy: 1e-12)
+                }
+                for degrees in [20.1, 45, 69.9, 110.1, 120, 140, 159.9] {
+                    let a = degrees * Double.pi / 180
+                    let v = RobotDriveVector.make(x: side * radius * sin(a), y: radius * cos(a))!
+                    XCTAssertGreaterThan(Double(v.yawPerMille) * side, 0)
+                    XCTAssertGreaterThan(Double(v.linearPerMille) * (degrees < 90 ? 1 : -1), 0)
+                }
+            }
+        }
+    }
+}
+
+extension RobotCommandTests {
+    func testManualIMURecoveryIsIdleOnlyAndRequiresSuccessReply() {
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) })
+        defer { m.disconnect() }
+        m.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=fault rev=attitudepd-v4-v90-r3 caps=controlv1,commandretry\n")
+        m.receiveConsoleText("ID 1 voltage=11800mV\n# ")
+        XCTAssertTrue(m.canRecoverIMU)
+        m.recoverIMU()
+        XCTAssertEqual(sent.last,"imurecover\n")
+        XCTAssertFalse(m.canRecoverIMU)
+        m.updateDrive(x:0,y:1)
+        XCTAssertFalse(sent.contains { $0.hasPrefix("drive ") })
+        m.receiveConsoleText("IMURECOVER OK samples=3/3\nOK IMU recovered; no motion; faults unchanged\n# ")
+        XCTAssertTrue(m.imuRecoveryMessage.contains("복구 완료"))
+        XCTAssertFalse(sent.contains { $0.hasPrefix("drive ") })
+        XCTAssertFalse(m.imuRecoveryPending)
+        m.recoverIMU();m.receiveConsoleText("ERROR: IMU recovery failed; no motion\n# ")
+        XCTAssertTrue(m.imuRecoveryMessage.contains("복구 실패"))
+        m.updateDrive(x:0,y:1)
+        XCTAssertFalse(m.canRecoverIMU)
+    }
+    func testAutoIMURecoveryNotificationNeverStartsMotion() {
+        var sent:[String]=[]
+        let m=RobotBluetoothManager(commandWriter:{sent.append(String(decoding:$0,as:UTF8.self))})
+        defer {m.disconnect()}
+        m.receiveDiagnosticText("IMUAUTO started delay_ms=3000; no motion\n")
+        XCTAssertTrue(m.imuRecoveryMessage.contains("복구 중"))
+        m.receiveDiagnosticText("IMUAUTO result=ok; new command required\n")
+        XCTAssertTrue(m.imuRecoveryMessage.contains("복구 완료"))
+        XCTAssertTrue(sent.isEmpty)
     }
 }

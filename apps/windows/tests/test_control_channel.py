@@ -1,10 +1,12 @@
 import asyncio
+import json
 import time
 
 import pytest
 from PySide6.QtWidgets import QApplication
 from spot_controller import connection
 from spot_controller.control_channel import ControlStream, request
+from spot_controller.diagnostic_trace import ConnectionTrace
 
 
 def frame(seq, payload=b'', kind=b'DATA'):
@@ -26,8 +28,10 @@ def test_control_request_rejects_truncation_or_embedded_commands(data):
     with pytest.raises(ValueError):request(1,data)
 
 
-def test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_command(monkeypatch):
+def test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_command(monkeypatch, tmp_path):
     app = QApplication.instance() or QApplication([])
+    trace = ConnectionTrace(tmp_path / 'trace')
+    monkeypatch.setattr(connection, 'ConnectionTrace', lambda: trace)
     owner = connection.Connection()
     snapshots, sent, logs = [], [], []
     owner.changed.connect(snapshots.append)
@@ -81,6 +85,9 @@ def test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_c
                 await asyncio.sleep(.01)
         try:
             await until(lambda:snapshots and snapshots[-1].get('phase')=='idle')
+            radio.console.put_nowait(b'IMUAUTO reason=read-failure result=ok\r\n')
+            await until(lambda:any('IMUAUTO ' in line for line in logs))
+            assert not snapshots[-1]['error'] and not snapshots[-1]['pause_reason']
             owner.pulse((0,.5))
             await until(lambda:radio.drive_seq is not None)
             await until(lambda:snapshots[-1].get('phase')=='drive')
@@ -88,12 +95,14 @@ def test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_c
             before=len([d for d in sent if d.startswith(b'@D ')])
             flood_until=time.monotonic()+.7
             while time.monotonic()<flood_until:
-                radio.console.put_nowait(b'ERROR: old log\r\n# '+b'L'*200+b'\n')
+                radio.console.put_nowait(b'ERROR: old log\r\n# '+b'L'*200+b'\n$BATTERY mv=9900\r\nID 1 voltage=9900mV\r\n')
                 owner.pulse((0,.8))
                 app.processEvents()
                 await asyncio.sleep(.01)
             assert len([d for d in sent if d.startswith(b'@D ')])-before >= 3
             assert snapshots[-1]['phase']=='drive' and snapshots[-1]['connected']
+            assert snapshots[-1]['voltage'] is None
+            assert snapshots[-1]['battery_warning'].get('level', 0) == 0
             owner.pulse(None)
             stopped=time.monotonic()
             await until(lambda:snapshots[-1].get('phase')=='idle')
@@ -111,11 +120,21 @@ def test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_c
             radio.control.put_nowait(frame(radio.next_seq,kind=b'DONE'))
             await until(lambda:snapshots[-1]['phase']=='idle')
             assert not any(b'syncstate' in d or d==b'\x03' for d in sent)
-            assert any('ID11 incomplete' in s for s in logs)
+            assert not any('ID11 incomplete' in s or 'ERROR: old log' in s or 'L'*200 in s for s in logs)
+            assert any('[완료] targets' in s for s in logs)
         finally:
             owner.disconnect()
             await asyncio.wait_for(task,2)
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+        exported = trace.export(tmp_path / 'diagnostics.jsonl').result(timeout=2)
+        rows = [json.loads(line) for line in exported.read_text().splitlines()]
+        assert any('ID11 incomplete' in row['detail'] for row in rows)
+        assert any('ERROR: old log' in row['detail'] for row in rows)
+        assert any(row['event'] == 'control-tx' and '@D ' in row['detail'] for row in rows)
+    finally:
+        owner.close_trace()
+        trace.close(wait=True)
 
 
 def test_console_overflow_does_not_disconnect_control_channel():

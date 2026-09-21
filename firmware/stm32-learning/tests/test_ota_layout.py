@@ -30,7 +30,9 @@ def test_flight_log_shares_sector_7_without_overwriting_calibration() -> None:
     assert "FLIGHT_LOG_PRESERVED_WORDS      256U" in logger
     assert "sizeof(FlightLogRecord) == 128U" in logger
     assert "BNO055_CAL_FLASH_ADDRESS   0x08060000UL" in calibration
-    assert "flight_log_on_sector_reformatted();" in calibration
+    assert "flight_log_save_calibration(&record, sizeof(record))" in calibration
+    assert "FOOT_LIFT_SNAPSHOT_OFFSET       256U" in logger
+    assert "latest_foot_lift()" in logger
 
 
 def test_bootloader_never_erases_its_own_or_calibration_sectors() -> None:

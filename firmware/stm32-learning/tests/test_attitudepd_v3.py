@@ -28,7 +28,7 @@ int main(void) {
   for(int i=0;i<4;i++)assert(weights[i]>=0 && weights[i]<=1);
  }
  int v2=locomotion_profile_id("attitudepd_v2"),v3=locomotion_profile_id("attitudepd_v3");
- assert(v2==24 && v3==25 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v4"));
+ assert(v2==24 && v3==25 && LOCOMOTION_DEFAULT_PROFILE==locomotion_profile_id("attitudepd_v6"));
  assert(locomotion_is_attitude_pd(v3) && !locomotion_is_native(v3));
  GaitPolicyLegTarget a[4],b[4],stand[4],original[4];uint16_t ticks[12],old_ticks[12];
  assert(locomotion_stand_targets(v3,stand));

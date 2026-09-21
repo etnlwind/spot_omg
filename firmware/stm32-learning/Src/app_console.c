@@ -13,6 +13,8 @@
 #include "pose_control.h"
 #include "servo_response_probe.h"
 #include "imu_bus_recovery.h"
+#include "imu_auto_recovery.h"
+static ImuAutoRecovery imu_auto;
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -227,6 +229,7 @@ static void print_robot_result(AppConsole *console, RobotResult result)
         return;
     }
     if (result == ROBOT_IMU_ERROR) {
+        if(console->imu055 && console->imu055->present)imu_auto_failed(&imu_auto,HAL_GetTick());
         write_text(console,
                    "ERROR: IMU balance error; motion cancelled\r\n");
         return;
@@ -742,7 +745,7 @@ static void command_sync_state(AppConsole *console)
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754 lift_fl=%u lift_fr=%u lift_rl=%u lift_rr=%u\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754 lift_fl=%u lift_fr=%u lift_rl=%u lift_rr=%u\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -845,10 +848,10 @@ static void command_imudiag(AppConsole *console, const char *label)
     write_text(console,message);
 }
 
-static void command_imurecover(AppConsole *console)
+static bool command_imurecover(AppConsole *console)
 {
     if(console->robot->drive_active || console->robot->walk_probe_active) {
-        write_text(console,"ERROR: stop before IMU bus recovery\r\n");return;
+        write_text(console,"ERROR: stop before IMU bus recovery\r\n");return false;
     }
     command_imudiag(console,"before");
     ImuBusRecovery result;
@@ -862,6 +865,22 @@ static void command_imurecover(AppConsole *console)
     command_imudiag(console,"after");
     write_text(console,ok?"OK IMU recovered; no motion; faults unchanged\r\n":
         "ERROR: IMU recovery failed; no motion\r\n");
+    if(ok)imu_auto_healthy(&imu_auto);
+    return ok;
+}
+
+void app_console_auto_imu_recovery(AppConsole *console)
+{
+    if(!console || !console->robot || !console->imu055 || !console->imu055->present)return;
+    RobotController *r=console->robot;
+    bool idle=!r->drive_active && !r->walk_probe_active && !r->stow_active &&
+        !r->gait_diagnostics_active && !console->control_active;
+    if(!imu_auto_take(&imu_auto,HAL_GetTick(),idle))return;
+    write_text(console,"IMUAUTO started delay_ms=3000; no motion\r\n");
+    bool ok=command_imurecover(console);
+    write_text(console,ok?"IMUAUTO result=ok; new command required\r\n":
+        "IMUAUTO result=failed; manual recovery required\r\n");
+    (void)flight_log_appendf("IMUAUTO result=%s no-motion",ok?"ok":"failed");
 }
 
 static void command_i2cscan(AppConsole *console)
@@ -2727,7 +2746,7 @@ static void execute_line(AppConsole *console)
         command_safety(console);
     } else if (strcmp(command, "footlift") == 0) {
         char *action=strtok(NULL," \t");
-        if(action && !strcmp(action,"set")) {
+        if(action && !strcmp(action,"save")) {
             if(robot_drive_is_active(console->robot) || console->robot->stow_active || console->robot->gait_diagnostics_active){write_text(console,"ERROR: stop before footlift changes\r\n");return;}
             uint32_t value[4];
             for(int i=0;i<4;i++) {
@@ -2740,9 +2759,10 @@ static void execute_line(AppConsole *console)
                 value[i]=v;
             }
             if(strtok(NULL," \t")){write_text(console,"ERROR: four values required\r\n");return;}
+            if (!flight_log_save_foot_lift(value)) {write_text(console,"ERROR: footlift flash save failed\r\n");return;}
             for(int i=0;i<4;i++)console->robot->foot_lift_mm[i]=value[i];
-            write_text(console,"OK footlift\r\n");
-        } else if(!action || strcmp(action,"show") || strtok(NULL," \t")){write_text(console,"ERROR: footlift show|set FL FR RL RR\r\n");return;}
+            write_text(console,"OK footlift saved\r\n");
+        } else if(!action || strcmp(action,"show") || strtok(NULL," \t")){write_text(console,"ERROR: footlift show|save FL FR RL RR\r\n");return;}
         command_sync_state(console);
     } else if (strcmp(command, "probeconfig") == 0) {
         char *action=strtok(NULL," \t");
@@ -3341,7 +3361,7 @@ void app_console_print_help(AppConsole *console)
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
-               "  footlift show|set FL FR RL RR (nonnegative integer mm, RAM)\r\n"
+               "  footlift show|save FL FR RL RR (nonnegative integer mm, STM32 flash)\r\n"
                "  probeconfig show|reset|set LIFT_MM LINEAR MS all|rl|rr\r\n"
                "  walkprobe        execute configured bounded V625 probe\r\n"
                "  rearprobe rl|rr  original rear trajectory; other three legs S\r\n"

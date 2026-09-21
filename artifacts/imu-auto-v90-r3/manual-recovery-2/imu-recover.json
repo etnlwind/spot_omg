@@ -1,0 +1,49 @@
+{
+  "stage": "imu-recover",
+  "success": false,
+  "events": [
+    {
+      "command": "syncstate",
+      "data": [
+        "$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n"
+      ]
+    },
+    {
+      "command": "imurecover",
+      "data": [
+        "IMUDIAG before present=1 addr=0x29 hal_state=0x20 hal_error=0x20 sr1=0x0 sr2=0x2 scl=1 sda=1\r\n",
+        "IMURECOVER FAIL deinit=0 init=0 chip=0xA0 chip_ok=1 mode=0x08 mode_ok=1 body_ok=0 samples=0/3\r\n",
+        "IMUDIAG after present=1 addr=0x29 hal_state=0x20 hal_error=0x0 sr1=0x0 sr2=0x0 scl=1 sda=1\r\n",
+        "ERROR: IMU recovery failed; no motion\r\n"
+      ]
+    }
+  ],
+  "sha256": "441b853c8b591c1e8d8daaf3b9973dd0fbfccc1c663b9b8cc6a7b41d9ed0e6c1",
+  "initial": {
+    "pose": "stand",
+    "error": "10",
+    "torque": "on",
+    "safety": "ok",
+    "balance": "suspended",
+    "rev": "attitudepd-v4-v90-r2",
+    "caps": "footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold",
+    "profile": "attitudepd_v4",
+    "heading": "on",
+    "reverse_limit": "1000",
+    "recovery": "new-command",
+    "fault_code": "0",
+    "support": "observing",
+    "mass_g": "2754",
+    "lift_fl": "20",
+    "lift_fr": "20",
+    "lift_rl": "0",
+    "lift_rr": "0"
+  },
+  "console": [
+    "$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,atti",
+    "tudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,joint",
+    "trace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 su"
+  ],
+  "error": "RuntimeError('IMUDIAG before present=1 addr=0x29 hal_state=0x20 hal_error=0x20 sr1=0x0 sr2=0x2 scl=1 sda=1\\r\\nIMURECOVER FAIL deinit=0 init=0 chip=0xA0 chip_ok=1 mode=0x08 mode_ok=1 body_ok=0 samples=0/3\\r\\nIMUDIAG after present=1 addr=0x29 hal_state=0x20 hal_error=0x0 sr1=0x0 sr2=0x0 scl=1 sda=1\\r\\nERROR: IMU recovery failed; no motion\\r\\n')",
+  "finished_epoch": 1789997578.740391
+}

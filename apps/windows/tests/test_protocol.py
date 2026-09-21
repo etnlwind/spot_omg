@@ -271,22 +271,39 @@ def test_v627_is_first_only_when_firmware_advertises_support(simulator):
 
 
 @pytest.mark.parametrize('supported,expected', [
+    ('attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6','attitudepd_v6'),
+    ('attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5','attitudepd_v5'),
     ('attitudepd_v2,attitudepd_v3,attitudepd_v4','attitudepd_v4'),
     ('attitudepd_v2,attitudepd_v3','attitudepd_v3'),
     ('attitudepd_v2','attitudepd_v2'),
 ])
 def test_attitudepd_default_respects_firmware_capability(supported,expected):
     from spot_controller.protocol import PROFILES
-    assert PROFILES[:3]==('attitudepd_v4','attitudepd_v3','attitudepd_v2')
+    assert PROFILES[:5]==('attitudepd_v6','attitudepd_v5','attitudepd_v4','attitudepd_v3','attitudepd_v2')
     c=Controller(simulator=False);c.opened(0);drain(c)
     c.feed(STATE.replace(b'trot5',supported.encode())+b'# ',.1)
     drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
     assert drain(c)==f'gaitprofile {expected}\n'.encode()
     c.validate('gaitprofile '+expected)
-    if expected!='attitudepd_v4':
+    if expected!='attitudepd_v6':
+        with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v6')
+    if expected not in ('attitudepd_v5','attitudepd_v6'):
+        with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v5')
+    if expected not in ('attitudepd_v4','attitudepd_v5','attitudepd_v6'):
         with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v4')
     if expected=='attitudepd_v2':
         with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v3')
+
+
+def test_v92_retains_parameter_configuration_and_v5_selection():
+    c=Controller();c.state={'rev':'attitudepd-v6-v92','pose':'stand'}
+    c.caps={'gaitprofiles','attitudepd_v5','attitudepd_v6'}
+    assert c.supports_probe
+    c.validate('probeconfig set 28 344 4000 all -20 1')
+    c.validate('gaitprofile attitudepd_v6')
+    c.validate('gaitprofile attitudepd_v5')
+    c.caps.remove('attitudepd_v6')
+    with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v6')
 
 
 def test_safety_stop_keeps_controls_live_and_allows_fresh_reverse():
@@ -360,3 +377,39 @@ def test_protective_stop_requires_new_gesture_but_accepts_it_during_drain():
     c.feed(b'STOPPED: tilt safety limit reached\r\n'+STATE+b'# ',1.5)
     c.sample_input((0,-1),1.6)
     assert drain(c).startswith(b'drive -1000 0 ')
+
+
+@pytest.mark.parametrize('direction', [-1, 1])
+@pytest.mark.parametrize('radius', [.3, .6, 1.0])
+@pytest.mark.parametrize('degrees', [-20, -10, 0, 10, 20])
+def test_twenty_degree_forward_reverse_snap(direction, radius, degrees):
+    import math
+    angle = math.radians(degrees)
+    assert drive_vector(radius*math.sin(angle), direction*radius*math.cos(angle)) == drive_vector(0, direction*radius)
+
+@pytest.mark.parametrize('direction', [-1, 1])
+@pytest.mark.parametrize('degrees', [-20.1, 20.1, -45, 45])
+def test_turning_outside_forward_reverse_snap(direction, degrees):
+    import math
+    angle = math.radians(degrees)
+    linear, yaw = drive_vector(math.sin(angle), direction*math.cos(angle))
+    assert linear*direction > 0
+    assert yaw*degrees > 0
+
+
+@pytest.mark.parametrize('side', [-1, 1])
+@pytest.mark.parametrize('radius', [.3, .6, 1.0])
+@pytest.mark.parametrize('degrees', [70, 80, 90, 100, 110])
+def test_sideways_sector_snaps_both_sides(side, radius, degrees):
+    import math
+    a = math.radians(degrees)
+    assert drive_vector(side*radius*math.sin(a), radius*math.cos(a)) == drive_vector(side*radius, 0)
+
+@pytest.mark.parametrize('side', [-1, 1])
+@pytest.mark.parametrize('degrees', [20.1, 45, 69.9, 110.1, 120, 140, 159.9])
+def test_remaining_sectors_mix_translation_and_turn(side, degrees):
+    import math
+    a = math.radians(degrees)
+    linear, yaw = drive_vector(side*math.sin(a), math.cos(a))
+    assert yaw*side > 0
+    assert linear*(1 if degrees < 90 else -1) > 0

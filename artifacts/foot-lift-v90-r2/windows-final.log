@@ -1,0 +1,23 @@
+.....F......................................................             [100%]
+=================================== FAILURES ===================================
+_____________ test_protocol_requires_saved_ack_and_fresh_readback ______________
+
+    def test_protocol_requires_saved_ack_and_fresh_readback():
+        c=Controller();c.connected=c.synced=True;c.phase='idle';c.caps={'footlift','footliftpersist'}
+        state=b'$SPOTSTATE pose=stand torque=on safety=ok caps=footlift,footliftpersist lift_fl=10 lift_fr=20 lift_rl=0 lift_rr=0\n'
+        c.request('footlift save 10 20 0 0',0)
+        c.feed(b'OK footlift saved\n'+state+b'# ',.1)
+        assert c.command=='footlift show' and c.foot_lift_result is None
+        c.feed(state+b'# ',.2)
+>       assert c.foot_lift_result==dict(ok=True,values=[10,20,0,0])
+E       AssertionError: assert {'ok': False,...10, 20, 0, 0]} == {'ok': True, ...10, 20, 0, 0]}
+E         
+E         Omitting 1 identical items, use -vv to show
+E         Differing items:
+E         {'ok': False} != {'ok': True}
+E         Use -v to get more diff
+
+apps/windows/tests/test_foot_lift_ui.py:89: AssertionError
+=========================== short test summary info ============================
+FAILED apps/windows/tests/test_foot_lift_ui.py::test_protocol_requires_saved_ack_and_fresh_readback
+1 failed, 59 passed in 0.24s

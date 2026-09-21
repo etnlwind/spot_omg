@@ -9,6 +9,114 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     static let receiveUUID = CBUUID(string: "6e400002-b5a3-f393-e0a9-e50e24dcca9e")
     static let transmitUUID = CBUUID(string: "6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
+    static let controlReceiveUUID = CBUUID(string: "6e400005-b5a3-f393-e0a9-e50e24dcca9e")
+    static let controlTransmitUUID = CBUUID(string: "6e400006-b5a3-f393-e0a9-e50e24dcca9e")
+    private var controlReceiveCharacteristic: CBCharacteristic?
+    private var controlTransmitCharacteristic: CBCharacteristic?
+    private var controlNotifyReady = false
+    private(set) var separateControl = false
+    private var controlStream = RobotControlStream()
+    private var controlSequence = UInt32.random(in: 1...0xffffff00)
+    private var activeControlSequence: UInt32?
+    private var controlCommands: [Data] = []
+    private var diagnosticStream = RobotConsoleStream()
+
+    // Also used by injected-transport tests; real activation requires both
+    // notification subscription and the firmware controlv1 capability.
+    func activateSeparateControl() {
+        guard !separateControl, pendingConsoleResponses == 0,
+              runtimeState.capabilities.contains("controlv1") else { return }
+        separateControl = true
+        consoleStream = RobotConsoleStream()
+        trace?.record("control-channel", "enabled; diagnostics no longer complete commands")
+    }
+
+    private func startNextControlCommand() {
+        guard separateControl, activeControlSequence == nil, !controlCommands.isEmpty else { return }
+        controlSequence = controlSequence == UInt32.max ? 1 : controlSequence + 1
+        activeControlSequence = controlSequence
+        consoleStream = RobotConsoleStream()
+        do { writeWire(try RobotControlStream.request(controlCommands.removeFirst(), sequence: controlSequence), kind: .command) }
+        catch { disconnect(); fail("제어 명령 형식 오류") }
+    }
+
+    func receiveControlData(_ data: Data) {
+        do {
+            for reply in try controlStream.append(data) {
+                guard reply.sequence == activeControlSequence else { continue }
+                if reply.done {
+                    // Keep the active sequence until callbacks finish queuing
+                    // follow-up work, so a new command cannot overtake it.
+                    processConsolePrompt()
+                    activeControlSequence = nil
+                    startNextControlCommand()
+                } else { receiveConsoleText(reply.payload) }
+            }
+        } catch { disconnect(); fail("제어 응답 형식 오류: 연결을 해제했습니다.") }
+    }
+
+    func receiveDiagnosticText(_ text: String) {
+        // Old command replies and historical voltage minima are diagnostics,
+        // never acknowledgements or fresh battery samples.
+        trace?.record("diagnostic", text)
+        for event in diagnosticStream.append(text) {
+            guard case .line(let line) = event else { continue }
+            if line.hasPrefix("IMUAUTO ") {
+                imuRecoveryMessage = line.contains("result=ok") ? "자동 IMU 복구 완료 · 새 조작을 입력하세요." :
+                    (line.contains("result=failed") ? "자동 IMU 복구 실패 · 수동 복구를 시도하세요." : "자동 IMU 복구 중…")
+                appendConsole(line + "\n")
+            }
+            // This is an unsolicited firmware event, not a delayed command reply.
+            if line.hasPrefix("ERROR: support monitoring reason=") {
+                motionPauseReason = line
+                appendConsole(line + "\n")
+            } else if line.hasPrefix("[LOG overflow:") {
+                appendConsole("[진단] 로그 일부 누락 · 제어 채널은 별도 처리\n")
+            }
+        }
+    }
+
+    @Published private(set) var diagnosticExportURL: URL?
+    @Published private(set) var exportingDiagnostics = false
+    func exportDiagnostics() {
+        guard !exportingDiagnostics, let trace else { return }
+        exportingDiagnostics = true
+        trace.export { [weak self] result in
+            guard let self else { return }
+            self.exportingDiagnostics = false
+            switch result {
+            case .success(let url): self.diagnosticExportURL = url
+            case .failure(let error): self.lastError = "로그 내보내기 실패: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    @Published private(set) var imuRecoveryPending = false
+    @Published private(set) var imuRecoveryMessage = "정지 상태에서 IMU 통신을 복구합니다."
+    private var imuRecoveryAcknowledged = false
+    private var imuRecoveryTimeout: DispatchWorkItem?
+    var supportsIMURecovery: Bool {
+        target == .robot && ["attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"].contains(runtimeState.revision)
+    }
+    var canRecoverIMU: Bool {
+        supportsIMURecovery && state.isReady && !driveSessionActive &&
+        postureInProgress == nil && !postureQueued && !stopRequested &&
+        remotePending == nil && !probeBusy && pendingConsoleResponses == 0 && !imuRecoveryPending
+    }
+    func recoverIMU() {
+        guard canRecoverIMU else { return }
+        imuRecoveryPending = true; imuRecoveryAcknowledged = false
+        imuRecoveryMessage = "IMU 복구 중…"
+        sendCommandNow(.raw("imurecover"))
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.imuRecoveryPending else { return }
+            self.imuRecoveryPending = false
+            self.imuRecoveryMessage = "복구 응답 시간 초과 · 다시 연결해 확인해 주세요."
+        }
+        imuRecoveryTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+    }
+
     @Published private(set) var postureInProgress: String?
     @Published private(set) var postureQueued = false
     @Published private(set) var stopRequested = false
@@ -121,10 +229,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     @Published private(set) var supplyVoltageMillivolts: Int?
     @Published private(set) var lastVoltageRead: Date?
     @Published private(set) var batteryWarning = RobotBatteryWarning()
+    @Published private(set) var motionPauseReason = ""
+    var motionWarning: RobotMotionWarning? { motionPauseReason.isEmpty ? nil : RobotMotionWarning(reason: motionPauseReason) }
+    var joystickEnabled: Bool { state.isReady && !imuRecoveryPending && remotePending == nil && postureInProgress == nil && !postureQueued && !relaxAfterLanding && !probeBusy }
+    private var consoleCommands: [String] = []
+    private var restingVoltage = RobotRestingVoltage()
+    var telemetryClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    private var deferredDriveInput: (x: Double, y: Double)?
+    private var inputReleased = false
+    private var stopRearmed = false
     @Published private var pendingConsoleResponses = 0
     private var lastBatteryPoll = Date.distantPast
 
-    /// Short idle-only read. Realtime motion receives firmware $BATTERY events.
+    /// Fresh idle-only snapshots drive voltage display/warnings; diagnostics do not.
     func pollBattery(now: Date = Date()) {
         guard target == .robot, state.isReady, lastStateSync != nil, !driveSessionActive,
               !motionControlsLocked, pendingConsoleResponses == 0,
@@ -271,18 +388,38 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
     @Published private(set) var footLiftApplied: [Int]?
     @Published private(set) var footLiftMessage = "연결 후 적용값 확인"
+    @Published private(set) var footLiftPending = false
     private var footLiftExpected: [Int]?
+    private var footLiftReadbackPending = false
+    private var footLiftSaveAcknowledged = false
+    private var footLiftReadback: [Int]?
+    private var footLiftRequestID: UUID?
+    private let settings: UserDefaults
+    // The robot owns these values. Legacy UserDefaults must never be uploaded.
+    var savedFootLift: [Int]? { footLiftApplied }
+    var supportsPersistentFootLift: Bool { runtimeState.capabilities.contains("footliftpersist") }
+    func refreshFootLift() {
+        guard state.isReady, !motionControlsLocked, !driveSessionActive, pendingConsoleResponses == 0, !footLiftPending else { return }
+        sendCommandNow(.syncState)
+    }
     var canConfigureFootLift: Bool {
-        state.isReady && runtimeState.capabilities.contains("footlift") && !motionControlsLocked && !driveSessionActive && pendingConsoleResponses == 0 && footLiftExpected == nil
+        state.isReady && lastStateSync != nil && supportsPersistentFootLift &&
+        !motionControlsLocked && !driveSessionActive && pendingConsoleResponses == 0 && !footLiftPending && !probeBusy
     }
     func configureFootLift(_ values: [Int]) {
         guard canConfigureFootLift, values.count == 4, values.allSatisfy({ (0...2147483647).contains($0) }) else { return }
-        footLiftExpected=values;footLiftMessage="적용값 확인 중…"
-        send(.raw("footlift set " + values.map(String.init).joined(separator: " ")))
+        footLiftExpected = values; footLiftPending = true; footLiftReadback = nil
+        footLiftReadbackPending = false; footLiftSaveAcknowledged = false; footLiftMessage = "적용값 확인 중…"
+        let id = UUID(); footLiftRequestID = id
+        sendCommandNow(.raw("footlift save " + values.map(String.init).joined(separator: " ")))
         DispatchQueue.main.asyncAfter(deadline: .now()+10) { [weak self] in
-            guard let self, self.footLiftExpected != nil else { return }
-            self.footLiftExpected=nil;self.footLiftMessage="적용 확인 실패 · 저장하지 않았습니다."
+            guard let self, self.footLiftRequestID == id else { return }
+            self.finishFootLift(success: false, message: "적용 확인 시간 초과 · 로봇 값을 다시 확인해 주세요.")
         }
+    }
+    private func finishFootLift(success: Bool, message: String) {
+        footLiftExpected = nil; footLiftPending = false; footLiftReadbackPending = false
+        footLiftReadback = nil; footLiftRequestID = nil; footLiftMessage = message
     }
     @Published private(set) var probeConfig: RobotProbeConfig?
     @Published private(set) var probeRunning = false
@@ -293,9 +430,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var probeTimeout: DispatchWorkItem?
     private var probeStopAt: Date?
     var supportsProbe: Bool {
-        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1"].contains(runtimeState.revision)
+        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1","attitudepd-v4-v90-r2","attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"].contains(runtimeState.revision)
     }
-    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1"].contains(runtimeState.revision) && !target.isSimulator }
+    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1","attitudepd-v4-v90-r2","attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"].contains(runtimeState.revision) && !target.isSimulator }
     var probeConfigurationBlockReason: String? {
         if !state.isReady { return "로봇에 연결한 뒤 설정을 적용할 수 있습니다." }
         if target.isSimulator { return "직접 설정 보행은 현재 실제 로봇 연결에서만 지원합니다." }
@@ -334,7 +471,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         driveVector=RobotDriveVector(linearPerMille:config.linear,yawPerMille:0,speedFraction:Double(config.linear)/1000)
         drivePhase = .controlling
         driveStatus="시험 중 · " + config.summary
-        appendConsole("> walkprobe\n");pendingConsoleResponses += 1;write(Data("walkprobe\n".utf8))
+        appendConsole("> walkprobe\n");consoleCommands.append("walkprobe");restingVoltage.invalidate();pendingConsoleResponses += 1;write(Data("walkprobe\n".utf8))
         startDriveHeartbeat()
     }
 
@@ -367,7 +504,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // and timer paths without connecting to (or moving) a robot.
     private let commandWriter: ((Data) -> Void)?
 
-    init(commandWriter: ((Data) -> Void)? = nil, remoteMailbox: URL? = nil) {
+    init(commandWriter: ((Data) -> Void)? = nil, remoteMailbox: URL? = nil, settings: UserDefaults = .standard) {
+        self.settings = settings
         self.remoteMailboxOverride = remoteMailbox
         self.commandWriter = commandWriter
         super.init()
@@ -395,6 +533,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     /// CoreBluetooth setup and diagnostic setup must not delay the initial layout.
     func start() {
         guard !hasStarted else { return }
+        if commandWriter == nil && NSClassFromString("XCTestCase") != nil { return }
         if commandWriter == nil {
             remoteTimer=Timer.scheduledTimer(withTimeInterval:0.3,repeats:true) { [weak self] _ in self?.pollRemoteControl() }
         }
@@ -466,7 +605,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         case .landing, .syncState, .targets, .gaitDiagnostics, .balanceDiagnostics, .storedLogs:
             return true
         case .raw(let text):
-            return ["landing", "syncstate", "targets", "gaitdiag", "baldiag", "imudiag", "locomotiondiag", "read 1", "identity"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            return ["landing", "syncstate", "targets", "gaitdiag", "baldiag", "imudiag", "imurecover", "locomotiondiag", "read 1", "identity"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
         default: return false
         }
     }
@@ -480,7 +619,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         guard relaxAfterLanding, runtimeState.pose == "landing", postureInProgress == nil else { return }
         cancelLandingRelease()
         if state.isReady, remotePending == nil, let data = RobotCommand.relax.encoded {
-            appendConsole("> relax\n"); write(data); scheduleStateRefresh(after: 0.2)
+            appendConsole("> relax\n"); consoleCommands.append("relax"); pendingConsoleResponses += 1; restingVoltage.invalidate(); write(data); scheduleStateRefresh(after: 0.2)
         }
     }
 
@@ -598,7 +737,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             postureAcknowledged = false
             driveStatus = "\(posture.capitalized) 전환 중"
         }
-        appendConsole("> \(wireCommand.consoleLine)\n")
+        if !["syncstate", "read 1"].contains(posture) && !posture.hasPrefix("log time ") {
+            appendConsole("> \(wireCommand.consoleLine)\n")
+        }
+        consoleCommands.append(posture)
+        if !["syncstate", "read 1", "targets", "gaitdiag", "baldiag", "imudiag", "identity", "footlift show"].contains(posture) {
+            restingVoltage.invalidate(); deferredDriveInput = nil
+        }
         pendingConsoleResponses += 1
         write(data)
         if let delay = command.stateRefreshDelay {
@@ -607,6 +752,16 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func write(_ data: Data, kind: RobotBLEWriteQueue.Kind = .command) {
+        if separateControl && kind == .command && data != Data([0x03]) {
+            guard controlCommands.count < 16 else { disconnect(); fail("제어 명령 대기열 초과"); return }
+            controlCommands.append(data)
+            startNextControlCommand()
+            return
+        }
+        writeWire(data, kind: kind)
+    }
+
+    private func writeWire(_ data: Data, kind: RobotBLEWriteQueue.Kind) {
         trace?.record("tx-enqueue", String(decoding: data, as: UTF8.self))
         if let commandWriter {
             commandWriter(data)
@@ -625,7 +780,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func drainWrites() {
-        guard state.isReady || awaitingSimulatorIdentity, let peripheral, let characteristic = receiveCharacteristic else { return }
+        guard state.isReady || awaitingSimulatorIdentity, let peripheral, let characteristic = (separateControl ? controlReceiveCharacteristic : receiveCharacteristic) else { return }
         let type: CBCharacteristicWriteType =
             characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
         let maximum = peripheral.maximumWriteValueLength(for: type)
@@ -648,6 +803,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func requestSafeStand() {
+        deferredDriveInput = nil; inputReleased = false; stopRearmed = false
         trace?.record("scene-safety", "phase=\(drivePhase.rawValue)")
         guard state.isReady else { return }
         if driveSessionActive {
@@ -675,12 +831,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             return
         }
         guard !probeRunning && !probeBusy else { return }
-        guard !motionControlsLocked else { return }
+        guard joystickEnabled else { deferredDriveInput = nil; return }
         guard state.isReady, x.isFinite, y.isFinite else {
             stopDrive(reason: "invalid-or-disconnected")
             return
         }
         guard let vector = RobotDriveVector.make(x: x, y: y) else {
+            deferredDriveInput = nil
             driveRequiresRelease = false
             // Crossing center is a zero velocity update, not a gesture release.
             // Keep the heartbeat/session alive so reverse can follow immediately.
@@ -691,16 +848,28 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             }
             return
         }
+        if inputReleased {
+            inputReleased = false; driveRequiresRelease = false
+            if driveStopRequested || driveAwaitingPrompt { stopRearmed = true }
+        }
         guard !driveSafetyLatched, !driveRequiresRelease else { return }
         // A released session cannot be revived with @D while STM32 is finishing
         // diagnostics. Wait for its prompt and require a new touch update.
-        guard !driveStopRequested, !driveAwaitingPrompt else { return }
+        guard !driveStopRequested, !driveAwaitingPrompt,
+              driveSessionActive || pendingConsoleResponses == 0 else {
+            deferredDriveInput = (x, y); return
+        }
+        deferredDriveInput = nil
         driveVector = vector
         driveStatus = "\(vector.statusTitle) · 속도 \(Int((vector.speedFraction * 100).rounded()))%"
         if !driveSessionActive {
             stateRefreshWorkItem?.cancel()
             stateRefreshWorkItem = nil
+            guard permitsCommand(.drive(linearPerMille: vector.linearPerMille, yawPerMille: vector.yawPerMille, sequence: 0)) else {
+                driveVector = nil; lastError = "Landing으로 펼친 뒤 조작해 주세요."; return
+            }
             drivePhase = .controlling
+            stopRearmed = false; restingVoltage.invalidate()
             // The started banner is an unacknowledged console notification,
             // not a control ACK. Its loss must not terminate a held joystick.
             let sequence = nextDriveSequence()
@@ -727,6 +896,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func stopDrive(reason: String = "joystick-release") {
+        deferredDriveInput = nil
+        if reason.hasPrefix("gesture-ended") || reason == "joystick-release" || reason == "joystick-neutral-or-disconnected" { inputReleased = true; driveRequiresRelease = false }
+        else { inputReleased = false; stopRearmed = false }
         if reason != "external-stop" { joystickResetToken += 1 }
         if probeRunning && !probeFromJoystick && ["gesture-ended","joystick-release","joystick-neutral-or-disconnected"].contains(reason) { return }
         probeRunning=false;probeFromJoystick=false;probeStopAt=nil
@@ -742,6 +914,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         driveHeartbeat?.invalidate()
         driveHeartbeat = nil
         drivePhase = .stopping
+        stopRearmed = false
         armDriveCompletionTimeout()
         sendDrivePacket(.stop(sequence: nextDriveSequence()))
         driveStatus = "감속 · 최초 자세 복귀 중"
@@ -752,6 +925,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     func synchronizeState() {
+        guard state.isReady, !driveSessionActive else { return }
+        // STM32 discards ordinary console commands while a blocking pose runs.
+        // A write ACK is not a console reply: do not create a phantom waiter.
+        guard pendingConsoleResponses == 0 else {
+            scheduleStateRefresh(after: 0.2)
+            return
+        }
         send(.syncState)
     }
 
@@ -771,6 +951,12 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func resetConnection(keepingState: Bool = false) {
+        motionPauseReason = ""; consoleCommands.removeAll(); restingVoltage.invalidate()
+        imuRecoveryTimeout?.cancel(); imuRecoveryPending = false; imuRecoveryAcknowledged = false
+        imuRecoveryMessage = "정지 상태에서 IMU 통신을 복구합니다."
+        deferredDriveInput = nil; inputReleased = false; stopRearmed = false
+        footLiftApplied = nil
+        finishFootLift(success: false, message: "연결 후 적용값 확인")
         joystickAutoReturn=true;joystickResetToken += 1
         parameterWalking=false;probeFromJoystick=false
         probeConfig=nil;probeExpected=nil;probeReadback=nil;probeBusy=false;probeStage=0
@@ -796,6 +982,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         peripheral = nil
         receiveCharacteristic = nil
         transmitCharacteristic = nil
+        controlReceiveCharacteristic = nil; controlTransmitCharacteristic = nil
+        controlNotifyReady = false; separateControl = false
+        controlStream = RobotControlStream(); diagnosticStream = RobotConsoleStream()
+        activeControlSequence = nil; controlCommands.removeAll()
         signalStrength = nil
         stateRefreshWorkItem?.cancel()
         stateRefreshWorkItem = nil
@@ -822,7 +1012,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
         let profile = SimulatorGaitProfile.allCases.first {
-            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v4 || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
+            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v6 || $0 == .attitudepd_v5 || $0 == .attitudepd_v4 || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
             (target != .robot || !$0.simulatorOnly) && $0.isSupported(capabilities: runtimeState.capabilities)
         } ?? .centerpivot
         guard defaultValidationProfilePending, state.isReady,
@@ -846,7 +1036,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     private func scheduleStateRefresh(after delay: TimeInterval) {
         stateRefreshWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.send(.syncState) }
+        let work = DispatchWorkItem { [weak self] in self?.synchronizeState() }
         stateRefreshWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
@@ -958,7 +1148,32 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     }
 
     private func processConsolePrompt() {
+        let completed = consoleCommands.isEmpty ? nil : consoleCommands.removeFirst()
+        if completed == "imurecover", imuRecoveryPending {
+            imuRecoveryPending = false; imuRecoveryTimeout?.cancel()
+            imuRecoveryMessage = imuRecoveryAcknowledged ? "IMU 복구 완료 · 새 조작을 입력하세요." : "IMU 복구 실패 · 센서 연결을 확인하세요."
+        }
         pendingConsoleResponses = max(0, pendingConsoleResponses - 1)
+        if footLiftPending, completed?.hasPrefix("footlift save ") == true {
+            if footLiftSaveAcknowledged {
+                footLiftReadbackPending = true
+                sendCommandNow(.syncState)
+            } else {
+                finishFootLift(success: false, message: "저장 응답 없음 · 로봇 값을 다시 확인해 주세요.")
+            }
+        } else if footLiftPending, footLiftReadbackPending, completed == "syncstate" {
+            let matches = footLiftReadback != nil && footLiftReadback == footLiftExpected
+            finishFootLift(success: matches, message: matches ? "로봇 저장·반영 완료" : "반영 불일치 · 로봇 값을 다시 확인해 주세요.")
+        }
+        defer {
+            if controlNotifyReady { activateSeparateControl() }
+            if !driveSessionActive && pendingConsoleResponses == 0 && !motionControlsLocked {
+                restingVoltage.becameIdle(at: telemetryClock())
+                if let input = deferredDriveInput {
+                    deferredDriveInput = nil; updateDrive(x: input.x, y: input.y)
+                }
+            }
+        }
         if probeBusy && pendingConsoleResponses == 0 {
             if probeStage == 1 {
                 probeStage=2;probeReadback=nil;sendCommandNow(.raw("probeconfig show"));return
@@ -989,12 +1204,20 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         // after it, duplicate responses still retain the first 30-second cap.
         if !text.isEmpty, driveAwaitingPrompt { armDriveCompletionTimeout() }
         trace?.record("rx", text)
-        appendConsole(text)
         for event in consoleStream.append(text) {
             guard case .line(let line) = event else {
                 processConsolePrompt()
                 continue
             }
+            if line == "OK" || line.hasPrefix("OK ") || line.hasPrefix("ERROR:") || line.hasPrefix("STOPPED:") || line.hasPrefix("$SPOTDRIVE ") {
+                appendConsole(line + "\n")
+            }
+            if imuRecoveryPending, line == "OK IMU recovered; no motion; faults unchanged" { imuRecoveryAcknowledged = true }
+            let failed = line.hasPrefix("ERROR:") || line == "unknown command; type help"
+            if failed && (postureInProgress != nil || driveSessionActive) { motionPauseReason = line }
+            if line.hasPrefix("$SPOTDRIVE stopped ") && ["tilt", "imu", "safety", "watchdog", "fault", "error", "voltage"].contains(where: { line.lowercased().contains($0) }) { motionPauseReason = line }
+            if footLiftPending, consoleCommands.first?.hasPrefix("footlift save ") == true, line == "OK footlift saved" { footLiftSaveAcknowledged = true }
+            if footLiftPending && failed { finishFootLift(success: false, message: "반영 실패 · 로봇 값을 다시 확인해 주세요.") }
             if probeBusy && line.hasPrefix("$PROBECONFIG ") && probeStage == 2 { probeReadback=RobotProbeConfig.parse(line) }
             if probeBusy && (line.hasPrefix("ERROR:") || line == "unknown command; type help") {
                 probeConfig=nil;probeExpected=nil;probeBusy=false;probeStage=0;probeTimeout?.cancel()
@@ -1048,19 +1271,19 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             if line == "OK landing" { finishLandingRelease() }
             if line.hasPrefix("ERROR:") { lastError = line }
             if line.hasPrefix("$SPOTDRIVE started ") {
+                motionPauseReason = ""
                 // Informational only: never arm/cancel the stop timeout here.
                 continue
             }
-            if target == .robot, state.isReady, let reading = RobotBatteryWarning.reading(in: line) {
-                let now = Date()
-                batteryWarning.observe(reading.millivolts, at: now.timeIntervalSince1970, historical: reading.historical)
-                if !reading.historical {
-                    supplyVoltageMillivolts = reading.millivolts
-                    lastVoltageRead = now
-                }
+            if target == .robot, state.isReady, !driveSessionActive, !motionControlsLocked,
+               consoleCommands.first == "read 1", line.hasPrefix("ID 1 "), !line.contains("moving=1"),
+               let reading = RobotBatteryWarning.reading(in: line), !reading.historical,
+               let mv = restingVoltage.observe(reading.millivolts, at: telemetryClock()) {
+                batteryWarning.observe(mv, at: telemetryClock())
+                supplyVoltageMillivolts = mv; lastVoltageRead = Date()
             }
             if line.hasPrefix("$SPOTDRIVE stopped ") {
-                joystickResetToken += 1
+                if !stopRearmed { joystickResetToken += 1 }
                 probeRunning=false;probeStopAt=nil
                 let stopReason = line.lowercased()
                 let safetyStop = stopReason.contains("reason=tilt") || stopReason.contains("reason=imu") || stopReason.contains("reason=safety")
@@ -1070,7 +1293,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                     runtimeState.safety = stopReason.contains("reason=imu") ? "imu" : (stopReason.contains("reason=tilt") ? "tilt" : "fault")
                     lastError = "안전 정지: 원인을 확인하고 스틱을 놓았다가 다시 조작하십시오."
                 }
-                if !driveStopRequested { driveRequiresRelease = true }
+                let protectiveStop = safetyStop || ["watchdog", "fault", "error", "voltage"].contains(where: { stopReason.contains($0) })
+                if protectiveStop || (!driveStopRequested && !stopRearmed) {
+                    driveRequiresRelease = true; deferredDriveInput = nil; stopRearmed = false; inputReleased = false
+                }
                 driveHeartbeat?.invalidate()
                 driveHeartbeat = nil
                 driveVector = nil
@@ -1081,7 +1307,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             }
             if driveSessionActive,
                line.hasPrefix("ERROR:") || line == "unknown command; type help" {
-                driveRequiresRelease = true
+                driveRequiresRelease = true; deferredDriveInput = nil; stopRearmed = false; inputReleased = false
                 if line.contains("recover") || line.contains("safety") || line.contains("IMU") || line.contains("tilt") {
                     driveSafetyLatched = !runtimeState.capabilities.contains("commandretry")
                     recoveryRequested = false
@@ -1107,14 +1333,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
                 if pair.count == 2 { values[pair[0]] = pair[1] }
             }
             let liftKeys=["lift_fl","lift_fr","lift_rl","lift_rr"]
-            let lift=liftKeys.compactMap { values[$0].flatMap(Int.init) }
+            let lift=liftKeys.compactMap { values[$0].flatMap(Int.init) }.filter { (0...2147483647).contains($0) }
             footLiftApplied=lift.count == 4 ? lift : nil
-            if let expected=footLiftExpected, lift.count == 4 {
-                if lift == expected {
-                    UserDefaults.standard.set(lift,forKey:"footLiftMm")
-                    footLiftMessage="저장·반영 완료"
-                } else { footLiftMessage="반영 불일치 · 저장하지 않았습니다." }
-                footLiftExpected=nil
+            if footLiftPending, footLiftReadbackPending, consoleCommands.first == "syncstate" {
+                footLiftReadback = lift.count == 4 ? lift : nil
+            }
+            if values["pose"] != runtimeState.pose || values["safety"] != runtimeState.safety || values["rev"] != runtimeState.revision {
+                appendConsole("[상태] \(values["pose"] ?? "unknown") · \(values["safety"] ?? "unknown") · \(values["rev"] ?? "unknown")\n")
             }
             runtimeState = RobotRuntimeState(
                 pose: values["pose"] ?? "unknown",
@@ -1129,6 +1354,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             if postureAcknowledged, let pending = postureInProgress, runtimeState.pose == pending {
                 postureInProgress = nil
                 postureAcknowledged = false
+                if runtimeState.safety == "ok" { motionPauseReason = "" }
                 driveStatus = "중립"
             }
             if ["stow", "stow-paused"].contains(runtimeState.pose) {
@@ -1141,6 +1367,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             initialSyncTimeout?.cancel()
             initialSyncTimeout = nil
             lastStateSync = Date()
+            if !["ok", "unknown"].contains(runtimeState.safety), motionPauseReason.isEmpty { motionPauseReason = runtimeState.safety }
             if runtimeState.capabilities.contains("commandretry") {
                 // Firmware rechecks faults for each fresh command. Keep the release
                 // gate from the interrupted session so held input cannot resume.
@@ -1156,7 +1383,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             selectDefaultValidationProfileIfIdle()
             // Existing firmware exposes voltage via a read-only servo snapshot.
             // Never enqueue a console read while realtime drive is active.
-            if target == .robot && !driveSessionActive {
+            if target == .robot && !driveSessionActive && !footLiftPending && !consoleCommands.contains("read 1") {
                 sendCommandNow(.raw("read 1"))
             }
         }
@@ -1245,7 +1472,9 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
             fail("SpotOMG BLE 서비스를 찾지 못했습니다")
             return
         }
-        peripheral.discoverCharacteristics([selectedReceiveUUID, selectedTransmitUUID], for: service)
+        var ids = [selectedReceiveUUID, selectedTransmitUUID]
+        if target == .robot { ids += [Self.controlReceiveUUID, Self.controlTransmitUUID] }
+        peripheral.discoverCharacteristics(ids, for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral,
@@ -1255,10 +1484,15 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
         for characteristic in service.characteristics ?? [] {
             if characteristic.uuid == selectedReceiveUUID { receiveCharacteristic = characteristic }
             if characteristic.uuid == selectedTransmitUUID { transmitCharacteristic = characteristic }
+            if target == .robot && characteristic.uuid == Self.controlReceiveUUID { controlReceiveCharacteristic = characteristic }
+            if target == .robot && characteristic.uuid == Self.controlTransmitUUID { controlTransmitCharacteristic = characteristic }
         }
         guard receiveCharacteristic != nil, let transmitCharacteristic else {
             fail("필수 BLE 특성을 찾지 못했습니다")
             return
+        }
+        if controlReceiveCharacteristic != nil, let controlTransmitCharacteristic {
+            peripheral.setNotifyValue(true, for: controlTransmitCharacteristic)
         }
         // Clear a retained subscription before enabling notifications anew.
         peripheral.setNotifyValue(!transmitCharacteristic.isNotifying,
@@ -1270,6 +1504,11 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
                     error: Error?) {
         guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if let error { fail("알림 활성화 실패: \(error.localizedDescription)"); return }
+        if characteristic.uuid == Self.controlTransmitUUID {
+            controlNotifyReady = characteristic.isNotifying
+            if controlNotifyReady { activateSeparateControl() }
+            return
+        }
         guard peripheral == self.peripheral,
               characteristic.uuid == selectedTransmitUUID else { return }
         trace?.record("notify-state", "isNotifying=\(characteristic.isNotifying)")
@@ -1290,10 +1529,15 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
                     didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard target.usesBluetooth, self.peripheral === peripheral else { return }
         if let error { fail("수신 실패: \(error.localizedDescription)"); return }
-        guard characteristic.uuid == selectedTransmitUUID,
-              let data = characteristic.value else { return }
+        guard let data = characteristic.value else { return }
+        if characteristic.uuid == Self.controlTransmitUUID {
+            if separateControl { receiveControlData(data) }
+            return
+        }
+        guard characteristic.uuid == selectedTransmitUUID else { return }
         let text = String(decoding: data, as: UTF8.self)
         if target == .simulatorBluetooth { receiveSimulatorConsoleText(text) }
+        else if separateControl { receiveDiagnosticText(text) }
         else { receiveConsoleText(text) }
     }
 
@@ -1306,7 +1550,7 @@ extension RobotBluetoothManager: CBPeripheralDelegate {
                     didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard target.usesBluetooth, self.peripheral === peripheral else { return }
         guard peripheral == self.peripheral,
-              characteristic.uuid == selectedReceiveUUID else { return }
+              characteristic.uuid == selectedReceiveUUID || characteristic.uuid == Self.controlReceiveUUID else { return }
         writeTimeout?.cancel()
         writeTimeout = nil
         if let error {

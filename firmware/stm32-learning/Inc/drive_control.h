@@ -27,7 +27,7 @@ static inline bool drive_control_step_timed(DriveControl *s,int profile,float li
      * command avoids briefly entering the turn stance while slewing through
      * low speed on the way to a fast arc. Stop/abort handling remains outside. */
     s->turn_assist+=gait_policy_clampf(wanted-s->turn_assist,-progress_dt,progress_dt);
-    bool ok=locomotion_targets_assisted(profile,s->phase,gait_policy_smootherstep(fminf(1,s->elapsed)),s->linear,s->yaw,s->turn_assist,out);
+    bool ok=locomotion_targets_assisted(profile,s->phase,locomotion_start_scale(profile,s->elapsed,s->linear),s->linear,s->yaw,s->turn_assist,out);
     if(ok && profile==locomotion_profile_id("arcsupport")){
         float activity=fminf(1,fabsf(s->linear)+fabsf(s->yaw));
         float fraction=fabsf(s->yaw)/fmaxf(fabsf(s->linear)+fabsf(s->yaw),1.e-9f);

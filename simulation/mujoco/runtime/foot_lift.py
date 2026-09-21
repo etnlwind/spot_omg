@@ -21,7 +21,7 @@ def apply(robot, target):
         duty={'trot':.5,'trot2':.5,'trot3':.65,'trot4':.6,'trot4back':.6,
               'turn':.6,'trot5':.5979488437760033,'crab':.8,'drive':.6,'profile':.6}[kind]
         if kind=='crab':offsets=[.8,.3,.05,.55]
-    scale=robot.plant.policy.smootherstep(min(1,robot.elapsed))
+    scale=robot.gait_start_scale()
     if kind in ('drive','profile'):scale*=min(1,(abs(robot.linear)+abs(robot.yaw))/.15)
     values=(ct.c_float*12)(*target)
     fn=robot.plant.policy._library.spot_foot_lift

@@ -31,6 +31,12 @@ bool flight_log_prepare_entries(size_t count);
 bool flight_log_append(const char *text);
 bool flight_log_appendf(const char *format, ...);
 
+/* Robot-owned foot-lift settings share the journal, with a rotation snapshot.
+ * Save is idle-only; success includes flash readback. Unchanged values do not write. */
+bool flight_log_load_foot_lift(uint32_t values[4]);
+bool flight_log_save_foot_lift(const uint32_t values[4]);
+bool flight_log_save_calibration(const void *record, size_t size);
+
 /* Host time is Unix epoch milliseconds. Uptime remains authoritative too. */
 bool flight_log_set_epoch_ms(uint64_t epoch_ms);
 bool flight_log_time_is_synchronized(void);

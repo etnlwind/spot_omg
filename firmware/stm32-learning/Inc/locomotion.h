@@ -12,10 +12,10 @@ static inline int locomotion_profile_id(const char *name) {
     return -1;
 }
 static inline bool locomotion_is_attitude_pd(int profile) {
-    return profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
+    return profile==locomotion_profile_id("attitudepd_v6") || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
 }
 static inline bool locomotion_has_gait_stand(int profile) {
-    return profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
+    return profile==locomotion_profile_id("attitudepd_v6") || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
 }
 static inline bool locomotion_is_native(int profile) {
     return profile==locomotion_profile_id("s_native_v6_1") ||
@@ -91,10 +91,18 @@ static inline bool locomotion_foot_targets(const float p[7],float phase,float sc
  * Native profiles retain their separate calibrated CAD/servo boundary. */
 static inline bool locomotion_stand_targets(int profile,GaitPolicyLegTarget out[4]) {
     if(locomotion_has_gait_stand(profile)) {
-        if(!center_pivot_targets(locomotion_parameters[profile][1],0,1,0,0,out))return false;
+        int stand_profile=(profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd_v6"))?locomotion_profile_id("attitudepd_v4"):profile;
+        if(!center_pivot_targets(locomotion_parameters[stand_profile][1],0,1,0,0,out))return false;
         for(int i=0;i<4;i++)out[i].stance=true;
     } else for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
     return true;
+}
+/* Forward V6 enters over two seconds without delaying the command or clock.
+ * Reverse/pivot and every older profile retain the one-second envelope. */
+static inline float locomotion_start_scale(int profile,float elapsed,float linear) {
+    float recovery=profile==locomotion_profile_id("attitudepd_v6")?
+        gait_policy_smootherstep(gait_policy_clampf(linear/.15f,0,1)):0;
+    return gait_policy_smootherstep(fminf(1,elapsed/(1+recovery)));
 }
 static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(linear) || !isfinite(yaw))return 0;
@@ -114,8 +122,9 @@ static inline bool locomotion_targets_assisted(int profile,float phase,float sca
     if(locomotion_has_gait_stand(profile)) {
         GaitPolicyLegTarget ready[4];
         if(!locomotion_stand_targets(profile,ready))return false;
-        return attitude_clearance_targets_weighted(p,phase,scale,linear,yaw,
-            locomotion_forward_template_weight(profile,linear),ready,out);
+        return attitude_clearance_targets_recovery(p,phase,scale,linear,yaw,
+            locomotion_forward_template_weight(profile,linear),
+            profile==locomotion_profile_id("attitudepd_v6")?gait_policy_smootherstep(gait_policy_clampf(linear/.15f,0,1)):0,ready,out);
     }
     if(profile==locomotion_profile_id("attitudepd_v2"))return attitude_v2_targets(p,phase,scale,linear,yaw,out);
     if(profile==locomotion_profile_id("centerpivot") || profile==locomotion_profile_id("attitudepd"))return center_pivot_targets(p,phase,scale,linear,yaw,out);
@@ -158,6 +167,12 @@ static inline float locomotion_period(int profile,float linear,float yaw) {
     if(profile==0) return gait_policy_drive_period_ms(lroundf(linear*1000),lroundf(yaw*1000))*.001f;
     float p[7];locomotion_params(profile,linear,p);
     if(profile==locomotion_profile_id("arcturn") || profile==locomotion_profile_id("arcsupport"))p[0]-=.24f*fabsf(yaw)/fmaxf(fabsf(linear)+fabsf(yaw),1.e-9f);
-    return p[0]*(1.35f-.35f*fminf(1,fabsf(linear)+fabsf(yaw)));
+    float period=p[0]*(1.35f-.35f*fminf(1,fabsf(linear)+fabsf(yaw)));
+    /* V5 speeds propulsion without changing the joint/foot path. Only
+     * positive linear input gains cadence; reverse and pivot stay exact. */
+    float boost=(locomotion_forward_cadence_gain[profile]-1.f)*
+        gait_policy_smootherstep(gait_policy_clampf(linear/.588f,0,1));
+    float recovery=profile==locomotion_profile_id("attitudepd_v6")?gait_policy_smootherstep(gait_policy_clampf(linear/.15f,0,1)):0;
+    return period/(1.f+boost)*(1+.25f*recovery);
 }
 #endif

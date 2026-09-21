@@ -94,7 +94,7 @@ typedef struct {
 void robot_arc_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_center_pivot_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
 void robot_arc_support_timing(uint32_t *total_ms,uint32_t *peak_ms,unsigned *failures);
-#define ROBOT_CONTROL_REV "attitudepd-v4-v90-r1"
+#define ROBOT_CONTROL_REV "attitudepd-v6-v92"
 #define ROBOT_DRIVE_INPUT_LIMIT 1000
 #define ROBOT_DRIVE_WATCHDOG_MS 800U
 
@@ -247,7 +247,7 @@ typedef struct
      */
     volatile bool drive_active;
     ProbeConfig probe_config;
-    uint32_t foot_lift_mm[4]; /* FL FR RL RR, RAM, nonnegative mm */
+    uint32_t foot_lift_mm[4]; /* FL FR RL RR, restored from STM32 flash, nonnegative mm */
     uint32_t probe_duration_ms;
     uint8_t gait_step_limit, gait_steps_completed;
     uint8_t walk_probe_active;

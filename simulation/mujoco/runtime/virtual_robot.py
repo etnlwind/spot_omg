@@ -39,7 +39,10 @@ from simulation.mujoco.runtime.gait_profiles import foot_targets, load_profiles,
 
 class RobotController:
     """Console/session adapter; C gait equations are shared, STM32 HAL is not emulated."""
-    def __init__(self, plant):
+    def __init__(self, plant, settings_path=None):
+        from simulation.mujoco.runtime.foot_lift_store import FootLiftStore
+        self.foot_lift_store = FootLiftStore(settings_path)
+        self.foot_lift_mm = list(self.foot_lift_store.values)
         self.plant = plant
         self.target = np.degrees(plant.desired).copy()
         self.base_stand_target=getattr(plant,'stand_target',self.target).copy()
@@ -94,13 +97,13 @@ class RobotController:
         self.last_incident = None
         self.realtime_factor = None
         self.plant.sensor_observer = self.observe_imu
-        if self.profile in ("attitudepd", "attitudepd_v2", "attitudepd_v3", "attitudepd_v4"):
+        if self.profile in ("attitudepd", "attitudepd_v2", "attitudepd_v3", "attitudepd_v4", "attitudepd_v5", "attitudepd_v6"):
             from simulation.mujoco.runtime.body_stabilizer import BodyStabilizer
             self.body_stabilizer = BodyStabilizer(self.plant.p.get("body_stabilizer"))
 
     def update_stand_target(self):
         self.stand_target=self.base_stand_target.copy()
-        if self.profile in ('attitudepd_v3','attitudepd_v4'):
+        if self.profile in ('attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             import ctypes
             from simulation.mujoco.runtime.drive_controller import NAMES
             out=(ctypes.c_float*12)()
@@ -154,7 +157,7 @@ class RobotController:
         self.out.append(text + '\r\n# ')
 
     def balance_state(self):
-        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             if not self.body_stabilizer.enabled:return 'off'
             return 'active' if self.body_stabilizer.diagnostic.get('status')=='active' else 'suspended'
         return 'active' if self.balance.applied else 'suspended' if self.balance.enabled else 'off'
@@ -206,7 +209,7 @@ class RobotController:
 
     def finish_stop(self, reason):
         drive = self.motion[0] == 'drive'
-        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             self.target=self.command_target.copy()
             self.body_stabilizer.reset()
         if self.profile=='arcturn' and any(value is not None and value is not False
@@ -243,7 +246,7 @@ class RobotController:
             self.tracking_enabled=name in ("s_native_v6_2_4","s_native_v6_2_5","s_native_v6_2_6","s_native_v6_2_7")
         self.profile = name
         self.update_stand_target()
-        if name in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):
+        if name in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             from simulation.mujoco.runtime.body_stabilizer import BodyStabilizer
             if not hasattr(self,'body_stabilizer'):
                 self.body_stabilizer=BodyStabilizer(self.plant.p.get('body_stabilizer'))
@@ -271,8 +274,9 @@ class RobotController:
             if cmd == 'footlift':
                 if words[1:] != ['show']:
                     if self.motion or self.transition:raise ValueError('stop before footlift changes')
-                    if len(words)!=6 or words[1]!='set' or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):raise ValueError('footlift set FL FR RL RR (nonnegative integer mm)')
-                    self.foot_lift_mm=list(map(int,words[2:]));self.reply('OK footlift')
+                    if len(words)!=6 or words[1]!='save' or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):raise ValueError('footlift save FL FR RL RR (nonnegative integer mm)')
+                    values=list(map(int,words[2:]));self.foot_lift_store.save(values)
+                    self.foot_lift_mm=values;self.reply('OK footlift saved')
                 self.command('syncstate',now);return
             elif cmd == 'identity':
                 self.reply('$SPOTBACKEND backend=sim protocol=1 physics=estimated controller=sim-profiles adapter=python')
@@ -292,7 +296,7 @@ class RobotController:
                 self.reply(f'$STABILIZE enabled={int(self.body_stabilizer.enabled)} status={status} policy={self.profile} rate_hz=50')
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,{"footliftpersist," if self.foot_lift_store.path else ""}trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'profile':
@@ -364,7 +368,7 @@ class RobotController:
             elif cmd == 'heading' and len(words)==2 and words[1] in ('on','off'):
                 self.heading.enabled=words[1]=='on'; self.heading.update(None,0,0,0); self.reply()
             elif cmd in ('balance','simbalance') and len(words)==2 and words[1] in ('on','off'):
-                if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):self.body_stabilizer.enabled=words[1]=='on'
+                if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):self.body_stabilizer.enabled=words[1]=='on'
                 else:self.balance.enabled=words[1]=='on'
                 self.reply()
             elif cmd in ('gaitprofile','simprofile') and len(words)==2:
@@ -412,11 +416,11 @@ class RobotController:
                 self.begin((cmd, cycles*period/1000, period/1000, direction), now)
             else:
                 raise ValueError('unsupported simulator command: '+cmd)
-        except (ValueError, IndexError, TypeError) as exc:
+        except (ValueError, IndexError, TypeError, OSError) as exc:
             self.reply('ERROR: '+str(exc))
 
     def active_profile_params(self):
-        if self.profile=='attitudepd_v4':
+        if self.profile in ('attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             # Keep diagnostics and PD timing on the same magnitude selection
             # as the deployed C motion kernel, including the half-stick split.
             import ctypes
@@ -443,11 +447,30 @@ class RobotController:
             forward=forward.copy();forward[0]+=fraction*(period-forward[0])
         return forward
 
+    def gait_start_scale(self):
+        import ctypes
+        from simulation.mujoco.runtime.drive_controller import NAMES
+        if self.profile not in NAMES:
+            return self.plant.policy.smootherstep(min(1,self.elapsed))
+        fn=self.plant.policy._library.spot_locomotion_start_scale
+        fn.argtypes=(ctypes.c_int,ctypes.c_float,ctypes.c_float)
+        fn.restype=ctypes.c_float
+        return float(fn(NAMES.index(self.profile),self.elapsed,self.linear))
+
+    def active_profile_period(self):
+        # Use the deployed clock for PD stance blending as well as phase.
+        import ctypes
+        from simulation.mujoco.runtime.drive_controller import NAMES
+        fn=self.plant.policy._library.spot_locomotion_period
+        fn.argtypes=(ctypes.c_int,ctypes.c_float,ctypes.c_float)
+        fn.restype=ctypes.c_float
+        return float(fn(NAMES.index(self.profile),self.linear,self.yaw))
+
     def gait(self, phase, amplitude):
         policy=self.plant.policy; kind=self.motion[0]
         if kind in ('drive','profile') and self.profile != 'legacy':
             profile=self.profiles[self.profile]
-            if self.profile in ('attitudepd_v2','attitudepd_v3','attitudepd_v4'):
+            if self.profile in ('attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
                 import ctypes
                 from simulation.mujoco.runtime.drive_controller import NAMES
                 out = (ctypes.c_float * 12)()
@@ -514,7 +537,7 @@ class RobotController:
         self.attitude_filter.tilt_pause=pause
         self.balance.integral[:]=0; self.balance.correction[:]=0
         self.balance.saturated=False
-        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):self.body_stabilizer.reset()
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):self.body_stabilizer.reset()
         for name in ('arc_frame','arc_attitude','arc_preload','arc_transfer','arc_dynamic','arc_support_state','arc_shift_state',
                      'arc_com_state','arc_tripod_state','arc_observer','arc_sensor','arc_sensor_available'):
             if hasattr(self,name):delattr(self,name)
@@ -536,7 +559,7 @@ class RobotController:
             self.s_gait_frame=StandingGaitFrame(self.plant.model,self.stand_target)
         self.turn_assist=0.
         self.stopping_reason=None
-        if self.profile in ('attitudepd_v3','attitudepd_v4'):
+        if self.profile in ('attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             measured=np.degrees(self.plant.data.qpos[self.plant.q])
             if np.allclose(measured,self.stand_target,atol=.5):
                 self.transition=None
@@ -552,7 +575,7 @@ class RobotController:
             self.transition=None
 
     def rebase_gait_on_s(self):
-        if self.profile in ('attitudepd_v2','attitudepd_v3','attitudepd_v4') or self.profiles.get(self.profile,{}).get('s_native'):return
+        if self.profile in ('attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6') or self.profiles.get(self.profile,{}).get('s_native'):return
         if not getattr(self,'s_gait_frame',None) or not self.motion:return
         if self.motion[0]=='drive' and (self.profile=='legacy' or
                 self.profiles.get(self.profile)==self.deployed_profiles.get(self.profile)):
@@ -641,11 +664,11 @@ class RobotController:
                 correction=self.heading.update(self.imu_reading,self.request[0],self.request[1],self.yaw,
                     permitted=self.motion[0]=='drive' and not self.stopping_reason and self.safety=='ok')
                 self.yaw=(round(self.yaw*1000)+np.clip(round((self.request[1]+correction)*1000)-round(self.yaw*1000),-limit,limit))/1000
-                result=self.gait(self.phase,self.plant.policy.smootherstep(min(1,self.elapsed)))
+                result=self.gait(self.phase,self.gait_start_scale())
                 self.target=np.array([result[k] for k in KEYS])
                 period=self.plant.policy.drive_period_ms(round(self.linear*1000),round(self.yaw*1000))/1000 if self.motion[0]=='drive' else self.motion[2]
                 if self.motion[0] in ('drive','profile') and self.profile != 'legacy':
-                    period=self.active_profile_params()[0]*(1.35-.35*min(1,abs(self.linear)+abs(self.yaw)))
+                    period=self.active_profile_period() if self.profile in ('attitudepd_v5','attitudepd_v6') else self.active_profile_params()[0]*(1.35-.35*min(1,abs(self.linear)+abs(self.yaw)))
                 self.phase=(self.phase+progress/period)%1
             try:
                 self.rebase_gait_on_s()
@@ -690,12 +713,12 @@ class RobotController:
             self.balance.integral[:]=0;self.balance.correction[:]=0
             self.balance.applied=False;self.balance.saturated=False
             self.command_target=self.target.copy()
-        elif self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):
+        elif self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6'):
             self.balance.integral[:]=0;self.balance.correction[:]=0
             self.balance.applied=False;self.balance.saturated=False
             gait_moving=self.motion is not None and self.transition is None
             params=self.active_profile_params()
-            period=params[0]*(1.35-.35*min(1,abs(self.linear)+abs(self.yaw)))
+            period=self.active_profile_period()
             frame=dict(phase=getattr(self,'nominal_phase',self.phase),period_s=period,duty=params[1],moving=gait_moving)
             try:
                 self.command_target=self.body_stabilizer.apply(self.target,frame,self.imu_reading,
@@ -821,7 +844,7 @@ class RobotController:
             roll_deg=math.degrees(math.atan2(rotation[2,1],rotation[2,2])),
             pitch_deg=math.degrees(math.asin(float(np.clip(-rotation[2,0],-1,1)))),
             imu=self.imu_reading,balance=self.balance.diagnostic(),position_wbc=self.position_wbc.diagnostic,
-            stabilization=self.body_stabilizer.diagnostic.copy() if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4') else None,
+            stabilization=self.body_stabilizer.diagnostic.copy() if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6') else None,
             support_shift=self.support_shift.diagnostic.copy() if self.support_shift else None,
             footstep_tracking=self.footstep_tracker.diagnostic.copy() if self.footstep_tracker else None,
             nominal=self.target.tolist(),command=self.command_target.tolist(),
@@ -938,7 +961,7 @@ def main():
         from simulation.mujoco.ble_bridge.build import build as build_bridge
         bridge_binary=build_bridge()
     parameters=load_parameters(args)
-    plant=Simulation(parameters); controller=RobotController(plant)
+    plant=Simulation(parameters); controller=RobotController(plant, SIM_ROOT / "config/foot_lift.local.json")
     model_info=model_description(plant,parameters)
     print('Model: '+model_info,flush=True)
     if args.experimental_profiles: controller.load_experimental_profiles(args.experimental_profiles)

@@ -5,8 +5,8 @@ import UIKit
 struct ControlView: View {
     @EnvironmentObject private var bluetooth: RobotBluetoothManager
     @State private var probeDraft = RobotProbeConfig()
-    @State private var footLiftDraft = [0,0,0,0]
     @State private var showRelaxConfirmation = false
+    @State private var showFootLiftSettings = false
     @State private var acknowledgedBatteryLevel = 0
     @State private var consoleCommand = ""
     @State private var terminalPage = CommandLine.arguments.contains("--simulator-video") ? 1 : 0
@@ -17,7 +17,9 @@ struct ControlView: View {
         let version = info["CFBundleShortVersionString"] as? String ?? "—"
         let build = info["CFBundleVersion"] as? String ?? "—"
         let configuration = info["SpotBuildConfiguration"] as? String ?? "—"
-        return "V\(version) (\(build)) - \(configuration)"
+        let parts = version.split(separator: ".")
+        let release = parts.count >= 2 ? "V\(parts[0])" + (parts[1] == "0" ? "" : "-R\(parts[1])") : "V\(version)"
+        return "\(release) (\(build)) - \(configuration)"
     }()
 
     private var robotVersion: String {
@@ -26,21 +28,20 @@ struct ControlView: View {
         return revision.isEmpty || revision == "unknown" ? (bluetooth.lastError == nil ? "확인 중" : "응답 없음") : revision
     }
 
-    private func loadFootLift() {
-        if let saved=UserDefaults.standard.array(forKey:"footLiftMm") as? [Int], saved.count == 4, saved.allSatisfy({ (0...2147483647).contains($0) }) { footLiftDraft=saved }
-    }
-    private func footLiftField(_ index: Int,_ name: String) -> some View {
-        VStack {
-            Text(name).font(.caption)
-            TextField("mm",value:$footLiftDraft[index],format:.number)
-                .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
-                .onChange(of:footLiftDraft[index]) { _,value in footLiftDraft[index]=min(2147483647,max(0,value)) }
-            Stepper("\(footLiftDraft[index]) mm",value:$footLiftDraft[index],in:0...2147483647).font(.caption)
-        }
-    }
+
     var body: some View {
         VStack(spacing: 0) {
             if bluetooth.target == .robot && bluetooth.state.isReady && bluetooth.batteryWarning.level > 0 { batteryWarningBanner }
+            if bluetooth.state.isReady, let warning = bluetooth.motionWarning {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(warning.title, systemImage: "pause.circle.fill").font(.headline)
+                    Text(warning.message).font(.subheadline)
+                    Text(warning.reason).font(.caption.monospaced()).textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                .foregroundStyle(.white).background(Color(red: 0.32, green: 0.20, blue: 0.05))
+                .accessibilityIdentifier("motionPauseBanner")
+            }
             TabView(selection: $terminalPage) {
                 terminalPanel.tag(0)
                 SimulatorVideoView(active: terminalPage == 1, controlHost: bluetooth.target == .simulator ? bluetooth.simulatorHost : nil).tag(1)
@@ -108,11 +109,11 @@ struct ControlView: View {
                                 context.date.timeIntervalSince($0) > 15
                             } ?? false
                             Text(bluetooth.supplyVoltageMillivolts.map {
-                                String(format: bluetooth.target.isSimulator ? "가상 전압 ≈ %.1f V" : "배터리 ≈ %.1f V", Double($0) / 1000) + (stale ? " · 이전" : "")
+                                String(format: bluetooth.target.isSimulator ? "가상 전압 ≈ %.1f V" : "안정 전압 ≈ %.1f V", Double($0) / 1000) + (stale ? " · 이전" : "")
                             } ?? "배터리 — V")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(stale ? .secondary : .primary)
-                                .accessibilityHint("서보 전원선에서 측정한 전압. 현재 상태 동기화로 갱신")
+                                .accessibilityHint("정지 후 안정된 세 번의 서보 전압 측정값으로 갱신")
                         }
                     }
                     LabeledContent(bluetooth.target.isSimulator ? "가상 제어기" : "로봇 펌웨어") {
@@ -129,31 +130,16 @@ struct ControlView: View {
                     }
                 }
 
-                Section("발 추가 들림 · 모든 보행") {
-                    VStack(spacing: 12) {
-                        Text("↑ 로봇 앞쪽").font(.caption)
-                        HStack {
-                            VStack(spacing: 50) { footLiftField(0,"FL · 앞 왼쪽"); footLiftField(2,"RL · 뒤 왼쪽") }
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 16).fill(Color.green.opacity(0.15))
-                                RoundedRectangle(cornerRadius: 16).stroke(Color.green,lineWidth: 2)
-                                Text("Spot\nOMG").font(.headline).multilineTextAlignment(.center)
-                            }.frame(width: 65,height: 180)
-                            VStack(spacing: 50) { footLiftField(1,"FR · 앞 오른쪽"); footLiftField(3,"RR · 뒤 오른쪽") }
+                if bluetooth.supportsIMURecovery {
+                    Section("IMU 복구") {
+                        Button(action: bluetooth.recoverIMU) {
+                            Label(bluetooth.imuRecoveryPending ? "복구 중…" : "IMU 복구", systemImage: "arrow.clockwise")
                         }
-                        Text("0 = 기본 보행 · 스윙 중에만 추가 들림 · 로봇 기준 좌우").font(.caption).foregroundStyle(.secondary)
-                        if bluetooth.state.isReady, let applied=bluetooth.footLiftApplied {
-                            Text(zip(["FL","FR","RL","RR"],applied).map { "\($0.0) \($0.1)mm" }.joined(separator:" / ")).font(.caption.monospacedDigit())
-                        }
-                        Text(bluetooth.runtimeState.capabilities.contains("footlift") ? bluetooth.footLiftMessage : "지원 펌웨어(V90-R1)에 연결하면 반영할 수 있습니다.").font(.caption)
-                        HStack {
-                            Button("저장·반영") { bluetooth.configureFootLift(footLiftDraft) }.disabled(!bluetooth.canConfigureFootLift)
-                            Button("저장값 불러오기") { loadFootLift() }
-                            Button("모두 0") { footLiftDraft=[0,0,0,0] }
-                        }.buttonStyle(.bordered)
-                        Text("저장값은 이 iPhone에 보관됩니다. 로봇 재부팅 후 다시 반영하세요.").font(.caption).foregroundStyle(.secondary)
-                    }.onAppear { loadFootLift() }
+                        .disabled(!bluetooth.canRecoverIMU)
+                        Text(bluetooth.imuRecoveryMessage).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
+
                 Section("보행 방식") {
                     Picker("보행 방식", selection: $bluetooth.parameterWalking) {
                         Text("모델 보행").tag(false)
@@ -170,7 +156,7 @@ struct ControlView: View {
                             set: { bluetooth.send(.headingHold($0)) }))
                             .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                         Text("전진 시 시작 방향을 유지합니다. 회전 입력은 우선하며, 설정 변경 시 정지합니다.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Color(white: 0.78))
                     }
                 }
 
@@ -182,7 +168,7 @@ struct ControlView: View {
                                 set: { bluetooth.send(.simulatorBalance($0)) }))
                                 .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
                             Text("지연된 IMU 측정으로 다리를 보정합니다. 설정 변경 시 먼저 정지합니다.")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Color(white: 0.78))
                         }
                         if !bluetooth.parameterWalking {
                         ForEach(SimulatorGaitProfile.allCases.filter { !$0.simulatorOnly || bluetooth.target.isSimulator }, id: \.self) { profile in
@@ -205,7 +191,7 @@ struct ControlView: View {
                             .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked || !profile.isSupported(capabilities: bluetooth.runtimeState.capabilities))
                         }
                         Text("V1–V6 계열은 S 자세에서 출발합니다. 괄호 속 속도는 시뮬레이션 최대 전진 기준입니다. 모델을 바꾸면 먼저 정지합니다. 빠른 트롯·하이 스텝은 후진을 60%로 제한합니다. 미끄러운 바닥에서는 방향이 틀어질 수 있습니다.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Color(white: 0.78))
                         }
                     }
                 }
@@ -227,7 +213,7 @@ struct ControlView: View {
                     .disabled(!bluetooth.supportsProbeWidth)
                 Text("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 공통 간격으로 복귀.").font(.caption)
                 Text("수직 0 · 안쪽 − · 바깥 +. −20mm는 양쪽 합계 40mm 좁힘. 기존 정상 기준은 약 −38mm입니다.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Color(white: 0.78))
                 Button("V6.2.5 선택") { bluetooth.send(.simulatorProfile(.s_native_v6_2_5)) }
                     .disabled(!bluetooth.canConfigureProbe)
                 if let reason = bluetooth.probeConfigurationBlockReason {
@@ -238,25 +224,25 @@ struct ControlView: View {
                 Button("설정 조회") { bluetooth.configureProbe(nil) }
                     .disabled(!bluetooth.canConfigureProbe)
                 Text(bluetooth.probeConfig.map { "적용값: " + $0.summary } ?? "설정 조회 필요")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Color(white: 0.78))
                 Button("시험 시작") { bluetooth.startProbe() }.disabled(!bluetooth.canStartProbe)
                 Button("시험 정지",role:.destructive) { bluetooth.stopWalkingOrHold() }.disabled(!bluetooth.state.isReady)
                 Text(bluetooth.supportsProbe ? "V6.2.5 선택 → Stand → 설정 적용 → 시험 시작. 직접 설정 보행의 조이스틱 전진에도 적용됩니다(전체 다리 선택). 몸체를 지지하고 시험하세요." : "실기 V77-T1-param 펌웨어가 필요합니다.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Color(white: 0.78))
             }
 
             }
 
             Section("조이스틱 사용법") {
                 Text(bluetooth.parameterWalking ? "위로 밀면 직접 설정한 값으로 전진합니다. 설정 시간이 끝나거나 손을 떼면 정지합니다." : "위·아래는 전진·후진, 대각선은 이동과 회전, 좌우는 제자리 회전입니다. 중심에서 멀수록 빨라지고 손을 떼면 정지합니다.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Color(white: 0.78))
             }
             Section("안전 자세") {
                 postureButton("Landing", pose: "landing", command: .landing)
                 if supportsStow {
                     postureButton("Stow · 수납", pose: "stow", command: .stow)
                     Text("설계 검토용 · 12초 동시 접기 / Landing으로 펼치기")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Color(white: 0.78))
                 }
                 postureButton("Stand", pose: "stand", command: .stand)
                 postureButton("Stand11", pose: "stand11", command: .stand11)
@@ -265,7 +251,7 @@ struct ControlView: View {
                 Button("Relax", role: .destructive) { showRelaxConfirmation = true }.disabled(bluetooth.motionControlsLocked)
                 Text("Stand11은 다리를 곧게 펴는 캘리브레이션 확인 자세입니다. 몸체를 지지한 상태에서 사용하십시오.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(white: 0.78))
             }
             .disabled(!bluetooth.state.isReady)
 
@@ -279,7 +265,7 @@ struct ControlView: View {
                      "3S 배터리 모델에서 개선한 전진 보행입니다. 준비 자세로 천천히 전환한 뒤 실행하며, IMU 보정은 상단 설정에 따릅니다." :
                      "개선 전진은 로봇 V13 업데이트 후 사용할 수 있습니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(white: 0.78))
                 Button("Trot4 · 1회 · 1800 ms") {
                     bluetooth.send(.trot4(cycles: 1, periodMilliseconds: 1800))
                 }
@@ -291,7 +277,7 @@ struct ControlView: View {
                 }
                 Text("로봇을 바로 잡을 수 있는 상태에서만 실행하십시오. 앱이 백그라운드로 가면 Stand를 요청합니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(white: 0.78))
             }
             .disabled(!bluetooth.state.isReady || bluetooth.motionControlsLocked)
 
@@ -330,6 +316,9 @@ struct ControlView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
                 UIAccessibility.post(notification: .announcement, argument: bluetooth.batteryWarning.title)
             }
+        }
+        .sheet(isPresented: $showFootLiftSettings) {
+            FootLiftSettingsView()
         }
         .confirmationDialog("모든 서보의 토크를 해제할까요?", isPresented: $showRelaxConfirmation,
                             titleVisibility: .visible) {
@@ -384,13 +373,19 @@ struct ControlView: View {
             .font(.caption2.monospacedDigit())
             Text((SimulatorGaitProfile(rawValue: bluetooth.runtimeState.simulationProfile) ?? .legacy).titleWithSpeed)
                 .font(.caption).lineLimit(1).minimumScaleFactor(0.7)
-            Button(bluetooth.joystickAutoReturn ? "자동 복귀 ON" : "자동 복귀 OFF · 입력 유지") {
-                bluetooth.joystickAutoReturn.toggle()
-                if bluetooth.joystickAutoReturn { bluetooth.stopDrive(reason:"auto-return-enabled") }
-            }.font(.caption2).buttonStyle(.bordered).frame(maxWidth:.infinity,alignment:.leading)
+            HStack {
+                Button(bluetooth.joystickAutoReturn ? "자동 복귀 ON" : "자동 복귀 OFF") {
+                    bluetooth.joystickAutoReturn.toggle()
+                    if bluetooth.joystickAutoReturn { bluetooth.stopDrive(reason:"auto-return-enabled") }
+                }
+                Spacer()
+                Button { showFootLiftSettings = true } label: {
+                    Label("발 높이 설정", systemImage: "slider.horizontal.3")
+                }.accessibilityIdentifier("footLiftShortcut")
+            }.font(.caption).buttonStyle(.bordered)
             GeometryReader { area in
                 let diameter = max(72, min(250, area.size.width, area.size.height))
-                VirtualJoystick(enabled: bluetooth.state.isReady && !bluetooth.motionControlsLocked && (!bluetooth.probeRunning || bluetooth.parameterWalking) && !bluetooth.probeBusy, autoReturn:bluetooth.joystickAutoReturn, resetToken:bluetooth.joystickResetToken) { x, y in
+                VirtualJoystick(enabled: bluetooth.joystickEnabled && (!bluetooth.probeRunning || bluetooth.parameterWalking), autoReturn:bluetooth.joystickAutoReturn, resetToken:bluetooth.joystickResetToken) { x, y in
                     bluetooth.updateDrive(x: x, y: y)
                 } onRelease: { reason in
                     bluetooth.stopDrive(reason: reason)
@@ -403,7 +398,7 @@ struct ControlView: View {
                 .font(.system(.subheadline, design: .monospaced).bold())
                 .lineLimit(1).minimumScaleFactor(0.7)
             Label("상세 설정", systemImage: "chevron.down")
-                .font(.system(size: 9)).foregroundStyle(.secondary)
+                .font(.system(size: 12)).foregroundStyle(Color(white: 0.78))
         }
         .padding(.horizontal, 10)
         .padding(.top, 22)
@@ -473,7 +468,7 @@ struct ControlView: View {
         VStack(spacing: 3) {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .semibold))
-            Text(title).font(.system(size: 9, weight: .medium)).lineLimit(1)
+            Text(title).font(.system(size: 12, weight: .medium)).lineLimit(1)
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .foregroundStyle(selected ? Color.green : (destructive ? Color.red : Color.accentColor))
@@ -503,10 +498,10 @@ struct ControlView: View {
                     .fill(bluetooth.state.isReady ? Color.green : Color.orange)
                     .frame(width: 8, height: 8)
                 Text("TERMINAL · 1/2 ↔")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
                 Spacer()
                 Button("CLEAR") { bluetooth.clearConsole() }
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
             }
             .foregroundStyle(terminalGreen)
             .padding(.horizontal, 12)
@@ -516,7 +511,7 @@ struct ControlView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     Text(coloredTerminalText)
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(terminalGreen)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -533,7 +528,7 @@ struct ControlView: View {
                 Text(">")
                     .font(.system(.body, design: .monospaced).bold())
                 TextField("COMMAND", text: $consoleCommand,
-                          prompt: Text("COMMAND").foregroundStyle(terminalGreen.opacity(0.45)))
+                          prompt: Text("COMMAND").foregroundStyle(terminalGreen.opacity(0.8)))
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(terminalGreen)
                     .tint(terminalGreen)
@@ -619,5 +614,88 @@ struct ControlView: View {
         guard canSendConsoleCommand else { return }
         bluetooth.send(.raw(consoleCommand))
         consoleCommand = ""
+    }
+}
+
+
+struct FootLiftSettingsView: View {
+    @EnvironmentObject private var bluetooth: RobotBluetoothManager
+    @Environment(\.dismiss) private var dismiss
+    @State private var footLiftDraft = [0,0,0,0]
+    @State private var footLiftBaseline: [Int]?
+    private func loadFootLift() {
+        footLiftBaseline = bluetooth.footLiftApplied
+        footLiftDraft = footLiftBaseline ?? [0,0,0,0]
+    }
+    private func footLiftField(_ index: Int,_ name: String) -> some View {
+        VStack {
+            Text(name).font(.subheadline.weight(.medium))
+            HStack(spacing: 4) {
+                TextField("mm",value:$footLiftDraft[index],format:.number)
+                    .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+                    .font(.body.monospacedDigit()).disabled(bluetooth.footLiftPending)
+                    .accessibilityLabel("\(name) 추가 발 높이, 밀리미터")
+                    .onChange(of:footLiftDraft[index]) { _,value in footLiftDraft[index]=min(2147483647,max(0,value)) }
+                Text("mm").font(.caption).fixedSize().foregroundStyle(Color(white: 0.78))
+            }
+            Stepper("\(name) 발 높이",value:$footLiftDraft[index],in:0...2147483647)
+                .labelsHidden().disabled(bluetooth.footLiftPending)
+        }
+    }
+    private var footLiftEditor: some View {
+                    VStack(spacing: 12) {
+                        Text("↑ 로봇 앞쪽").font(.caption)
+                        HStack(spacing: 24) {
+                            footLiftField(0,"FL · 앞 왼쪽")
+                            footLiftField(1,"FR · 앞 오른쪽")
+                        }
+                        SpotRobotTopView()
+                            .frame(height: 290)
+                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 24) {
+                            footLiftField(2,"RL · 뒤 왼쪽")
+                            footLiftField(3,"RR · 뒤 오른쪽")
+                        }
+                        Text("0 = 기본 보행 · 스윙 중에만 추가 들림 · 로봇 기준 좌우").font(.caption).foregroundStyle(Color(white: 0.78))
+                        if bluetooth.state.isReady, let applied=bluetooth.footLiftApplied {
+                            Text(zip(["FL","FR","RL","RR"],applied).map { "\($0.0) \($0.1)mm" }.joined(separator:" / ")).font(.caption.monospacedDigit())
+                        }
+                        Text(bluetooth.supportsPersistentFootLift ? bluetooth.footLiftMessage : "로봇 영구 저장 지원 펌웨어(V90-R2)가 필요합니다.").font(.caption)
+                        HStack {
+                            Button("저장·반영") { bluetooth.configureFootLift(footLiftDraft) }.disabled(!bluetooth.canConfigureFootLift)
+                            Button("로봇 값 불러오기") { loadFootLift(); bluetooth.refreshFootLift() }.disabled(bluetooth.footLiftPending)
+                            Button("모두 0") { footLiftDraft=[0,0,0,0] }.disabled(bluetooth.footLiftPending)
+                        }.buttonStyle(.bordered)
+                        if let actual = bluetooth.footLiftApplied, actual != footLiftDraft, !bluetooth.footLiftPending {
+                            Text("아직 반영되지 않은 입력값입니다. 저장·반영을 눌러 주세요.").foregroundStyle(.orange).font(.subheadline)
+                        }
+                        Text("STM32에 영구 저장됩니다. Windows·Mac·iPhone이 같은 로봇의 설정을 공유합니다.").font(.caption).foregroundStyle(Color(white: 0.78))
+                    }.onAppear { loadFootLift(); bluetooth.refreshFootLift() }
+                    .onChange(of: bluetooth.footLiftApplied) { _, actual in
+                        if footLiftBaseline == nil || footLiftDraft == footLiftBaseline { loadFootLift() }
+                    }
+                    .onChange(of: bluetooth.footLiftPending) { old, pending in
+                        if old && !pending && bluetooth.footLiftMessage == "로봇 저장·반영 완료" { loadFootLift() }
+                    }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form { Section("발 추가 들림 · 모든 보행") { footLiftEditor } }
+                .navigationTitle("발 높이 설정")
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("완료") { dismiss() } } }
+        }
+        .preferredColorScheme(.dark).tint(.mint).toggleStyle(.switch)
+    }
+}
+
+
+/// Orthographic render of the existing MuJoCo CAD model in its standing pose.
+private struct SpotRobotTopView: View {
+    var body: some View {
+        Image("RobotTopView")
+            .resizable()
+            .scaledToFit()
+            .accessibilityLabel("MuJoCo 실제 CAD 로봇 윗모습. 위쪽이 전방이며 왼쪽 앞발 FL, 오른쪽 앞발 FR입니다.")
     }
 }

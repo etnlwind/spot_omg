@@ -98,6 +98,38 @@ struct RobotConsoleStream {
     }
 }
 
+/// Matches STM32 @C replies on BLE 006; console logs never enter this parser.
+struct RobotControlStream {
+    struct Reply { let sequence: UInt32; let done: Bool; let payload: String }
+    enum Invalid: Error { case frame }
+    private var buffer = Data()
+    private var active = false
+    mutating func append(_ data: Data) throws -> [Reply] {
+        var replies: [Reply] = []
+        for byte in data {
+            if byte == 0x1e { buffer.removeAll(keepingCapacity: true); active = true }
+            else if byte == 0x1f && active {
+                active = false
+                let fields = String(decoding: buffer, as: UTF8.self).split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
+                guard fields.count == 3, let seq = UInt32(fields[0]), seq > 0,
+                      fields[1] == "DATA" || fields[1] == "DONE",
+                      fields[1] != "DONE" || fields[2].isEmpty else { throw Invalid.frame }
+                replies.append(Reply(sequence: seq, done: fields[1] == "DONE", payload: String(fields[2])))
+            } else if active {
+                buffer.append(byte)
+                if buffer.count > 766 { throw Invalid.frame }
+            }
+        }
+        return replies
+    }
+    static func request(_ data: Data, sequence: UInt32) throws -> Data {
+        let command = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
+        guard sequence > 0, !command.isEmpty, command.utf8.count < 96,
+              command.utf8.allSatisfy({ $0 >= 32 && $0 < 127 }) else { throw Invalid.frame }
+        return Data("@C \(sequence) \(command)\n".utf8)
+    }
+}
+
 enum RobotCommand: Equatable {
     case simulatorProfile(SimulatorGaitProfile)
     case simulatorBalance(Bool)
@@ -199,6 +231,17 @@ struct RobotDriveVector: Equatable {
         let speed = min(1.0, max(0.0,
             (magnitude - deadZone) / (1.0 - deadZone)))
         let motion = minimumMotion + (1.0 - minimumMotion) * speed
+        // Snap both forward and reverse within 20 degrees, preserving radial speed.
+        if atan2(abs(x), abs(y)) <= 20.0 * .pi / 180.0 + 1e-12 {
+            return Self(linearPerMille: Int((motion * 1000).rounded()) * (y < 0 ? -1 : 1),
+                        yawPerMille: 0, speedFraction: speed)
+        }
+        let angleFromForward = atan2(abs(x), y) * 180.0 / .pi
+        if angleFromForward >= 70.0 - 1e-10 && angleFromForward <= 110.0 + 1e-10 {
+            return Self(linearPerMille: 0,
+                        yawPerMille: Int((motion * 1000).rounded()) * (x < 0 ? -1 : 1),
+                        speedFraction: speed)
+        }
         let axisScale = motion * 1000.0 / max(magnitude, 0.0001)
         // A narrow vertical corridor rejects finger drift while walking.
         // The matching horizontal corridor keeps left/right input in place.

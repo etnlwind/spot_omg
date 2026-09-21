@@ -7,7 +7,7 @@ from .battery import BatteryWarning, reading as battery_reading
 
 NATIVE_PROFILES = ("s_native_v6_2_7", "s_native_v6_2_6", "s_native_v6_2_5", "s_native_v6_2_4", "s_native_v6_2_3", "s_native_v6_2_2", "s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
 SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1", "s_native_v6_2_2", "s_native_v6_2_3", "s_native_v6_2_4", "s_native_v6_2_5", "s_native_v6_2_6", "s_native_v6_2_7"}
-PROFILES = ("attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
+PROFILES = ("attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
     "attitudepd", "centerpivot", "arcsupport", "arcturn", "legacy", "crawl",
     "cruise", "trot", "highstep", "lift", "imu", "level", "level15", "joint",
     "jointfast", "jointsport", "cushion_reach", "cushion_j2lift", "cushion_wbc",
@@ -20,6 +20,11 @@ READ_ONLY = {"syncstate", "targets", "gaitdiag", "baldiag", "imudiag",
 STOP_TIMEOUT = 5.
 DRAIN_IDLE_TIMEOUT = 5.
 DRAIN_TOTAL_TIMEOUT = 30.
+IMU_RECOVERY_REVISIONS = frozenset({
+    "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3",
+    "attitudepd-v5-v91", "attitudepd-v6-v92",
+})
+IMU_RECOVERY_ACK = "OK IMU recovered; no motion; faults unchanged"
 
 
 class ConsoleStream:
@@ -58,6 +63,11 @@ def drive_vector(x, y):
     if magnitude < .15:
         return (0, 0)
     scale = (.30 + .70 * (magnitude - .15) / .85) * 1000 / magnitude
+    if math.atan2(abs(x), abs(y)) <= math.radians(20) + 1e-12:
+        return int(math.floor(scale * magnitude + .5)) * (-1 if y < 0 else 1), 0
+    angle_from_forward = math.degrees(math.atan2(abs(x), y))
+    if 70 - 1e-10 <= angle_from_forward <= 110 + 1e-10:
+        return 0, int(math.floor(scale * magnitude + .5)) * (-1 if x < 0 else 1)
     def axis(value, other):
         dead = .10 * abs(other)
         mapped = math.copysign(max(0., abs(value) - dead) / (1 - dead), value) * scale
@@ -106,6 +116,9 @@ class Controller:
         self.parameter_walking = False
         self.probe_from_joystick = False
         self.state_at = None
+        self.foot_lift_result = None
+        self.foot_lift_expected = None
+        self.foot_lift_saved_ack = False
         self.fatal = False
         self.disconnect_requested = False
         self.default_profile_pending = True
@@ -113,11 +126,42 @@ class Controller:
         self.probe_expected = None
         self.probe_running = False
         self.probe_stop_at = None
+        self.imu_recovery_pending = False
+        self.imu_recovery_status = "idle"
+        self.imu_recovery_message = "정지 상태에서 IMU 통신을 복구합니다."
+        self.imu_recovery_requires_release = False
+        self._imu_recovery_acknowledged = False
+        self._imu_recovery_succeeded = False
+
+    @property
+    def supports_imu_recovery(self):
+        return not self.simulator and self.state.get("rev") in IMU_RECOVERY_REVISIONS
+
+    @property
+    def can_recover_imu(self):
+        return (self.supports_imu_recovery and self.connected and self.synced
+                and not self.fatal and not self.disconnect_requested
+                and self.phase == "idle" and self.command is None and self.pending is None
+                and not self.stowed and not self.confirm_pose and not self.relax_pending
+                and not self.probe_running and self.probe_expected is None
+                and not self.imu_recovery_pending)
+
+    def _finish_imu_recovery(self, status, message):
+        self.imu_recovery_pending = False
+        self.imu_recovery_status = status
+        self.imu_recovery_message = message
+        # A release seen during recovery is insufficient. Completion/cancel
+        # establishes a new input boundary before any gesture can drive.
+        self.imu_recovery_requires_release = True
+        self.requires_release = True
+        self.input_released = False
+        self.vector = None
+        self.stop_rearmed = False
 
     @property
     def supports_probe(self):
         return not self.simulator and self.state.get('rev') in {
-            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81', 'attitudepd-v4-v82', 'attitudepd-v4-v90-r1'}
+            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81', 'attitudepd-v4-v82', 'attitudepd-v4-v90-r1', 'attitudepd-v4-v90-r2', 'attitudepd-v4-v90-r3', 'attitudepd-v5-v91', 'attitudepd-v6-v92'}
 
     @staticmethod
     def parse_probe(values):
@@ -175,12 +219,14 @@ class Controller:
         # remain exclusive through their queued command and final readback.
         return (self.connected and self.synced and not self.fatal and not self.disconnect_requested
                 and self.command not in POSTURES and self.pending not in POSTURES
-                and not self.confirm_pose and not self.relax_pending)
+                and not self.confirm_pose and not self.relax_pending
+                and not self.imu_recovery_pending)
 
     @property
     def can_drive(self):
         # Serialize command completion; fresh input retries through firmware.
-        return self.controls_enabled and self.phase in {"idle", "drive"}
+        return (self.controls_enabled and not self.imu_recovery_requires_release
+                and self.phase in {"idle", "drive"})
 
     @property
     def motion_active(self):
@@ -191,20 +237,28 @@ class Controller:
         if not line or len(line.encode("utf-8")) > 240 or any(ord(c) < 32 for c in line):
             raise ValueError("명령은 240바이트 이내의 한 줄이어야 합니다.")
         words = line.split()
+        if words[0] == "imurecover":
+            if len(words) != 1:
+                raise ValueError("IMU 복구 명령에는 추가 인자를 사용할 수 없습니다.")
+            if not self.supports_imu_recovery:
+                raise ValueError("IMU 복구 지원 실기 펌웨어(V90-R1 이상)가 필요합니다.")
+            if not self.can_recover_imu:
+                raise ValueError("자세 전환과 보행을 마치고 모든 명령 응답을 받은 뒤 IMU를 복구하십시오.")
         if words[0] in {'walkprobe','rearprobe'}:
             raise ValueError('시험 시작 버튼을 사용하십시오.')
         if words[0] == "footlift":
             if "footlift" not in self.caps:raise ValueError("발 들림 보정 지원 펌웨어가 필요합니다.")
             if self.phase != "idle":raise ValueError("정지 후 발 들림 보정을 적용하십시오.")
             if words[1:] != ["show"]:
-                if len(words)!=6 or words[1]!="set" or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):
+                if "footliftpersist" not in self.caps:raise ValueError("로봇 영구 저장 지원 펌웨어(V90-R2)가 필요합니다.")
+                if len(words)!=6 or words[1]!="save" or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):
                     raise ValueError("각 다리의 추가 들림은 0 이상의 정수 mm입니다.")
         if words[0] == 'probeconfig':
             if not self.supports_probe:raise ValueError('파라미터 펌웨어가 필요합니다.')
             if words[1:] not in [['show'], ['reset']]:
                 if len(words) not in {6,7,8} or words[1] != 'set':raise ValueError('잘못된 파라미터 명령')
                 self.parse_probe(words[2:])
-                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
+                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
         first = words[0]
         if first in POSTURES | {'relax', 'recover', 'hold'} and len(words) != 1:
             raise ValueError('자세 명령에는 추가 인자를 사용할 수 없습니다.')
@@ -225,7 +279,7 @@ class Controller:
             profile = words[1]
             if (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) and not self.simulator:
                 raise ValueError("이 보행 정책은 시뮬레이터 전용입니다.")
-            if profile in {*NATIVE_PROFILES, "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
+            if profile in {*NATIVE_PROFILES, "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
                 raise ValueError("제어기가 선택한 실험 정책을 지원하지 않습니다.")
 
     def request(self, line, now):
@@ -256,28 +310,45 @@ class Controller:
             self._console(line, now)
 
     def _console(self, line, now):
+        if line == "imurecover":
+            self.imu_recovery_pending = True
+            self.imu_recovery_status = "recovering"
+            self.imu_recovery_message = "IMU 복구 중…"
+            self._imu_recovery_acknowledged = self._imu_recovery_succeeded = False
+            self.imu_recovery_requires_release = True
+            self.requires_release = True
+            self.input_released = False
+            self.vector = None
+            self.stop_rearmed = False
+            self.outbox = deque((k, d) for k, d in self.outbox if k != "update")
+        if line.startswith('footlift save '):
+            self.foot_lift_expected = list(map(int,line.split()[2:]))
+            self.foot_lift_result = None
+            self.foot_lift_saved_ack = False
         if line not in READ_ONLY:
             self.rest_since=None
             self.rest_samples.clear()
         if line.startswith('probeconfig set '):
             self.probe_config = None
             self.probe_expected = self.parse_probe(line.split()[2:])
-            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1"):self.probe_expected += (0,0)
+            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"):self.probe_expected += (0,0)
         elif line == 'probeconfig reset':
             self.probe_config = None
-            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1") else ())
+            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92") else ())
         self.command = line
         self.command_ok = self.command_error = False
         self.command_state_seen = False
         self.phase = "busy"
         self.deadline = now + (75 if line in POSTURES else 30 if line.startswith(("trot", "crab", "turn")) else 10)
+        if line == "imurecover":
+            self.deadline = now + 5
         self.refresh_at = None
         self.packet(line + "\n")
 
     def sample_input(self, vector, now):
         """Consume live UI input, including fresh gestures while awaiting an ACK."""
         if vector is None:
-            if not self.input_released:
+            if not self.input_released or self.imu_recovery_requires_release:
                 self.release(now)
             self.input_released = True
             return
@@ -291,6 +362,10 @@ class Controller:
         self.update(*vector, now)
 
     def update(self, x, y, now):
+        # A held stick crossing neutral is not a gesture release. Neither raw
+        # update() callers nor parameter mode may bypass the recovery boundary.
+        if self.imu_recovery_pending or self.imu_recovery_requires_release:
+            return
         vector = drive_vector(x, y)
         if self.parameter_walking:
             forward=vector is not None and vector[0]>0 and abs(vector[1])<100
@@ -329,7 +404,9 @@ class Controller:
         self.probe_from_joystick=False
         self.probe_running = False
         self.probe_stop_at = None
-        self.requires_release = False
+        self.requires_release = self.imu_recovery_pending
+        if not self.imu_recovery_pending:
+            self.imu_recovery_requires_release = False
         self.vector = None
         if self.phase == "drive":
             self.stop_rearmed = False
@@ -349,6 +426,8 @@ class Controller:
             self.interrupt(now)
 
     def interrupt(self, now):
+        if self.imu_recovery_pending:
+            self._finish_imu_recovery("cancelled", "IMU 복구가 중단됐습니다. 상태를 확인한 뒤 새로 조작하세요.")
         self.stop_rearmed = False
         self.probe_running = False
         self.probe_stop_at = None
@@ -403,6 +482,8 @@ class Controller:
             self.deadline = now + STOP_TIMEOUT
             self.packet("\nsyncstate\n")
         if self.phase in {"busy", "stopping", "draining", "resync"} and now >= self.deadline:
+            if self.imu_recovery_pending:
+                self._finish_imu_recovery("timeout", "복구 응답 시간 초과 · 다시 연결해 확인해 주세요.")
             message = ("종료 로그 또는 프롬프트 수신 시간 초과. 연결을 해제합니다."
                        if self.phase == "draining" else
                        "완료 응답 시간 초과. 정지 요청 후 연결을 해제합니다.")
@@ -443,7 +524,7 @@ class Controller:
                 if self.phase == "resync":
                     self.resync_state_seen = all(self.state.get(k) for k in ("pose", "torque", "safety"))
                     self.synced = False  # A fresh prompt must follow this readback.
-                if self.command == 'syncstate':
+                if self.command in ('syncstate','footlift show'):
                     self.command_state_seen = True
             if line.startswith('$PROBECONFIG '):
                 try:
@@ -469,6 +550,11 @@ class Controller:
                         self.voltage=sorted(samples)[1]/1000
                         self.voltage_at=now
                         self.battery.observe(round(self.voltage*1000),now)
+            if line == 'OK footlift saved' and (self.command or '').startswith('footlift save '):
+                self.foot_lift_saved_ack = True
+            if (line == IMU_RECOVERY_ACK and self.command == "imurecover"
+                    and self.imu_recovery_pending and self.imu_recovery_status == "recovering"):
+                self._imu_recovery_acknowledged = True
             if line == "OK" or line == "OK " + (self.command or ""):
                 self.command_ok = True
             failed = line.startswith("ERROR:") or line == "unknown command; type help"
@@ -553,7 +639,41 @@ class Controller:
         if self.rest_since is None:self.rest_since=now
         if self.disconnect_requested:
             self.fatal = True
+            if self.imu_recovery_pending:
+                self._finish_imu_recovery("cancelled", "연결 해제로 IMU 복구 확인이 중단됐습니다.")
             return
+        if command == "imurecover" and self.imu_recovery_pending:
+            self._imu_recovery_succeeded = self._imu_recovery_acknowledged and not self.command_error
+            self.imu_recovery_status = "refreshing"
+            self.imu_recovery_message = ("IMU 복구 응답 확인 · 로봇 상태를 확인하고 있습니다."
+                                         if self._imu_recovery_succeeded else
+                                         "IMU 복구 실패 · 로봇 상태를 확인하고 있습니다.")
+            self._console("syncstate", now)
+            return
+        if command == "syncstate" and self.imu_recovery_pending and self.imu_recovery_status == "refreshing":
+            if self.command_error or not self.command_state_seen:
+                self._finish_imu_recovery("failed", "복구 후 상태 응답을 확인하지 못했습니다. 다시 연결해 주세요.")
+                self.error = self.imu_recovery_message
+                self.fatal = True
+            elif self._imu_recovery_succeeded:
+                self._finish_imu_recovery("succeeded", "IMU 복구 완료 · 스틱을 놓은 뒤 새로 조작하세요. 보호 상태는 유지됩니다.")
+            else:
+                self._finish_imu_recovery("failed", "IMU 복구 실패 · 센서 연결을 확인하세요.")
+            self.next_voltage_poll = now + 5
+            self.refresh_at = None
+            return
+        if command and command.startswith('footlift save '):
+            if self.command_error or not self.foot_lift_saved_ack:
+                self.foot_lift_result = dict(ok=False, values=self.foot_lift_expected)
+                self.foot_lift_expected = None
+            else:
+                self._console('footlift show',now)
+                return
+        if command == 'footlift show' and self.foot_lift_expected is not None:
+            try: actual=[int(self.state['lift_'+leg]) for leg in ('fl','fr','rl','rr')]
+            except (KeyError,ValueError): actual=None
+            self.foot_lift_result=dict(ok=not self.command_error and self.command_state_seen and actual==self.foot_lift_expected,values=self.foot_lift_expected)
+            self.foot_lift_expected=None
         if self.command_error:
             self.probe_expected = None
             self.probe_config = None
@@ -602,7 +722,7 @@ class Controller:
                 self._console("read 1", now)
         elif command == "read 1" and self.default_profile_pending and self.synced and self.state.get('safety') == 'ok' and self.state.get('pose') in {'stand', 'stand11', 'landing'}:
             self.default_profile_pending = False
-            profile = next((p for p in ("attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES if p in self.caps and
+            profile = next((p for p in ("attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES if p in self.caps and
                             (self.simulator or p not in SIMULATOR_NATIVE_PROFILES)), None)
             if profile and self.state.get('profile') != profile and self.caps & {'gaitprofiles', 'simprofiles'}:
                 prefix = 'gaitprofile' if 'gaitprofiles' in self.caps else 'simprofile'
@@ -614,9 +734,15 @@ class Controller:
         return dict(connected=self.connected and not self.fatal, synced=self.synced,
                     phase=self.phase, state=dict(self.state), caps=sorted(self.caps),
                     error=self.error, can_drive=self.can_drive, controls_enabled=self.controls_enabled, requires_release=self.requires_release, voltage=self.voltage if self.connected and not self.simulator else None,
-                    pause_reason=self.pause_reason,
+                    pause_reason=self.pause_reason, foot_lift_result=self.foot_lift_result,
                     separate_control=self.separate_control,
                     voltage_at=self.voltage_at, state_at=self.state_at,
                     battery_warning=self.battery.snapshot() if self.connected and not self.simulator else {},
                     simulator=self.simulator, vector=self.vector, motion_active=self.motion_active,
+                    supports_imu_recovery=self.supports_imu_recovery,
+                    can_recover_imu=self.can_recover_imu,
+                    imu_recovery_pending=self.imu_recovery_pending,
+                    imu_recovery_status=self.imu_recovery_status,
+                    imu_recovery_message=self.imu_recovery_message,
+                    imu_recovery_requires_release=self.imu_recovery_requires_release,
                     parameter_walking=self.parameter_walking, supports_probe=self.supports_probe, probe_config=self.probe_config, probe_running=self.probe_running)

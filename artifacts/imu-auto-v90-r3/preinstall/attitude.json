@@ -1,0 +1,76 @@
+{
+  "stage": "attitude",
+  "success": true,
+  "events": [
+    {
+      "command": "syncstate",
+      "data": [
+        "$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n"
+      ]
+    },
+    {
+      "command": "imudiag",
+      "data": [
+        "IMUDIAG snapshot present=1 addr=0x29 hal_state=0x20 hal_error=0x20 sr1=0x44 sr2=0x3 scl=0 sda=1\r\n"
+      ]
+    },
+    {
+      "command": "baldiag",
+      "data": []
+    },
+    {
+      "command": "status",
+      "data": [
+        "ID 1 pos=1924 speed=0 load=40 voltage=11200mV temp=30C current=0 moving=0 hw=0x00\r\n",
+        "ID 2 pos=1423 speed=0 load=-56 voltage=11300mV temp=32C current=5 moving=0 hw=0x00\r\n",
+        "ID 3 pos=3001 speed=0 load=48 voltage=11400mV temp=32C current=1 moving=0 hw=0x00\r\n",
+        "ID 4 pos=2077 speed=0 load=-48 voltage=11400mV temp=33C current=1 moving=0 hw=0x00\r\n",
+        "ID 5 pos=2574 speed=0 load=40 voltage=11300mV temp=30C current=2 moving=0 hw=0x00\r\n",
+        "ID 6 pos=1048 speed=0 load=-24 voltage=11500mV temp=30C current=1 moving=0 hw=0x00\r\n",
+        "ID 7 pos=2089 speed=0 load=-56 voltage=11300mV temp=33C current=1 moving=0 hw=0x00\r\n",
+        "ID 8 pos=1297 speed=0 load=16 voltage=11300mV temp=26C current=0 moving=0 hw=0x00\r\n",
+        "ID 9 pos=3001 speed=0 load=56 voltage=11300mV temp=34C current=2 moving=0 hw=0x00\r\n",
+        "ID 10 pos=1964 speed=0 load=40 voltage=11400mV temp=33C current=1 moving=0 hw=0x00\r\n",
+        "ID 11 pos=2899 speed=0 load=-24 voltage=11300mV temp=30C current=1 moving=0 hw=0x00\r\n",
+        "ID 12 pos=1005 speed=0 load=-88 voltage=11300mV temp=36C current=4 moving=0 hw=0x00\r\n"
+      ]
+    }
+  ],
+  "sha256": "441b853c8b591c1e8d8daaf3b9973dd0fbfccc1c663b9b8cc6a7b41d9ed0e6c1",
+  "initial": {
+    "pose": "stand",
+    "error": "10",
+    "torque": "on",
+    "safety": "ok",
+    "balance": "suspended",
+    "rev": "attitudepd-v4-v90-r2",
+    "caps": "footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold",
+    "profile": "attitudepd_v4",
+    "heading": "on",
+    "reverse_limit": "1000",
+    "recovery": "new-command",
+    "fault_code": "0",
+    "support": "observing",
+    "mass_g": "2754",
+    "lift_fl": "20",
+    "lift_fr": "20",
+    "lift_rl": "0",
+    "lift_rr": "0"
+  },
+  "console": [
+    "$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,atti",
+    "tudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,joint",
+    "trace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 su",
+    "pport=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n# IMUDIAG snapshot present=1 addr=0x29 hal_state=0x20 hal_error=0x20 sr1=0x44 sr2=0x3 scl=0 sda=1\r\n# Balance ",
+    "trace: frames=32 applied=off; angles/rates use 0.1deg, control/length/placement use milli-units\r\nTilt snapshot: none\r\n  B phase=630 support=FL+FR+RL+RR raw10=-24/-5 filtered10=-24/",
+    "-2 rate10/s=27/-35 control_mrad=0/0 j1_10=0 len_milli=0 knee_10=0 place_milli=0 sat=0x00 limited=0x000 lag=26 heading10=0 heading_cmd=0 yaw=0\r\n  B phase=630 support=FL+FR+RL+RR raw",
+    "10=-24/-5 filtered10=-24/-2 rate10/s=20/-26 control_mrad=0/0 j1_10=0 len_milli=0 knee_10=0 place_milli=0 sat=0x00 limited=0x000 lag=26 heading10=0 heading_cmd=0 yaw=0\r\n  B phase=63",
+    "0 support=FL+FR+RL+RR raw10=-24/-5 filtered10=-24/-2 rate10/s=15/-19 control_mrad=0/0 j1_10=0 len_milli=0 knee_10=0 place_milli=0 sat=0x00 limited=0x000 lag=26 heading10=0 heading_",
+    "cmd=0 yaw=0\r\n  B phase=630 support=FL+FR+RL+RR raw10=-24/-4 filtered10=-24/-2 rate10/s=11/-1 control_mrad=0/0 j1_10=0 len_milli=0 knee_10=0 place_milli=0 sat=0x00 limited=0x000 lag",
+    "=26 heading10=0 heading_cmd=0 yaw=0\r\n  B phase=630 support=FL+FR+RL+RR raw10=-25/-3 filtered10=-24/-2 rate10/s=-4/11 control_mrad=0/0 j1_10=0 len_milli=0 knee_10=0 place_milli=0 sa",
+    "t=0x00 limited=0x000 lag=26 heading10=0 heading_cmd=0 yaw=0\r\n  B phase=630 support=FL+FR+RL+RR raw10=-25/-3 filtered10=-24/-2 rate10/s=-3/8 control_mrad=0/0 j1_10=0 len_milli=0 kne",
+    "e_10=0 place_milli=0 sat=0x00 limited=0x000 lag=26 heading10=0 heading_cmd=0 yaw=0\r\n  B phase=630 support=FL+FR+RL+RR raw10=-26/-2 filtered10=-24/-2 rate10/s=-14/18 control_mrad=0/",
+    "0 j1_10=0 len_milli=0 knee_10=0 place_milli=0 sat=0x00 limited=0x000 lag=26 heading10=0 heading_cmd=0 yaw=0\r\n  B phase=630 support=FL+FR+RL+RR raw10=-26/-1 filtered10=-24/-1 rate10"
+  ],
+  "finished_epoch": 1789997484.321148
+}

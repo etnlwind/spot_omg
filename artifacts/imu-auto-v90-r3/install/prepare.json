@@ -1,0 +1,178 @@
+{
+  "stage": "prepare",
+  "success": true,
+  "events": [
+    {
+      "command": "syncstate",
+      "data": [
+        "$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n"
+      ]
+    },
+    {
+      "command": "status",
+      "data": [
+        "ID 1 pos=1924 speed=0 load=40 voltage=10600mV temp=31C current=1 moving=0 hw=0x00\r\n",
+        "ID 2 pos=1423 speed=0 load=-56 voltage=11300mV temp=32C current=5 moving=0 hw=0x00\r\n",
+        "ID 3 pos=3001 speed=0 load=48 voltage=11400mV temp=32C current=2 moving=0 hw=0x00\r\n",
+        "ID 4 pos=2077 speed=0 load=-48 voltage=11400mV temp=33C current=2 moving=0 hw=0x00\r\n",
+        "ID 5 pos=2574 speed=0 load=40 voltage=11400mV temp=30C current=3 moving=0 hw=0x00\r\n",
+        "ID 6 pos=1048 speed=0 load=-24 voltage=11400mV temp=30C current=0 moving=0 hw=0x00\r\n",
+        "ID 7 pos=2089 speed=0 load=-56 voltage=11300mV temp=33C current=1 moving=0 hw=0x00\r\n",
+        "ID 8 pos=1297 speed=0 load=16 voltage=11400mV temp=26C current=0 moving=0 hw=0x00\r\n",
+        "ID 9 pos=3001 speed=0 load=56 voltage=11300mV temp=34C current=2 moving=0 hw=0x00\r\n",
+        "ID 10 pos=1964 speed=0 load=40 voltage=11400mV temp=32C current=0 moving=0 hw=0x00\r\n",
+        "ID 11 pos=2899 speed=0 load=-24 voltage=11300mV temp=30C current=1 moving=0 hw=0x00\r\n",
+        "ID 12 pos=1005 speed=0 load=-88 voltage=11300mV temp=42C current=3 moving=0 hw=0x00\r\n"
+      ]
+    },
+    {
+      "command": "landing",
+      "data": [
+        "OK\r\n"
+      ],
+      "diagnostic_reply": "tudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n# Servo status (12 configured IDs):\r\nID 1 pos=1924 speed=0 load=40 voltage=10600mV temp=31C current=1 moving=0 hw=0x00\r\nID 2 pos=1423 speed=0 load=-56 voltage=11300mV temp=32C current=5 moving=0 hw=0x00\r\nID 3 pos=3001 speed=0 load=48 voltage=11400mV temp=32C current=2 moving=0 hw=0x00\r\nID 4 pos=2077 speed=0 load=-48 voltage=11400mV temp=33C current=2 moving=0 hw=0x00\r\nID 5 pos=2574 speed=0 load=40 voltage=11400mV temp=30C current=3 moving=0 hw=0x00\r\nID 6 pos=1048 speed=0 load=-24 voltage=11400mV temp=30C current=0 moving=0 hw=0x00\r\nID 7 pos=2089 speed=0 load=-56 voltage=11300mV temp=33C current=1 moving=0 hw=0x00\r\nID 8 pos=1297 speed=0 load=16 voltage=11400mV temp=26C current=0 moving=0 hw=0x00\r\nID 9 pos=3001 speed=0 load=56 voltage=11300mV temp=34C current=2 moving=0 hw=0x00\r\nID 10 pos=1964 speed=0 load=40 voltage=11400mV temp=32C current=0 moving=0 hw=0x00\r\nID 11 pos=2899 speed=0 load=-24 voltage=11300mV temp=30C current=1 moving=0 hw=0x00\r\nID 12 pos=1005 speed=0 load=-88 voltage=11300mV temp=42C current=3 moving=0 hw=0x00\r\nBus read retries: attempts=0 recovered=0 failed=0\r\n# Starting slow synchronized landing move\r\nPOSE landing reason=complete elapsed=5431 nominal=5360 retries=0 waits=0 hold=0\r\nPOSE_HEALTH id=0 temp=0 hw=0x00 transient=0\r\nPOSE_PROBE count=0 mask=0x000 max_lead=120\r\nOK\r\n$MECHLOG label=landing complete=1; saved: log show 64\r\n# "
+    },
+    {
+      "command": "syncstate",
+      "data": [
+        "$SPOTSTATE pose=landing error=11 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n"
+      ]
+    },
+    {
+      "command": "relax",
+      "data": [
+        "OK\r\n"
+      ]
+    },
+    {
+      "command": "syncstate",
+      "data": [
+        "$SPOTSTATE pose=landing error=75 torque=off safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n"
+      ]
+    },
+    {
+      "command": "servoconfig 1",
+      "data": [],
+      "diagnostic_reply": "$SPOTSTATE pose=landing error=75 torque=off safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n# SERVO_CONFIG id=1 addr=0: 03 0A 00 09 03 01 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 89 07 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 2",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=2 addr=0: 03 0A 00 09 0B 02 00 00 01 00 00 00 00 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E 56 06 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 3",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=3 addr=0: 03 0A 00 09 03 03 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 74 0D 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 4",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=4 addr=0: 03 0A 00 09 03 04 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 19 08 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 5",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=5 addr=0: 03 0A 00 09 0B 05 00 00 01 00 00 00 00 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E 49 09 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 6",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=6 addr=0: 03 0A 00 09 03 06 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 5A 02 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 7",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=7 addr=0: 03 0A 00 09 03 07 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 38 08 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 8",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=8 addr=0: 03 0A 00 09 0B 08 00 00 01 00 00 FF 0F 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E CF 05 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 9",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=9 addr=0: 03 0A 00 09 03 09 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 73 0D 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 10",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=10 addr=0: 03 0A 00 09 03 0A 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 9F 07 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 11",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=11 addr=0: 03 0A 00 09 0B 0B 00 00 01 00 00 FF 0F 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E 96 0A 00 00 2C 01 E8 03\r\n# "
+    },
+    {
+      "command": "servoconfig 12",
+      "data": [],
+      "diagnostic_reply": "SERVO_CONFIG id=12 addr=0: 03 0A 00 09 03 0C 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 37 02 00 00 2C 01 E8 03\r\n# "
+    }
+  ],
+  "sha256": "441b853c8b591c1e8d8daaf3b9973dd0fbfccc1c663b9b8cc6a7b41d9ed0e6c1",
+  "initial": {
+    "pose": "stand",
+    "error": "10",
+    "torque": "on",
+    "safety": "ok",
+    "balance": "suspended",
+    "rev": "attitudepd-v4-v90-r2",
+    "caps": "footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold",
+    "profile": "attitudepd_v4",
+    "heading": "on",
+    "reverse_limit": "1000",
+    "recovery": "new-command",
+    "fault_code": "0",
+    "support": "observing",
+    "mass_g": "2754",
+    "lift_fl": "20",
+    "lift_fr": "20",
+    "lift_rl": "0",
+    "lift_rr": "0"
+  },
+  "console": [
+    "$SPOTSTATE pose=stand error=10 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,atti",
+    "tudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,joint",
+    "trace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 su",
+    "pport=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n# Servo status (12 configured IDs):\r\nID 1 pos=1924 speed=0 load=40 voltage=10600mV temp=31C current=1 moving=",
+    "0 hw=0x00\r\nID 2 pos=1423 speed=0 load=-56 voltage=11300mV temp=32C current=5 moving=0 hw=0x00\r\nID 3 pos=3001 speed=0 load=48 voltage=11400mV temp=32C current=2 moving=0 hw=0x00\r\nID",
+    " 4 pos=2077 speed=0 load=-48 voltage=11400mV temp=33C current=2 moving=0 hw=0x00\r\nID 5 pos=2574 speed=0 load=40 voltage=11400mV temp=30C current=3 moving=0 hw=0x00\r\nID 6 pos=1048 s",
+    "peed=0 load=-24 voltage=11400mV temp=30C current=0 moving=0 hw=0x00\r\nID 7 pos=2089 speed=0 load=-56 voltage=11300mV temp=33C current=1 moving=0 hw=0x00\r\nID 8 pos=1297 speed=0 load=",
+    "16 voltage=11400mV temp=26C current=0 moving=0 hw=0x00\r\nID 9 pos=3001 speed=0 load=56 voltage=11300mV temp=34C current=2 moving=0 hw=0x00\r\nID 10 pos=1964 speed=0 load=40 voltage=11",
+    "400mV temp=32C current=0 moving=0 hw=0x00\r\nID 11 pos=2899 speed=0 load=-24 voltage=11300mV temp=30C current=1 moving=0 hw=0x00\r\nID 12 pos=1005 speed=0 load=-88 voltage=11300mV temp",
+    "=42C current=3 moving=0 hw=0x00\r\nBus read retries: attempts=0 recovered=0 failed=0\r\n# ",
+    "Starting slow synchronized landing move\r\nPOSE landing reason=complete elapsed=5431 nominal=5360 retries=0 waits=0 hold=0\r\nPOSE_HEALTH id=0 temp=0 hw=0x00 transient=0\r\nPOSE_PROBE co",
+    "unt=0 mask=0x000 max_lead=120\r\nOK\r\n$MECHLOG label=landing complete=1; saved: log show 64\r\n# ",
+    "$SPOTSTATE pose=landing error=11 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,at",
+    "titudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,joi",
+    "nttrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 ",
+    "support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n# OK\r\n# ",
+    "$SPOTSTATE pose=landing error=75 torque=off safety=ok balance=suspended rev=attitudepd-v4-v90-r2 caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,a",
+    "ttitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jo",
+    "inttrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0",
+    " support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0\r\n# SERVO_CONFIG id=1 addr=0: 03 0A 00 09 03 01 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 ",
+    "01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 89 07 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=2 addr=0: 03 0A 00 09 0B 02 00 00 01 00 00 00 00 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E 56 06 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=3 addr=0: 03 0A 00 09 03 03 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 74 0D 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=4 addr=0: 03 0A 00 09 03 04 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 19 08 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=5 addr=0: 03 0A 00 09 0B 05 00 00 01 00 00 00 00 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E 49 09 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=6 addr=0: 03 0A 00 09 03 06 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 5A 02 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=7 addr=0: 03 0A 00 09 03 07 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 38 08 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=8 addr=0: 03 0A 00 09 0B 08 00 00 01 00 00 FF 0F 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E CF 05 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=9 addr=0: 03 0A 00 09 03 09 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 73 0D 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=10 addr=0: 03 0A 00 09 03 0A 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 9F 07 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=11 addr=0: 03 0A 00 09 0B 0B 00 00 01 00 00 FF 0F 50 A0 3C E8 03 0C 2D 2D 20 20 00 00 00 00 00 36 01 01 00 00 00 14 C8 50 0A FA C8 00 1E 96 0A 00 00 2C 01 E8 03\r\n# ",
+    "SERVO_CONFIG id=12 addr=0: 03 0A 00 09 03 0C 00 00 01 00 00 FF 0F 46 8C 28 E8 03 0C 2C 2F 20 20 00 10 00 01 01 36 01 01 55 00 00 14 C8 50 0A C8 C8 00 1E 37 02 00 00 2C 01 E8 03\r\n# "
+  ],
+  "foot_lift_mm": [
+    20,
+    20,
+    0,
+    0
+  ],
+  "landing_confirmed": true,
+  "torque_off": true,
+  "finished_epoch": 1789997662.526904
+}

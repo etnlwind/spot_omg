@@ -39,6 +39,11 @@ def render():
   half=p[name].get('half_stick_linear',0.)
   assert half==0 or .5<=half<1
   rows.append('  '+format(half,'.10f')+'f,')
+ rows+=['};','static const float locomotion_forward_cadence_gain[LOCOMOTION_PROFILE_COUNT] = {','  1.0f,']
+ for name in p:
+  gain=p[name].get('forward_cadence_gain',1.)
+  assert 1<=gain<=1.5
+  rows.append('  '+format(gain,'.10f')+'f,')
  return '\n'.join(rows+['};','#endif',''])
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--check',action='store_true');args=parser.parse_args()

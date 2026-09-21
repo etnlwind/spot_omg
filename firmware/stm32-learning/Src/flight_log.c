@@ -16,6 +16,8 @@
 #define FLIGHT_LOG_FLASH_END            0x08080000UL
 #define FLIGHT_LOG_PRESERVED_WORDS      256U
 #define FLIGHT_LOG_MAGIC                0x474F4C53UL
+#define FOOT_LIFT_MAGIC                 0x5446494CUL
+#define FOOT_LIFT_SNAPSHOT_OFFSET       256U
 #define FLIGHT_LOG_VERSION              1U
 #define FLIGHT_LOG_MIN_EPOCH_MS         UINT64_C(1577836800000)
 #define FLIGHT_LOG_MAX_EPOCH_MS         UINT64_C(4294967295999)
@@ -80,7 +82,7 @@ static uint32_t record_checksum(const FlightLogRecord *record)
 
 static bool record_valid(const FlightLogRecord *record)
 {
-    return record->magic == FLIGHT_LOG_MAGIC &&
+    return (record->magic == FLIGHT_LOG_MAGIC || record->magic == FOOT_LIFT_MAGIC) &&
            record->version == FLIGHT_LOG_VERSION &&
            record->size == sizeof(*record) &&
            record->text_length < FLIGHT_LOG_TEXT_CAPACITY &&
@@ -93,11 +95,41 @@ static bool address_has_space(uint32_t address)
     return address <= FLIGHT_LOG_FLASH_END - sizeof(FlightLogRecord);
 }
 
-static bool erase_preserving_calibration(void)
+static const FlightLogRecord *latest_foot_lift(void)
+{
+    const FlightLogRecord *last = flash_pointer(FLIGHT_LOG_SECTOR_ADDRESS + FOOT_LIFT_SNAPSHOT_OFFSET);
+    if (!record_valid(last) || last->magic != FOOT_LIFT_MAGIC) last = NULL;
+    for (uint32_t address=FLIGHT_LOG_FLASH_ADDRESS; address_has_space(address); address+=sizeof(FlightLogRecord)) {
+        const FlightLogRecord *record=flash_pointer(address);
+        if (record_valid(record) && record->magic == FOOT_LIFT_MAGIC) last=record;
+    }
+    return last;
+}
+
+bool flight_log_load_foot_lift(uint32_t values[4])
+{
+    const FlightLogRecord *record=latest_foot_lift();
+    if (!record) return false;
+    /* Payload is four fixed little-endian words in the text area. */
+    uint32_t loaded[4];
+    memcpy(loaded, record->text, sizeof(loaded));
+    for (int i=0;i<4;i++) if (loaded[i]>INT32_MAX) return false;
+    memcpy(values, loaded, sizeof(loaded));
+    return true;
+}
+
+static bool rewrite_prefix(const void *calibration, size_t size)
+
 {
     memcpy(preserved_prefix,
            flash_pointer(FLIGHT_LOG_SECTOR_ADDRESS),
            sizeof(preserved_prefix));
+    const FlightLogRecord *latest=latest_foot_lift();
+    if (latest) memcpy((uint8_t *)preserved_prefix + FOOT_LIFT_SNAPSHOT_OFFSET, latest, sizeof(*latest));
+    if (calibration) {
+        for (size_t i=0;i<FOOT_LIFT_SNAPSHOT_OFFSET/sizeof(uint32_t);i++) preserved_prefix[i]=UINT32_MAX;
+        memcpy(preserved_prefix, calibration, size);
+    }
 
     HAL_FLASH_Unlock();
     FLASH_EraseInitTypeDef erase = {0};
@@ -118,11 +150,19 @@ static bool erase_preserving_calibration(void)
                  preserved_prefix[index]) == HAL_OK;
     }
     HAL_FLASH_Lock();
+    ok = ok && memcmp(preserved_prefix, flash_pointer(FLIGHT_LOG_SECTOR_ADDRESS), sizeof(preserved_prefix)) == 0;
     if (ok) {
         next_address = FLIGHT_LOG_FLASH_ADDRESS;
         record_count = 0U;
     }
     return ok;
+}
+
+static bool erase_preserving_calibration(void) { return rewrite_prefix(NULL, 0); }
+
+bool flight_log_save_calibration(const void *record, size_t size)
+{
+    return record && size <= FOOT_LIFT_SNAPSHOT_OFFSET && rewrite_prefix(record, size);
 }
 
 static void copy_entry(const FlightLogRecord *record, FlightLogEntry *entry)
@@ -134,6 +174,10 @@ static void copy_entry(const FlightLogRecord *record, FlightLogEntry *entry)
     entry->epoch_millis = record->epoch_millis;
     entry->text_length = record->text_length;
     memcpy(entry->text, record->text, sizeof(entry->text));
+    if (record->magic == FOOT_LIFT_MAGIC) {
+        uint32_t v[4]; memcpy(v, record->text, sizeof(v));
+        entry->text_length=(uint16_t)snprintf(entry->text,sizeof(entry->text),"FOOTLIFT saved %lu %lu %lu %lu",(unsigned long)v[0],(unsigned long)v[1],(unsigned long)v[2],(unsigned long)v[3]);
+    }
 }
 
 void flight_log_init(const char *revision)
@@ -168,7 +212,7 @@ bool flight_log_prepare_entries(size_t count)
     return remaining>=count || erase_preserving_calibration();
 }
 
-bool flight_log_append(const char *text)
+static bool append_record(const char *text, const uint32_t *foot_lift)
 {
     if (!initialized || text == NULL) {
         return false;
@@ -179,7 +223,7 @@ bool flight_log_append(const char *text)
 
     FlightLogRecord record;
     memset(&record, 0, sizeof(record));
-    record.magic = FLIGHT_LOG_MAGIC;
+    record.magic = foot_lift ? FOOT_LIFT_MAGIC : FLIGHT_LOG_MAGIC;
     record.version = FLIGHT_LOG_VERSION;
     record.size = sizeof(record);
     record.sequence = next_sequence;
@@ -198,6 +242,11 @@ bool flight_log_append(const char *text)
     memcpy(record.text, text, length);
     record.text[length] = '\0';
     record.text_length = (uint16_t)length;
+    if (foot_lift) {
+        memcpy(record.text, foot_lift, 4*sizeof(uint32_t));
+        record.text_length = 4*sizeof(uint32_t);
+        record.text[record.text_length] = 0;
+    }
     record.checksum = record_checksum(&record);
 
     const uint32_t record_address=next_address;
@@ -214,12 +263,24 @@ bool flight_log_append(const char *text)
                                word) == HAL_OK;
     }
     HAL_FLASH_Lock();
-    if (!ok) {
+    if (!ok || memcmp(flash_pointer(record_address), &record, sizeof(record)) != 0) {
         return false;
     }
     valid_slots[record_count++]=(uint16_t)((record_address-FLIGHT_LOG_FLASH_ADDRESS)/sizeof(record));
     ++next_sequence;
     return true;
+}
+
+bool flight_log_append(const char *text) { return append_record(text, NULL); }
+
+bool flight_log_save_foot_lift(const uint32_t values[4])
+{
+    if (!values || !initialized) return false;
+    for (int i=0;i<4;i++) if (values[i]>INT32_MAX) return false;
+    uint32_t previous[4];
+    if (flight_log_load_foot_lift(previous) && !memcmp(previous, values, sizeof(previous))) return true;
+    if (!append_record("", values)) return false;
+    return flight_log_load_foot_lift(previous) && !memcmp(previous, values, sizeof(previous));
 }
 
 bool flight_log_appendf(const char *format, ...)

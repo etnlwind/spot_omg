@@ -26,7 +26,7 @@ struct VirtualJoystick: View {
                 Rectangle().fill(.green.opacity(0.12)).frame(width: 1)
                 Rectangle().fill(.green.opacity(0.12)).frame(height: 1)
                 Text("FWD")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(.green.opacity(0.65))
                     .offset(y: -diameter * 0.39)
                 Circle()

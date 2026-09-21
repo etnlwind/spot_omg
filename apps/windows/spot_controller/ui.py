@@ -9,43 +9,56 @@ import tempfile
 import uuid
 
 from PySide6.QtCore import Qt, QTimer, Signal, QProcess, QProcessEnvironment, QSettings, QUrl, QEvent
-from PySide6.QtGui import QColor, QPainter, QPen, QFont, QPixmap, QTextCursor, QFontDatabase
+from PySide6.QtGui import QColor, QPainter, QPen, QFont, QPixmap, QTextCursor, QFontDatabase, QIcon, QPalette
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QGridLayout, QLabel, QPushButton, QComboBox, QLineEdit,
     QPlainTextEdit, QFrame, QTabWidget, QMessageBox, QCheckBox, QSpinBox,
-    QFileDialog, QSizePolicy, QScrollArea, QDialog)
+    QFileDialog, QSizePolicy, QScrollArea, QDialog, QListWidget, QListWidgetItem, QTabBar)
 
 from . import __version__
 from .connection import Connection
 from .foot_lift import FootLiftEditor
+from .assets import resource_path
+from .profile_names import profile_title
 from .protocol import PROFILES, NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES, READ_ONLY
 
 STYLE = """
-QMainWindow, QDialog, QWidget#shell { background: #eef2ef; color: #162e26; }
-QWidget { font-family: 'Malgun Gothic'; font-size: 12px; color: #243e33; }
-QFrame#card { background: white; border: 1px solid #d9e2dc; border-radius: 14px; }
-QLabel#title { font-size: 28px; font-weight: 800; color: #163c2d; }
-QLabel#muted { color: #698074; font-size: 11px; }
-QLabel#section { font-size: 14px; font-weight: 700; }
-QLabel#value { font-size: 20px; font-weight: 700; }
-QPushButton { background: #f1f5f2; border: 1px solid #d6e0d9; border-radius: 7px; padding: 9px 12px; font-weight: 600; }
-QPushButton:hover { background: #e0ece4; border-color: #79a88b; }
-QPushButton:pressed { background: #cfe0d4; }
-QPushButton:disabled { color: #a3afa7; background: #f4f6f4; border-color: #e8eee9; }
-QPushButton#primary { background: #176b45; color: white; border-color: #176b45; }
-QPushButton#primary:hover { background: #218456; }
-QPushButton#primary:disabled { background: #8da99a; border-color: #8da99a; }
-QPushButton#stop { background: #b83c36; color: white; border: none; font-size: 14px; padding: 12px 25px; }
-QPushButton#stop:hover { background: #d94c42; }
-QComboBox, QLineEdit, QSpinBox { background: #f7f9f7; border: 1px solid #d6e0d9; border-radius: 6px; padding: 7px; min-height: 18px; }
-QComboBox:disabled, QLineEdit:disabled { color: #8b9c91; }
-QComboBox QAbstractItemView { background: white; selection-background-color: #d9edde; color: #163c2d; }
-QTabWidget::pane { border: none; }
-QTabBar::tab { background: #e3ebe5; padding: 9px 18px; margin-right: 4px; border-top-left-radius: 7px; border-top-right-radius: 7px; }
-QTabBar::tab:selected { background: #173a2b; color: #f0fff4; }
-QPlainTextEdit { border: none; border-radius: 8px; background: #10261e; color: #a1e9b3; font-family: Consolas; font-size: 12px; padding: 10px; }
-QLabel#error { color: #a93832; background: #fbeeea; padding: 8px; border-radius: 6px; }
+QMainWindow, QDialog, QWidget#shell { background: #11161d; color: #e6edf3; }
+QWidget { font-family: 'Malgun Gothic'; font-size: 13px; color: #e6edf3; }
+QLabel { background: transparent; }
+QFrame#card { background: #1b232e; border: 1px solid #33404f; border-radius: 12px; }
+QLabel#title { font-size: 28px; font-weight: 800; color: #f6f8fa; }
+QLabel#muted { color: #b4bfcd; font-size: 12px; }
+QLabel#section { font-size: 14px; font-weight: 700; color: #eef4fa; }
+QLabel#value { font-size: 19px; font-weight: 700; }
+QPushButton { background: #273342; border: 1px solid #455469; border-radius: 7px; padding: 9px 12px; font-weight: 600; }
+QPushButton:hover { background: #33465a; border-color: #65d6bf; }
+QPushButton:pressed, QPushButton:checked { background: #245347; border-color: #66dbc1; color: #ecfff9; }
+QPushButton:disabled { color: #8994a3; background: #202936; border-color: #354252; }
+QPushButton#primary { background: #237b69; color: #ffffff; border-color: #42c4a7; }
+QPushButton#primary:hover { background: #2a927c; }
+QPushButton#primary:disabled { background: #28473f; color: #98aaa5; border-color: #3d5852; }
+QPushButton#stop { background: #b9363f; color: white; border: 1px solid #e6676e; font-size: 14px; padding: 12px 25px; }
+QPushButton#stop:hover { background: #d54650; }
+QComboBox, QLineEdit, QSpinBox { background: #101720; color: #edf3fa; border: 1px solid #526175; border-radius: 6px; padding: 7px; min-height: 20px; selection-background-color: #287b69; }
+QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled { color: #929eae; border-color: #364352; }
+QListWidget { background: #101720; border: 1px solid #455469; border-radius: 7px; }
+QListWidget::item { padding: 9px 10px; color: #d9e4f0; }
+QListWidget::item:selected { background: #245b4e; color: #eefff9; }
+QListWidget::item:disabled { color: #83909f; }
+QComboBox QAbstractItemView { background: #19232f; selection-background-color: #276d60; color: #eef5fc; }
+QCheckBox { spacing: 8px; color: #e6edf3; }
+QCheckBox:disabled { color: #929eae; }
+QCheckBox::indicator { width: 18px; height: 18px; }
+QTabWidget::pane { border: 1px solid #354454; border-radius: 8px; background: #1b232e; }
+QTabBar::tab { background: #222e3c; color: #c4cfdd; padding: 10px 20px; margin-right: 4px; border-top-left-radius: 7px; border-top-right-radius: 7px; }
+QTabBar::tab:selected { background: #245b4e; color: #e9fff7; border-bottom: 2px solid #63dcc0; }
+QTabBar::tab:disabled { color: #8591a0; }
+QPlainTextEdit { border: none; border-radius: 8px; background: #090f13; color: #83e9ab; font-family: Consolas; font-size: 12px; padding: 10px; }
+QLabel#error { color: #ffd4d7; background: #552b34; padding: 8px; border-radius: 6px; }
+QToolTip { background: #253342; color: #f4f8fc; border: 1px solid #596e83; }
+QScrollArea { border: none; background: #11161d; }
 """
 
 
@@ -153,7 +166,8 @@ def find_repo():
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Spot OMG · Windows Controller")
+        self.setWindowTitle("Spot OMG!")
+        self.setWindowIcon(QIcon(str(resource_path("app-icon.png"))))
         self.setMinimumSize(960, 650)
         available = self.screen().availableGeometry()
         self.resize(min(1240, available.width()-40), available.height()-40)
@@ -162,6 +176,9 @@ class Window(QMainWindow):
         self.connection.changed.connect(self.on_state)
         self.connection.log.connect(self.append_log)
         self.connection.finished.connect(self.on_disconnected)
+        self.connection.diagnostics_exporting.connect(self.diagnostics_exporting)
+        self.connection.diagnostics_exported.connect(self.diagnostics_exported)
+        self.connection.diagnostics_export_failed.connect(self.show_error)
         self.snapshot = {}
         self.last_profile_read = None
         self.input_vector = None
@@ -196,7 +213,7 @@ class Window(QMainWindow):
     def _build(self):
         shell = QWidget()
         shell.setObjectName("shell")
-        shell.setMinimumSize(1120, 920)
+        shell.setMinimumSize(1080, 810)
         scroll = QScrollArea()
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidgetResizable(True)
@@ -251,8 +268,13 @@ class Window(QMainWindow):
         outer.setSpacing(16)
         header = QHBoxLayout()
         title = QVBoxLayout()
-        title.addWidget(label("Spot OMG", "title"))
-        title.addWidget(label(f"WINDOWS CONTROL STATION   /   v{__version__}", "muted"))
+        title.addWidget(label("Spot OMG!", "title"))
+        version_parts = __version__.split(".")
+        release = f"V{version_parts[0]}" + (f"-R{version_parts[1]}" if version_parts[1] != "0" else "")
+        title.addWidget(label(f"WINDOWS CONTROL STATION   /   {release}", "muted"))
+        icon = QLabel()
+        icon.setPixmap(QPixmap(str(resource_path("app-icon.png"))).scaled(52, 52, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        header.addWidget(icon)
         header.addLayout(title)
         header.addStretch()
         self.connection_badge = label("●  연결 안 됨", "section")
@@ -289,7 +311,7 @@ class Window(QMainWindow):
         self.connect_button.setObjectName("primary")
         self.connect_button.clicked.connect(self.toggle_connection)
         layout.addWidget(self.connect_button)
-        help_text = label("실제 로봇: iPhone 앱 연결을 먼저 해제하세요.\n연결 후 로봇 상태를 읽고 조작을 활성화합니다.", "muted")
+        help_text = label("실제 로봇: 다른 Mac·iPhone·PC의 연결을 먼저 해제하세요.\n연결 후 로봇 상태를 읽고 조작을 활성화합니다.", "muted")
         help_text.setWordWrap(True)
         layout.addWidget(help_text)
         left.addWidget(connection_card)
@@ -349,14 +371,44 @@ class Window(QMainWindow):
         self.foot_lift=FootLiftEditor(self.settings)
         self.foot_lift.applyRequested.connect(self.send)
         self.foot_lift_dialog=QDialog(self)
-        self.foot_lift_dialog.setWindowTitle("Spot OMG · 발 들림 보정")
-        self.foot_lift_dialog.resize(640,520)
+        self.foot_lift_dialog.setWindowTitle("Spot OMG! · 발 높이 설정")
+        self.foot_lift_dialog.resize(680,680)
         self.foot_lift_dialog.setModal(True)
         QVBoxLayout(self.foot_lift_dialog).addWidget(self.foot_lift)
         probe_card, probe_layout = card("파라미터 보행 시험 · V6.2.5")
-        self.probe_mode=QComboBox();self.probe_mode.addItems(["기본 보행","파라미터 보행"])
-        self.probe_mode.currentIndexChanged.connect(lambda index:self.send(f"app_parameter_mode {index}"))
-        probe_layout.addWidget(self.probe_mode)
+        self.probe_mode = QTabWidget()
+        self.probe_mode.setAccessibleName("보행 모드")
+        basic_page = QWidget()
+        basic_layout = QVBoxLayout(basic_page)
+        basic_layout.setContentsMargins(16, 12, 16, 12)
+        self.profiles = QListWidget()
+        self.profiles.setMinimumHeight(156)
+        self.profiles.setMaximumHeight(180)
+        self.profiles.setWordWrap(True)
+        self.profiles.setAccessibleName("보행 모델")
+        for profile in PROFILES:
+            item = QListWidgetItem(profile_title(profile))
+            item.setData(Qt.ItemDataRole.UserRole, profile)
+            self.profiles.addItem(item)
+        self.profiles.setCurrentRow(0)
+        self.profiles.itemClicked.connect(lambda _: self.select_profile())
+        self.profile_button = QPushButton("모델 적용")
+        self.profile_button.clicked.connect(self.select_profile)
+        model_row = QHBoxLayout()
+        model_row.addWidget(self.profiles, 1)
+        model_row.addWidget(self.profile_button)
+        basic_layout.addLayout(model_row)
+        self.selected_model = label("선택: " + profile_title(PROFILES[0]), "muted")
+        self.selected_model.setWordWrap(True)
+        self.profiles.currentRowChanged.connect(lambda _: self.selected_model.setText("선택: " + profile_title(self.selected_profile_key())))
+        basic_layout.addWidget(self.selected_model)
+        self.active_model = label("연결 후 현재 보행 모델을 확인합니다.", "muted")
+        self.active_model.setWordWrap(True)
+        basic_layout.addWidget(self.active_model)
+        self.probe_mode.addTab(basic_page, "모델 보행")
+        self.probe_mode.addTab(probe_card, "직접 설정 보행")
+        self.probe_mode.currentChanged.connect(self.change_walking_mode)
+        self.probe_mode.currentChanged.connect(self.fit_walking_page)
         fields = QGridLayout()
         self.probe_lift = QSpinBox(); self.probe_lift.setRange(12,40); self.probe_lift.setValue(28); self.probe_lift.setSuffix(" mm")
         self.probe_linear = QSpinBox(); self.probe_linear.setRange(1,1000); self.probe_linear.setValue(344)
@@ -374,14 +426,15 @@ class Window(QMainWindow):
         buttons.addWidget(self.probe_save);buttons.addWidget(self.probe_load)
         self.load_probe()
         self.probe_apply = QPushButton("설정 적용 + 조회")
-        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1") else "")))
+        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92") else "")))
         self.probe_read = QPushButton("설정 조회"); self.probe_read.clicked.connect(lambda: self.send("probeconfig show"))
         self.probe_start = QPushButton("시험 시작"); self.probe_start.clicked.connect(lambda: self.send("app_probe_start"))
         for button in [self.probe_apply,self.probe_read,self.probe_start]:buttons.addWidget(button)
         probe_layout.addLayout(buttons)
         self.probe_status = label("V6.2.5 선택 → Stand → 설정 적용 → 시험 시작. 정지는 기존 Stop 버튼.", "muted")
         self.probe_status.setWordWrap(True);probe_layout.addWidget(self.probe_status)
-        right.addWidget(probe_card)
+        right.addWidget(self.probe_mode)
+        self.fit_walking_page(0)
 
         center = QHBoxLayout()
         drive_card, layout = card("조종 스틱")
@@ -421,22 +474,23 @@ class Window(QMainWindow):
             self.motion_buttons[command] = button
         layout.addLayout(buttons)
         policy_row = QHBoxLayout()
-        self.profiles = QComboBox()
-        self.profiles.setMinimumWidth(170)
-        self.profiles.addItems(PROFILES)
-        self.profile_button = QPushButton("정책 적용")
-        self.profile_button.clicked.connect(self.select_profile)
         self.balance_button = QPushButton("수평 보정")
         self.balance_button.clicked.connect(self.toggle_balance)
         self.heading_button = QPushButton("직진 유지")
         self.heading_button.clicked.connect(lambda: self.send("heading " + ("off" if self.snapshot.get("state", {}).get("heading") == "on" else "on")))
-        for w in (self.profiles, self.profile_button, self.balance_button, self.heading_button):
+        for w in (self.balance_button, self.heading_button):
             policy_row.addWidget(w)
-        self.foot_lift_button=QPushButton("발 들림 보정")
+        self.imu_recovery_button = QPushButton("IMU 복구")
+        self.imu_recovery_button.clicked.connect(self.recover_imu)
+        policy_row.addWidget(self.imu_recovery_button)
+        self.foot_lift_button=QPushButton("발 높이 설정")
         self.foot_lift_button.clicked.connect(self.foot_lift.prepare_open)
         self.foot_lift_button.clicked.connect(self.foot_lift_dialog.open)
         policy_row.addWidget(self.foot_lift_button)
         layout.addLayout(policy_row)
+        self.imu_recovery_status = label("", "muted")
+        self.imu_recovery_status.setWordWrap(True)
+        layout.addWidget(self.imu_recovery_status)
         right.addWidget(actions_card)
         self.tabs = QTabWidget()
         terminal = QWidget()
@@ -453,13 +507,21 @@ class Window(QMainWindow):
         self.command_input.returnPressed.connect(self.send_console)
         self.send_button = QPushButton("전송")
         self.send_button.clicked.connect(self.send_console)
-        save = QPushButton("로그 저장")
+        save = QPushButton("화면 로그 저장")
         save.clicked.connect(self.save_log)
         clear = QPushButton("지우기")
         clear.clicked.connect(self.console.clear)
         for w in (self.command_input, self.send_button, save, clear):
             row.addWidget(w)
         terminal_layout.addLayout(row)
+        diagnostic_row = QHBoxLayout()
+        self.diagnostic_status = label("상세 진단은 별도 파일에 자동 기록됩니다.", "muted")
+        self.diagnostic_status.setWordWrap(True)
+        self.diagnostic_export_button = QPushButton("진단 로그 저장")
+        self.diagnostic_export_button.clicked.connect(self.save_diagnostics)
+        diagnostic_row.addWidget(self.diagnostic_status, 1)
+        diagnostic_row.addWidget(self.diagnostic_export_button)
+        terminal_layout.addLayout(diagnostic_row)
         self.tabs.addTab(terminal, "TERMINAL")
         diagnostics = QWidget()
         grid = QGridLayout(diagnostics)
@@ -480,6 +542,11 @@ class Window(QMainWindow):
         self.sim_console.document().setMaximumBlockCount(400)
         self.tabs.addTab(self.sim_console, "SIMULATOR LOG")
         right.addWidget(self.tabs, 2)
+        # Posture buttons and joystick stay above the scrollable settings.
+        right.removeWidget(self.probe_mode)
+        right.removeWidget(actions_card)
+        right.insertWidget(1, actions_card)
+        right.insertWidget(3, self.probe_mode)
         content.addLayout(right, 1)
         outer.addLayout(content, 1)
         self.error = label("", "error")
@@ -496,6 +563,17 @@ class Window(QMainWindow):
         self.target_changed()
         for button in self.findChildren(QPushButton):
             button.setMinimumHeight(36)
+
+    def fit_walking_page(self, index):
+        for page_index in range(self.probe_mode.count()):
+            page = self.probe_mode.widget(page_index)
+            page.setSizePolicy(QSizePolicy.Policy.Preferred,
+                               QSizePolicy.Policy.Preferred if page_index == index else QSizePolicy.Policy.Ignored)
+        self.probe_mode.updateGeometry()
+
+    def change_walking_mode(self, index):
+        self.release_input("보행 모드 변경")
+        self.send(f"app_parameter_mode {index}")
 
     def target_changed(self):
         tcp = self.target.currentData() == "tcp"
@@ -538,11 +616,15 @@ class Window(QMainWindow):
         self.joystick.setEnabled(state.get("controls_enabled", state.get("can_drive", False)))
         self.keyboard.setEnabled(state.get("controls_enabled", state.get("can_drive", False)))
         parameter_mode=state.get('parameter_walking',False)
-        self.probe_mode.blockSignals(True);self.probe_mode.setCurrentIndex(int(parameter_mode));self.probe_mode.blockSignals(False)
-        self.probe_mode.setEnabled(idle)
+        self.probe_mode.blockSignals(True)
+        self.probe_mode.setTabEnabled(1, bool(state.get("supports_probe", False)))
+        self.probe_mode.setCurrentIndex(int(parameter_mode))
+        self.probe_mode.blockSignals(False)
+        self.probe_mode.tabBar().setEnabled(idle)
+        self.fit_walking_page(int(parameter_mode))
         probe_idle = idle and parameter_mode and state.get('supports_probe',False) and not stowed
         for field in [self.probe_lift,self.probe_linear,self.probe_duration,self.probe_legs,self.probe_save,self.probe_load]:field.setEnabled(probe_idle)
-        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1"))
+        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"))
         self.probe_fr_extra.setEnabled(self.probe_width.isEnabled())
         self.probe_fr_extra.setToolTip("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 복귀")
         self.probe_width.setToolTip("수직 0mm · 안쪽 음수 · 바깥 양수. 한쪽 발 기준입니다.")
@@ -565,8 +647,14 @@ class Window(QMainWindow):
         self.profile_button.setEnabled(profiles_ok)
         for index, profile in enumerate(PROFILES):
             allowed = not (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) or state.get("simulator", False)
-            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
-            self.profiles.model().item(index).setEnabled(allowed)
+            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
+            item = self.profiles.item(index)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled if allowed else item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            item.setHidden(not state.get("simulator", False) and (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES))
+        self.imu_recovery_button.setEnabled(state.get("can_recover_imu", False))
+        self.imu_recovery_button.setText("IMU 복구 중…" if state.get("imu_recovery_pending") else "IMU 복구")
+        self.imu_recovery_status.setText(state.get("imu_recovery_message", ""))
+        self.imu_recovery_status.setVisible(bool(self.imu_recovery_status.text()))
         self.balance_button.setEnabled(idle and not stowed and bool(caps & {"balancecontrol", "simbalance"}))
         self.heading_button.setEnabled(idle and not stowed and "headinghold" in caps)
         self.balance_button.setText("수평: " + robot.get("balance", "—"))
@@ -577,12 +665,13 @@ class Window(QMainWindow):
         self.metrics["safety"].setText(robot.get("safety", "—").upper())
         profile = robot.get("profile", "—")
         if profile in PROFILES and profile != self.last_profile_read:
-            self.profiles.setCurrentText(profile)
+            self.profiles.setCurrentRow(PROFILES.index(profile))
             self.last_profile_read = profile
         if phase == 'offline':
             self.last_profile_read = None
-        self.metrics["profile"].setText(profile if len(profile) <= 18 else profile[:17] + '…')
-        self.metrics["profile"].setToolTip(profile)
+        self.metrics["profile"].setText(profile_title(profile).split(" · ")[0])
+        self.metrics["profile"].setToolTip(profile_title(profile))
+        self.active_model.setText("현재 적용: " + profile_title(profile))
         voltage = state.get("voltage")
         stale = time.monotonic() - (state.get("voltage_at") or 0) > 15
         self.metrics["voltage"].setText(f"≈ {voltage:.1f} V" + (" · 이전" if stale else "") if voltage else "안정 전압 측정 대기")
@@ -647,9 +736,17 @@ class Window(QMainWindow):
             self.send(value)
             self.command_input.clear()
 
+    def selected_profile_key(self):
+        item = self.profiles.currentItem()
+        return item.data(Qt.ItemDataRole.UserRole) if item else ""
+
     def select_profile(self):
         key = "gaitprofile" if "gaitprofiles" in self.snapshot.get("caps", []) else "simprofile"
-        self.send(key + " " + self.profiles.currentText())
+        self.send(key + " " + self.selected_profile_key())
+
+    def recover_imu(self):
+        self.release_input("IMU 복구")
+        self.send("imurecover")
 
     def toggle_balance(self):
         key = "balance" if "balancecontrol" in self.snapshot.get("caps", []) else "simbalance"
@@ -689,7 +786,7 @@ class Window(QMainWindow):
         self.connection.pulse(None)
 
     def pulse(self):
-        if self.keys and isinstance(QApplication.focusWidget(), (QLineEdit, QPlainTextEdit, QSpinBox, QComboBox)):
+        if self.keys and isinstance(QApplication.focusWidget(), (QLineEdit, QPlainTextEdit, QSpinBox, QComboBox, QListWidget, QTabBar)):
             self.release_input()
         self.connection.pulse(self.input_vector)
         if self.sim_heartbeat and time.monotonic() >= self.sim_pulse_at:
@@ -716,7 +813,15 @@ class Window(QMainWindow):
     def eventFilter(self, watched, event):
         if event.type() in {QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress, QEvent.Type.KeyRelease} and self.isActiveWindow():
             key = event.key()
-            typing = isinstance(QApplication.focusWidget(), (QLineEdit, QPlainTextEdit, QSpinBox, QComboBox))
+            typing = isinstance(QApplication.focusWidget(), (QLineEdit, QPlainTextEdit, QSpinBox, QComboBox, QListWidget, QTabBar))
+            if QApplication.focusWidget() is self.profiles and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if event.type() == QEvent.Type.ShortcutOverride:
+                    event.accept()
+                elif event.type() == QEvent.Type.KeyPress and not event.isAutoRepeat():
+                    item = self.profiles.currentItem()
+                    if self.profiles.isEnabled() and item and item.flags() & Qt.ItemFlag.ItemIsEnabled:
+                        self.select_profile()
+                return True
             if event.type() == QEvent.Type.KeyPress and (key == Qt.Key.Key_Escape or (key == Qt.Key.Key_Space and not typing)):
                 if not event.isAutoRepeat():
                     if key == Qt.Key.Key_Escape:
@@ -912,6 +1017,23 @@ class Window(QMainWindow):
                 self.video_status.setText("LIVE · MuJoCo · 추정 물성 / 실기 영상 아님")
         reply.deleteLater()
 
+    def save_diagnostics(self):
+        self.release_input("진단 로그 저장")
+        path, _ = QFileDialog.getSaveFileName(self, "진단 로그 저장", "spot-omg-diagnostics.jsonl", "JSON Lines (*.jsonl)")
+        if path:
+            self.connection.export_diagnostics(path)
+
+    def diagnostics_exporting(self, busy):
+        self.diagnostic_export_button.setEnabled(not busy)
+        self.diagnostic_export_button.setText("로그 저장 중…" if busy else "진단 로그 저장")
+        if busy:
+            self.diagnostic_status.setText("별도 기록된 진단 로그를 저장하고 있습니다.")
+
+    def diagnostics_exported(self, path):
+        self.diagnostic_status.setText("진단 로그 저장 완료")
+        self.diagnostic_status.setToolTip(path)
+        self.append_log("\n[앱] 진단 로그 저장: " + path + "\n")
+
     def save_log(self):
         self.release_input()
         path, _ = QFileDialog.getSaveFileName(self, "콘솔 로그 저장", "spot-omg-console.txt", "Text (*.txt)")
@@ -937,6 +1059,7 @@ class Window(QMainWindow):
         self.video_timer.stop()
         if self.video_reply:
             self.video_reply.abort()
+        self.connection.close_trace()
         event.accept()
 
 
@@ -948,7 +1071,26 @@ def configure_app(app):
             if path.is_file():
                 QFontDatabase.addApplicationFont(str(path))
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
+    palette = QPalette()
+    for role, color in [(QPalette.ColorRole.Window, "#11161d"), (QPalette.ColorRole.WindowText, "#e6edf3"),
+                        (QPalette.ColorRole.Base, "#101720"), (QPalette.ColorRole.AlternateBase, "#1b232e"),
+                        (QPalette.ColorRole.Text, "#edf3fa"), (QPalette.ColorRole.Button, "#273342"),
+                        (QPalette.ColorRole.ButtonText, "#e6edf3"), (QPalette.ColorRole.Highlight, "#42bda0"),
+                        (QPalette.ColorRole.HighlightedText, "#061c16"), (QPalette.ColorRole.ToolTipBase, "#253342"),
+                        (QPalette.ColorRole.ToolTipText, "#f4f8fc")]:
+        palette.setColor(role, QColor(color))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#929eae"))
+    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor("#929eae"))
+    app.setPalette(palette)
+    app.setApplicationDisplayName("Spot OMG!")
+    app.setApplicationVersion(__version__)
+    app.setWindowIcon(QIcon(str(resource_path("app-icon.png"))))
+    checkbox_style = (
+        'QCheckBox::indicator:unchecked { border: 1px solid #8295ac; background: #101720; border-radius: 3px; }'
+        'QCheckBox::indicator:checked { border: 1px solid #73e2c7; background: #237b69; border-radius: 3px; '
+        + 'image: url("' + resource_path("check.svg").as_posix() + '"); }'
+    )
+    app.setStyleSheet(STYLE + checkbox_style)
 
 
 def main():
