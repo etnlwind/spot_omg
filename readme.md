@@ -1,8 +1,8 @@
 # Spot OMG
 
-최신 실기는 `attitudepd-v4-v80`입니다. [V4 구현·설치 기록](docs/ATTITUDEPD-V4-COMMON-DIRECTION-GAITS-2026-09-18.md)에서 설치 후 V4 선택·Landing 도착·서보 설정 보존을 확인했습니다. V4 Stand 유지·보행 실기 시험은 아직입니다. 직전 V2의 8걸음 정상 종료와 사용자 관찰은 [V2 실기 기록](docs/ATTITUDEPD-V2-FRONT-CLEARANCE-2026-09-18.md)에 있습니다. 이전 파라미터 시험은 [V77-T1 기록](docs/V77-T1-REAR-PROBE.md)을 참고하세요.
+최신 설치 펌웨어는 **`attitudepd-v6-v92`**이며 기본 모델은 **IMU 자세 안정화 V6**입니다. [V6 구현·설치 기록](docs/ATTITUDE-V6-RECOVERY.md)에 설치 후 Landing 도착과 발높이·서보 설정 보존을 기록했습니다. V6 실기 보행은 아직 검증하지 않았으며, 앞발 +30mm의 중간 입력에서 시뮬레이션 기울기 중단이 남아 있습니다.
 
-현재 소스 기본은 [V4 전후 공통 2단 보행](docs/ATTITUDEPD-V4-COMMON-DIRECTION-GAITS-2026-09-18.md)입니다. 조이스틱 반에서는 V3 전진형, 끝에서는 V3 후진형을 양방향 공통으로 사용합니다. 기존 V3/B Stand를 보존했고 Windows 앱 갱신·시뮬레이션·V80 실기 설치를 완료했습니다. iPhone은 빌드 51 소스가 준비됐으며 Mac에서 빌드·설치해야 합니다. 기존 빌드 49에는 V4가 없습니다.
+Mac에는 **Spot OMG! 92.0.0(64)**를 설치했습니다. iOS와 Windows 소스도 V92를 지원하지만 iPhone V92 설치와 Windows 실행 파일 빌드·PC 설치는 아직 하지 않았습니다. STM32 발높이 영구 저장, 전용 제어 채널·별도 진단 기록, IMU 복구, 다크 UI를 반영했습니다. [최신 인수인계](docs/HANDOFF-LATEST.md)에서 플랫폼별 검증 범위를 확인하세요.
 
 Windows 조종 앱과 로컬 MuJoCo 실행은 [Windows Controller](apps/windows/README.md)를 참고하세요.
 
@@ -29,7 +29,7 @@ open artifacts/mac-app/Build/Products/Debug-maccatalyst/SpotOMGController.app
 이 복사본은 Git pull만으로 갱신되지 않습니다.
 
 ```bash
-open ~/Applications/SpotOMGController.app
+open "$HOME/Applications/Spot OMG!.app"
 ```
 
 [Mac 앱 상세 안내](apps/macos/README.md).
