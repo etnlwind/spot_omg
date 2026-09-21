@@ -29,15 +29,13 @@ class BatteryWarning:
         self.recovery_count = 0
 
     def observe(self, mv, now, historical=False):
-        if not 0 < mv <= 60000:
+        if historical or not 0 < mv <= 60000:
             return
         incoming = 2 if mv <= CRITICAL_MV else 1 if mv <= CHARGE_MV else 0
         if incoming:
             if incoming >= self.level:
                 self.detected_mv = min(self.detected_mv or mv, mv)
             self.level = max(self.level, incoming)
-        if historical:
-            return
         if not self.level or mv < RECOVERED_MV:
             self.recovery_started = self.recovery_last = None
             self.recovery_count = 0
@@ -57,5 +55,5 @@ class BatteryWarning:
     def snapshot(self):
         return dict(level=self.level, detected_mv=self.detected_mv,
                     title='즉시 사용 중단 · 배터리 충전' if self.level == 2 else '배터리 부족 · 지금 충전하세요',
-                    message=(f'감지 전압 {self.detected_mv / 1000:.1f}V. ' if self.detected_mv else '') +
+                    message=(f'정지 후 안정 전압 {self.detected_mv / 1000:.1f}V. ' if self.detected_mv else '') +
                     '보행을 멈추고 몸체를 지지한 뒤 전원 스위치를 끄고 충전하세요.')

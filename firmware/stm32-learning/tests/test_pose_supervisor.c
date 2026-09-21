@@ -2,6 +2,7 @@
 #include "sts3215.h"
 #include "s_native_servo.h"
 #include "s_native_data.h"
+#undef NDEBUG
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -12,6 +13,7 @@ static uint16_t actual[12],cmd[12];
 typedef enum {NORMAL,SLOW,BLOCKED,FREE_STUCK,LOSS,TRANSIENT,WRITE_FAIL,DROOP,HOT,TILT,IMU_LOST,ABORT,INVALID,SLOW_BUS,RESIDUAL,HEALTH_GLITCH,START_EFFORT,EARLY_RESIDUAL,LOADED_SUPPORT,ENTRY,ENTRY_STOP,NEAR_BLOCKED,FAST_STAND,FAST_NATIVE_STAND} Case;
 static Case scenario;
 static bool direct_write;static unsigned fast_goals;
+static bool retry_tilt;
 static bool selected_stand(uint16_t out[12]) {
  if(scenario!=FAST_NATIVE_STAND)return robot_stand_targets(out);
  GaitPolicyLegTarget legs[4];
@@ -22,7 +24,7 @@ RobotResult robot_reference_pose(RobotController *x){(void)x;return ROBOT_OK;}
 uint32_t HAL_GetTick(void){return tick;}
 void HAL_Delay(uint32_t n){tick+=n;assert(tick<300000);}
 static bool attitude(void *ctx,int16_t *roll,int16_t *pitch){
- (void)ctx;*roll=scenario==TILT && writes>5?200:0;*pitch=0;
+ (void)ctx;*roll=scenario==TILT && (writes>5 || retry_tilt)?200:0;*pitch=0;
  return !(scenario==IMU_LOST && writes>5);
 }
 ServoBusResult sts3215_set_torque(ServoBus *b,uint8_t id,bool enabled){
@@ -72,6 +74,7 @@ static RobotResult run(Case c){
  memset(&r,0,sizeof(r));memset(&bus,0,sizeof(bus));r.bus=&bus;
  safety_init(&r.safety,NULL);r.profile_speed=3400;r.profile_acceleration=254;
  r.attitude_reader=attitude;scenario=c;tick=writes=reads=off=transient=0;
+ if(retry_tilt){robot_latch_locomotion_fault(&r,ROBOT_TILT_LIMIT);assert(robot_prepare_new_command(&r)==ROBOT_OK);}
  assert((c==FAST_STAND || c==FAST_NATIVE_STAND)?robot_landing_targets(actual):robot_straight_targets(actual));
  fast_goals=0;memcpy(cmd,actual,sizeof(cmd));
  uint16_t to[12];assert(selected_stand(to));
@@ -112,6 +115,7 @@ int main(void){
  assert(run(DROOP)==ROBOT_SAFETY_FAULT);assert(r.pose_diagnostics.reason==POSE_LOW_VOLTAGE);
  assert(run(HOT)==ROBOT_SAFETY_FAULT);assert(r.pose_diagnostics.reason==POSE_SERVO_FAULT);
  assert(run(TILT)==ROBOT_TILT_LIMIT);assert(run(IMU_LOST)==ROBOT_IMU_ERROR);
+ retry_tilt=true;assert(run(TILT)==ROBOT_OK);assert(writes>5);retry_tilt=false;
  assert(run(ABORT)==ROBOT_MOTION_ABORTED);assert(run(INVALID)==ROBOT_POSITION_LIMIT);
  assert(run(SLOW_BUS)==ROBOT_BUS_ERROR);assert(writes==0);
  assert(run(RESIDUAL)==ROBOT_OK);assert(r.pose_diagnostics.reason==POSE_COMPLETE_RESIDUAL);

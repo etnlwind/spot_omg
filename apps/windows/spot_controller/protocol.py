@@ -77,10 +77,13 @@ class Controller:
         self.caps = set()
         self.phase = "offline"
         self.error = ""
+        self.pause_reason = ""
         self.outbox = deque()
         self.sequence = 0
         self.vector = None
         self.requires_release = True
+        self.input_released = False
+        self.stop_rearmed = False
         self.next_heartbeat = 0.
         self.deadline = 0.
         self.drain_limit = 0.
@@ -96,6 +99,8 @@ class Controller:
         self.relax_pending = False
         self.voltage = None
         self.voltage_at = None
+        self.rest_since = None
+        self.rest_samples = deque(maxlen=3)
         self.battery = BatteryWarning()
         self.next_voltage_poll = 5.
         self.parameter_walking = False
@@ -112,7 +117,7 @@ class Controller:
     @property
     def supports_probe(self):
         return not self.simulator and self.state.get('rev') in {
-            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81'}
+            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81', 'attitudepd-v4-v82', 'attitudepd-v4-v90-r1'}
 
     @staticmethod
     def parse_probe(values):
@@ -129,7 +134,7 @@ class Controller:
         return (lift, linear, duration, leg) if width is None else (lift,linear,duration,leg,width,fr)
 
     def start_probe(self, now):
-        if not (self.supports_probe and self.can_drive and self.phase == 'idle'
+        if not (self.supports_probe and self.can_drive and self.state.get('safety') == 'ok' and self.phase == 'idle'
                 and self.state.get('pose') == 'stand' and self.state.get('profile') == 's_native_v6_2_5'
                 and self.probe_config is not None and self.probe_expected is None):
             raise ValueError('V6.2.5 · Stand · 설정 조회 완료 후 시험을 시작하십시오.')
@@ -165,10 +170,17 @@ class Controller:
         return self.state.get("pose") in {"stow", "stow-paused"}
 
     @property
-    def can_drive(self):
+    def controls_enabled(self):
+        # Keep input live through telemetry and safety stops; posture moves
+        # remain exclusive through their queued command and final readback.
         return (self.connected and self.synced and not self.fatal and not self.disconnect_requested
-                and self.phase in {"idle", "drive"} and not self.stowed
-                and self.state.get("safety") == "ok")
+                and self.command not in POSTURES and self.pending not in POSTURES
+                and not self.confirm_pose and not self.relax_pending)
+
+    @property
+    def can_drive(self):
+        # Serialize command completion; fresh input retries through firmware.
+        return self.controls_enabled and self.phase in {"idle", "drive"}
 
     @property
     def motion_active(self):
@@ -181,12 +193,18 @@ class Controller:
         words = line.split()
         if words[0] in {'walkprobe','rearprobe'}:
             raise ValueError('시험 시작 버튼을 사용하십시오.')
+        if words[0] == "footlift":
+            if "footlift" not in self.caps:raise ValueError("발 들림 보정 지원 펌웨어가 필요합니다.")
+            if self.phase != "idle":raise ValueError("정지 후 발 들림 보정을 적용하십시오.")
+            if words[1:] != ["show"]:
+                if len(words)!=6 or words[1]!="set" or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):
+                    raise ValueError("각 다리의 추가 들림은 0 이상의 정수 mm입니다.")
         if words[0] == 'probeconfig':
             if not self.supports_probe:raise ValueError('파라미터 펌웨어가 필요합니다.')
             if words[1:] not in [['show'], ['reset']]:
                 if len(words) not in {6,7,8} or words[1] != 'set':raise ValueError('잘못된 파라미터 명령')
                 self.parse_probe(words[2:])
-                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
+                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
         first = words[0]
         if first in POSTURES | {'relax', 'recover', 'hold'} and len(words) != 1:
             raise ValueError('자세 명령에는 추가 인자를 사용할 수 없습니다.')
@@ -238,13 +256,16 @@ class Controller:
             self._console(line, now)
 
     def _console(self, line, now):
+        if line not in READ_ONLY:
+            self.rest_since=None
+            self.rest_samples.clear()
         if line.startswith('probeconfig set '):
             self.probe_config = None
             self.probe_expected = self.parse_probe(line.split()[2:])
-            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81"):self.probe_expected += (0,0)
+            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1"):self.probe_expected += (0,0)
         elif line == 'probeconfig reset':
             self.probe_config = None
-            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81") else ())
+            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1") else ())
         self.command = line
         self.command_ok = self.command_error = False
         self.command_state_seen = False
@@ -252,6 +273,22 @@ class Controller:
         self.deadline = now + (75 if line in POSTURES else 30 if line.startswith(("trot", "crab", "turn")) else 10)
         self.refresh_at = None
         self.packet(line + "\n")
+
+    def sample_input(self, vector, now):
+        """Consume live UI input, including fresh gestures while awaiting an ACK."""
+        if vector is None:
+            if not self.input_released:
+                self.release(now)
+            self.input_released = True
+            return
+        if self.input_released and self.controls_enabled:
+            # A fresh press during stop/telemetry wait counts as re-arming.
+            # update() still prevents motion until the previous command ends.
+            self.requires_release = False
+            if self.phase in {"stopping", "draining"}:
+                self.stop_rearmed = True
+        self.input_released = False
+        self.update(*vector, now)
 
     def update(self, x, y, now):
         vector = drive_vector(x, y)
@@ -280,6 +317,9 @@ class Controller:
         self.vector = vector
         if self.phase == "idle":
             self.phase = "drive"
+            self.rest_since=None
+            self.rest_samples.clear()
+            self.stop_rearmed = False
             self.stop_confirmed = False
             self.refresh_at = None
             self.packet(f"drive {vector[0]} {vector[1]} {self.next_sequence()}\n")
@@ -292,12 +332,14 @@ class Controller:
         self.requires_release = False
         self.vector = None
         if self.phase == "drive":
+            self.stop_rearmed = False
             self.packet(f"@S {self.next_sequence()}\n", "stop")
             self.phase = "stopping"
             self.deadline = now + STOP_TIMEOUT
 
     def stop(self, now):
         """Normal walking STOP waits for the robot's return-to-stand completion."""
+        self.stop_rearmed = False
         self.pending = None
         self.relax_pending = False
         if self.phase in {"drive", "stopping", "draining"}:
@@ -307,6 +349,7 @@ class Controller:
             self.interrupt(now)
 
     def interrupt(self, now):
+        self.stop_rearmed = False
         self.probe_running = False
         self.probe_stop_at = None
         self.probe_expected = None
@@ -392,6 +435,8 @@ class Controller:
                 self.state = dict(word.split("=", 1) for word in line.split()[1:] if "=" in word)
                 self.caps = set(self.state.get("caps", "").split(","))
                 self.state_at = now
+                if self.state.get('safety') not in (None,'ok') and not self.pause_reason:
+                    self.pause_reason=self.state['safety']
                 if self.phase == 'draining':
                     self.drain_state_seen = True
                 self.synced = True
@@ -411,14 +456,28 @@ class Controller:
             value = battery_reading(line)
             if value and self.connected and not self.simulator:
                 mv, historical = value
-                self.battery.observe(mv, now, historical=historical)
-                if not historical:
-                    self.voltage = mv / 1000
-                    self.voltage_at = now
+                # Only a fresh requested idle read, after 3 s settling, is a
+                # battery estimate. Load telemetry and gait minima stay in logs.
+                if (not historical and line.startswith('ID 1 ') and self.command=='read 1'
+                        and self.phase=='busy' and self.rest_since is not None
+                        and now-self.rest_since>=3 and not self.confirm_pose
+                        and 'moving=1' not in line
+                        and (not self.rest_samples or now-self.rest_samples[-1][0]>=1)):
+                    self.rest_samples.append((now,mv))
+                    samples=[v for _,v in self.rest_samples]
+                    if len(samples)==3 and max(samples)-min(samples)<=200:
+                        self.voltage=sorted(samples)[1]/1000
+                        self.voltage_at=now
+                        self.battery.observe(round(self.voltage*1000),now)
             if line == "OK" or line == "OK " + (self.command or ""):
                 self.command_ok = True
             failed = line.startswith("ERROR:") or line == "unknown command; type help"
             stopped = line.startswith(("$SPOTDRIVE stopped ", "STOPPED:"))
+            if line.startswith('$SPOTDRIVE started '):
+                self.pause_reason=''
+            if (failed and (self.command in POSTURES or self.phase in {'drive','stopping','draining'})) or (
+                    stopped and any(s in line.lower() for s in ('tilt','imu','safety','watchdog','fault','error'))):
+                self.pause_reason=line
             if failed:
                 self.error = line
                 self.command_error = True
@@ -433,7 +492,14 @@ class Controller:
                 if self.phase in {"drive", "stopping", "draining"}:
                     self.vector = None
                     self.outbox = deque((k, d) for k, d in self.outbox if k != "update")
-                    self.requires_release = True
+                    # A requested stop must not invalidate a release/new press
+                    # already observed while waiting for its completion.
+                    if self.phase == "drive" or failed or any(
+                            s in line.lower() for s in ("reason=tilt", "reason=imu", "reason=safety")):
+                        self.stop_rearmed = False
+                        self.requires_release = True
+                    elif not self.stop_rearmed:
+                        self.requires_release = True
                     if failed or any(s in line.lower() for s in ("reason=tilt", "reason=imu", "reason=safety")):
                         self.pending = None
                         if stopped:
@@ -454,6 +520,8 @@ class Controller:
                 return
             self.synced = True
             self.phase = "idle"
+            self.rest_since=now
+            self.rest_samples.clear()
             self.drain_limit = 0.
             self.stop_confirmed = False
             self.requires_release = True
@@ -462,6 +530,8 @@ class Controller:
         if self.phase == "draining":
             self.drain_limit = 0.
             self.phase = "idle"
+            self.rest_since=now
+            self.rest_samples.clear()
             if self.disconnect_requested:
                 self.fatal = True
             elif self.pending:
@@ -480,6 +550,7 @@ class Controller:
         command = self.command
         self.command = None
         self.phase = "idle"
+        if self.rest_since is None:self.rest_since=now
         if self.disconnect_requested:
             self.fatal = True
             return
@@ -512,6 +583,7 @@ class Controller:
             # A bare OK from real STM32 requires a *subsequent* pose readback.
             if self.confirm_pose:
                 confirmed = self.state.get("pose") == self.confirm_pose and self.command_state_seen
+                if confirmed and self.state.get('safety')=='ok':self.pause_reason=''
                 landing = self.confirm_pose == "landing"
                 self.confirm_pose = None
                 if not confirmed:
@@ -541,7 +613,8 @@ class Controller:
     def snapshot(self):
         return dict(connected=self.connected and not self.fatal, synced=self.synced,
                     phase=self.phase, state=dict(self.state), caps=sorted(self.caps),
-                    error=self.error, can_drive=self.can_drive, voltage=self.voltage if self.connected and not self.simulator else None,
+                    error=self.error, can_drive=self.can_drive, controls_enabled=self.controls_enabled, requires_release=self.requires_release, voltage=self.voltage if self.connected and not self.simulator else None,
+                    pause_reason=self.pause_reason,
                     separate_control=self.separate_control,
                     voltage_at=self.voltage_at, state_at=self.state_at,
                     battery_warning=self.battery.snapshot() if self.connected and not self.simulator else {},

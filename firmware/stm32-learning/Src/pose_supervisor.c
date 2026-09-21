@@ -61,8 +61,9 @@ static RobotResult imu(RobotController *r,int16_t *roll,int16_t *pitch) {
  if(!r->attitude_reader || !r->attitude_reader(r->attitude_context,roll,pitch)) {
   r->pose_diagnostics.reason=POSE_ATTITUDE_UNAVAILABLE;return ROBOT_IMU_ERROR;
  }
- if(mag((int)*roll-ROBOT_IMU_LEVEL_ROLL_TENTHS)>150 ||
-    mag((int)*pitch-ROBOT_IMU_LEVEL_PITCH_TENTHS)>150) {
+ if(tilt_pause_exceeded(&r->tilt_pause,(int)*roll-ROBOT_IMU_LEVEL_ROLL_TENTHS,
+    (int)*pitch-ROBOT_IMU_LEVEL_PITCH_TENTHS,150)) {
+  robot_latch_locomotion_fault(r,ROBOT_TILT_LIMIT);
   r->pose_diagnostics.reason=POSE_UNSTABLE;return ROBOT_TILT_LIMIT;
  }
  return ROBOT_OK;

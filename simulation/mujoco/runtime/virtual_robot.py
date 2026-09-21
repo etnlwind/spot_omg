@@ -266,8 +266,15 @@ class RobotController:
         if not words:
             return
         cmd = words[0]
+        if not hasattr(self,"foot_lift_mm"):self.foot_lift_mm=[0,0,0,0]
         try:
-            if cmd == 'identity':
+            if cmd == 'footlift':
+                if words[1:] != ['show']:
+                    if self.motion or self.transition:raise ValueError('stop before footlift changes')
+                    if len(words)!=6 or words[1]!='set' or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):raise ValueError('footlift set FL FR RL RR (nonnegative integer mm)')
+                    self.foot_lift_mm=list(map(int,words[2:]));self.reply('OK footlift')
+                self.command('syncstate',now);return
+            elif cmd == 'identity':
                 self.reply('$SPOTBACKEND backend=sim protocol=1 physics=estimated controller=sim-profiles adapter=python')
             elif cmd in ('echo', 'log'):
                 if line not in ('echo off', 'echo on') and not (len(words)==3 and words[:2]==['log','time'] and words[2].isdigit()):
@@ -285,7 +292,7 @@ class RobotController:
                 self.reply(f'$STABILIZE enabled={int(self.body_stabilizer.enabled)} status={status} policy={self.profile} rate_hz=50')
             elif cmd == 'syncstate':
                 error = round(float(np.max(np.abs(self.command_target-np.degrees(self.plant.data.qpos[self.plant.q]))))*4096/360)
-                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)}')
+                self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]}')
             elif cmd == 'read' and words == ['read', '1']:
                 self.reply(f'ID 1 voltage={round(self.plant.voltage*1000)}mV source=simulated')
             elif cmd == 'profile':
@@ -376,6 +383,7 @@ class RobotController:
             elif cmd in ('stand', 'stand11', 'landing', 'hold', 'recover') and len(words)==1:
                 if cmd=='recover':
                     self.safety='ok'; self.reply(); return
+                self.retry_tilt_pause()
                 if self.safety!='ok':
                     raise ValueError('safety latched; recover first')
                 self.torque=True
@@ -450,6 +458,7 @@ class RobotController:
                     raise ValueError('Invalid attitude front clearance target')
                 return dict(zip(KEYS, out))
             if profile.get('s_native'):
+                self.s_native_gait.foot_lift_mm=getattr(self,"foot_lift_mm",[0,0,0,0])
                 self.s_native_gait.prepare_support(*self.request)
                 return dict(zip(KEYS,self.s_native_gait.targets(phase,amplitude,self.linear,self.yaw)))
             params=self.active_profile_params().copy()
@@ -490,11 +499,19 @@ class RobotController:
             return policy.trot4_direction_targets(phase,amplitude,1 if kind=='trot4' else -1)[0]
         return getattr(policy,kind+'_targets')(phase,amplitude,self.motion[3])[0]
 
+    def retry_tilt_pause(self):
+        if self.safety=='tilt':
+            self.attitude_filter.retry_tilt(self.imu_reading)
+            self.safety='ok'
+
     def begin(self, motion, now):
         if self.stow_path:raise ValueError('unfold with landing before gait')
+        self.retry_tilt_pause()
         if self.safety!='ok' or not self.torque:
             raise ValueError('stand/recover required before gait')
+        pause=self.attitude_filter.tilt_pause[:]
         self.attitude_filter = FirmwareAttitudeFilter()
+        self.attitude_filter.tilt_pause=pause
         self.balance.integral[:]=0; self.balance.correction[:]=0
         self.balance.saturated=False
         if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4'):self.body_stabilizer.reset()
@@ -632,6 +649,9 @@ class RobotController:
                 self.phase=(self.phase+progress/period)%1
             try:
                 self.rebase_gait_on_s()
+                if not self.profiles.get(self.profile,{}).get("s_native"):
+                    from simulation.mujoco.runtime.foot_lift import apply
+                    self.target=apply(self,self.target)
             except ValueError as error:
                 self.capture_current_target()
                 self.motion=None;self.transition=None;self.request=(0.,0.)

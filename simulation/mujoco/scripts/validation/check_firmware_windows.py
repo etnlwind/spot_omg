@@ -10,7 +10,7 @@ CASES={
     'safety':['safety'],
     'stow_servo_coordinates':['sts3215','robot_config','feetech_protocol'],
     'stow_motion':['stow_motion','command_recovery','robot_config','safety','feetech_protocol'],
-    'pose_supervisor':['pose_supervisor','robot_config','safety'],
+    'pose_supervisor':['pose_supervisor','command_recovery','robot_config','safety'],
     'command_recovery':['command_recovery','robot_config','safety'],
     'servo_profile_registers':['sts3215','robot_config','feetech_protocol'],
     'battery_telemetry':[],

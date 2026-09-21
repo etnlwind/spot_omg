@@ -14,14 +14,15 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QGridLayout, QLabel, QPushButton, QComboBox, QLineEdit,
     QPlainTextEdit, QFrame, QTabWidget, QMessageBox, QCheckBox, QSpinBox,
-    QFileDialog, QSizePolicy, QScrollArea)
+    QFileDialog, QSizePolicy, QScrollArea, QDialog)
 
 from . import __version__
 from .connection import Connection
+from .foot_lift import FootLiftEditor
 from .protocol import PROFILES, NATIVE_PROFILES, SIMULATOR_NATIVE_PROFILES, READ_ONLY
 
 STYLE = """
-QMainWindow, QWidget#shell { background: #eef2ef; color: #162e26; }
+QMainWindow, QDialog, QWidget#shell { background: #eef2ef; color: #162e26; }
 QWidget { font-family: 'Malgun Gothic'; font-size: 12px; color: #243e33; }
 QFrame#card { background: white; border: 1px solid #d9e2dc; border-radius: 14px; }
 QLabel#title { font-size: 28px; font-weight: 800; color: #163c2d; }
@@ -228,6 +229,21 @@ class Window(QMainWindow):
         warning_actions.addWidget(self.battery_confirm)
         warning_layout.addWidget(self.battery_actions)
         root.addWidget(self.battery_panel)
+        self.motion_panel=QFrame()
+        self.motion_panel.setMinimumHeight(132)
+        self.motion_panel.setObjectName('motionWarningBanner')
+        self.motion_panel.setStyleSheet('QFrame#motionWarningBanner { background: #8a4300; border-radius: 10px; } QLabel { color: #ffffff; background: transparent; }')
+        motion_layout=QVBoxLayout(self.motion_panel)
+        motion_layout.setContentsMargins(18,12,18,12)
+        self.motion_title=QLabel()
+        self.motion_title.setStyleSheet('font-size: 20px; font-weight: 800; color: white;')
+        self.motion_message=QLabel()
+        self.motion_message.setStyleSheet('font-size: 14px; color: white; background: transparent;')
+        self.motion_message.setMinimumHeight(60)
+        for message_label in (self.motion_title,self.motion_message):
+            message_label.setWordWrap(True);motion_layout.addWidget(message_label)
+        self.motion_panel.hide()
+        root.addWidget(self.motion_panel)
         root.addWidget(scroll)
         self.setCentralWidget(container)
         outer = QVBoxLayout(shell)
@@ -320,7 +336,7 @@ class Window(QMainWindow):
         right = QVBoxLayout()
         metrics = QHBoxLayout()
         self.metrics = {}
-        for key, name in [("pose", "자세"), ("voltage", "전원선 전압"), ("safety", "안전 상태"), ("profile", "보행 정책")]:
+        for key, name in [("pose", "자세"), ("voltage", "정지 기준 전압"), ("safety", "안전 상태"), ("profile", "보행 정책")]:
             frame, col = card()
             col.addWidget(label(name, "muted"))
             value = label("—", "value")
@@ -330,6 +346,13 @@ class Window(QMainWindow):
             self.metrics[key] = value
             metrics.addWidget(frame)
         right.addLayout(metrics)
+        self.foot_lift=FootLiftEditor(self.settings)
+        self.foot_lift.applyRequested.connect(self.send)
+        self.foot_lift_dialog=QDialog(self)
+        self.foot_lift_dialog.setWindowTitle("Spot OMG · 발 들림 보정")
+        self.foot_lift_dialog.resize(640,520)
+        self.foot_lift_dialog.setModal(True)
+        QVBoxLayout(self.foot_lift_dialog).addWidget(self.foot_lift)
         probe_card, probe_layout = card("파라미터 보행 시험 · V6.2.5")
         self.probe_mode=QComboBox();self.probe_mode.addItems(["기본 보행","파라미터 보행"])
         self.probe_mode.currentIndexChanged.connect(lambda index:self.send(f"app_parameter_mode {index}"))
@@ -351,7 +374,7 @@ class Window(QMainWindow):
         buttons.addWidget(self.probe_save);buttons.addWidget(self.probe_load)
         self.load_probe()
         self.probe_apply = QPushButton("설정 적용 + 조회")
-        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81") else "")))
+        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1") else "")))
         self.probe_read = QPushButton("설정 조회"); self.probe_read.clicked.connect(lambda: self.send("probeconfig show"))
         self.probe_start = QPushButton("시험 시작"); self.probe_start.clicked.connect(lambda: self.send("app_probe_start"))
         for button in [self.probe_apply,self.probe_read,self.probe_start]:buttons.addWidget(button)
@@ -409,6 +432,10 @@ class Window(QMainWindow):
         self.heading_button.clicked.connect(lambda: self.send("heading " + ("off" if self.snapshot.get("state", {}).get("heading") == "on" else "on")))
         for w in (self.profiles, self.profile_button, self.balance_button, self.heading_button):
             policy_row.addWidget(w)
+        self.foot_lift_button=QPushButton("발 들림 보정")
+        self.foot_lift_button.clicked.connect(self.foot_lift.prepare_open)
+        self.foot_lift_button.clicked.connect(self.foot_lift_dialog.open)
+        policy_row.addWidget(self.foot_lift_button)
         layout.addLayout(policy_row)
         right.addWidget(actions_card)
         self.tabs = QTabWidget()
@@ -488,6 +515,8 @@ class Window(QMainWindow):
 
     def on_state(self, state):
         self.snapshot = state
+        self.foot_lift.update_state(state)
+        self.foot_lift_button.setEnabled(state.get("phase") in ("offline","idle"))
         phase = state["phase"]
         connected = state.get("connected", False)
         ready = connected and state.get("synced", False)
@@ -506,14 +535,14 @@ class Window(QMainWindow):
         self.time_button.setEnabled(idle)
         self.command_input.setEnabled(ready)
         self.send_button.setEnabled(ready)
-        self.joystick.setEnabled(state.get("can_drive", False))
-        self.keyboard.setEnabled(state.get("can_drive", False))
+        self.joystick.setEnabled(state.get("controls_enabled", state.get("can_drive", False)))
+        self.keyboard.setEnabled(state.get("controls_enabled", state.get("can_drive", False)))
         parameter_mode=state.get('parameter_walking',False)
         self.probe_mode.blockSignals(True);self.probe_mode.setCurrentIndex(int(parameter_mode));self.probe_mode.blockSignals(False)
         self.probe_mode.setEnabled(idle)
         probe_idle = idle and parameter_mode and state.get('supports_probe',False) and not stowed
         for field in [self.probe_lift,self.probe_linear,self.probe_duration,self.probe_legs,self.probe_save,self.probe_load]:field.setEnabled(probe_idle)
-        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81"))
+        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1"))
         self.probe_fr_extra.setEnabled(self.probe_width.isEnabled())
         self.probe_fr_extra.setToolTip("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 복귀")
         self.probe_width.setToolTip("수직 0mm · 안쪽 음수 · 바깥 양수. 한쪽 발 기준입니다.")
@@ -556,11 +585,23 @@ class Window(QMainWindow):
         self.metrics["profile"].setToolTip(profile)
         voltage = state.get("voltage")
         stale = time.monotonic() - (state.get("voltage_at") or 0) > 15
-        self.metrics["voltage"].setText(f"≈ {voltage:.1f} V" + (" · 이전" if stale else "") if voltage else "—")
+        self.metrics["voltage"].setText(f"≈ {voltage:.1f} V" + (" · 이전" if stale else "") if voltage else "안정 전압 측정 대기")
         self.show_battery_warning(state.get("battery_warning", {}), state.get("simulator", False))
+        from .motion_warning import motion_warning
+        warning_title,warning_message=motion_warning(state.get('pause_reason',''))
+        self.motion_panel.setVisible(bool(warning_title) and state.get('connected',False))
+        self.motion_title.setText(warning_title)
+        self.motion_message.setText(warning_message)
+        self.motion_panel.setAccessibleName(warning_title+' '+warning_message)
+        if warning_title:self.metrics['safety'].setText('일시정지')
         self.firmware.setText("펌웨어  " + robot.get("rev", "—") + "\n토크  " + robot.get("torque", "—") +
                               (" · 전용 제어 채널" if state.get("separate_control") else ""))
-        self.drive_status.setText("조종 중  /  놓으면 정지" if phase == "drive" else names.get(phase, phase))
+        drive_text = "조종 중  /  놓으면 정지" if phase == "drive" else names.get(phase, phase)
+        if ready and not state.get("controls_enabled", state.get("can_drive", False)):
+            drive_text = "자세 전환 중 · 완료 후 조작 가능"
+        elif ready and robot.get("safety") != "ok":
+            drive_text = "보호 정지 · 스틱을 놓고 다시 조작하면 재시도"
+        self.drive_status.setText(drive_text)
         self.show_error(state.get("error", ""))
 
     def show_battery_warning(self, warning, simulator=False):
@@ -686,7 +727,7 @@ class Window(QMainWindow):
             directions = {Qt.Key.Key_W: (0, 1), Qt.Key.Key_Up: (0, 1), Qt.Key.Key_S: (0, -1), Qt.Key.Key_Down: (0, -1),
                           Qt.Key.Key_A: (-1, 0), Qt.Key.Key_Left: (-1, 0), Qt.Key.Key_D: (1, 0), Qt.Key.Key_Right: (1, 0)}
             if key in directions and self.keyboard.isChecked():
-                controls_robot = key in self.keys or (not typing and self.snapshot.get("can_drive"))
+                controls_robot = key in self.keys or (not typing and self.snapshot.get("controls_enabled", self.snapshot.get("can_drive")))
                 if event.type() == QEvent.Type.ShortcutOverride:
                     if controls_robot:
                         event.accept()
@@ -698,7 +739,7 @@ class Window(QMainWindow):
                     return bool(controls_robot)
                 if event.type() == QEvent.Type.KeyRelease:
                     self.keys.discard(key)
-                elif typing or not self.snapshot.get("can_drive"):
+                elif typing or not self.snapshot.get("controls_enabled", self.snapshot.get("can_drive")):
                     return False
                 else:
                     self.keys.add(key)

@@ -130,6 +130,12 @@ class FirmwareAttitudeFilter:
         self.rate = [0, 0]
         self.failures = self.tilt_frames = 0
         self.initialized = False
+        self.tilt_pause = [0, 0, 0]
+
+    def retry_tilt(self, reading):
+        if reading is None:raise ValueError('IMU unavailable; retry paused')
+        self.tilt_pause = [reading['roll_tenths'], reading['pitch_tenths'], 1]
+        self.failures = self.tilt_frames = 0
 
     def update(self, reading):
         import ctypes
@@ -139,6 +145,16 @@ class FirmwareAttitudeFilter:
         fn.restype=ctypes.c_int
         state=(ctypes.c_int*9)(*self.previous,*self.filtered,*self.rate,self.failures,self.tilt_frames,self.initialized)
         result=fn(state,reading is not None,reading['roll_tenths'] if reading else 0,reading['pitch_tenths'] if reading else 0)
+        if reading is not None:
+            guard=_shared()[0]._library.spot_tilt_pause
+            guard.argtypes=(ctypes.POINTER(ctypes.c_int),ctypes.c_int,ctypes.c_int,ctypes.c_int)
+            guard.restype=ctypes.c_int
+            pause=(ctypes.c_int*3)(*self.tilt_pause)
+            exceeded=guard(pause,reading['roll_tenths'],reading['pitch_tenths'],120)
+            self.tilt_pause=list(pause)
+            if not exceeded:
+                state[7]=0
+                if result==2:result=0
         self.previous=list(state[:2]);self.filtered=list(state[2:4]);self.rate=list(state[4:6])
         self.failures,self.tilt_frames=state[6:8];self.initialized=bool(state[8])
         return {0:None,1:'imu',2:'tilt'}[result]

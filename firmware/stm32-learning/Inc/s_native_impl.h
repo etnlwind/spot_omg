@@ -228,6 +228,10 @@ bool s_native_step(SNativeControl *s,float phase,float amplitude,float linear,fl
             smooth(fminf(swing,1-swing)/(s->early_fold_recovery?.25f:.3f));
         }
     }
+    for(int i=0;i<4;i++) {
+        float u=gait_policy_clampf((fmodf(phase+offsets[i],1)-.5f)*2,0,1);
+        goal[i][2]+=s->foot_lift_mm[i]*.001f*amplitude*activity*64*u*u*u*(1-u)*(1-u)*(1-u);
+    }
     if(s->diagnostic_width_active) {
         if(!isfinite(s->diagnostic_width_m) || s->diagnostic_width_m<-.040001f || s->diagnostic_width_m>.020001f)return false;
         float entry=smooth(s->entry_phase/.5f)*activity;

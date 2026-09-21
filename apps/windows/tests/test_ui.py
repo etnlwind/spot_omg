@@ -3,6 +3,22 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 from spot_controller.ui import Window, configure_app
 
+def test_pause_banner_keeps_controls_available(tmp_path):
+    app=QApplication.instance() or QApplication([]);configure_app(app)
+    window=Window();window.resize(1240,1100);window.show()
+    state=dict(connected=True,synced=True,phase='idle',state=dict(pose='custom',torque='on',safety='tilt'),
+               caps=[],can_drive=True,controls_enabled=True,requires_release=True,
+               pause_reason='$SPOTDRIVE stopped reason=tilt',error='')
+    window.on_state(state);app.processEvents()
+    assert window.motion_panel.isVisible() and window.joystick.isEnabled()
+    assert '기울기' in window.motion_title.text()
+    assert '사용자가 결정' in window.motion_message.text()
+    assert window.grab().save(str(tmp_path/'pause-banner.png'))
+    state.update(pause_reason='');state['state']['safety']='ok'
+    window.on_state(state)
+    assert not window.motion_panel.isVisible()
+    window.close();app.processEvents()
+
 def test_window_layout_and_idle_start(tmp_path):
     app=QApplication.instance() or QApplication([])
     configure_app(app)

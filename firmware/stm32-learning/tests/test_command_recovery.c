@@ -1,10 +1,15 @@
 #include "robot.h"
 #include "sts3215.h"
+#undef NDEBUG
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
 static unsigned reads;
 static int bad_id, hot_id, error_id, invalid_id;
+static bool imu_ok=true;
+static bool attitude(void *ctx,int16_t *roll,int16_t *pitch) {
+    (void)ctx;*roll=200;*pitch=-180;return imu_ok;
+}
 ServoBusResult sts3215_read_state(ServoBus *b,uint8_t id,Sts3215State *s) {
     (void)b; reads++;
     if(id==bad_id)return SERVO_BUS_TIMEOUT;
@@ -17,6 +22,7 @@ ServoBusResult sts3215_read_state(ServoBus *b,uint8_t id,Sts3215State *s) {
 static void setup(RobotController *r, RobotResult reason) {
     memset(r,0,sizeof(*r)); safety_init(&r->safety,NULL);
     reads=0;bad_id=hot_id=error_id=invalid_id=0;
+    r->attitude_reader=attitude;imu_ok=true;
     r->drive_target_linear=600;r->drive_target_yaw=300;r->shared_idle=true;
     robot_latch_locomotion_fault(r,reason);
     assert(!r->shared_idle && !r->drive_target_linear && !r->drive_target_yaw && r->drive_stop_requested);
@@ -29,6 +35,7 @@ int main(void) {
         assert(robot_prepare_new_command(&r)==ROBOT_OK);
         assert(reads==12 && !r.locomotion_fault && !r.shared_idle);
         assert(r.drive_stop_requested && !r.drive_target_linear && !r.drive_target_yaw);
+        assert(r.tilt_pause.active==(reasons[i]==ROBOT_TILT_LIMIT));
         /* Recovery cannot write motors: this test links only read_state. */
     }
     setup(&r,ROBOT_BUS_ERROR);bad_id=7;
@@ -46,5 +53,13 @@ int main(void) {
     hot_id=0;assert(robot_prepare_new_command(&r)==ROBOT_OK && !safety_is_faulted(&r.safety));
     setup(&r,ROBOT_BUS_ERROR);r.drive_active=true;
     assert(robot_prepare_new_command(&r)==ROBOT_INVALID_ARGUMENT && reads==0 && r.locomotion_fault);
+    setup(&r,ROBOT_TILT_LIMIT);imu_ok=false;
+    assert(robot_prepare_new_command(&r)==ROBOT_IMU_ERROR && r.locomotion_fault && !r.tilt_pause.active);
+    setup(&r,ROBOT_TILT_LIMIT);assert(robot_prepare_new_command(&r)==ROBOT_OK);
+    assert(!tilt_pause_exceeded(&r.tilt_pause,200,-180,120));
+    assert(tilt_pause_exceeded(&r.tilt_pause,321,-180,120));
+    assert(tilt_pause_exceeded(&r.tilt_pause,-121,-180,120));
+    assert(!tilt_pause_exceeded(&r.tilt_pause,0,0,120) && !r.tilt_pause.active);
+    assert(tilt_pause_exceeded(&r.tilt_pause,200,0,120));
     puts("fresh command recovery passed");return 0;
 }

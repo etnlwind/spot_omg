@@ -14,10 +14,12 @@ void robot_latch_locomotion_fault(RobotController *r, RobotResult reason)
 
 /* Called only for a fresh foreground command, never a heartbeat or idle tick.
  * Read-only preflight: do not resume targets or enable torque during recovery.
- * IMU/tilt checks remain in the gait; posture commands can attempt repositioning. */
+ * A tilt stop is a pause: a fresh command can reposition from that attitude. */
 RobotResult robot_prepare_new_command(RobotController *r)
 {
     if (!r || r->drive_active) return ROBOT_INVALID_ARGUMENT;
+    bool tilt=r->locomotion_fault && r->locomotion_fault_reason==ROBOT_TILT_LIMIT;
+    r->tilt_pause.active=false;
     if (!r->locomotion_fault && !safety_is_faulted(&r->safety)) return ROBOT_OK;
     r->shared_idle = false;
     r->drive_target_linear = r->drive_target_yaw = 0;
@@ -38,6 +40,13 @@ RobotResult robot_prepare_new_command(RobotController *r)
             robot_latch_locomotion_fault(r, ROBOT_SAFETY_FAULT);
             return ROBOT_SAFETY_FAULT;
         }
+    }
+    if(tilt) {
+        int16_t roll=0,pitch=0;
+        if(!r->attitude_reader || !r->attitude_reader(r->attitude_context,&roll,&pitch))
+            return ROBOT_IMU_ERROR;
+        r->tilt_pause=(TiltPause){roll-ROBOT_IMU_LEVEL_ROLL_TENTHS,
+            pitch-ROBOT_IMU_LEVEL_PITCH_TENTHS,true};
     }
     safety_clear(&r->safety);
     r->locomotion_fault = false;

@@ -12,6 +12,7 @@
 #include "stow_control.h"
 #include "pose_control.h"
 #include "servo_response_probe.h"
+#include "imu_bus_recovery.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,6 +77,7 @@ static void write_text(AppConsole *console, const char *text)
        !strncmp(text,"$SPOTSTATE ",11) || !strncmp(text,"$SPOTDRIVE ",11) ||
        !strncmp(text,"$PROBECONFIG ",13) || !strncmp(text,"OK",2) ||
        !strncmp(text,"ERROR:",6) || !strncmp(text,"STOPPED:",8) ||
+       !strncmp(text,"IMUDIAG ",8) || !strncmp(text,"IMURECOVER ",11) ||
        !strncmp(text,"ID ",3) || !strncmp(text,"unknown command",15))) {
         control_reply(console,"DATA",text);
     }
@@ -736,11 +738,11 @@ static void command_sync_state(AppConsole *console)
     }
 
     if(console->robot->stow_active)pose=console->robot->stow_complete?"stow":"stow-paused";
-    char message[672];
+    char message[768];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754 lift_fl=%u lift_fr=%u lift_rl=%u lift_rr=%u\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -757,7 +759,8 @@ static void command_sync_state(AppConsole *console)
         (int)(-1000.f*locomotion_linear(console->robot->locomotion_profile,-1.f)),
         "new-command",
         (unsigned)console->robot->locomotion_fault_reason,
-        support_name(console->robot->support_decision));
+        support_name(console->robot->support_decision),
+        (unsigned)console->robot->foot_lift_mm[0],(unsigned)console->robot->foot_lift_mm[1],(unsigned)console->robot->foot_lift_mm[2],(unsigned)console->robot->foot_lift_mm[3]);
     write_text(console, message);
 }
 
@@ -824,6 +827,43 @@ static void command_targets(AppConsole *console)
  * whether the part is dead, mis-wired or answering on I2C because PS1 was
  * left low.  Pulsing reset and watching H_INTN separates those.
  */
+static void command_imudiag(AppConsole *console, const char *label)
+{
+    Bno055 *imu=console->imu055;
+    if(!imu || !imu->i2c) {write_text(console,"ERROR: BNO055 I2C unavailable\r\n");return;}
+    I2C_HandleTypeDef *bus=imu->i2c;
+    char message[256];
+    /* Capture registers before any diagnostic transaction changes them. */
+    snprintf(message,sizeof(message),
+        "IMUDIAG %s present=%u addr=0x%02X hal_state=0x%lX hal_error=0x%lX "
+        "sr1=0x%lX sr2=0x%lX scl=%u sda=%u\r\n",label,imu->present,
+        (unsigned)(imu->address>>1),(unsigned long)HAL_I2C_GetState(bus),
+        (unsigned long)HAL_I2C_GetError(bus),(unsigned long)bus->Instance->SR1,
+        (unsigned long)bus->Instance->SR2,
+        (unsigned)(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_8)==GPIO_PIN_SET),
+        (unsigned)(HAL_GPIO_ReadPin(GPIOB,GPIO_PIN_9)==GPIO_PIN_SET));
+    write_text(console,message);
+}
+
+static void command_imurecover(AppConsole *console)
+{
+    if(console->robot->drive_active || console->robot->walk_probe_active) {
+        write_text(console,"ERROR: stop before IMU bus recovery\r\n");return;
+    }
+    command_imudiag(console,"before");
+    ImuBusRecovery result;
+    bool ok=imu_bus_recover(console->imu055,false,&result);
+    char message[192];
+    snprintf(message,sizeof(message),
+        "IMURECOVER %s deinit=%u init=%u chip=0x%02X chip_ok=%u mode=0x%02X mode_ok=%u body_ok=%u samples=%u/3\r\n",
+        ok?"OK":"FAIL",(unsigned)result.deinit_status,(unsigned)result.init_status,
+        result.chip,result.chip_ok,result.mode,result.mode_ok,result.body_ok,result.samples);
+    write_text(console,message);
+    command_imudiag(console,"after");
+    write_text(console,ok?"OK IMU recovered; no motion; faults unchanged\r\n":
+        "ERROR: IMU recovery failed; no motion\r\n");
+}
+
 static void command_i2cscan(AppConsole *console)
 {
     uint8_t found[8];
@@ -2685,6 +2725,25 @@ static void execute_line(AppConsole *console)
         command_echo(console, strtok(NULL, " \t"));
     } else if (strcmp(command, "safety") == 0) {
         command_safety(console);
+    } else if (strcmp(command, "footlift") == 0) {
+        char *action=strtok(NULL," \t");
+        if(action && !strcmp(action,"set")) {
+            if(robot_drive_is_active(console->robot) || console->robot->stow_active || console->robot->gait_diagnostics_active){write_text(console,"ERROR: stop before footlift changes\r\n");return;}
+            uint32_t value[4];
+            for(int i=0;i<4;i++) {
+                const char *word=strtok(NULL," \t"); uint32_t v=0;
+                if(!word || !*word){write_text(console,"ERROR: nonnegative integer mm required\r\n");return;}
+                for(const char *p=word;*p;p++) {
+                    if(*p<'0'||*p>'9'||v>(2147483647U-(unsigned)(*p-'0'))/10U){write_text(console,"ERROR: invalid integer mm\r\n");return;}
+                    v=v*10U+(unsigned)(*p-'0');
+                }
+                value[i]=v;
+            }
+            if(strtok(NULL," \t")){write_text(console,"ERROR: four values required\r\n");return;}
+            for(int i=0;i<4;i++)console->robot->foot_lift_mm[i]=value[i];
+            write_text(console,"OK footlift\r\n");
+        } else if(!action || strcmp(action,"show") || strtok(NULL," \t")){write_text(console,"ERROR: footlift show|set FL FR RL RR\r\n");return;}
+        command_sync_state(console);
     } else if (strcmp(command, "probeconfig") == 0) {
         char *action=strtok(NULL," \t");
         if(action && strcmp(action,"show")) {
@@ -2859,6 +2918,10 @@ static void execute_line(AppConsole *console)
         command_balance_test(console);
     } else if (strcmp(command, "recover") == 0) {
         command_recover(console);
+    } else if (strcmp(command, "imudiag") == 0) {
+        command_imudiag(console,"snapshot");
+    } else if (strcmp(command, "imurecover") == 0) {
+        command_imurecover(console);
     } else if (strcmp(command, "i2cscan") == 0) {
         command_i2cscan(console);
     } else if (strcmp(command, "spitest") == 0) {
@@ -3278,6 +3341,7 @@ void app_console_print_help(AppConsole *console)
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
+               "  footlift show|set FL FR RL RR (nonnegative integer mm, RAM)\r\n"
                "  probeconfig show|reset|set LIFT_MM LINEAR MS all|rl|rr\r\n"
                "  walkprobe        execute configured bounded V625 probe\r\n"
                "  rearprobe rl|rr  original rear trajectory; other three legs S\r\n"
@@ -3287,6 +3351,8 @@ void app_console_print_help(AppConsole *console)
                "  baldiag          recent balance frames and tilt snapshot\r\n"
                "  baltest          preview static balance correction; no servo motion\r\n"
                "  recover          clear a safety fault and hold where the legs are\r\n"
+               "  imudiag          BNO055 bus state\r\n"
+               "  imurecover       idle I2C recovery; no motion\r\n"
                "  i2cscan          scan I2C1 for the BNO055\r\n"
                "  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)\r\n"
                "  imuprobe         reset the BNO086 and report H_INTN and the SHTP header\r\n"

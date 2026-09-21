@@ -437,7 +437,7 @@ def test_pose_supervisor_runtime() -> None:
     compiler = shutil.which("cc") or shutil.which("gcc")
     if compiler is None:
         pytest.skip("no host C compiler")
-    sources = ["Src/pose_supervisor.c", "Src/robot_config.c", "Src/safety.c",
+    sources = ["Src/pose_supervisor.c", "Src/command_recovery.c", "Src/robot_config.c", "Src/safety.c",
                "tests/test_pose_supervisor.c"]
     with tempfile.TemporaryDirectory() as workdir:
         binary = Path(workdir) / "pose_supervisor"

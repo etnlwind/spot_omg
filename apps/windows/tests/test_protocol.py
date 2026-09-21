@@ -287,3 +287,76 @@ def test_attitudepd_default_respects_firmware_capability(supported,expected):
         with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v4')
     if expected=='attitudepd_v2':
         with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v3')
+
+
+def test_safety_stop_keeps_controls_live_and_allows_fresh_reverse():
+    c=ready();c.update(0,1,1);drain(c)
+    c.feed(b'$SPOTDRIVE stopped reason=tilt safety limit reached\r\n',1.1)
+    assert c.controls_enabled and not c.can_drive
+    c.feed(STATE.replace(b'safety=ok',b'safety=tilt')+b'# ',1.2)
+    assert c.controls_enabled and c.can_drive
+    c.update(0,-1,1.3)
+    assert not drain(c)  # A held gesture must not silently resume after a stop.
+    c.release(1.4);c.update(0,-1,1.5)
+    assert drain(c).startswith(b'drive -1000 0 ')
+
+
+@pytest.mark.parametrize('command',['landing','stow','stand','stand11'])
+def test_posture_locks_until_pose_readback(command):
+    c=ready();c.request(command,1);drain(c)
+    assert not c.controls_enabled
+    c.feed(b'OK\r\n# ',1.1);drain(c)
+    assert not c.controls_enabled and c.command=='syncstate'
+    c.feed(STATE.replace(b'pose=stand',f'pose={command}'.encode())+b'# ',1.2);drain(c)
+    assert c.controls_enabled  # Final telemetry must not disable the stick.
+
+
+def test_telemetry_and_stop_wait_do_not_disable_input_or_overlap_commands():
+    c=ready();c.request('read 1',1);drain(c)
+    assert c.controls_enabled and not c.can_drive
+    c.update(0,1,1.1);assert not drain(c)
+    c.feed(b'ID 1 voltage=12100mV\r\n# ',1.2)
+    c.update(0,1,1.3);assert drain(c).startswith(b'drive ')
+    c.release(1.4);drain(c)
+    assert c.controls_enabled and not c.can_drive
+    c.update(0,-1,1.5);c.tick(1.6);assert not drain(c)
+
+
+@pytest.mark.parametrize('press_phase',['stopping','draining'])
+def test_new_gesture_during_stop_wait_starts_after_ack(press_phase):
+    c=ready();c.sample_input(None,.3);c.sample_input((0,1),1);drain(c)
+    c.sample_input(None,1.1);assert drain(c).startswith(b'@S ')
+    if press_phase=='draining':
+        c.feed(b'$SPOTDRIVE stopped reason=ok\r\n',1.2)
+    c.sample_input((0,-.5),1.3);assert not drain(c)
+    c.feed(b'$SPOTDRIVE stopped reason=ok\r\n',1.4)
+    c.sample_input((0,-1),1.5);assert not drain(c)
+    c.feed(STATE+b'# ',1.6)
+    c.sample_input((0,-1),1.7)
+    assert drain(c).startswith(b'drive -1000 0 ')
+
+
+def test_gesture_released_before_stop_ack_never_replays():
+    c=ready();c.sample_input(None,.3);c.sample_input((0,1),1);drain(c)
+    c.sample_input(None,1.1);drain(c)
+    c.sample_input((0,-1),1.2);c.sample_input(None,1.3)
+    c.feed(b'$SPOTDRIVE stopped reason=ok\r\n'+STATE+b'# ',1.4)
+    c.sample_input(None,1.5);assert not drain(c)
+
+
+def test_fresh_gesture_during_telemetry_is_not_lost():
+    c=ready();c.sample_input(None,.3);c.requires_release=True
+    c.request('read 1',1);drain(c)
+    c.sample_input((0,1),1.1);assert not drain(c)
+    c.feed(b'ID 1 voltage=12100mV\r\n# ',1.2)
+    c.sample_input((0,1),1.3);assert drain(c).startswith(b'drive 1000 0 ')
+
+
+def test_protective_stop_requires_new_gesture_but_accepts_it_during_drain():
+    c=ready();c.sample_input(None,.3);c.sample_input((0,1),1);drain(c)
+    c.feed(b'$SPOTDRIVE stopped reason=tilt\r\n',1.1)
+    c.sample_input((0,1),1.2);assert c.requires_release and not drain(c)
+    c.sample_input(None,1.3);c.sample_input((0,-1),1.4)
+    c.feed(b'STOPPED: tilt safety limit reached\r\n'+STATE+b'# ',1.5)
+    c.sample_input((0,-1),1.6)
+    assert drain(c).startswith(b'drive -1000 0 ')

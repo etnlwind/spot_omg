@@ -255,7 +255,6 @@ class Connection(QObject):
             model.opened(time.monotonic())
             read_task = asyncio.create_task(link.read())
             next_snapshot = 0.
-            last_released = False
             previous_phase = model.phase
             last_drive_data = None
             last_rx = time.monotonic()
@@ -319,17 +318,9 @@ class Connection(QObject):
                         self.trace(f"정지 원인: UI heartbeat 지연 {now-pulse:.3f}s")
                         model.interrupt(now)
                         model.error = "화면 응답 지연으로 정지했습니다. 스틱을 놓고 다시 조작하십시오."
-                if vector is None:
-                    if not last_released:
-                        if model.phase == 'drive':
-                            self.trace("정지 원인: UI 입력 해제(None)")
-                        model.release(now)
-                    last_released = True
-                else:
-                    if last_released and model.phase == 'idle':
-                        model.release(now)
-                    last_released = False
-                    model.update(*vector, now)
+                if vector is None and not model.input_released and model.phase == 'drive':
+                    self.trace("정지 원인: UI 입력 해제(None)")
+                model.sample_input(vector, now)
                 for line, issued in intents:
                     if now - issued > .5 or emergency or closing:
                         continue

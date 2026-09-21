@@ -1,4 +1,5 @@
 #include "gait_policy.h"
+#include "foot_lift.h"
 
 #if defined(_WIN32)
 #define SPOT_GAIT_EXPORT __declspec(dllexport)
@@ -350,6 +351,12 @@ SPOT_GAIT_EXPORT int spot_balance_control_policy(float state[16],float values[12
 }
 
 #include "attitude_control.h"
+#include "tilt_pause.h"
+SPOT_GAIT_EXPORT int spot_tilt_pause(int v[3],int roll,int pitch,int limit) {
+    TiltPause s={v[0],v[1],v[2]!=0};
+    int result=tilt_pause_exceeded(&s,roll,pitch,limit);
+    v[2]=s.active;return result;
+}
 #include "drive_control.h"
 SPOT_GAIT_EXPORT int spot_attitude_update(int v[9],int valid,int roll,int pitch) {
     AttitudeControl s={{v[0],v[1]},{v[2],v[3]},{v[4],v[5]},v[6],v[7],v[8]!=0};
@@ -570,4 +577,10 @@ SPOT_GAIT_EXPORT int spot_arc_lift_first(const float values[12],float phase,floa
 }
 SPOT_GAIT_EXPORT float spot_arc_lift_first_x(float u,float duty,float fraction) {
  return arc_lift_first_x(u,duty,fraction);
+}
+
+SPOT_GAIT_EXPORT int spot_foot_lift(const uint32_t mm[4],float phase,float duty,float scale,const float offsets[4],float values[12]) {
+ GaitPolicyLegTarget target[4];unpack_targets(values,target);
+ if(!foot_lift_apply(mm,phase,duty,scale,offsets,target))return 0;
+ pack_targets(target,values);return 1;
 }

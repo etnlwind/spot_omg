@@ -3,6 +3,9 @@
 #include "locomotion_servo.h"
 #include "s_native_servo.h"
 static SNativeControl state;
+void set_foot_lift(unsigned fl,unsigned fr,unsigned rl,unsigned rr) {
+    state.foot_lift_mm[0]=fl;state.foot_lift_mm[1]=fr;state.foot_lift_mm[2]=rl;state.foot_lift_mm[3]=rr;
+}
 void reset(void) { s_native_reset(&state); }
 void reset_v624(void) { s_native_reset_v624(&state); }
 void reset_v625(void) { s_native_reset_v625(&state); }

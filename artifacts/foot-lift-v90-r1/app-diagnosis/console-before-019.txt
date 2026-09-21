@@ -1,0 +1,250 @@
+> syncstate
+$SPOTSTATE pose=custom error=85 torque=off safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0
+# 
+[앱 14:46:28 +537721.500] 전용 제어 채널 활성화 · 콘솔 로그와 완료 응답 분리
+> read 1
+
+[앱 14:46:28 +537721.562] 상태 busy → idle; 마지막 수신 0.078s 전
+ID 1 pos=1923 speed=0 load=0 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:46:32 +537725.375] 상태 idle → busy; 마지막 수신 3.782s 전
+> stand
+> syncstate
+Starting supervised stand move
+POSE stand reason=complete elapsed=6938 nominal=6400 retries=0 waits=77 hold=0
+POSE_HEALTH id=11 temp=150 hw=0x00 transient=1
+POSE_PROBE count=2 mask=0x900 max_lead=120
+OK
+$MECHLOG label=stand complete=1; saved: log show 64
+# > read 1
+$SPOTSTATE pose=stand error=17 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudep
+[앱 14:46:42 +537735.390] 상태 busy → idle; 마지막 수신 0.172s 전
+d_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=adjusting mass_g=2754 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0
+# ID 1 pos=1923 speed=0 load=32 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:46:44 +537737.046] 상태 idle → drive; 마지막 수신 1.406s 전
+> drive 305 0 1
+
+[앱 14:46:44 +537737.250] 보행 입력: @D 2 534 -16
+
+[앱 14:46:44 +537737.453] 보행 입력: @D 3 734 -20
+
+[앱 14:46:44 +537737.656] 보행 입력: @D 4 757 -16
+$SPOTDRIVE started seq=1 linear=305 yaw=0 watchdog=800ms rev=attitudepd-v4-v90-r1
+$BATTERY mv=12000
+$BATTERY mv=11800
+$BATTERY mv=11800
+
+[앱 14:46:48 +537741.312] 보행 입력: @D 22 793 -11
+$BATTERY mv=11900
+
+[앱 14:46:49 +537742.125] 보행 입력: @D 26 841 -5
+
+[앱 14:46:49 +537742.328] 보행 입력: @D 27 864 -2
+
+[앱 14:46:49 +537742.531] 보행 입력: @D 28 900 0
+
+[앱 14:46:49 +537742.734] 보행 입력: @D 29 924 0
+
+[앱 14:46:50 +537742.937] 보행 입력: @D 30 983 0
+$BATTERY mv=11800
+
+[앱 14:46:50 +537743.140] 보행 입력: @D 31 995 0
+
+[앱 14:46:50 +537743.343] 보행 입력: @D 32 1000 0
+
+[앱 14:46:51 +537743.953] 보행 입력: @D 35 998 0
+$BATTERY mv=11800
+
+[앱 14:46:51 +537744.687] 스틱 해제: mouseReleaseEvent; held=False; buttons=MouseButton.NoButton
+
+[앱 14:46:51 +537744.687] 정지 원인: UI 입력 해제(None)
+
+[앱 14:46:51 +537744.687] 상태 drive → stopping; 마지막 수신 0.656s 전
+> @S 39
+$BATTERY mv=11900
+$BATTERY mv=11700
+
+[앱 14:46:53 +537746.250] 상태 stopping → draining; 마지막 수신 0.172s 전
+
+[앱 14:46:54 +537746.984] 상태 draining → idle; 마지막 수신 0.906s 전
+$SPOTDRIVE stopped reason=ok elapsed=7587ms
+OK
+Gait diagnostics: samples=380 min_voltage=11700mV lag=11 lag+droop=0 derate=recommended fall=no late_frames=0 limited_frames=0
+Bus read retries: attempts=2 recovered=2 failed=0
+Gait timing: balance=off nominal=0ms elapsed=7587ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=378 cmd=1920 pos=1924 err=-4 speed_raw=0 current=0 load=40 voltage=12000mV peak_err=11(1.0deg)@411 mean_err=5(0.4deg) peak_current=4 peak_load=96 min_v=11900mV lag=0 lag_rule=96/2 samples=32
+    peak_ctx=stance cmd=1920 pos=1931 err=-11 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-11ticks
+  ID2 FL J2 phase=378 cmd=1430 pos=1425 err=5 speed_raw=0 current=3 load=-40 voltage=12200mV peak_err=73(6.4deg)@822 mean_err=16(1.4deg) peak_current=58 peak_load=280 min_v=11900mV lag=0 lag_rule=144/3 samples=32
+    peak_ctx=swing cmd=1405 pos=1332 err=73 target_v=-123deg/s target_a=-700deg/s2 match_age=3fr(~60ms) match_err=0ticks
+  ID3 FL J3 phase=378 cmd=2996 pos=2999 err=-3 speed_raw=0 current=1 load=32 voltage=12300mV peak_err=142(12.5deg)@755 mean_err=46(4.0deg) peak_current=42 peak_load=404 min_v=12100mV lag=5 lag_rule=96/2 samples=32
+    peak_ctx=swing cmd=3112 pos=2970 err=142 target_v=79deg/s target_a=-1100deg/s2 match_age=6fr(~120ms) match_err=0ticks
+  ID4 FR J1 phase=378 cmd=2082 pos=2078 err=4 speed_raw=0 current=1 load=-40 voltage=12200mV peak_err=11(1.0deg)@958 mean_err=5(0.4deg) peak_current=4 peak_load=96 min_v=12100mV lag=0 lag_rule=96/2 samples=32
+    peak_ctx=stance cmd=2082 pos=2071 err=11 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=11ticks
+  ID5 FR J2 phase=378 cmd=2569 pos=2571 err=-2 speed_raw=0 current=0 load=16 voltage=12200mV peak_err=67(5.9deg)@422 mean_err=15(1.3deg) peak_current=75 peak_load=328 min_v=11900mV lag=0 lag_rule=144/3 samples=32
+    peak_ctx=swing cmd=2498 pos=2565 err=-67 target_v=-57deg/s target_a=850deg/s2 match_age=4fr(~80ms) match_err=8ticks
+  ID6 FR J3 phase=378 cmd=1050 pos=1040 err=10 speed_raw=0 current=3 load=-88 voltage=12300mV peak_err=113(9.9deg)@213 mean_err=33(2.9deg) peak_current=40 peak_load=284 min_v=12100mV lag=1 lag_rule=96/2 samples=32
+    peak_ctx=swing cmd=976 pos=1089 err=-113 target_v=105deg/s target_a=-450deg/s2 match_age=5fr(~100ms) match_err=4ticks
+  ID7 RL J1 phase=378 cmd=2095 pos=2092 err=3 speed_raw=0 current=0 load=-32 voltage=12100mV peak_err=11(1.0deg)@831 mean_err=5(0.4deg) peak_current=5 peak_load=96 min_v=12000mV lag=0 lag_rule=96/2 samples=32
+    peak_ctx=stance cmd=2095 pos=2084 err=11 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=11ticks
+  ID8 RL J2 phase=378 cmd=1295 pos=1298 err=-3 speed_raw=-50 current=1 load=24 voltage=12200mV peak_err=85(7.5deg)@393 mean_err=16(1.4deg) peak_current=31 peak_load=296 min_v=12000mV lag=0 lag_rule=144/3 samples=32
+    peak_ctx=swing cmd=1367 pos=1282 err=85 target_v=-96deg/s target_a=1100deg/s2 match_age=3fr(~60ms) match_err=8ticks
+  ID9 RL J3 phase=378 cmd=2995 pos=3009 err=-14 speed_raw=0 current=7 load=124 voltage=12100mV peak_err=131(11.5deg)@270 mean_err=39(3.4deg) peak_current=49 peak_load=336 min_v=12000mV lag=2 lag_rule=96/2 samples=31
+    peak_ctx=swing cmd=3117 pos=2986 err=131 target_v=61deg/s target_a=-900deg/s2 match_age=6fr(~120ms) match_err=0ticks
+  ID10 RR J1 phase=378 cmd=1960 pos=1964 err=-4 speed_raw=0 current=1 load=40 voltage=12200mV peak_err=9(0.8deg)@460 mean_err=4(0.4deg) peak_current=4 peak_load=80 min_v=12000mV lag=0 lag_rule=96/2 samples=31
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=378 cmd=2902 pos=2901 err=1 speed_raw=0 current=0 load=-8 voltage=12100mV peak_err=59(5.2deg)@908 mean_err=17(1.5deg) peak_current=58 peak_load=224 min_v=11700mV lag=0 lag_rule=144/3 samples=31
+    peak_ctx=swing cmd=2847 pos=2906 err=-59 target_v=-79deg/s target_a=400deg/s2 match_age=3fr(~60ms) match_err=1ticks
+  ID12 RR J3 phase=378 cmd=1015 pos=1010 err=5 speed_raw=0 current=1 load=-48 voltage=12100mV peak_err=129(11.3deg)@140 mean_err=44(3.9deg) peak_current=80 peak_load=468 min_v=11700mV lag=3 lag_rule=96/2 samples=31
+    peak_ctx=stance cmd=1099 pos=970 err=129 target_v=-87deg/s target_a=700deg/s2 match_age=11fr(~220ms) match_err=8ticks
+$SPOTSTATE pose=stand error=14 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0
+# $BATTERY mv=12000
+
+[앱 14:47:00 +537753.781] 상태 idle → busy; 마지막 수신 5.000s 전
+> read 1
+
+[앱 14:47:01 +537754.062] 상태 busy → idle; 마지막 수신 5.281s 전
+ID 1 pos=1924 speed=0 load=40 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:47:02 +537755.484] 상태 idle → drive; 마지막 수신 1.313s 전
+> drive 254 -136 40
+
+[앱 14:47:02 +537755.687] 보행 입력: @D 41 623 -70
+
+[앱 14:47:03 +537755.890] 보행 입력: @D 42 807 0
+$SPOTDRIVE started seq=40 linear=254 yaw=-136 watchdog=800ms rev=attitudepd-v4-v90-r1
+$BATTERY mv=12100
+$BATTERY mv=11800
+$BATTERY mv=11800
+
+[앱 14:47:06 +537759.562] 보행 입력: @D 60 831 0
+$BATTERY mv=11900
+$BATTERY mv=11800
+
+[앱 14:47:09 +537762.078] 스틱 해제: mouseReleaseEvent; held=False; buttons=MouseButton.NoButton
+
+[앱 14:47:09 +537762.125] 정지 원인: UI 입력 해제(None)
+
+[앱 14:47:09 +537762.125] 상태 drive → stopping; 마지막 수신 0.844s 전
+> @S 73
+$BATTERY mv=11900
+$BATTERY mv=11900
+
+[앱 14:47:10 +537763.593] 상태 stopping → draining; 마지막 수신 0.297s 전
+
+[앱 14:47:11 +537764.312] 상태 draining → idle; 마지막 수신 1.016s 전
+$SPOTDRIVE stopped reason=ok elapsed=6487ms
+OK
+Gait diagnostics: samples=325 min_voltage=11800mV lag=10 lag+droop=0 derate=recommended fall=no late_frames=0 limited_frames=0
+Bus read retries: attempts=3 recovered=3 failed=0
+Gait timing: balance=off nominal=0ms elapsed=6487ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=469 cmd=1920 pos=1923 err=-3 speed_raw=0 current=0 load=32 voltage=12000mV peak_err=12(1.1deg)@359 mean_err=4(0.4deg) peak_current=4 peak_load=104 min_v=12000mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=1920 pos=1932 err=-12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-12ticks
+  ID2 FL J2 phase=469 cmd=1430 pos=1419 err=11 speed_raw=0 current=14 load=-88 voltage=12200mV peak_err=47(4.1deg)@835 mean_err=15(1.3deg) peak_current=52 peak_load=216 min_v=11900mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=1410 pos=1363 err=47 target_v=-70deg/s target_a=-450deg/s2 match_age=3fr(~60ms) match_err=3ticks
+  ID3 FL J3 phase=469 cmd=2996 pos=2992 err=4 speed_raw=0 current=1 load=-40 voltage=12300mV peak_err=107(9.4deg)@18 mean_err=39(3.4deg) peak_current=27 peak_load=276 min_v=12000mV lag=1 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=2973 pos=3080 err=-107 target_v=-4deg/s target_a=1100deg/s2 match_age=8fr(~160ms) match_err=-5ticks
+  ID4 FR J1 phase=469 cmd=2082 pos=2078 err=4 speed_raw=0 current=1 load=-40 voltage=12200mV peak_err=12(1.1deg)@36 mean_err=5(0.4deg) peak_current=5 peak_load=104 min_v=12100mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=2082 pos=2070 err=12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=12ticks
+  ID5 FR J2 phase=469 cmd=2569 pos=2570 err=-1 speed_raw=0 current=0 load=8 voltage=12200mV peak_err=56(4.9deg)@428 mean_err=15(1.3deg) peak_current=41 peak_load=224 min_v=11900mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=2452 pos=2508 err=-56 target_v=-70deg/s target_a=200deg/s2 match_age=3fr(~60ms) match_err=-3ticks
+  ID6 FR J3 phase=469 cmd=1050 pos=1044 err=6 speed_raw=0 current=1 load=-56 voltage=12300mV peak_err=139(12.2deg)@236 mean_err=43(3.8deg) peak_current=43 peak_load=332 min_v=12100mV lag=4 lag_rule=96/2 samples=27
+    peak_ctx=swing cmd=972 pos=1111 err=-139 target_v=83deg/s target_a=-200deg/s2 match_age=6fr(~120ms) match_err=1ticks
+  ID7 RL J1 phase=469 cmd=2095 pos=2090 err=5 speed_raw=0 current=1 load=-48 voltage=12100mV peak_err=13(1.1deg)@88 mean_err=6(0.5deg) peak_current=6 peak_load=112 min_v=12000mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=swing cmd=2095 pos=2082 err=13 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=13ticks
+  ID8 RL J2 phase=469 cmd=1295 pos=1302 err=-7 speed_raw=0 current=5 load=56 voltage=12200mV peak_err=29(2.5deg)@314 mean_err=12(1.1deg) peak_current=33 peak_load=144 min_v=12000mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=1260 pos=1231 err=29 target_v=-61deg/s target_a=-200deg/s2 match_age=2fr(~40ms) match_err=2ticks
+  ID9 RL J3 phase=469 cmd=2995 pos=3003 err=-8 speed_raw=0 current=3 load=72 voltage=12100mV peak_err=105(9.2deg)@497 mean_err=34(3.0deg) peak_current=70 peak_load=400 min_v=11900mV lag=1 lag_rule=96/2 samples=28
+    peak_ctx=swing cmd=2975 pos=3080 err=-105 target_v=-30deg/s target_a=1350deg/s2 match_age=8fr(~160ms) match_err=2ticks
+  ID10 RR J1 phase=469 cmd=1960 pos=1964 err=-4 speed_raw=0 current=1 load=40 voltage=12200mV peak_err=9(0.8deg)@345 mean_err=4(0.4deg) peak_current=4 peak_load=80 min_v=12000mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=469 cmd=2902 pos=2902 err=0 speed_raw=0 current=0 load=-4 voltage=12100mV peak_err=46(4.0deg)@907 mean_err=15(1.3deg) peak_current=43 peak_load=176 min_v=11900mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=2806 pos=2852 err=-46 target_v=-70deg/s target_a=0deg/s2 match_age=3fr(~60ms) match_err=4ticks
+  ID12 RR J3 phase=469 cmd=1015 pos=1009 err=6 speed_raw=0 current=1 load=-56 voltage=12100mV peak_err=141(12.4deg)@757 mean_err=49(4.3deg) peak_current=57 peak_load=420 min_v=11800mV lag=4 lag_rule=96/2 samples=27
+    peak_ctx=swing cmd=928 pos=1069 err=-141 target_v=57deg/s target_a=-850deg/s2 match_age=7fr(~140ms) match_err=5ticks
+$SPOTSTATE pose=stand error=11 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0
+# $BATTERY mv=12000
+
+[앱 14:47:17 +537770.265] 스틱 해제: mouseReleaseEvent; held=False; buttons=MouseButton.NoButton
+
+[앱 14:47:18 +537771.125] 상태 idle → busy; 마지막 수신 5.000s 전
+> read 1
+
+[앱 14:47:18 +537771.343] 상태 busy → idle; 마지막 수신 5.218s 전
+ID 1 pos=1923 speed=0 load=32 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:47:21 +537774.171] 상태 idle → drive; 마지막 수신 2.718s 전
+> drive -694 -203 74
+
+[앱 14:47:21 +537774.375] 보행 입력: @D 75 -694 -203
+
+[앱 14:47:21 +537774.500] 스틱 해제: mouseReleaseEvent; held=False; buttons=MouseButton.NoButton
+
+[앱 14:47:21 +537774.500] 정지 원인: UI 입력 해제(None)
+
+[앱 14:47:21 +537774.500] 상태 drive → stopping; 마지막 수신 3.047s 전
+> @S 76
+
+[앱 14:47:21 +537774.703] 상태 stopping → draining; 마지막 수신 3.250s 전
+
+[앱 14:47:22 +537775.421] 상태 draining → idle; 마지막 수신 3.968s 전
+$SPOTDRIVE started seq=74 linear=-694 yaw=-203 watchdog=800ms rev=attitudepd-v4-v90-r1
+$SPOTDRIVE stopped reason=motion aborted elapsed=6487ms
+STOPPED: stand target requested
+Gait diagnostics: samples=325 min_voltage=11800mV lag=10 lag+droop=0 derate=recommended fall=no late_frames=0 limited_frames=0
+Bus read retries: attempts=3 recovered=3 failed=0
+Gait timing: balance=off nominal=0ms elapsed=6487ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=469 cmd=1920 pos=1923 err=-3 speed_raw=0 current=0 load=32 voltage=12000mV peak_err=12(1.1deg)@359 mean_err=4(0.4deg) peak_current=4 peak_load=104 min_v=12000mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=1920 pos=1932 err=-12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-12ticks
+  ID2 FL J2 phase=469 cmd=1430 pos=1419 err=11 speed_raw=0 current=14 load=-88 voltage=12200mV peak_err=47(4.1deg)@835 mean_err=15(1.3deg) peak_current=52 peak_load=216 min_v=11900mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=1410 pos=1363 err=47 target_v=-70deg/s target_a=-450deg/s2 match_age=3fr(~60ms) match_err=3ticks
+  ID3 FL J3 phase=469 cmd=2996 pos=2992 err=4 speed_raw=0 current=1 load=-40 voltage=12300mV peak_err=107(9.4deg)@18 mean_err=39(3.4deg) peak_current=27 peak_load=276 min_v=12000mV lag=1 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=2973 pos=3080 err=-107 target_v=-4deg/s target_a=1100deg/s2 match_age=8fr(~160ms) match_err=-5ticks
+  ID4 FR J1 phase=469 cmd=2082 pos=2078 err=4 speed_raw=0 current=1 load=-40 voltage=12200mV peak_err=12(1.1deg)@36 mean_err=5(0.4deg) peak_current=5 peak_load=104 min_v=12100mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=2082 pos=2070 err=12 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=12ticks
+  ID5 FR J2 phase=469 cmd=2569 pos=2570 err=-1 speed_raw=0 current=0 load=8 voltage=12200mV peak_err=56(4.9deg)@428 mean_err=15(1.3deg) peak_current=41 peak_load=224 min_v=11900mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=2452 pos=2508 err=-56 target_v=-70deg/s target_a=200deg/s2 match_age=3fr(~60ms) match_err=-3ticks
+  ID6 FR J3 phase=469 cmd=1050 pos=1044 err=6 speed_raw=0 current=1 load=-56 voltage=12300mV peak_err=139(12.2deg)@236 mean_err=43(3.8deg) peak_current=43 peak_load=332 min_v=12100mV lag=4 lag_rule=96/2 samples=27
+    peak_ctx=swing cmd=972 pos=1111 err=-139 target_v=83deg/s target_a=-200deg/s2 match_age=6fr(~120ms) match_err=1ticks
+  ID7 RL J1 phase=469 cmd=2095 pos=2090 err=5 speed_raw=0 current=1 load=-48 voltage=12100mV peak_err=13(1.1deg)@88 mean_err=6(0.5deg) peak_current=6 peak_load=112 min_v=12000mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=swing cmd=2095 pos=2082 err=13 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=13ticks
+  ID8 RL J2 phase=469 cmd=1295 pos=1302 err=-7 speed_raw=0 current=5 load=56 voltage=12200mV peak_err=29(2.5deg)@314 mean_err=12(1.1deg) peak_current=33 peak_load=144 min_v=12000mV lag=0 lag_rule=144/3 samples=27
+    peak_ctx=swing cmd=1260 pos=1231 err=29 target_v=-61deg/s target_a=-200deg/s2 match_age=2fr(~40ms) match_err=2ticks
+  ID9 RL J3 phase=469 cmd=2995 pos=3003 err=-8 speed_raw=0 current=3 load=72 voltage=12100mV peak_err=105(9.2deg)@497 mean_err=34(3.0deg) peak_current=70 peak_load=400 min_v=11900mV lag=1 lag_rule=96/2 samples=28
+
+    peak_ctx=swing cmd=2975 pos=3080 err=-105 target_v=-30deg/s target_a=1350deg/s2 match_age=8fr(~160ms) match_err=2ticks
+  ID10 RR J1 phase=469 cmd=1960 pos=1964 err=-4 speed_raw=0 current=1 load=40 voltage=12200mV peak_err=9(0.8deg)@345 mean_err=4(0.4deg) peak_current=4 peak_load=80 min_v=12000mV lag=0 lag_rule=96/2 samples=27
+    peak_ctx=stance cmd=1960 pos=1969 err=-9 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-9ticks
+  ID11 RR J2 phase=469 cmd=2902 pos=2902 err=0 speed_raw=0 current=0 load=-4 voltage=12100mV peak_err=46(4.0deg)@907 mean_err=15(1.3deg) peak_current=43 peak_load=176 min_v=11900mV lag=0 lag_rule=144/3 samples=27
+    peak_crev=attitudepd-v4-v90-r1 cap000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0
+# 
+[앱 14:47:24 +537777.843] 스틱 해제: mouseReleaseEvent; held=False; buttons=MouseButton.NoButton
+
+[앱 14:47:27 +537780.421] 상태 idle → busy; 마지막 수신 3.328s 전
+> read 1
+
+[앱 14:47:27 +537780.640] 상태 busy → idle; 마지막 수신 3.547s 전
+ID 1 pos=1923 speed=0 load=0 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:47:32 +537785.515] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 14:47:32 +537785.796] 상태 busy → idle; 마지막 수신 5.046s 전
+ID 1 pos=1923 speed=0 load=0 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:47:37 +537790.625] 상태 idle → busy; 마지막 수신 4.704s 전
+> read 1
+
+[앱 14:47:38 +537790.890] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1923 speed=0 load=0 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:47:42 +537795.781] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 14:47:43 +537796.062] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1923 speed=0 load=0 voltage=12100mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 14:47:48 +537800.937] 상태 idle → bu

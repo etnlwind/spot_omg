@@ -1,0 +1,11 @@
+$SPOTSTATE pose=stand error=9 torque=on safety=fault balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=11 support=adjusting mass_g=2754 lift_fl=10 lift_fr=10 lift_rl=0 lift_rr=0
+Traceback (most recent call last):
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 134, in <module>
+    if __name__=='__main__':main()
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 69, in main
+    assert {f'rev={revision}','safety=ok','fault_code=0'}.issubset(state.split()),state
+AssertionError: $SPOTSTATE pose=stand error=9 torque=on safety=fault balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=11 support=adjusting mass_g=2754 lift_fl=10 lift_fr=10 lift_rl=0 lift_rr=0

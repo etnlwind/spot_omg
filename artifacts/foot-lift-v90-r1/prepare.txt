@@ -1,0 +1,28 @@
+$SPOTSTATE pose=custom error=141 torque=off safety=ok balance=suspended rev=attitudepd-v6-v86 caps=controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,originconfirm,stow,headinghold profile=attitudepd_v6 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754
+Servo status (12 configured IDs):
+ID 1 pos=2070 speed=0 load=0 voltage=12400mV temp=28C current=0 moving=0 hw=0x00
+ID 2 pos=1604 speed=0 load=0 voltage=12600mV temp=28C current=0 moving=0 hw=0x00
+ID 3 pos=3495 speed=0 load=0 voltage=12700mV temp=31C current=0 moving=0 hw=0x00
+ID 4 pos=2124 speed=0 load=0 voltage=12500mV temp=30C current=0 moving=0 hw=0x00
+ID 5 pos=2435 speed=0 load=0 voltage=12500mV temp=28C current=0 moving=0 hw=0x00
+ID 6 pos=505 speed=0 load=0 voltage=12700mV temp=30C current=0 moving=0 hw=0x00
+ID 7 pos=2039 speed=0 load=0 voltage=12500mV temp=29C current=0 moving=0 hw=0x00
+ID 8 pos=1462 speed=0 load=0 voltage=12600mV temp=26C current=0 moving=0 hw=0x00
+ID 9 pos=3502 speed=0 load=0 voltage=12500mV temp=33C current=0 moving=0 hw=0x00
+ID 10 pos=1856 speed=0 load=0 voltage=12600mV temp=30C current=0 moving=0 hw=0x00
+ID 11 pos=2747 speed=0 load=0 voltage=12500mV temp=30C current=0 moving=0 hw=0x00
+ID 12 pos=491 speed=0 load=0 voltage=12500mV temp=31C current=0 moving=0 hw=0x00
+Bus read retries: attempts=0 recovered=0 failed=0
+ERROR: origin unconfirmed; requires ALL-servo power cycle in Landing and explicit originconfirm; no motion sent
+Traceback (most recent call last):
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 134, in <module>
+    if __name__=='__main__':main()
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 90, in main
+    landed=send('landing')
+  File "D:\project\spot_omg\scripts\hardware\install_attitudepd_v4.py", line 65, in send
+    if not response.ok:raise RuntimeError(response.text)
+RuntimeError: ERROR: origin unconfirmed; requires ALL-servo power cycle in Landing and explicit originconfirm; no motion sent

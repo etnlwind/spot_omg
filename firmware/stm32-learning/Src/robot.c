@@ -1,5 +1,6 @@
 #include "drive_watchdog.h"
 #include "robot.h"
+#include "foot_lift.h"
 #include "pose_control.h"
 
 #include "actuator_control.h"
@@ -74,6 +75,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->rear_probe_lift_mm=0;
     robot->walk_probe_active=0;
     robot->probe_config=probe_config_default();
+    memset(robot->foot_lift_mm,0,sizeof(robot->foot_lift_mm));
     robot->probe_duration_ms=4000;
     robot->gait_step_limit=robot->gait_steps_completed=0;
     memset(&robot->battery_telemetry,0,sizeof(robot->battery_telemetry));
@@ -81,6 +83,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->heading_enabled = true;
     robot->heading_reader = NULL;
     robot->locomotion_fault = false;
+    robot->tilt_pause=(TiltPause){0};
     robot->stow_active = false;
     robot->stow_complete = false;
     robot->stow_tracking_failure = false;
@@ -1496,6 +1499,16 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             return ROBOT_CONFIG_ERROR;
         }
 
+        float lift_offsets[4]={0,.5f,.5f,0};
+        float lift_duty=continuous_drive?GAIT_POLICY_TROT4_DUTY:
+            policy==ROBOT_TROT_POLICY_CAD_OPTIMIZED?GAIT_POLICY_TROT5_DUTY:
+            policy==ROBOT_TROT_POLICY_CRAB?GAIT_POLICY_CRAB_DUTY:
+            policy==ROBOT_TROT_POLICY_CIRCULAR_OVERLAP?GAIT_POLICY_TROT3_DUTY:
+            (policy==ROBOT_TROT_POLICY_POSTURE_SMOOTH || policy==ROBOT_TROT_POLICY_TURN)?GAIT_POLICY_TROT4_DUTY:.5f;
+        if(!continuous_drive && policy==ROBOT_TROT_POLICY_CRAB){lift_offsets[0]=.8f;lift_offsets[1]=.3f;lift_offsets[2]=.05f;lift_offsets[3]=.55f;}
+        if(!foot_lift_apply(robot->foot_lift_mm,global_phase*.001f,lift_duty,amplitude_scale*.001f,lift_offsets,leg_targets)){
+            robot->gait_diagnostics_active=false;return ROBOT_CONFIG_ERROR;
+        }
         GaitPolicyLegTarget open_loop_targets[GAIT_POLICY_LEG_COUNT];
         for (uint8_t leg = 0U; leg < GAIT_POLICY_LEG_COUNT; ++leg) {
             open_loop_targets[leg] = leg_targets[leg];
@@ -1960,6 +1973,10 @@ static RobotResult shared_observe(RobotController *robot)
     }
     if(!valid)valid=robot->attitude_reader && robot->attitude_reader(robot->attitude_context,&roll,&pitch);
     int fault=attitude_update(&robot->shared_attitude,valid,roll,pitch);
+    if(valid && !tilt_pause_exceeded(&robot->tilt_pause,roll,pitch,120)) {
+        robot->shared_attitude.tilt_frames=0;
+        if(fault==2)fault=0;
+    }
     if(robot->drive_active) {
         imu_trace_record(&robot->imu_trace,(ImuTraceSample){
             .time_ms=HAL_GetTick(),.roll10=roll,.pitch10=pitch,
@@ -2144,12 +2161,16 @@ static RobotResult robot_shared_drive(RobotController *robot)
                 float correction=heading_update(&drive->heading,yaw*.1f,yaw_valid,
                     robot->heading_enabled && !stopping,rl,ry,drive->yaw,frame_dt);
                 drive->yaw=drive_timed_slew(lroundf(drive->yaw*1000),lroundf((ry+correction)*1000),progress)*.001f;
+                memcpy(robot->s_native.foot_lift_mm,robot->foot_lift_mm,sizeof(robot->foot_lift_mm));
                 target_ok=s_native_step(&robot->s_native,drive->phase,gait_policy_smootherstep(fminf(1,drive->elapsed)),
                     drive->linear,drive->yaw,rl,ry,frame_dt,stopping,nominal);
                 drive->phase=fmodf(drive->phase+progress/locomotion_period(robot->locomotion_profile,drive->linear,drive->yaw),1);
             } else target_ok=drive_control_step_timed(&robot->drive_control,robot->locomotion_profile,
                     stopping?0:request.linear*.001f,stopping?0:request.yaw*.001f,
                     yaw*.1f,yaw_valid,robot->heading_enabled,stopping,frame_dt,phase_rate,nominal);
+            if(target_ok && !native)target_ok=foot_lift_profile(robot->foot_lift_mm,robot->locomotion_profile,target_phase,
+                gait_policy_smootherstep(fminf(1,robot->drive_control.elapsed))*fminf(1,(fabsf(robot->drive_control.linear)+fabsf(robot->drive_control.yaw))/.15f),
+                robot->drive_control.linear,robot->drive_control.yaw,nominal);
             if(!target_ok){result=ROBOT_CONFIG_ERROR;break;}
             if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f &&
                (!native || s_native_stopped(&robot->s_native))) {

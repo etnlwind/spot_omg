@@ -159,6 +159,15 @@ class SNativeGait:
         delta[:, 2] = self.profile["params"][3]*activity*shape
         return self.origin + amplitude*delta
 
+    def extra_lift(self,points,phase,amplitude,linear,yaw):
+        mm=np.asarray(getattr(self,'foot_lift_mm',[0,0,0,0]),dtype=float)
+        if mm.shape!=(4,) or not np.isfinite(mm).all() or (mm<0).any() or (mm>2147483647).any():raise ValueError('foot lift must be nonnegative integer mm')
+        margin=self.profile['transfer_fraction']
+        u=np.clip((((phase+np.array([.5,0,0,.5]))%1)-.5-margin)/(.5-2*margin),0,1)
+        result=points.copy()
+        result[:,2]+=mm*.001*amplitude*min(1,(abs(linear)+abs(yaw))/.15)*64*u**3*(1-u)**3
+        return result
+
     def targets(self, phase, amplitude, linear, yaw):
         if self.profile.get('entry_sequence') == 'fr_double':
             return self.fr_entry_targets(phase, amplitude, linear, yaw)
@@ -170,6 +179,7 @@ class SNativeGait:
             # swing after startup moves it from S to the hip line; stance feet
             # retain their lateral placement until their own swing arrives.
             points[:,1]+=(self.placement_fraction-amplitude)*activity*self.walking_lateral_offset
+        points=self.extra_lift(points,phase,amplitude,linear,yaw)
         result, error = self.kin.solve(points, self.previous, iterations=60)
         if error > .001 or not np.isfinite(result).all():
             raise ValueError(f'S-native target unreachable: {error:.6f} m')
@@ -238,6 +248,7 @@ class SNativeGait:
             locked=self.standing[::3]+self.placement_fraction*self.normal_adduction
         # Re-solve J2/J3 with J1 fixed so extra FR adduction cannot shorten
         # its stride or lift it relative to its diagonal partner RL.
+        points=self.extra_lift(points,phase,amplitude,linear,yaw)
         result,error=self.kin.solve_xz(points,self.previous,locked,iterations=60)
         if error>.0002 or not np.isfinite(result).all():
             raise ValueError(f'S-native FR entry X/Z unreachable: {error:.6f} m')

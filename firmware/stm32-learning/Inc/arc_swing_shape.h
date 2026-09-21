@@ -35,13 +35,13 @@ static inline bool arc_swing_shape_refine(int leg,const float goal[3],float q[3]
     return error<1.e-10f;
 }
 
-static inline bool arc_swing_shape_apply(const GaitPolicyLegTarget nominal[4],
+static inline bool arc_swing_shape_apply_unbounded(const GaitPolicyLegTarget nominal[4],
         float phase,float duty,float scale,const float offsets[4],const float delta_m[4],
         GaitPolicyLegTarget out[4]) {
     if(!nominal||!offsets||!delta_m||!out||!isfinite(phase)||!isfinite(duty)||duty<.5f||duty>.85f||
        !isfinite(scale)||scale<0||scale>1)return false;
     for(int i=0;i<4;i++){
-        if(!isfinite(offsets[i])||offsets[i]<0||offsets[i]>=1||!isfinite(delta_m[i])||fabsf(delta_m[i])>.01f||
+        if(!isfinite(offsets[i])||offsets[i]<0||offsets[i]>=1||!isfinite(delta_m[i])||
            !isfinite(nominal[i].j1_deg)||!isfinite(nominal[i].j2_deg)||!isfinite(nominal[i].j3_deg)||
            nominal[i].j1_deg< -30||nominal[i].j1_deg>30||nominal[i].j2_deg< -45||nominal[i].j2_deg>100||
            nominal[i].j3_deg<0||nominal[i].j3_deg>150)return false;
@@ -58,5 +58,13 @@ static inline bool arc_swing_shape_apply(const GaitPolicyLegTarget nominal[4],
     }
     for(int i=0;i<4;i++)out[i]=result[i];
     return true;
+}
+/* Retain the original arc experiment contract; global foot lift has no height cap. */
+static inline bool arc_swing_shape_apply(const GaitPolicyLegTarget nominal[4],
+        float phase,float duty,float scale,const float offsets[4],const float delta_m[4],
+        GaitPolicyLegTarget out[4]) {
+    if(!delta_m)return false;
+    for(int i=0;i<4;i++)if(fabsf(delta_m[i])>.01f)return false;
+    return arc_swing_shape_apply_unbounded(nominal,phase,duty,scale,offsets,delta_m,out);
 }
 #endif

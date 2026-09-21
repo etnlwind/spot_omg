@@ -35,7 +35,7 @@ with (out/'build.log').open('w') as log:
         if src.suffix == '.c':
             # Keep existing motion code at O0. Console/diagnostic code uses
             # size optimization so the image still fits the fixed OTA slot.
-            optimization = '-Os' if src.name in ('app_console.c','servo_response_probe.c') else '-O0'
+            optimization = '-Os' if src.name in ('app_console.c','servo_response_probe.c','command_recovery.c','flight_log.c') else '-O0'
             cmd += ['-std=gnu11','-DUSE_HAL_DRIVER','-DSTM32F446xx',optimization,'-ffunction-sections','-fdata-sections','-Wall','-Werror'] + ['-I'+str(root/p) for p in includes]
         else:
             cmd += ['-x','assembler-with-cpp']

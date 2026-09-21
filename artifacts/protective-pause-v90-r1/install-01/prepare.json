@@ -1,0 +1,55 @@
+{
+  "stage": "prepare",
+  "firmware_sha256": "a6c44a37b0b88bcbb69fb319c9e7687b0909412b59b4411b50a44019d9dc7e77",
+  "success": false,
+  "completed_landing": false,
+  "all_torque_off": false,
+  "physical_walk_test": false,
+  "error": "Starting slow synchronized landing move\nPOSE landing reason=unstable elapsed=0 nominal=0 retries=0 waits=0 hold=0\nPOSE_HEALTH id=0 temp=0 hw=0x00 transient=0\nPOSE_PROBE count=0 mask=0x000 max_lead=120\nERROR: motion tilt safety limit reached; motion cancelled",
+  "events": [
+    {
+      "command": "syncstate",
+      "started_at": "2026-09-21T08:11:36.713688+00:00",
+      "lines": [
+        "$SPOTSTATE pose=custom error=175 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=30 lift_fr=30 lift_rl=10 lift_rr=10"
+      ],
+      "status": "info",
+      "text": "$SPOTSTATE pose=custom error=175 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=30 lift_fr=30 lift_rl=10 lift_rr=10"
+    },
+    {
+      "command": "status",
+      "started_at": "2026-09-21T08:11:36.863226+00:00",
+      "lines": [
+        "Servo status (12 configured IDs):",
+        "ID 1 pos=1925 speed=0 load=48 voltage=11400mV temp=34C current=1 moving=0 hw=0x00",
+        "ID 2 pos=1495 speed=0 load=-32 voltage=11500mV temp=32C current=2 moving=0 hw=0x00",
+        "ID 3 pos=2922 speed=0 load=56 voltage=11600mV temp=36C current=3 moving=0 hw=0x00",
+        "ID 4 pos=2088 speed=0 load=48 voltage=11500mV temp=35C current=1 moving=0 hw=0x00",
+        "ID 5 pos=2743 speed=0 load=40 voltage=11500mV temp=33C current=2 moving=0 hw=0x00",
+        "ID 6 pos=875 speed=0 load=-72 voltage=11600mV temp=36C current=3 moving=0 hw=0x00",
+        "ID 7 pos=2098 speed=0 load=32 voltage=11400mV temp=33C current=1 moving=0 hw=0x00",
+        "ID 8 pos=1201 speed=0 load=16 voltage=11500mV temp=30C current=0 moving=0 hw=0x00",
+        "ID 9 pos=3048 speed=0 load=24 voltage=11400mV temp=35C current=1 moving=0 hw=0x00",
+        "ID 10 pos=1957 speed=0 load=-32 voltage=11500mV temp=34C current=1 moving=0 hw=0x00",
+        "ID 11 pos=2838 speed=0 load=32 voltage=11400mV temp=34C current=2 moving=0 hw=0x00",
+        "ID 12 pos=1083 speed=0 load=-112 voltage=11400mV temp=40C current=4 moving=0 hw=0x00",
+        "Bus read retries: attempts=0 recovered=0 failed=0"
+      ],
+      "status": "info",
+      "text": "Servo status (12 configured IDs):\nID 1 pos=1925 speed=0 load=48 voltage=11400mV temp=34C current=1 moving=0 hw=0x00\nID 2 pos=1495 speed=0 load=-32 voltage=11500mV temp=32C current=2 moving=0 hw=0x00\nID 3 pos=2922 speed=0 load=56 voltage=11600mV temp=36C current=3 moving=0 hw=0x00\nID 4 pos=2088 speed=0 load=48 voltage=11500mV temp=35C current=1 moving=0 hw=0x00\nID 5 pos=2743 speed=0 load=40 voltage=11500mV temp=33C current=2 moving=0 hw=0x00\nID 6 pos=875 speed=0 load=-72 voltage=11600mV temp=36C current=3 moving=0 hw=0x00\nID 7 pos=2098 speed=0 load=32 voltage=11400mV temp=33C current=1 moving=0 hw=0x00\nID 8 pos=1201 speed=0 load=16 voltage=11500mV temp=30C current=0 moving=0 hw=0x00\nID 9 pos=3048 speed=0 load=24 voltage=11400mV temp=35C current=1 moving=0 hw=0x00\nID 10 pos=1957 speed=0 load=-32 voltage=11500mV temp=34C current=1 moving=0 hw=0x00\nID 11 pos=2838 speed=0 load=32 voltage=11400mV temp=34C current=2 moving=0 hw=0x00\nID 12 pos=1083 speed=0 load=-112 voltage=11400mV temp=40C current=4 moving=0 hw=0x00\nBus read retries: attempts=0 recovered=0 failed=0"
+    },
+    {
+      "command": "landing",
+      "started_at": "2026-09-21T08:11:37.075251+00:00",
+      "lines": [
+        "Starting slow synchronized landing move",
+        "POSE landing reason=unstable elapsed=0 nominal=0 retries=0 waits=0 hold=0",
+        "POSE_HEALTH id=0 temp=0 hw=0x00 transient=0",
+        "POSE_PROBE count=0 mask=0x000 max_lead=120",
+        "ERROR: motion tilt safety limit reached; motion cancelled"
+      ],
+      "status": "error",
+      "text": "Starting slow synchronized landing move\nPOSE landing reason=unstable elapsed=0 nominal=0 retries=0 waits=0 hold=0\nPOSE_HEALTH id=0 temp=0 hw=0x00 transient=0\nPOSE_PROBE count=0 mask=0x000 max_lead=120\nERROR: motion tilt safety limit reached; motion cancelled"
+    }
+  ]
+}

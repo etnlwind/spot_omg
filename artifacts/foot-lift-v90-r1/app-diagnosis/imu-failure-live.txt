@@ -1,0 +1,411 @@
+> syncstate
+$SPOTSTATE pose=stand error=7 torque=on safety=fault balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=11 support=load-supported mass_g=2754 lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0
+# 
+[앱 15:16:04 +539496.953] 전용 제어 채널 활성화 · 콘솔 로그와 완료 응답 분리
+> read 1
+
+[앱 15:16:04 +539497.031] 상태 busy → idle; 마지막 수신 0.078s 전
+
+[앱 15:16:04 +539497.046] 상태 idle → busy; 마지막 수신 0.093s 전
+> footlift set 20 20 0 0
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:04 +539497.281] 상태 busy → idle; 마지막 수신 0.188s 전
+OK footlift
+$SPOTSTATE pose=stand error=7 torque=on safety=fault balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=11 su
+[앱 15:16:04 +539497.390] 상태 idle → busy; 마지막 수신 0.015s 전
+> syncstate
+pport=load-supported mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0
+# > read 1
+$SPOTSTATE pose=stand error=7 torque=on safety=fault balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitud
+[앱 15:16:05 +539497.718] 상태 busy → idle; 마지막 수신 0.047s 전
+epd_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=11 support=load-supported mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0
+# ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:10 +539502.687] 상태 idle → busy; 마지막 수신 4.891s 전
+> read 1
+
+[앱 15:16:10 +539502.890] 상태 busy → idle; 마지막 수신 5.094s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:15 +539507.781] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:16:15 +539508.000] 상태 busy → idle; 마지막 수신 4.985s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:19 +539511.968] 상태 idle → drive; 마지막 수신 3.859s 전
+> drive -329 104 1
+
+[앱 15:16:19 +539512.171] 보행 입력: @D 2 -749 146
+
+[앱 15:16:19 +539512.250] 상태 drive → draining; 마지막 수신 4.141s 전
+
+[앱 15:16:20 +539513.031] 상태 draining → idle; 마지막 수신 4.922s 전
+$SPOTDRIVE started seq=1 linear=-329 yaw=104 watchdog=800ms rev=attitudepd-v4-v90-r1
+$SPOTDRIVE stopped reason=IMU balance error elapsed=14706ms
+ERROR: IMU balance error; motion cancelled
+Gait diagnostics: samples=735 min_voltage=11400mV lag=24 lag+droop=0 derate=recommended fall=no late_frames=1 limited_frames=0
+Bus read retries: attempts=6 recovered=6 failed=0
+Gait timing: balance=off nominal=0ms elapsed=14706ms step_sync_blocking_wait=0ms max_barrier=0ms max_balance_gap=0ms
+Step sync monitor: transitions=0 misses=0 peak_recent_error=0ticks
+  ID1 FL J1 phase=0 cmd=1920 pos=1924 err=-4 speed_raw=0 current=1 load=40 voltage=11900mV peak_err=10(0.9deg)@362 mean_err=4(0.4deg) peak_current=3 peak_load=88 min_v=11700mV lag=0 lag_rule=96/2 samples=61
+    peak_ctx=stance cmd=1920 pos=1930 err=-10 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-10ticks
+  ID2 FL J2 phase=0 cmd=1430 pos=1424 err=6 speed_raw=0 current=4 load=-48 voltage=12100mV peak_err=78(6.9deg)@752 mean_err=21(1.8deg) peak_current=130 peak_load=328 min_v=11700mV lag=0 lag_rule=144/3 samples=62
+    peak_ctx=swing cmd=1376 pos=1454 err=-78 target_v=114deg/s target_a=0deg/s2 match_age=3fr(~60ms) match_err=1ticks
+  ID3 FL J3 phase=0 cmd=2996 pos=2996 err=0 speed_raw=0 current=0 load=0 voltage=12100mV peak_err=166(14.6deg)@943 mean_err=34(3.0deg) peak_current=92 peak_load=484 min_v=11900mV lag=7 lag_rule=96/2 samples=62
+    peak_ctx=swing cmd=2955 pos=3121 err=-166 target_v=-65deg/s target_a=1100deg/s2 match_age=8fr(~160ms) match_err=-1ticks
+  ID4 FR J1 phase=0 cmd=2082 pos=2076 err=6 speed_raw=0 current=2 load=-56 voltage=12100mV peak_err=11(1.0deg)@941 mean_err=6(0.5deg) peak_current=4 peak_load=96 min_v=12000mV lag=0 lag_rule=96/2 samples=61
+    peak_ctx=stance cmd=2083 pos=2072 err=11 target_v=0deg/s target_a=0deg/s2 match_age=4fr(~80ms) match_err=10ticks
+  ID5 FR J2 phase=0 cmd=2569 pos=2569 err=0 speed_raw=50 current=0 load=0 voltage=12100mV peak_err=93(8.2deg)@286 mean_err=18(1.6deg) peak_current=96 peak_load=372 min_v=11800mV lag=0 lag_rule=144/3 samples=61
+    peak_ctx=swing cmd=2660 pos=2567 err=93 target_v=92deg/s target_a=-1100deg/s2 match_age=4fr(~80ms) match_err=-10ticks
+  ID6 FR J3 phase=0 cmd=1050 pos=1044 err=6 speed_raw=0 current=2 load=-56 voltage=12200mV peak_err=192(16.9deg)@457 mean_err=34(3.0deg) peak_current=50 peak_load=476 min_v=12000mV lag=7 lag_rule=96/2 samples=61
+    peak_ctx=swing cmd=1108 pos=916 err=192 target_v=-48deg/s target_a=1300deg/s2 match_age=10fr(~200ms) match_err=0ticks
+  ID7 RL J1 phase=0 cmd=2095 pos=2091 err=4 speed_raw=0 current=1 load=-40 voltage=12000mV peak_err=15(1.3deg)@871 mean_err=6(0.5deg) peak_current=8 peak_load=132 min_v=11900mV lag=0 lag_rule=96/2 samples=61
+    peak_ctx=stance cmd=2095 pos=2080 err=15 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=15ticks
+  ID8 RL J2 phase=0 cmd=1295 pos=1298 err=-3 speed_raw=0 current=1 load=24 voltage=12100mV peak_err=77(6.8deg)@267 mean_err=18(1.6deg) peak_current=48 peak_load=256 min_v=11700mV lag=0 lag_rule=144/3 samples=61
+    peak_ctx=swing cmd=1224 pos=1301 err=-77 target_v=105deg/s target_a=-200deg/s2 match_age=3fr(~60ms) match_err=-2ticks
+  ID9 RL J3 phase=0 cmd=2995 pos=3002 err=-7 speed_raw=0 current=2 load=64 voltage=12000mV peak_err=173(15.2deg)@457 mean_err=32(2.8deg) peak_current=60 peak_load=424 min_v=11800mV lag=3 lag_rule=96/2 samples=61
+
+    peak_ctx=swing cmd=2938 pos=3111 err=-173 target_v=-43deg/s target_a=1550deg/s2 match_age=8fr(~160ms) match_err=-4ticks
+  ID10 RR J1 phase=0 cmd=1960 pos=1963 err=-3 speed_raw=0 current=1 load=32 voltage=12100mV peak_err=10(0.9deg)@476 mean_err=4(0.4deg) peak_current=4 peak_load=88 min_v=11800mV lag=0 lag_rule=96/2 samples=61
+    peak_ctx=stance cmd=1960 pos=1970 err=-10 target_v=0deg/s target_a=0deg/s2 match_age=0fr(~0ms) match_err=-10ticks
+  ID11 RR J2 phase=0 cmd=2902 pos=2904 err=-2 speed_raw=0 current=0 load=16 voltage=12000mV peak_err=85(7.5deg)@724 mean_err=18(1.6deg) peak_current=186 peak_load=376 min_v=11400mV lag=0 lag_rule=144/3 samples=61
+    peakift_rr=0
+# 
+[앱 15:16:25 +539518.031] 상태 idle → busy; 마지막 수신 3.500s 전
+> read 1
+
+[앱 15:16:25 +539518.250] 상태 busy → idle; 마지막 수신 3.719s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:27 +539519.890] 스틱 해제: mouseReleaseEvent; held=False; buttons=MouseButton.NoButton
+
+[앱 15:16:30 +539523.140] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:16:30 +539523.359] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:35 +539528.234] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:16:35 +539528.453] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:16:40 +539533.343] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:16:40 +539533.562] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:45 +539538.437] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:16:46 +539538.656] 상태 busy → idle; 마지막 수신 4.985s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:16:50 +539543.531] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:16:51 +539543.750] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:16:56 +539548.640] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:16:56 +539548.859] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:01 +539553.734] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:17:01 +539554.015] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:06 +539558.906] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:17:06 +539559.171] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:11 +539564.062] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:17:11 +539564.343] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:16 +539569.218] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:17:16 +539569.500] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:17:21 +539574.375] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:17:22 +539574.656] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:26 +539579.531] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:17:27 +539579.750] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:32 +539584.640] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:17:32 +539584.921] 상태 busy → idle; 마지막 수신 5.046s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:37 +539589.796] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:17:37 +539590.078] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:42 +539594.953] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:17:42 +539595.234] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:47 +539600.125] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:17:47 +539600.390] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:52 +539605.281] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:17:52 +539605.500] 상태 busy → idle; 마지막 수신 4.985s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:17:57 +539610.375] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:17:58 +539610.718] 상태 busy → idle; 마지막 수신 5.093s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:02 +539615.593] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:18:03 +539615.875] 상태 busy → idle; 마지막 수신 5.032s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:08 +539620.765] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:18:08 +539621.031] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:18:13 +539625.921] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:18:13 +539626.203] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:18 +539631.078] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:18:18 +539631.359] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:23 +539636.234] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:18:23 +539636.515] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:28 +539641.406] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:18:29 +539641.671] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:33 +539646.562] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:18:34 +539646.843] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:39 +539651.718] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:18:39 +539651.937] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:18:44 +539656.812] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:18:44 +539657.031] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:49 +539661.921] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:18:49 +539662.203] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:18:54 +539667.078] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:18:54 +539667.359] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11800mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:18:59 +539672.234] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:18:59 +539672.453] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:19:04 +539677.343] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:19:04 +539677.562] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:19:09 +539682.437] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:19:10 +539682.718] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=33C current=1 moving=0 hw=0x00
+# 
+[앱 15:19:14 +539687.593] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:19:15 +539687.937] 상태 busy → idle; 마지막 수신 5.094s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:19:20 +539692.765] 상태 idle → busy; 마지막 수신 4.703s 전
+> read 1
+
+[앱 15:19:20 +539693.031] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:19:25 +539697.921] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:19:25 +539698.203] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:19:30 +539703.078] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:19:30 +539703.296] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:19:35 +539708.187] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:19:35 +539708.453] 상태 busy → idle; 마지막 수신 5.032s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:19:40 +539713.343] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:19:41 +539713.625] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:19:45 +539718.500] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:19:46 +539718.781] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:19:51 +539723.656] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:19:51 +539723.937] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:19:56 +539728.828] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:19:56 +539729.046] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:01 +539733.921] 상태 idle → busy; 마지막 수신 4.765s 전
+> read 1
+
+[앱 15:20:01 +539734.140] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:20:06 +539739.015] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:20:06 +539739.234] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:11 +539744.125] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:20:11 +539744.343] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11800mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:12 +539744.875] 상태 idle → busy; 마지막 수신 0.422s 전
+> imucal status
+
+[앱 15:20:12 +539744.937] 상태 busy → idle; 마지막 수신 0.484s 전
+
+[앱 15:20:12 +539745.046] 상태 idle → busy; 마지막 수신 0.593s 전
+> syncstate
+IMUCAL: failed to read device status
+# > read 1
+$SPOTSTATE pose=stand error=7 torque=on safety=ok balance=suspended rev=attitudepd-v4-v90-r1 caps=footlift,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd
+[앱 15:20:13 +539745.953] 상태 busy → idle; 마지막 수신 0.172s 전
+_v2,attitudepd_v3,attitudepd_v4,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow,headinghold profile=attitudepd_v4 heading=on reverse_limit=1000 recovery=new-command fault_code=0 support=observing mass_g=2754 lift_fl=20 lift_fr=20 lift_rl=0 lift_rr=0
+# ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:18 +539750.843] 상태 idle → busy; 마지막 수신 4.640s 전
+> read 1
+
+[앱 15:20:18 +539751.062] 상태 busy → idle; 마지막 수신 4.859s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:20:23 +539755.937] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:20:23 +539756.218] 상태 busy → idle; 마지막 수신 5.031s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:28 +539761.046] 상태 idle → busy; 마지막 수신 4.703s 전
+> read 1
+
+[앱 15:20:28 +539761.328] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:20:33 +539766.203] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:20:33 +539766.484] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:38 +539771.359] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:20:39 +539771.640] 상태 busy → idle; 마지막 수신 5.047s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:42 +539775.515] 상태 idle → busy; 마지막 수신 3.750s 전
+> i2cscan
+> read 1
+I2CSCAN: no devices. Check SDA on D14/PB9, SCL on D15/PB8, 3V3 and GND
+# 
+[앱 15:20:46 +539779.140] 상태 busy → idle; 마지막 수신 0.187s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11800mV temp=34C current=0 moving=0 hw=0x00
+# 
+[앱 15:20:51 +539784.015] 상태 idle → busy; 마지막 수신 4.750s 전
+> read 1
+
+[앱 15:20:51 +539784.234] 상태 busy → idle; 마지막 수신 4.969s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11900mV temp=34C current=1 moving=0 hw=0x00
+# 
+[앱 15:20:56 +539789.125] 상태 idle → busy; 마지막 수신 4.766s 전
+> read 1
+
+[앱 15:20:56 +539789.343] 상태 busy → idle; 마지막 수신 4.984s 전
+ID 1 pos=1924 speed=0 load=40 voltage=11800mV temp=34C current=1 moving=0 hw=0x00
+#

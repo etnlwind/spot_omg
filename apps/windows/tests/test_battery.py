@@ -41,13 +41,13 @@ def test_invalid_or_unselected_source_ignored(line):
     assert reading(line) is None
 
 
-def test_fragmented_telemetry_warns_during_drive_without_motor_command():
+def test_fragmented_load_telemetry_does_not_warn_during_drive():
     record = b'$BATTERY mv=10300\r\n'
     for split in range(len(record)+1):
         c = ready(); c.update(0, 1, 1); drain(c)
         c.feed(record[:split], 2); c.feed(record[split:], 2)
-        assert c.battery.level == 2
-        assert c.voltage == 10.3
+        assert c.battery.level == 0
+        assert c.voltage is None
         assert c.phase == 'drive'
         assert drain(c) == b''
         c.tick(2.1)
@@ -61,9 +61,12 @@ def test_idle_poll_only_and_previous_gait_minimum_does_not_replace_live_voltage(
     c.tick(6.1)
     assert not drain(c)
     c.feed(b'ID 1 voltage=11500mV\r\n# ', 6.2)
-    c.feed(b'Gait diagnostics: samples=2828 min_voltage=10300mV lag=121\r\n', 7)
-    assert c.voltage == 11.5 and c.voltage_at == 6.2
-    assert c.battery.level == 2
+    for now in (11,16):
+        c._console('read 1',now);drain(c)
+        c.feed(b'ID 1 voltage=11500mV\r\n# ',now+.2)
+    c.feed(b'Gait diagnostics: samples=2828 min_voltage=10300mV lag=121\r\n', 17)
+    assert c.voltage == 11.5 and c.voltage_at == 16.2
+    assert c.battery.level == 0
     c.connected = False
     assert c.snapshot()['battery_warning'] == {}
 
@@ -86,3 +89,31 @@ def test_simulator_neither_polls_nor_warns_for_low_voltage():
     assert b'read 1' not in drain(c)
     c.battery.observe(10300,7)  # Even stale real-robot state cannot surface.
     assert c.snapshot()['battery_warning']=={}
+
+
+def test_rest_settling_and_three_consistent_samples_required_for_warning():
+    c=ready()
+    for now,mv in [(1,10300),(6,10300),(11,10300),(16,10300)]:
+        c._console('read 1',now);drain(c)
+        c.feed(f'ID 1 voltage={mv}mV moving=0\r\n# '.encode(),now+.1)
+        assert c.battery.level==(2 if now==16 else 0)
+    assert c.voltage==10.3
+
+
+def test_single_idle_dip_and_historical_minimum_do_not_warn():
+    c=ready()
+    for now,mv in [(6,11500),(11,10300),(16,11500),(21,11500),(26,11500)]:
+        c._console('read 1',now);drain(c)
+        c.feed(f'ID 1 voltage={mv}mV moving=0\r\n# '.encode(),now+.1)
+    c.feed(b'Gait diagnostics: min_voltage=9900mV\r\n',27)
+    assert c.battery.level==0 and c.voltage==11.5
+    c.update(0,1,28);drain(c)
+    c.feed(b'$BATTERY mv=9800\r\n',29)
+    assert c.voltage==11.5 and c.battery.level==0
+
+
+def test_posture_clears_rest_samples_and_restarts_settling():
+    c=ready();c._console('landing',6)
+    assert c.rest_since is None and not c.rest_samples
+    c.feed(b'ID 1 voltage=9900mV\r\nOK\r\n# ',7)
+    assert c.voltage is None and c.battery.level==0

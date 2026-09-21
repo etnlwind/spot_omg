@@ -2,6 +2,7 @@
 #define S_NATIVE_H
 #include "gait_policy.h"
 typedef struct {
+    uint32_t foot_lift_mm[4];
     float previous[4][3], normal[4][3], entry_phase, last_phase;
     float stop_progress, stop_j1[4], support[64];
     float stop_pose[4][3], stop_feet[4][3];

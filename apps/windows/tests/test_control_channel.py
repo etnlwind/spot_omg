@@ -84,6 +84,16 @@ def test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_c
             owner.pulse((0,.5))
             await until(lambda:radio.drive_seq is not None)
             await until(lambda:snapshots[-1].get('phase')=='drive')
+            # Console traffic must not cancel motion or starve live updates.
+            before=len([d for d in sent if d.startswith(b'@D ')])
+            flood_until=time.monotonic()+.7
+            while time.monotonic()<flood_until:
+                radio.console.put_nowait(b'ERROR: old log\r\n# '+b'L'*200+b'\n')
+                owner.pulse((0,.8))
+                app.processEvents()
+                await asyncio.sleep(.01)
+            assert len([d for d in sent if d.startswith(b'@D ')])-before >= 3
+            assert snapshots[-1]['phase']=='drive' and snapshots[-1]['connected']
             owner.pulse(None)
             stopped=time.monotonic()
             await until(lambda:snapshots[-1].get('phase')=='idle')

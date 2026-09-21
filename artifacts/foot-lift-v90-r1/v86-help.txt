@@ -1,0 +1,56 @@
+Spot OMG STM32 servo console
+  ping ID          ping one servo
+  scan             ping configured IDs 1..12
+  uarttest         USART1 loopback test (PA9 connected to PA10)
+  busprobe ID      send ping and print raw USART1 response bytes
+  linestate        sample the idle level of PA9/PA10
+  read ID          read position/load/current/state
+  move ID RAW      safe single move, max delta 256 ticks
+  targets          print calibrated stand raw targets
+  status           read health state from all 12 servos
+  syncstate        compact mobile-app state snapshot
+  gaitprofile NAME legacy|crawl|cruise|trot|highstep|lift|imu|level|level15|joint|jointfast|jointsport (idle)
+  heading on|off   IMU forward heading hold (idle)
+  tracking on|off  experimental tracking governor (idle; default off)
+  trackingdiag    tracking error, age and phase rate
+  profile [S A]   show/set speed 1..3400, acceleration 0..254
+  echo on|off     STM32 input echo control (default off)
+  hold             torque on at all current positions
+  stand            direct synchronized stand move
+  stand11          straighten every leg (J2=0, J3=0)
+  forward11        from stand: J2=-90/J3=0 together, 24s
+  landing          calibrated landing pose (J2=40, J3=130)
+  trot [C [MS]]    diagonal trot, cycles 1..10, period 600..5000ms
+  trotplace [C [MS]] in-place diagonal trot; Ctrl+C stop
+  trot2 [C [MS]]   circular-foot diagonal trot; Ctrl+C stop
+  trot3 [C [MS]]   overlap trot (default 2200ms, max 2400ms)
+  trot5 [C [MS]]   CAD optimized forward (3 cycles, 844ms); IMU monitor only
+  trot4 [C [MS]]   posture-smooth reduced-path trot (default 1600ms)
+  trot4back [C [MS]] reverse trot4 with IMU pitch placement
+  turn left|right [C [MS]] differential trot turn (default 2200ms)
+  drive LINEAR YAW SEQ continuous 50Hz remote drive; @D update, @S stop
+  crab [left|right [C [MS]]] four-beat crawl (default left, 4000ms)
+  fwupdate         torque off and reboot into BLE update bootloader
+  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop
+  relax [ID]       torque off all servos, or only ID
+  safety           stall detector state and the latched fault
+  probeconfig show|reset|set LIFT_MM LINEAR MS all|rl|rr
+  walkprobe        execute configured bounded V625 probe
+  rearprobe rl|rr  original rear trajectory; other three legs S
+  jointtrace arm|off|status|dump  raw timed gait feedback (RAM)
+  gaitdiag         last gait tracking/current/voltage report
+  imutrace status|dump  paged timed gait IMU; armed with jointtrace
+  baldiag          recent balance frames and tilt snapshot
+  baltest          preview static balance correction; no servo motion
+  recover          clear a safety fault and hold where the legs are
+  i2cscan          scan I2C1 for the BNO055
+  spitest          SPI1 loopback test (BNO086 removed, PA7 connected to PA6)
+  imuprobe         reset the BNO086 and report H_INTN and the SHTP header
+  imursttest       hold PB2/BNO086 RST low for 5 seconds
+  imu on|off|status control 10 Hz IMU logging (default off)
+  imucal status|device|level|clear BNO055 persistent calibration
+  balance full|normal|on|off|status IMU balance (default full/on)
+  mechdiag capture LABEL  persist 12 motor readings; no motion
+  log status|time MS|show [N]|clear persistent flight recorder
+  help             show this help
+Console echo: off

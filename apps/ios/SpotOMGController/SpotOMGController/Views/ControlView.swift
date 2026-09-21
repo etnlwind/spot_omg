@@ -5,6 +5,7 @@ import UIKit
 struct ControlView: View {
     @EnvironmentObject private var bluetooth: RobotBluetoothManager
     @State private var probeDraft = RobotProbeConfig()
+    @State private var footLiftDraft = [0,0,0,0]
     @State private var showRelaxConfirmation = false
     @State private var acknowledgedBatteryLevel = 0
     @State private var consoleCommand = ""
@@ -25,6 +26,18 @@ struct ControlView: View {
         return revision.isEmpty || revision == "unknown" ? (bluetooth.lastError == nil ? "확인 중" : "응답 없음") : revision
     }
 
+    private func loadFootLift() {
+        if let saved=UserDefaults.standard.array(forKey:"footLiftMm") as? [Int], saved.count == 4, saved.allSatisfy({ (0...2147483647).contains($0) }) { footLiftDraft=saved }
+    }
+    private func footLiftField(_ index: Int,_ name: String) -> some View {
+        VStack {
+            Text(name).font(.caption)
+            TextField("mm",value:$footLiftDraft[index],format:.number)
+                .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+                .onChange(of:footLiftDraft[index]) { _,value in footLiftDraft[index]=min(2147483647,max(0,value)) }
+            Stepper("\(footLiftDraft[index]) mm",value:$footLiftDraft[index],in:0...2147483647).font(.caption)
+        }
+    }
     var body: some View {
         VStack(spacing: 0) {
             if bluetooth.target == .robot && bluetooth.state.isReady && bluetooth.batteryWarning.level > 0 { batteryWarningBanner }
@@ -116,6 +129,31 @@ struct ControlView: View {
                     }
                 }
 
+                Section("발 추가 들림 · 모든 보행") {
+                    VStack(spacing: 12) {
+                        Text("↑ 로봇 앞쪽").font(.caption)
+                        HStack {
+                            VStack(spacing: 50) { footLiftField(0,"FL · 앞 왼쪽"); footLiftField(2,"RL · 뒤 왼쪽") }
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 16).fill(Color.green.opacity(0.15))
+                                RoundedRectangle(cornerRadius: 16).stroke(Color.green,lineWidth: 2)
+                                Text("Spot\nOMG").font(.headline).multilineTextAlignment(.center)
+                            }.frame(width: 65,height: 180)
+                            VStack(spacing: 50) { footLiftField(1,"FR · 앞 오른쪽"); footLiftField(3,"RR · 뒤 오른쪽") }
+                        }
+                        Text("0 = 기본 보행 · 스윙 중에만 추가 들림 · 로봇 기준 좌우").font(.caption).foregroundStyle(.secondary)
+                        if bluetooth.state.isReady, let applied=bluetooth.footLiftApplied {
+                            Text(zip(["FL","FR","RL","RR"],applied).map { "\($0.0) \($0.1)mm" }.joined(separator:" / ")).font(.caption.monospacedDigit())
+                        }
+                        Text(bluetooth.runtimeState.capabilities.contains("footlift") ? bluetooth.footLiftMessage : "지원 펌웨어(V90-R1)에 연결하면 반영할 수 있습니다.").font(.caption)
+                        HStack {
+                            Button("저장·반영") { bluetooth.configureFootLift(footLiftDraft) }.disabled(!bluetooth.canConfigureFootLift)
+                            Button("저장값 불러오기") { loadFootLift() }
+                            Button("모두 0") { footLiftDraft=[0,0,0,0] }
+                        }.buttonStyle(.bordered)
+                        Text("저장값은 이 iPhone에 보관됩니다. 로봇 재부팅 후 다시 반영하세요.").font(.caption).foregroundStyle(.secondary)
+                    }.onAppear { loadFootLift() }
+                }
                 Section("보행 방식") {
                     Picker("보행 방식", selection: $bluetooth.parameterWalking) {
                         Text("모델 보행").tag(false)

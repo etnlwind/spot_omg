@@ -10,7 +10,7 @@ from simulation.mujoco.paths import REPO_ROOT, SIM_ROOT, RESULTS_ROOT
 import ctypes
 import hashlib
 from pathlib import Path
-import subprocess
+from servo.host_build import build_shared, library_suffix
 import tempfile
 
 import numpy as np
@@ -41,13 +41,11 @@ int shape_test_nominal(float phase,float out[12]){
         for name in ('arc_swing_shape.h','arc_turn.h','arc_geometry.h','gait_policy.h'):
             digest.update((inc/name).read_bytes())
         cache=Path(tempfile.gettempdir())/'spot-arc-swing-shape';cache.mkdir(exist_ok=True)
-        library=cache/(digest.hexdigest()[:20]+'.dylib')
+        library=cache/(digest.hexdigest()[:20]+library_suffix())
         if not library.exists():
             with tempfile.TemporaryDirectory(dir=cache) as directory:
                 cfile=Path(directory)/'shape.c';cfile.write_text(source)
-                output=Path(directory)/'shape.dylib'
-                subprocess.run(['cc','-shared','-fPIC','-O2','-ffp-contract=off','-std=c11','-I',str(inc),str(cfile),'-o',str(output)],check=True,capture_output=True)
-                output.replace(library)
+                build_shared([cfile],inc,library,extra=['-ffp-contract=off'])
         lib=ctypes.CDLL(str(library));f=ctypes.c_float;fp=ctypes.POINTER(f)
         lib.shape_apply.argtypes=(fp,f,f,f,fp,fp,fp);lib.shape_apply.restype=ctypes.c_int
         lib.shape_feet.argtypes=(fp,fp)

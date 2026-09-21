@@ -269,6 +269,21 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         UserDefaults.standard.set(data,forKey:"savedWalkingParameters")
         appendConsole("파라미터 저장 완료 · " + config.summary + "\n")
     }
+    @Published private(set) var footLiftApplied: [Int]?
+    @Published private(set) var footLiftMessage = "연결 후 적용값 확인"
+    private var footLiftExpected: [Int]?
+    var canConfigureFootLift: Bool {
+        state.isReady && runtimeState.capabilities.contains("footlift") && !motionControlsLocked && !driveSessionActive && pendingConsoleResponses == 0 && footLiftExpected == nil
+    }
+    func configureFootLift(_ values: [Int]) {
+        guard canConfigureFootLift, values.count == 4, values.allSatisfy({ (0...2147483647).contains($0) }) else { return }
+        footLiftExpected=values;footLiftMessage="적용값 확인 중…"
+        send(.raw("footlift set " + values.map(String.init).joined(separator: " ")))
+        DispatchQueue.main.asyncAfter(deadline: .now()+10) { [weak self] in
+            guard let self, self.footLiftExpected != nil else { return }
+            self.footLiftExpected=nil;self.footLiftMessage="적용 확인 실패 · 저장하지 않았습니다."
+        }
+    }
     @Published private(set) var probeConfig: RobotProbeConfig?
     @Published private(set) var probeRunning = false
     @Published private(set) var probeBusy = false
@@ -278,9 +293,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var probeTimeout: DispatchWorkItem?
     private var probeStopAt: Date?
     var supportsProbe: Bool {
-        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80"].contains(runtimeState.revision)
+        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1"].contains(runtimeState.revision)
     }
-    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80"].contains(runtimeState.revision) && !target.isSimulator }
+    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1"].contains(runtimeState.revision) && !target.isSimulator }
     var probeConfigurationBlockReason: String? {
         if !state.isReady { return "로봇에 연결한 뒤 설정을 적용할 수 있습니다." }
         if target.isSimulator { return "직접 설정 보행은 현재 실제 로봇 연결에서만 지원합니다." }
@@ -471,6 +486,11 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
 
     func send(_ command: RobotCommand) {
         let first = command.consoleLine.split(separator:" ").first.map(String.init) ?? ""
+        if first == "footlift" {
+            guard state.isReady, runtimeState.capabilities.contains("footlift"), !motionControlsLocked, !driveSessionActive, pendingConsoleResponses == 0 else {
+                lastError="정지 후 지원 펌웨어에 발 들림 보정을 적용하세요.";return
+            }
+        }
         if ["walkprobe","rearprobe","probeconfig"].contains(first) {
             lastError="파라미터 시험 패널을 사용하십시오.";return
         }
@@ -1085,6 +1105,16 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             for field in line.dropFirst("$SPOTSTATE ".count).split(separator: " ") {
                 let pair = field.split(separator: "=", maxSplits: 1).map(String.init)
                 if pair.count == 2 { values[pair[0]] = pair[1] }
+            }
+            let liftKeys=["lift_fl","lift_fr","lift_rl","lift_rr"]
+            let lift=liftKeys.compactMap { values[$0].flatMap(Int.init) }
+            footLiftApplied=lift.count == 4 ? lift : nil
+            if let expected=footLiftExpected, lift.count == 4 {
+                if lift == expected {
+                    UserDefaults.standard.set(lift,forKey:"footLiftMm")
+                    footLiftMessage="저장·반영 완료"
+                } else { footLiftMessage="반영 불일치 · 저장하지 않았습니다." }
+                footLiftExpected=nil
             }
             runtimeState = RobotRuntimeState(
                 pose: values["pose"] ?? "unknown",
