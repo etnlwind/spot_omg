@@ -3,6 +3,10 @@
 #include "body_stabilizer.h"
 #include "body_stabilization_config.h"
 #include "arc_turn.h"
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("Os", "fp-contract=off")
+#endif
 
 /* Compatibility adapter: recover the EXISTING nominal CAD cushion trajectory,
  * add Cartesian offsets, then perform the final IK. The controller itself has
@@ -36,9 +40,9 @@ static inline bool attitude_pd_refine(int leg,const float target[3],float q[3]) 
     return false;
 }
 
-static inline bool attitude_pd_apply(AttitudePd *s, const BodyStabilizerConfig *cfg,
+static inline bool attitude_pd_apply_offsets(AttitudePd *s, const BodyStabilizerConfig *cfg,
         const BodyImuState *imu, uint32_t now, float dt, bool enabled,
-        float phase, float period, float duty, bool moving,
+        float phase, float period, float duty, bool moving,const float phase_offsets[4],
         const GaitPolicyLegTarget nominal[4], GaitPolicyLegTarget output[4]) {
     float feet[4][3], body_feet[4][3], offsets[4][3], weights[4] = {0};
     if (!s || !cfg || !nominal || !output) return false;
@@ -48,7 +52,7 @@ static inline bool attitude_pd_apply(AttitudePd *s, const BodyStabilizerConfig *
         arc_foot(i,q,feet[i],NULL);
         for(int j=0;j<3;j++) body_feet[i][j]=feet[i][j]-arc_center[j];
     }
-    if (moving && !body_stabilizer_stance_weights(phase,duty,period,cfg->stance_transition_s,weights)) {
+    if (moving && !body_stabilizer_stance_weights_offsets(phase,duty,period,cfg->stance_transition_s,phase_offsets,weights)) {
         s->body.diagnostics.status=BODY_STABILIZER_INVALID_GEOMETRY;return false;
     }
     AttitudePd next=*s;
@@ -81,4 +85,14 @@ static inline bool attitude_pd_apply(AttitudePd *s, const BodyStabilizerConfig *
     for(int i=0;i<4;i++)output[i]=solved[i];
     return true;
 }
+static inline bool attitude_pd_apply(AttitudePd *s, const BodyStabilizerConfig *cfg,
+        const BodyImuState *imu,uint32_t now,float dt,bool enabled,
+        float phase,float period,float duty,bool moving,
+        const GaitPolicyLegTarget nominal[4],GaitPolicyLegTarget output[4]) {
+    const float offsets[4]={0,.5f,.5f,0};
+    return attitude_pd_apply_offsets(s,cfg,imu,now,dt,enabled,phase,period,duty,moving,offsets,nominal,output);
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 #endif

@@ -4,6 +4,19 @@ import Network
 @testable import SpotOMGController
 
 final class RobotCommandTests: XCTestCase {
+    func testV8RequiresAdvertisedCapability() {
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v8.isSupported(capabilities:["attitudepd_v7"]))
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v8.isSupported(capabilities:["attitudepd_v8"]))
+    }
+    func testV7NavigationLabelsAndCapability() {
+        XCTAssertEqual(RobotDriveVector.make(x:1,y:0)?.navigationTitle,"오른쪽 옆걸음")
+        XCTAssertEqual(RobotDriveVector.make(x:-1,y:0)?.navigationTitle,"왼쪽 옆걸음")
+        XCTAssertEqual(RobotDriveVector.make(x:0.7,y:-0.7)?.navigationTitle,"제자리 우회전")
+        XCTAssertEqual(RobotDriveVector.make(x:-0.7,y:-0.7)?.navigationTitle,"제자리 좌회전")
+        XCTAssertEqual(RobotDriveVector.make(x:0,y:-1)?.navigationTitle,"후진 · 보행 속도 50%")
+        XCTAssertFalse(SimulatorGaitProfile.attitudepd_v7.isSupported(capabilities:["attitudepd_v6"]))
+        XCTAssertTrue(SimulatorGaitProfile.attitudepd_v7.isSupported(capabilities:["attitudepd_v7"]))
+    }
     func testLongStandWaitsForPromptBeforeRefreshAndAllowsDriveAndFootLift() {
         var sent: [String] = []
         let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
@@ -179,7 +192,7 @@ final class RobotCommandTests: XCTestCase {
         let manager = RobotBluetoothManager { sent.append(String(decoding: $0, as: UTF8.self)) }
         defer { manager.disconnect() }
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v6-v92 caps=gaitprofiles,attitudepd_v4,attitudepd_v5,attitudepd_v6 profile=attitudepd_v5\r\n# ")
-        XCTAssertEqual(Array(SimulatorGaitProfile.allCases.prefix(3)), [.attitudepd_v6, .attitudepd_v5, .attitudepd_v4])
+        XCTAssertEqual(Array(SimulatorGaitProfile.allCases.prefix(6)), [.attitudepd_v9, .attitudepd_v8, .attitudepd_v7, .attitudepd_v6, .attitudepd_v5, .attitudepd_v4])
         XCTAssertEqual(SimulatorGaitProfile.attitudepd_v6.title, "IMU 자세 안정화 V6 · 복귀 발들림 개선 · 실험")
         XCTAssertTrue(sent.contains("gaitprofile attitudepd_v6\n"))
         XCTAssertEqual(manager.runtimeState.simulationProfile, "attitudepd_v5", "Selection must continue to reflect firmware readback")
@@ -206,7 +219,7 @@ final class RobotCommandTests: XCTestCase {
     func testV91AdvertisesV5AndOlderFirmwareHidesIt() {
         let manager = RobotBluetoothManager(commandWriter: { _ in })
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v5-v91 caps=gaitprofiles,attitudepd_v4,attitudepd_v5 profile=attitudepd_v5\r\n# ")
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v9)
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v5.isSupported(capabilities: manager.runtimeState.capabilities))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd_v5.isSupported(capabilities: ["attitudepd_v4"]))
         XCTAssertTrue(manager.supportsIMURecovery)
@@ -218,7 +231,7 @@ final class RobotCommandTests: XCTestCase {
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v4-v80 caps=gaitprofiles,attitudepd_v2,attitudepd_v3,attitudepd_v4 profile=attitudepd_v4\r\n# ")
         XCTAssertTrue(manager.supportsProbe)
         XCTAssertTrue(manager.supportsProbeWidth)
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v9)
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v4.isSupported(capabilities: manager.runtimeState.capabilities))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd_v4.isSupported(capabilities: ["attitudepd_v3"]))
         XCTAssertEqual(RobotDriveVector.make(x: 0, y: 0.5)?.linearPerMille, 588)
@@ -232,7 +245,7 @@ final class RobotCommandTests: XCTestCase {
         manager.receiveConsoleText("$SPOTSTATE pose=stand torque=on safety=ok rev=attitudepd-v3-v79 caps=gaitprofiles,attitudepd_v2,attitudepd_v3 profile=attitudepd_v3\r\n# ")
         XCTAssertTrue(manager.supportsProbe)
         XCTAssertTrue(manager.supportsProbeWidth)
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v9)
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: manager.runtimeState.capabilities))
         XCTAssertFalse(SimulatorGaitProfile.attitudepd_v3.isSupported(capabilities: ["attitudepd_v2"]))
         XCTAssertTrue(SimulatorGaitProfile.attitudepd_v2.isSupported(capabilities: ["attitudepd_v2"]))
@@ -308,7 +321,7 @@ final class RobotCommandTests: XCTestCase {
         XCTAssertFalse(manager.canStartProbe);manager.startProbe();XCTAssertFalse(commands.contains("walkprobe\n"))
     }
     func testV621IsNewestSimulatorModelAndPreservesEarlierModels() {
-        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v6)
+        XCTAssertEqual(SimulatorGaitProfile.newest, .attitudepd_v9)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.simulatorOnly)
         XCTAssertFalse(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_2"]))
         XCTAssertTrue(SimulatorGaitProfile.s_native_v6_2_3.isSupported(capabilities: ["s_native_v6_2_3"]))
@@ -1068,6 +1081,25 @@ extension RobotCommandTests {
         m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
         XCTAssertEqual(sent.filter { $0.hasPrefix("footlift save") }.count,1)
     }
+    func testFootWidthRequiresFreshCombinedReadback() {
+        var sent: [String] = []
+        let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) })
+        defer { m.disconnect() }
+        let initial = liftSnapshot.replacingOccurrences(of:"caps=footlift,",with:"caps=footwidth,footlift,")
+            .replacingOccurrences(of:"lift_rr=0",with:"lift_rr=0 width_fl=0 width_fr=0 width_rl=0 width_rr=0")
+        m.receiveConsoleText(initial);m.receiveConsoleText("ID 1 voltage=12000mV\n# ")
+        XCTAssertTrue(m.supportsFootWidth)
+        m.configureFootLift([1,2,3,4],widths:[-5,6,-7,8])
+        XCTAssertEqual(sent.last,"footlift save 1 2 3 4 -5 6 -7 8\n")
+        m.receiveConsoleText("OK footlift saved\n# ")
+        let expected=initial.replacingOccurrences(of:"lift_fl=0 lift_fr=0 lift_rl=0 lift_rr=0 width_fl=0 width_fr=0 width_rl=0 width_rr=0",
+            with:"lift_fl=1 lift_fr=2 lift_rl=3 lift_rr=4 width_fl=-5 width_fr=6 width_rl=-7 width_rr=8")
+        m.receiveConsoleText(expected+"# ")
+        XCTAssertFalse(m.footLiftPending)
+        XCTAssertEqual(m.footLiftMessage,"로봇 저장·반영 완료")
+        XCTAssertEqual(m.appliedFootSettings,[1,2,3,4,-5,6,-7,8])
+    }
+
     func testLegacyFirmwareFootLiftCannotBeSaved() {
         var sent: [String] = []
         let m = RobotBluetoothManager(commandWriter: { sent.append(String(decoding:$0,as:UTF8.self)) })

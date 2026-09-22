@@ -124,7 +124,8 @@ struct RobotControlStream {
     }
     static func request(_ data: Data, sequence: UInt32) throws -> Data {
         let command = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .newlines)
-        guard sequence > 0, !command.isEmpty, command.utf8.count < 96,
+        let limit = command.hasPrefix("footlift save ") ? 128 : 96
+        guard sequence > 0, !command.isEmpty, command.utf8.count < limit,
               command.utf8.allSatisfy({ $0 >= 32 && $0 < 127 }) else { throw Invalid.frame }
         return Data("@C \(sequence) \(command)\n".utf8)
     }
@@ -265,6 +266,16 @@ struct RobotDriveVector: Equatable {
             (yawPerMille < -80 ? "좌회전" : "")
         if linearPerMille == 0 && !turning.isEmpty { return "제자리 " + turning }
         return [longitudinal, turning].filter { !$0.isEmpty }.joined(separator: " + ")
+    }
+    var navigationTitle: String {
+        if linearPerMille == 0 && yawPerMille != 0 {
+            return yawPerMille > 0 ? "오른쪽 옆걸음" : "왼쪽 옆걸음"
+        }
+        if linearPerMille < 0 && yawPerMille != 0 {
+            return yawPerMille > 0 ? "제자리 우회전" : "제자리 좌회전"
+        }
+        if linearPerMille < 0 { return "후진 · 보행 속도 50%" }
+        return statusTitle
     }
 }
 

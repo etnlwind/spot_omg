@@ -76,6 +76,7 @@ void robot_init(RobotController *robot, ServoBus *bus)
     robot->walk_probe_active=0;
     robot->probe_config=probe_config_default();
     memset(robot->foot_lift_mm,0,sizeof(robot->foot_lift_mm));
+    memset(robot->foot_width_mm,0,sizeof(robot->foot_width_mm));
     robot->probe_duration_ms=4000;
     robot->gait_step_limit=robot->gait_steps_completed=0;
     memset(&robot->battery_telemetry,0,sizeof(robot->battery_telemetry));
@@ -483,7 +484,8 @@ bool robot_selected_stand_targets(const RobotController *robot,uint16_t position
         s_native_stand(q);
         return s_native_servo_targets(q,positions);
     }
-    return locomotion_stand_targets(robot->locomotion_profile,q) && locomotion_servo_targets(q,positions);
+    return locomotion_stand_targets(robot->locomotion_profile,q) &&
+        (locomotion_is_navigation(robot->locomotion_profile)?s_native_servo_targets(q,positions):locomotion_servo_targets(q,positions));
 }
 
 RobotResult robot_stand(RobotController *robot)
@@ -1506,7 +1508,8 @@ static RobotResult robot_trot_scaled(RobotController *robot,
             policy==ROBOT_TROT_POLICY_CIRCULAR_OVERLAP?GAIT_POLICY_TROT3_DUTY:
             (policy==ROBOT_TROT_POLICY_POSTURE_SMOOTH || policy==ROBOT_TROT_POLICY_TURN)?GAIT_POLICY_TROT4_DUTY:.5f;
         if(!continuous_drive && policy==ROBOT_TROT_POLICY_CRAB){lift_offsets[0]=.8f;lift_offsets[1]=.3f;lift_offsets[2]=.05f;lift_offsets[3]=.55f;}
-        if(!foot_lift_apply(robot->foot_lift_mm,global_phase*.001f,lift_duty,amplitude_scale*.001f,lift_offsets,leg_targets)){
+        if(!foot_lift_apply(robot->foot_lift_mm,global_phase*.001f,lift_duty,amplitude_scale*.001f,lift_offsets,leg_targets) ||
+           !foot_width_apply(robot->foot_width_mm,amplitude_scale*.001f,leg_targets)){
             robot->gait_diagnostics_active=false;return ROBOT_CONFIG_ERROR;
         }
         GaitPolicyLegTarget open_loop_targets[GAIT_POLICY_LEG_COUNT];
@@ -2033,6 +2036,7 @@ static void stabilization_trace_push(RobotController *robot,uint32_t now) {
 static RobotResult robot_shared_drive(RobotController *robot)
 {
     const bool native=locomotion_is_native(robot->locomotion_profile);
+    const bool navigation=locomotion_is_navigation(robot->locomotion_profile);
     if(robot->locomotion_fault || safety_is_faulted(&robot->safety)) return ROBOT_SAFETY_FAULT;
     if(!robot->attitude_reader) return ROBOT_IMU_ERROR;
     if(!actuator_profile_supports_limited_gait(robot->profile_speed,robot->profile_acceleration)) return ROBOT_ACTUATOR_PROFILE_ERROR;
@@ -2161,6 +2165,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
                 float correction=heading_update(&drive->heading,yaw*.1f,yaw_valid,
                     robot->heading_enabled && !stopping,rl,ry,drive->yaw,frame_dt);
                 drive->yaw=drive_timed_slew(lroundf(drive->yaw*1000),lroundf((ry+correction)*1000),progress)*.001f;
+                memcpy(robot->s_native.foot_width_mm,robot->foot_width_mm,sizeof(robot->foot_width_mm));
                 memcpy(robot->s_native.foot_lift_mm,robot->foot_lift_mm,sizeof(robot->foot_lift_mm));
                 target_ok=s_native_step(&robot->s_native,drive->phase,gait_policy_smootherstep(fminf(1,drive->elapsed)),
                     drive->linear,drive->yaw,rl,ry,frame_dt,stopping,nominal);
@@ -2168,11 +2173,27 @@ static RobotResult robot_shared_drive(RobotController *robot)
             } else target_ok=drive_control_step_timed(&robot->drive_control,robot->locomotion_profile,
                     stopping?0:request.linear*.001f,stopping?0:request.yaw*.001f,
                     yaw*.1f,yaw_valid,robot->heading_enabled,stopping,frame_dt,phase_rate,nominal);
-            if(target_ok && !native)target_ok=foot_lift_profile(robot->foot_lift_mm,robot->locomotion_profile,target_phase,
+            if(target_ok && robot->drive_control.left_instep) { /* custom lift after width */ }
+            else if(target_ok && robot->drive_control.paired_side && robot->drive_control.side_mode==1)
+                target_ok=navigation_pair_extra_lift_offsets(robot->foot_lift_mm,target_phase,navigation_start_scale(&robot->drive_control)*
+                    fminf(1,fabsf(robot->drive_control.lateral)/.15f),navigation_support_offsets(&robot->drive_control),nominal);
+            else if(target_ok && navigation && robot->drive_control.side_mode)target_ok=foot_lift_apply(
+                robot->foot_lift_mm,target_phase,navigation_support_duty(&robot->drive_control),navigation_start_scale(&robot->drive_control)*
+                fminf(1,(fabsf(robot->drive_control.lateral)+fabsf(robot->drive_control.yaw))/.15f),navigation_support_offsets(&robot->drive_control),nominal);
+            else if(target_ok && !native)target_ok=foot_lift_profile(robot->foot_lift_mm,robot->locomotion_profile,target_phase,
                 locomotion_start_scale(robot->locomotion_profile,robot->drive_control.elapsed,robot->drive_control.linear)*fminf(1,(fabsf(robot->drive_control.linear)+fabsf(robot->drive_control.yaw))/.15f),
                 robot->drive_control.linear,robot->drive_control.yaw,nominal);
+            if(target_ok && !native)target_ok=foot_width_apply_coordinates(robot->foot_width_mm,
+                (navigation?navigation_start_scale(&robot->drive_control):locomotion_start_scale(robot->locomotion_profile,robot->drive_control.elapsed,robot->drive_control.linear))*fminf(1,(fabsf(robot->drive_control.linear)+fabsf(robot->drive_control.yaw)+fabsf(robot->drive_control.lateral))/.15f),navigation,nominal);
+            if(target_ok && robot->drive_control.left_instep && robot->drive_control.side_mode==1)
+                target_ok=lateral_instep_targets(target_phase,navigation_start_scale(&robot->drive_control)*
+                    fminf(1,fabsf(robot->drive_control.lateral)/.15f),robot->drive_control.lateral,robot->foot_lift_mm,nominal);
+            else if(target_ok && robot->drive_control.ipsilateral_side && robot->drive_control.side_mode==1)
+                target_ok=navigation_ipsilateral_transfer(target_phase,navigation_start_scale(&robot->drive_control)*
+                    fminf(1,fabsf(robot->drive_control.lateral)/.15f),.06f,nominal);
             if(!target_ok){result=ROBOT_CONFIG_ERROR;break;}
             if(stopping && fabsf(robot->drive_control.linear)<=.008f && fabsf(robot->drive_control.yaw)<=.008f &&
+               fabsf(robot->drive_control.lateral)<=.008f &&
                (!native || s_native_stopped(&robot->s_native))) {
                 for(int i=0;i<4;i++) {from[i]=locomotion_is_attitude_pd(robot->locomotion_profile)?command[i]:nominal[i];}
                 if(locomotion_is_attitude_pd(robot->locomotion_profile)) {
@@ -2187,10 +2208,12 @@ static RobotResult robot_shared_drive(RobotController *robot)
         if(!shared_correct(robot,command,false,stage==2)) {result=ROBOT_CONFIG_ERROR;break;}
         if(locomotion_is_attitude_pd(robot->locomotion_profile)) {
             float p[7];locomotion_params(robot->locomotion_profile,robot->drive_control.linear,p);
-            if(!attitude_pd_apply(&robot->attitude_pd,&robot->stabilization_config,
+            const float trot_offsets[4]={0,.5f,.5f,0};
+            bool sideways=navigation && robot->drive_control.side_mode;
+            if(!attitude_pd_apply_offsets(&robot->attitude_pd,&robot->stabilization_config,
                     &robot->body_imu,compute_started,frame_dt,robot->stabilization_enabled,
-                    target_phase,locomotion_period(robot->locomotion_profile,robot->drive_control.linear,robot->drive_control.yaw),
-                    p[1],stage==2,nominal,command)) {
+                    target_phase,navigation?fmaxf(.1f,robot->drive_control.navigation_period):locomotion_period(robot->locomotion_profile,robot->drive_control.linear,robot->drive_control.yaw),
+                    sideways?navigation_support_duty(&robot->drive_control):p[1],stage==2,sideways?navigation_support_offsets(&robot->drive_control):trot_offsets,nominal,command)) {
                 stabilization_trace_push(robot,compute_started);result=ROBOT_CONFIG_ERROR;break;
             }
             stabilization_trace_push(robot,compute_started);
@@ -2199,7 +2222,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
             for(unsigned leg=0;leg<4;leg++)if(leg+1!=robot->rear_probe_leg)command[leg]=stand[leg];
         }
         uint16_t positions[12];
-        if(!(native?s_native_servo_targets(command,positions):gait_policy_to_servo_targets(command,positions))) {result=ROBOT_CONFIG_ERROR;break;}
+        if(!((native || navigation)?s_native_servo_targets(command,positions):gait_policy_to_servo_targets(command,positions))) {result=ROBOT_CONFIG_ERROR;break;}
         uint32_t compute_ms=HAL_GetTick()-compute_started;
         if(compute_ms>robot->drive_peak_compute_ms)robot->drive_peak_compute_ms=(uint16_t)(compute_ms>65535U?65535U:compute_ms);
         uint32_t io_started=HAL_GetTick();
@@ -2274,7 +2297,7 @@ void robot_control_idle(RobotController *robot)
     const bool native=locomotion_is_native(robot->locomotion_profile);
     if(native)s_native_stand(out);
     uint16_t positions[12];
-    if(!shared_correct(robot,out,true,false) || !(native?s_native_servo_targets(out,positions):gait_policy_to_servo_targets(out,positions))) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
+    if(!shared_correct(robot,out,true,false) || !((native || locomotion_is_navigation(robot->locomotion_profile))?s_native_servo_targets(out,positions):gait_policy_to_servo_targets(out,positions))) {robot_latch_locomotion_fault(robot,ROBOT_CONFIG_ERROR);return;}
     if(!robot_support_observe(robot,positions))return;
     ServoBusResult sent=sts3215_sync_positions(robot->bus,g_robot_servo_ids,positions,12);
     if(sent!=SERVO_BUS_OK) {

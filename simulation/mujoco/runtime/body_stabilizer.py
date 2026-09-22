@@ -72,6 +72,10 @@ class BodyStabilizer:
         f=C.c_float;fp=C.POINTER(f)
         self.lib.spot_pd_apply.argtypes=[C.c_void_p,C.POINTER(self.Config),C.POINTER(ImuState),C.c_uint32,f,C.c_int,f,f,f,C.c_int,fp,fp]
         self.lib.spot_pd_apply.restype=C.c_int
+        self.lib.spot_pd_apply_pace.argtypes=self.lib.spot_pd_apply.argtypes
+        self.lib.spot_pd_apply_pace.restype=C.c_int
+        self.lib.spot_pd_apply_side.argtypes=[*self.lib.spot_pd_apply.argtypes,C.c_int]
+        self.lib.spot_pd_apply_side.restype=C.c_int
         self.lib.spot_pd_feet.argtypes=[fp,fp]
         self.enabled=True
         self.diagnostic={}
@@ -92,9 +96,12 @@ class BodyStabilizer:
                 gyro[0] if gyro else 0.,gyro[1] if gyro else 0.,round(timestamp*1000)&0xffffffff,
                 reading.get('gyro_sequence',0),gyro is not None,reading.get('gyro_axis_verified',False))
         out=(C.c_float*12)()
-        ok=self.lib.spot_pd_apply(self.state,C.byref(self.config),C.byref(sample) if sample else None,
-            round(now*1000)&0xffffffff,dt,self.enabled and permitted,frame['phase'],frame['period_s'],frame['duty'],
-            frame.get('moving',True),(C.c_float*12)(*target),out)
+        apply=self.lib.spot_pd_apply_side if (frame.get('sideways') and not frame.get('paired_side')) else self.lib.spot_pd_apply
+        if frame.get('ipsilateral_side'):apply=self.lib.spot_pd_apply_pace
+        ok=apply(self.state,C.byref(self.config),C.byref(sample) if sample else None,
+            round(now*1000)&0xffffffff,dt,self.enabled and permitted,(frame['phase']+frame['pair_offset'])%1 if frame.get('paired_side') else frame['phase'],frame['period_s'],frame['duty'],
+            frame.get('moving',True),(C.c_float*12)(*target),out,
+            *([int(frame.get('lateral',0)<0)] if (frame.get('sideways') and not frame.get('paired_side')) else []))
         self.diagnostic=json.loads(self.lib.spot_pd_diagnostic(self.state))
         self.diagnostic.update(control_time_s=now,euler_sample_time_s=reading.get('sample_time_s') if reading else None,
             gyro_sample_time_s=reading.get('gyro_sample_time_s') if reading else None)

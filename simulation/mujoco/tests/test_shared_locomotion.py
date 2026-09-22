@@ -76,6 +76,7 @@ def test_unoptimized_firmware_kernel_matches_host_and_tick_commands(tmp_path):
     source.write_text('''
 #include "drive_control.h"
 #include "locomotion_servo.h"
+#include "s_native_servo.h"
 #include <stdio.h>
 int main(void) {
  for(int profile=0;profile<LOCOMOTION_PROFILE_COUNT;profile++) {
@@ -84,8 +85,10 @@ int main(void) {
   for(int frame=0;frame<500;frame++) {
    float linear=frame<200?.8f:frame<300?.4f:frame<400?-.6f:0;
    float yaw=frame>=100 && frame<300?.4f:0;
+   if(profile==locomotion_profile_id("attitudepd_v10")){linear=0;yaw=frame<400?-1.f:0;}
    GaitPolicyLegTarget out[4];uint16_t ticks[12];
-   if(!drive_control_step(&s,profile,linear,yaw,frame*.013f,true,true,frame>=400,out) || !locomotion_servo_targets(out,ticks)) return 1;
+   if(!drive_control_step(&s,profile,linear,yaw,frame*.013f,true,true,frame>=400,out))return 1;
+   if(!(locomotion_is_navigation(profile)?s_native_servo_targets(out,ticks):locomotion_servo_targets(out,ticks)))return 1;
    for(int j=0;j<12;j++)printf("%u ",ticks[j]);puts("");
   }
  }
@@ -104,6 +107,8 @@ int main(void) {
     encode.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);encode.restype=ctypes.c_int
     rows=[]
     for profile in range(1+len(load_profiles())):
+        encode=getattr(policy._library,'spot_native_servo_encode' if profile in [1+list(load_profiles()).index(n) for n in ('attitudepd_v7','attitudepd_v8','attitudepd_v9','attitudepd_v10')] else 'spot_servo_encode')
+        encode.argtypes=(fp,ctypes.POINTER(ctypes.c_uint16),fp);encode.restype=ctypes.c_int
         if profile and list(load_profiles().values())[profile-1].get('stateful_native'):
             continue
         state=(ctypes.c_float*11)()
@@ -114,6 +119,8 @@ int main(void) {
         for frame in range(500):
             linear=.8 if frame<200 else .4 if frame<300 else -.6 if frame<400 else 0
             yaw=.4 if 100<=frame<300 else 0
+            if profile==1+list(load_profiles()).index('attitudepd_v10'):
+                linear=0; yaw=-1 if frame<400 else 0
             out=(ctypes.c_float*12)();ticks=(ctypes.c_uint16*12)();decoded=(ctypes.c_float*12)()
             assert stateful(state,preload,profile,linear,yaw,ctypes.c_float(frame*ctypes.c_float(.013).value).value,True,True,frame>=400,.02,1,out)
             assert encode(out,ticks,decoded)

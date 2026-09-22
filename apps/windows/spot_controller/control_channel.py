@@ -37,6 +37,7 @@ def request(sequence, data):
     if not 0 < sequence <= 0xffffffff:
         raise ValueError('Invalid control sequence')
     command = data.rstrip(b'\r\n')
-    if not command or len(command) >= 96 or any(b < 32 or b >= 127 for b in command):
+    limit = 128 if command.startswith(b'footlift save ') else 96
+    if not command or len(command) >= limit or any(b < 32 or b >= 127 for b in command):
         raise ValueError('제어 명령은 ASCII 한 줄, 95바이트 이내여야 합니다.')
     return b'@C ' + str(sequence).encode() + b' ' + command + b'\n'

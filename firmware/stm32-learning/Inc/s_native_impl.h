@@ -252,6 +252,14 @@ bool s_native_step(SNativeControl *s,float phase,float amplitude,float linear,fl
             if(!solve(goal,q,locked))return false;
         }
     } else if(!solve(goal,q,locked))return false;
+    bool width=false;for(int i=0;i<4;i++)width|=s->foot_width_mm[i]!=0;
+    if(width && amplitude*activity>0) {
+        for(int i=0;i<4;i++) {
+            s_native_foot(i,q[i],goal[i],NULL);
+            goal[i][1]+=(i%2==0?1.f:-1.f)*s->foot_width_mm[i]*.001f*amplitude*activity;
+        }
+        if(!solve(goal,q,NULL))return false;
+    }
     memcpy(s->previous,q,sizeof(q));
     for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){q[i][0],q[i][1],q[i][2],fmodf(phase+offsets[i],1)<.5f};
     return true;

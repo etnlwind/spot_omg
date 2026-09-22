@@ -366,15 +366,18 @@ SPOT_GAIT_EXPORT int spot_attitude_update(int v[9],int valid,int roll,int pitch)
     v[6]=s.failures;v[7]=s.tilt_frames;v[8]=s.initialized;return fault;
 }
 static int drive_host_step(float v[11],float preload[12],int profile,float linear,float yaw,float heading,int valid,int enabled,int stopping,float dt,float rate,float out[12]) {
-    if(profile==locomotion_profile_id("arcsupport") && !preload)return 0;
-    DriveControl s={v[0],v[1],v[2],v[3],{v[4],v[5],v[6],v[7],v[8],v[9]!=0},v[10],{0}};
+    bool navigation=locomotion_is_navigation(profile);
+    if((profile==locomotion_profile_id("arcsupport") || navigation) && !preload)return 0;
+    DriveControl s={.phase=v[0],.linear=v[1],.yaw=v[2],.elapsed=v[3],.heading={v[4],v[5],v[6],v[7],v[8],v[9]!=0},.turn_assist=v[10]};
     if(preload)for(int i=0;i<12;i++)s.arc_support_preload[i]=preload[i];
+    if(navigation){s.lateral=preload[0];s.navigation_period=preload[1];s.side_mode=(int)preload[2];s.heading_direction=(int)preload[3];}
     GaitPolicyLegTarget targets[4];
     if(!drive_control_step_timed(&s,profile,linear,yaw,heading,valid,enabled,stopping,dt,rate,targets))return 0;
     v[0]=s.phase;v[1]=s.linear;v[2]=s.yaw;v[3]=s.elapsed;
     v[4]=s.heading.reference;v[5]=s.heading.error;v[6]=s.heading.integral;v[7]=s.heading.correction;v[8]=s.heading.settling;v[9]=s.heading.active;
     v[10]=s.turn_assist;
     if(preload)for(int i=0;i<12;i++)preload[i]=s.arc_support_preload[i];
+    if(navigation){preload[0]=s.lateral;preload[1]=s.navigation_period;preload[2]=s.side_mode;preload[3]=s.heading_direction;}
     pack_targets(targets,out);return 1;
 }
 SPOT_GAIT_EXPORT int spot_drive_step_timed(float v[11],int profile,float linear,float yaw,float heading,int valid,int enabled,int stopping,float dt,float rate,float out[12]) {
@@ -386,6 +389,75 @@ SPOT_GAIT_EXPORT int spot_drive_step_stateful(float v[11],float preload[12],int 
 
 SPOT_GAIT_EXPORT int spot_drive_step(float v[11],int profile,float linear,float yaw,float heading,int valid,int enabled,int stopping,float out[12]) {
  return spot_drive_step_timed(v,profile,linear,yaw,heading,valid,enabled,stopping,.02f,1,out);
+}
+SPOT_GAIT_EXPORT int spot_navigation_pair_extra_lift(const uint32_t mm[4],float phase,float scale,float values[12]) {
+    GaitPolicyLegTarget q[4];for(int i=0;i<4;i++)q[i]=(GaitPolicyLegTarget){values[3*i],values[3*i+1],values[3*i+2],false};
+    if(!navigation_pair_extra_lift(mm,phase,scale,q))return 0;pack_targets(q,values);return 1;
+}
+SPOT_GAIT_EXPORT unsigned spot_navigation_size(void){return sizeof(DriveControl);}
+SPOT_GAIT_EXPORT int spot_navigation_v10_configured(float phase,float scale,float input,const uint32_t mm[4],const float cfg[6],float values[12]) {
+    GaitPolicyLegTarget q[4];for(int i=0;i<4;i++)q[i]=(GaitPolicyLegTarget){values[3*i],values[3*i+1],values[3*i+2],false};
+    if(!lateral_instep_configured(phase,scale,input,mm,cfg,q))return 0;
+    pack_targets(q,values);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_v10_targets(float phase,float scale,float input,const uint32_t mm[4],float values[12]) {
+    GaitPolicyLegTarget q[4];for(int i=0;i<4;i++)q[i]=(GaitPolicyLegTarget){values[3*i],values[3*i+1],values[3*i+2],false};
+    if(!lateral_instep_targets(phase,scale,input,mm,q))return 0;
+    pack_targets(q,values);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_v9_extra_lift(const uint32_t mm[4],float phase,float scale,float values[12]) {
+    GaitPolicyLegTarget q[4];for(int i=0;i<4;i++)q[i]=(GaitPolicyLegTarget){values[3*i],values[3*i+1],values[3*i+2],false};
+    if(!navigation_pair_extra_lift_offsets(mm,phase,scale,navigation_ipsilateral_offsets,q))return 0;
+    pack_targets(q,values);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_v9_transfer(float phase,float scale,float distance,float values[12]) {
+    GaitPolicyLegTarget q[4];for(int i=0;i<4;i++)q[i]=(GaitPolicyLegTarget){values[3*i],values[3*i+1],values[3*i+2],false};
+    if(!navigation_ipsilateral_transfer(phase,scale,distance,q))return 0;
+    pack_targets(q,values);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_step(void *state,float linear,float yaw,float heading,
+        int valid,int enabled,int stopping,float dt,float rate,float out[12],float diag[16]) {
+    DriveControl *s=state;GaitPolicyLegTarget targets[4];
+    if(!drive_control_step_timed(s,locomotion_profile_id("attitudepd_v7"),linear,yaw,
+            heading,valid,enabled,stopping,dt,rate,targets))return 0;
+    pack_targets(targets,out);
+    float v[16]={s->phase,s->linear,s->yaw,s->elapsed,s->heading.reference,s->heading.error,
+        s->heading.integral,s->heading.correction,s->heading.settling,s->heading.active,
+        s->turn_assist,s->lateral,s->side_mode,s->navigation_period,navigation_support_duty(s),s->paired_side && s->side_mode==1?NAVIGATION_PAIR_DUTY:0};
+    memcpy(diag,v,sizeof v);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_v8_step(void *state,float linear,float yaw,float heading,
+        int valid,int enabled,int stopping,float dt,float rate,float out[12],float diag[16]) {
+    DriveControl *s=state;GaitPolicyLegTarget targets[4];
+    if(!drive_control_step_timed(s,locomotion_profile_id("attitudepd_v8"),linear,yaw,
+            heading,valid,enabled,stopping,dt,rate,targets))return 0;
+    pack_targets(targets,out);
+    float v[16]={s->phase,s->linear,s->yaw,s->elapsed,s->heading.reference,s->heading.error,
+        s->heading.integral,s->heading.correction,s->heading.settling,s->heading.active,
+        s->turn_assist,s->lateral,s->side_mode,s->navigation_period,navigation_support_duty(s),s->paired_side && s->side_mode==1?NAVIGATION_PAIR_DUTY:0};
+    memcpy(diag,v,sizeof v);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_v9_step(void *state,float linear,float yaw,float heading,
+        int valid,int enabled,int stopping,float dt,float rate,float out[12],float diag[16]) {
+    DriveControl *s=state;GaitPolicyLegTarget targets[4];
+    if(!drive_control_step_timed(s,locomotion_profile_id("attitudepd_v9"),linear,yaw,
+            heading,valid,enabled,stopping,dt,rate,targets))return 0;
+    pack_targets(targets,out);
+    float v[16]={s->phase,s->linear,s->yaw,s->elapsed,s->heading.reference,s->heading.error,
+        s->heading.integral,s->heading.correction,s->heading.settling,s->heading.active,
+        s->turn_assist,s->lateral,s->side_mode,s->navigation_period,navigation_support_duty(s),s->paired_side && s->side_mode==1?NAVIGATION_PAIR_DUTY:0};
+    memcpy(diag,v,sizeof v);return 1;
+}
+SPOT_GAIT_EXPORT int spot_navigation_v10_step(void *state,float linear,float yaw,float heading,
+        int valid,int enabled,int stopping,float dt,float rate,float out[12],float diag[16]) {
+    DriveControl *s=state;GaitPolicyLegTarget targets[4];
+    if(!drive_control_step_timed(s,locomotion_profile_id("attitudepd_v10"),linear,yaw,
+            heading,valid,enabled,stopping,dt,rate,targets))return 0;
+    pack_targets(targets,out);
+    float v[16]={s->phase,s->linear,s->yaw,s->elapsed,s->heading.reference,s->heading.error,
+        s->heading.integral,s->heading.correction,s->heading.settling,s->heading.active,
+        s->turn_assist,s->lateral,s->side_mode,s->navigation_period,navigation_support_duty(s),s->side_mode==1?.8f:0};
+    memcpy(diag,v,sizeof v);return 1;
 }
 #include "gait_tracking.h"
 SPOT_GAIT_EXPORT unsigned spot_tracking_size(void){return sizeof(GaitTracking);}
@@ -584,4 +656,17 @@ SPOT_GAIT_EXPORT int spot_foot_lift(const uint32_t mm[4],float phase,float duty,
  GaitPolicyLegTarget target[4];unpack_targets(values,target);
  if(!foot_lift_apply(mm,phase,duty,scale,offsets,target))return 0;
  pack_targets(target,values);return 1;
+}
+
+SPOT_GAIT_EXPORT int spot_foot_width(const int32_t mm[4],float scale,float values[12]) {
+ GaitPolicyLegTarget target[4];
+ for(int i=0;i<4;i++)target[i]=(GaitPolicyLegTarget){values[i*3],values[i*3+1],values[i*3+2],false};
+ if(!foot_width_apply(mm,scale,target))return 0;
+ for(int i=0;i<4;i++){values[i*3]=target[i].j1_deg;values[i*3+1]=target[i].j2_deg;values[i*3+2]=target[i].j3_deg;}
+ return 1;
+}
+SPOT_GAIT_EXPORT int spot_foot_width_cad(const int32_t mm[4],float scale,float values[12]) {
+    GaitPolicyLegTarget targets[4];unpack_targets(values,targets);
+    if(!foot_width_apply_coordinates(mm,scale,true,targets))return 0;
+    pack_targets(targets,values);return 1;
 }

@@ -1,0 +1,113 @@
+........................................................................ [ 25%]
+.FFF.......F............................................................ [ 50%]
+........................................................................ [ 75%]
+......................................................................   [100%]
+================================== FAILURES ===================================
+______________ test_simulator_atomic_configuration_and_readback _______________
+
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x000001CFB76B82E0>
+
+    def test_simulator_atomic_configuration_and_readback(plant):
+        robot=RobotController(plant)
+>       robot.command('footlift save 30 300 0 4',0)
+
+simulation\mujoco\tests\test_global_foot_lift.py:59: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+simulation\mujoco\runtime\virtual_robot.py:289: in command
+    self.command('syncstate',now);return
+simulation\mujoco\runtime\virtual_robot.py:308: in command
+    self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,footwidth,{"footliftpersist," if self.foot_lift_store.path else ""}trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,attitudepd_v7,attitudepd_v8,attitudepd_v9,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]} width_fl={self.foot_width_mm[0]} width_fr={self.foot_width_mm[1]} width_rl={self.foot_width_mm[2]} width_rr={self.foot_width_mm[3]}')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x000001CFAE23C0A0>
+
+    def balance_state(self):
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6','attitudepd_v7','attitudepd_v8','attitudepd_v9'):
+>           if not self.body_stabilizer.enabled:return 'off'
+E           AttributeError: 'RobotController' object has no attribute 'body_stabilizer'
+
+simulation\mujoco\runtime\virtual_robot.py:162: AttributeError
+____________ test_v4_extra_lift_in_actual_simulator_drive_pipeline ____________
+
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x000001CFB76B82E0>
+
+    def test_v4_extra_lift_in_actual_simulator_drive_pipeline(plant):
+        robot=RobotController(plant)
+>       robot.command('footlift save 10 10 0 0',0)
+
+simulation\mujoco\tests\test_global_foot_lift.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+simulation\mujoco\runtime\virtual_robot.py:289: in command
+    self.command('syncstate',now);return
+simulation\mujoco\runtime\virtual_robot.py:308: in command
+    self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,footwidth,{"footliftpersist," if self.foot_lift_store.path else ""}trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,attitudepd_v7,attitudepd_v8,attitudepd_v9,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]} width_fl={self.foot_width_mm[0]} width_fr={self.foot_width_mm[1]} width_rl={self.foot_width_mm[2]} width_rr={self.foot_width_mm[3]}')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x000001CFB769E350>
+
+    def balance_state(self):
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6','attitudepd_v7','attitudepd_v8','attitudepd_v9'):
+>           if not self.body_stabilizer.enabled:return 'off'
+E           AttributeError: 'RobotController' object has no attribute 'body_stabilizer'
+
+simulation\mujoco\runtime\virtual_robot.py:162: AttributeError
+__________ test_settings_survive_controller_restart_and_failed_write __________
+
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x000001CFB76B82E0>
+tmp_path = WindowsPath('C:/Users/etnlw/AppData/Local/Temp/pytest-of-etnlw/pytest-126/test_settings_survive_controll0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001CFB73FDF90>
+
+    def test_settings_survive_controller_restart_and_failed_write(plant, tmp_path, monkeypatch):
+        path=tmp_path/'robot.json'
+        first=RobotController(plant, path)
+>       first.command('footlift save 20 30 4 5',0)
+
+simulation\mujoco\tests\test_global_foot_lift.py:89: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+simulation\mujoco\runtime\virtual_robot.py:289: in command
+    self.command('syncstate',now);return
+simulation\mujoco\runtime\virtual_robot.py:308: in command
+    self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,footwidth,{"footliftpersist," if self.foot_lift_store.path else ""}trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,attitudepd_v7,attitudepd_v8,attitudepd_v9,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]} width_fl={self.foot_width_mm[0]} width_fr={self.foot_width_mm[1]} width_rl={self.foot_width_mm[2]} width_rr={self.foot_width_mm[3]}')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x000001CFB73FE020>
+
+    def balance_state(self):
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6','attitudepd_v7','attitudepd_v8','attitudepd_v9'):
+>           if not self.body_stabilizer.enabled:return 'off'
+E           AttributeError: 'RobotController' object has no attribute 'body_stabilizer'
+
+simulation\mujoco\runtime\virtual_robot.py:162: AttributeError
+_____________ test_width_persistence_old_clients_and_failed_save ______________
+
+plant = <simulation.mujoco.runtime.cad_physics.Simulation object at 0x000001CFB76B82E0>
+tmp_path = WindowsPath('C:/Users/etnlw/AppData/Local/Temp/pytest-of-etnlw/pytest-126/test_width_persistence_old_cli0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001CFB769FEE0>
+
+    def test_width_persistence_old_clients_and_failed_save(plant,tmp_path,monkeypatch):
+        path=tmp_path/'settings.json'
+        robot=RobotController(plant,path)
+>       robot.command('footlift save 1 2 3 4 -5 6 -7 8',0)
+
+simulation\mujoco\tests\test_global_foot_lift.py:125: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+simulation\mujoco\runtime\virtual_robot.py:289: in command
+    self.command('syncstate',now);return
+simulation\mujoco\runtime\virtual_robot.py:308: in command
+    self.reply(f'$SPOTSTATE pose={self.pose} error={error} torque={"on" if self.torque else "off"} safety={self.safety} balance={self.balance_state()} heading={"on" if self.heading.enabled else "off"} rev=s-native-v6-2-6-sim caps=footlift,footwidth,{"footliftpersist," if self.foot_lift_store.path else ""}trot5,simprofiles,gaitprofiles,{",".join(name for name, profile in self.profiles.items() if profile.get("s_native")) + "," if "s_native_v1" in self.profiles else ""}arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,attitudepd_v7,attitudepd_v8,attitudepd_v9,bno055emu,simbalance,balancecontrol,headinghold,stow imu=bno055-emulated backend=sim physics=estimated fall_test={"on" if self.plant.p.get("sim_allow_fall") else "off"} profile={self.profile} reverse_limit={round(abs(self.limited_linear(-1.))*1000)} lift_fl={self.foot_lift_mm[0]} lift_fr={self.foot_lift_mm[1]} lift_rl={self.foot_lift_mm[2]} lift_rr={self.foot_lift_mm[3]} width_fl={self.foot_width_mm[0]} width_fr={self.foot_width_mm[1]} width_rl={self.foot_width_mm[2]} width_rr={self.foot_width_mm[3]}')
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <simulation.mujoco.runtime.virtual_robot.RobotController object at 0x000001CFB769DF90>
+
+    def balance_state(self):
+        if self.profile in ('attitudepd','attitudepd_v2','attitudepd_v3','attitudepd_v4','attitudepd_v5','attitudepd_v6','attitudepd_v7','attitudepd_v8','attitudepd_v9'):
+>           if not self.body_stabilizer.enabled:return 'off'
+E           AttributeError: 'RobotController' object has no attribute 'body_stabilizer'
+
+simulation\mujoco\runtime\virtual_robot.py:162: AttributeError
+=========================== short test summary info ===========================
+FAILED simulation/mujoco/tests/test_global_foot_lift.py::test_simulator_atomic_configuration_and_readback
+FAILED simulation/mujoco/tests/test_global_foot_lift.py::test_v4_extra_lift_in_actual_simulator_drive_pipeline
+FAILED simulation/mujoco/tests/test_global_foot_lift.py::test_settings_survive_controller_restart_and_failed_write
+FAILED simulation/mujoco/tests/test_global_foot_lift.py::test_width_persistence_old_clients_and_failed_save
+4 failed, 282 passed in 16.47s

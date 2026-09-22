@@ -83,8 +83,22 @@ def step(robot):
         robot.arc_sensor_available=estimate is not None
         if estimate:
             robot.arc_sensor=SimpleNamespace(filtered=np.array(estimate['angle_deg'])*10,rate=np.array(estimate['rate_deg_s'])*10)
-    if not fn(v,*extra,NAMES.index(robot.profile),*robot.request,sample['yaw_tenths']/10 if valid else 0,
-              valid,robot.heading.enabled and robot.safety=='ok',bool(robot.stopping_reason),.02,rate,out):
+    if robot.profile in ('attitudepd_v7','attitudepd_v8','attitudepd_v9','attitudepd_v10'):
+        lib=robot.plant.policy._library
+        lib.spot_navigation_size.restype=ctypes.c_uint
+        if not hasattr(robot,'navigation_state'):robot.navigation_state=ctypes.create_string_buffer(lib.spot_navigation_size())
+        nav=lib.spot_navigation_v10_step if robot.profile=='attitudepd_v10' else lib.spot_navigation_v9_step if robot.profile=='attitudepd_v9' else lib.spot_navigation_v8_step if robot.profile=='attitudepd_v8' else lib.spot_navigation_step
+        nav.argtypes=[ctypes.c_void_p,*([ctypes.c_float]*3),*([ctypes.c_int]*3),ctypes.c_float,ctypes.c_float,fp,fp]
+        nav.restype=ctypes.c_int
+        diag=(ctypes.c_float*16)()
+        ok=nav(robot.navigation_state,*robot.request,sample['yaw_tenths']/10 if valid else 0,
+            valid,robot.heading.enabled and robot.safety=='ok',bool(robot.stopping_reason),.02,rate,out,diag)
+        v=(ctypes.c_float*11)(*list(diag)[:11])
+        robot.navigation_frame=dict(lateral=float(diag[11]),sideways=bool(diag[12]),period_s=float(diag[13]),paired_side=robot.profile in ('attitudepd_v8','attitudepd_v9','attitudepd_v10') and int(diag[12])==1,ipsilateral_side=robot.profile in ('attitudepd_v9','attitudepd_v10') and int(diag[12])==1,left_instep=robot.profile=='attitudepd_v10',duty=float(diag[14]),pair_offset=float(diag[15]))
+    else:
+        ok=fn(v,*extra,NAMES.index(robot.profile),*robot.request,sample['yaw_tenths']/10 if valid else 0,
+              valid,robot.heading.enabled and robot.safety=='ok',bool(robot.stopping_reason),.02,rate,out)
+    if not ok:
         raise ValueError('Invalid shared drive target')
     if robot.profile in ('arcturn','arcsupport'):
         # Snapshot the frame that produced the target, before publishing the

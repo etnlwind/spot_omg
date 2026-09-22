@@ -168,6 +168,17 @@ class SNativeGait:
         result[:,2]+=mm*.001*amplitude*min(1,(abs(linear)+abs(yaw))/.15)*64*u**3*(1-u)**3
         return result
 
+    def apply_width(self,result,amplitude,linear,yaw):
+        mm=np.asarray(getattr(self,'foot_width_mm',[0]*4),dtype=float)
+        if not np.any(mm):return result
+        if mm.shape!=(4,) or not np.isfinite(mm).all() or (np.abs(mm)>2147483647).any():raise ValueError('Invalid foot width')
+        self.kin.set_angles(result)
+        points=np.array([self.kin.foot(i) for i in range(4)])
+        points[:,1]+=np.array([1,-1,1,-1])*mm*.001*amplitude*min(1,(abs(linear)+abs(yaw))/.15)
+        result,error=self.kin.solve(points,result,iterations=60)
+        if error>.0002 or not np.isfinite(result).all():raise ValueError('Foot width unreachable')
+        return result
+
     def targets(self, phase, amplitude, linear, yaw):
         if self.profile.get('entry_sequence') == 'fr_double':
             return self.fr_entry_targets(phase, amplitude, linear, yaw)
@@ -187,6 +198,7 @@ class SNativeGait:
             points[:,1]+=amplitude*self.support_displacement(phase,linear,yaw)
             result,error=self.kin.solve(points,result,iterations=60)
             if error>.001:raise ValueError('S-native support transfer unreachable')
+        result=self.apply_width(result,amplitude,linear,yaw)
         self.previous = result.copy()
         self.last_target_points=points.copy()
         return result
@@ -252,6 +264,7 @@ class SNativeGait:
         result,error=self.kin.solve_xz(points,self.previous,locked,iterations=60)
         if error>.0002 or not np.isfinite(result).all():
             raise ValueError(f'S-native FR entry X/Z unreachable: {error:.6f} m')
+        result=self.apply_width(result,amplitude,linear,yaw)
         self.previous=result.copy()
         self.last_target_points=np.array([self.kin.foot(i) for i in range(4)])
         return result

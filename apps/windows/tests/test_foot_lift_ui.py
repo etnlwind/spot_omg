@@ -133,3 +133,48 @@ def test_protocol_requires_saved_ack_and_fresh_readback():
     c.feed(b'OK footlift saved\n# ',.7)
     c.feed(b'# ',.8) # Old matching state does not count as new readback.
     assert c.foot_lift_result['ok'] is False
+
+
+def test_width_editor_per_leg_restore_and_atomic_readback(tmp_path):
+    app=QApplication.instance() or QApplication([])
+    editor=FootLiftEditor(QSettings(str(tmp_path/'width.ini'),QSettings.IniFormat))
+    sent=[];editor.applyRequested.connect(sent.append)
+    state=dict(connected=True,synced=True,phase='idle',caps=['footlift','footliftpersist','footwidth'],state_at=1,
+               state=dict(lift_fl='1',lift_fr='2',lift_rl='3',lift_rr='4',width_fl='-5',width_fr='6',width_rl='-7',width_rr='8'))
+    editor.update_state(state)
+    assert [f.value() for f in editor.width_inputs]==[-5,6,-7,8]
+    editor.width_inputs[0].setValue(-12);editor.prepare_open()
+    assert editor.width_inputs[0].value()==-5
+    editor.width_inputs[1].setValue(-9);editor.submit()
+    assert sent[-1]=='footlift save 1 2 3 4 -5 -9 -7 8'
+    editor.update_state(state);assert editor.pending is not None
+    state['state']['width_fr']='-9';state['state_at']=2
+    state['foot_lift_result']=dict(ok=True,values=[1,2,3,4,-5,-9,-7,8])
+    editor.update_state(state);assert editor.pending is None
+    assert 'FR -9mm' in editor.status.text()
+    state['caps'].remove('footwidth');editor.update_state(state)
+    assert all(not f.isEnabled() for f in editor.width_inputs)
+    editor.close()
+
+
+def test_width_protocol_requires_all_eight_fresh_values():
+    c=Controller();c.connected=c.synced=True;c.phase='idle';c.caps={'footlift','footliftpersist'}
+    command='footlift save 1 2 3 4 -5 6 -7 8'
+    with pytest.raises(ValueError):c.validate(command)
+    c.caps.add('footwidth');c.validate(command)
+    for invalid in ('footlift save 1 2 3 4 -5 6 7','footlift save 1 2 3 4 -2147483648 0 0 0'):
+        with pytest.raises(ValueError):c.validate(invalid)
+    c.request(command,0)
+    c.feed(b'OK footlift saved\n# ',.1)
+    assert c.command=='footlift show'
+    c.feed(b'$SPOTSTATE pose=stand torque=on safety=ok caps=footlift,footliftpersist,footwidth lift_fl=1 lift_fr=2 lift_rl=3 lift_rr=4 width_fl=-5 width_fr=6 width_rl=-7 width_rr=8\n# ',.2)
+    assert c.foot_lift_result==dict(ok=True,values=[1,2,3,4,-5,6,-7,8])
+
+
+def test_full_integer_foot_settings_fit_dedicated_channel():
+    from spot_controller.control_channel import request
+    command='footlift save '+' '.join(['2147483647']*4+['-2147483647']*4)
+    c=Controller();c.phase='idle';c.caps={'footlift','footliftpersist','footwidth'}
+    c.validate(command)
+    frame=request(4294967295,command.encode())
+    assert len(command)<128 and len(frame)<144

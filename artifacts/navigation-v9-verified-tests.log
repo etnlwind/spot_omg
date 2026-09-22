@@ -1,0 +1,122 @@
+F....................................................................... [ 24%]
+........................................................................ [ 49%]
+........................................................................ [ 74%]
+........................................................................ [ 99%]
+..                                                                       [100%]
+================================== FAILURES ===================================
+__________________ test_packet_adapter_optimization[sh2--O0] __________________
+
+tmp_path = WindowsPath('C:/Users/etnlw/AppData/Local/Temp/pytest-of-etnlw/pytest-128/test_packet_adapter_optimizati0')
+optimization = '-O0', unit = 'sh2'
+
+    @pytest.mark.parametrize('optimization',['-O0','-Os'])
+    @pytest.mark.parametrize('unit',['sh2','coordinates'])
+    def test_packet_adapter_optimization(tmp_path,optimization,unit):
+        if unit=='sh2':
+            paths=['Drivers/sh2/sh2_util.c','tests/test_sh2_util.c']
+            include=ROOT/'Drivers/sh2';extra=[]
+        else:
+            paths=['Src/sts3215.c','Src/robot_config.c','Src/feetech_protocol.c','tests/test_stow_servo_coordinates.c']
+            include=ROOT/'Inc';extra=['-include',str(ROOT/'tests/host_hal.h')]
+        exe=build_executable([ROOT/p for p in paths],include,tmp_path/unit,extra=[optimization,*extra])
+>       subprocess.run([str(exe)],check=True)
+
+firmware\stm32-learning\tests\test_packet_size_optimization.py:19: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+input = None, capture_output = False, timeout = None, check = True
+popenargs = (['C:\\Users\\etnlw\\AppData\\Local\\Temp\\pytest-of-etnlw\\pytest-128\\test_packet_adapter_optimizati0\\sh2.exe'],)
+kwargs = {}
+process = <Popen: returncode: 3 args: ['C:\\Users\\etnlw\\AppData\\Local\\Temp\\pytest...>
+stdout = None, stderr = None, retcode = 3
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['C:\\Users\\etnlw\\AppData\\Local\\Temp\\pytest-of-etnlw\\pytest-128\\test_packet_adapter_optimizati0\\sh2.exe']' returned non-zero exit status 3.
+
+C:\Users\etnlw\miniforge3\envs\spot_omg\lib\subprocess.py:526: CalledProcessError
+---------------------------- Captured stderr call -----------------------------
+thread 49380 panic: left shift of 128 by 24 places cannot be represented in type 'int'
+D:\project\spot_omg\firmware\stm32-learning\Drivers\sh2\sh2_util.c:50:0: 0x7ff654a014ea in readu32 (sh2_util.obj)
+    uint32_t retval = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+
+
+D:\project\spot_omg\firmware\stm32-learning\tests\test_sh2_util.c:23:0: 0x7ff654a02828 in main (test_sh2_util.obj)
+        assert(readu32(bytes+1)==n && bytes[0]==0xa5 && bytes[5]==0xa5);
+
+D:\project\spot_omg\.toolchain\zig\lib\libc\mingw\crt\crtexe.c:259:0: 0x7ff654a02f7c in __tmainCRTStartup (crt2.obj)
+    mainret = _tmain (argc, argv, envp);
+
+D:\project\spot_omg\.toolchain\zig\lib\libc\mingw\crt\crtexe.c:179:0: 0x7ff654a02feb in mainCRTStartup (crt2.obj)
+  ret = __tmainCRTStartup ();
+
+???:?:?: 0x7ffbe00dcd86 in ??? (KERNEL32.DLL)
+???:?:?: 0x7ffbe130caeb in ??? (ntdll.dll)
+=========================== short test summary info ===========================
+FAILED firmware/stm32-learning/tests/test_packet_size_optimization.py::test_packet_adapter_optimization[sh2--O0]
+1 failed, 289 passed in 19.34s

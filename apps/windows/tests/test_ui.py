@@ -3,6 +3,18 @@ from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 from spot_controller.ui import Window, configure_app
 
+def test_v7_displays_side_pivot_and_reverse_intent():
+    app=QApplication.instance() or QApplication([]);configure_app(app)
+    window=Window()
+    for vector,title in [((0,588),'오른쪽 옆걸음'),((0,-588),'왼쪽 옆걸음'),
+                         ((-600,400),'제자리 우회전'),((-600,-400),'제자리 좌회전'),
+                         ((-588,0),'후진 · 보행 속도 50%')]:
+        window.on_state(dict(connected=True,synced=True,phase='drive',
+            state=dict(pose='stand',torque='on',safety='ok',profile='attitudepd_v7'),
+            vector=vector,caps=['attitudepd_v7'],can_drive=True,controls_enabled=True,requires_release=False,error=''))
+        assert title in window.drive_status.text()
+    window.close()
+
 def test_pause_banner_keeps_controls_available(tmp_path):
     app=QApplication.instance() or QApplication([]);configure_app(app)
     window=Window();window.resize(1240,1100);window.show()
@@ -25,7 +37,7 @@ def test_window_layout_and_idle_start(tmp_path):
     window=Window();window.show();app.processEvents()
     assert not window.connection.running
     assert not window.joystick.isEnabled()
-    assert window.target.currentData()=='tcp'
+    assert window.target.currentData()=='robot'
     assert window.process.processId()==0
     assert window.grab().save(str(tmp_path/'desktop.png'))
     window.close();app.processEvents()

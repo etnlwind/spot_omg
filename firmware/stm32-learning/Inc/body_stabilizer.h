@@ -120,13 +120,12 @@ static inline bool body_stabilizer_config_valid(const BodyStabilizerConfig *c) {
  * the gait clock has advanced. Weights describe planned stance, not contacts.
  * The returned weight is exactly zero for the entire scheduled swing.
  */
-static inline bool body_stabilizer_stance_weights(float phase,float duty,
-        float period_s,float transition_s,float weights[4]) {
+static inline bool body_stabilizer_stance_weights_offsets(float phase,float duty,
+        float period_s,float transition_s,const float offsets[4],float weights[4]) {
     if(!weights)return false;
     for(int i=0;i<4;i++)weights[i]=0.f;
     if(!isfinite(phase)||!isfinite(duty)||duty<.5f||duty>=1.f||
        !isfinite(period_s)||period_s<=0||!isfinite(transition_s)||transition_s<=0)return false;
-    const float offsets[4]={0.f,.5f,.5f,0.f};
     float edge=fminf(transition_s/period_s,.5f*duty);
     if(!isfinite(edge)||edge<=0)return false;
     for(int i=0;i<4;i++) {
@@ -135,6 +134,11 @@ static inline bool body_stabilizer_stance_weights(float phase,float duty,
                                   body_stabilizer_smooth((duty-q)/edge);
     }
     return true;
+}
+static inline bool body_stabilizer_stance_weights(float phase,float duty,
+        float period_s,float transition_s,float weights[4]) {
+    const float offsets[4]={0,.5f,.5f,0};
+    return body_stabilizer_stance_weights_offsets(phase,duty,period_s,transition_s,offsets,weights);
 }
 
 /* On a mathematical input-contract error, return false and a finite bounded

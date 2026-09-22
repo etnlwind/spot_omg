@@ -34,6 +34,8 @@ bool flight_log_appendf(const char *format, ...);
 /* Robot-owned foot-lift settings share the journal, with a rotation snapshot.
  * Save is idle-only; success includes flash readback. Unchanged values do not write. */
 bool flight_log_load_foot_lift(uint32_t values[4]);
+bool flight_log_load_foot_width(int32_t values[4]);
+bool flight_log_save_foot_settings(const uint32_t values[4],const int32_t widths[4]);
 bool flight_log_save_foot_lift(const uint32_t values[4]);
 bool flight_log_save_calibration(const void *record, size_t size);
 

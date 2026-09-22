@@ -271,6 +271,9 @@ def test_v627_is_first_only_when_firmware_advertises_support(simulator):
 
 
 @pytest.mark.parametrize('supported,expected', [
+    ('attitudepd_v7,attitudepd_v8,attitudepd_v9','attitudepd_v9'),
+    ('attitudepd_v6,attitudepd_v7,attitudepd_v8','attitudepd_v8'),
+    ('attitudepd_v6,attitudepd_v7','attitudepd_v7'),
     ('attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6','attitudepd_v6'),
     ('attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5','attitudepd_v5'),
     ('attitudepd_v2,attitudepd_v3,attitudepd_v4','attitudepd_v4'),
@@ -279,13 +282,13 @@ def test_v627_is_first_only_when_firmware_advertises_support(simulator):
 ])
 def test_attitudepd_default_respects_firmware_capability(supported,expected):
     from spot_controller.protocol import PROFILES
-    assert PROFILES[:5]==('attitudepd_v6','attitudepd_v5','attitudepd_v4','attitudepd_v3','attitudepd_v2')
+    assert PROFILES[:8]==('attitudepd_v9','attitudepd_v8','attitudepd_v7','attitudepd_v6','attitudepd_v5','attitudepd_v4','attitudepd_v3','attitudepd_v2')
     c=Controller(simulator=False);c.opened(0);drain(c)
     c.feed(STATE.replace(b'trot5',supported.encode())+b'# ',.1)
     drain(c);c.feed(b'ID 1 voltage=11100mV\r\n# ',.2)
     assert drain(c)==f'gaitprofile {expected}\n'.encode()
     c.validate('gaitprofile '+expected)
-    if expected!='attitudepd_v6':
+    if expected not in ('attitudepd_v6','attitudepd_v7','attitudepd_v8','attitudepd_v9'):
         with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v6')
     if expected not in ('attitudepd_v5','attitudepd_v6'):
         with pytest.raises(ValueError):c.validate('gaitprofile attitudepd_v5')

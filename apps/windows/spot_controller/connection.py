@@ -6,7 +6,7 @@ import time
 import secrets
 
 from PySide6.QtCore import QObject, Signal
-from . import __version__
+from . import display_version
 from .protocol import Controller, ConsoleStream
 from .control_channel import ControlStream, request as control_request
 from .diagnostic_trace import ConnectionTrace
@@ -189,7 +189,7 @@ class Connection(QObject):
                 return False
             self._diagnostic_exporting = True
         self.diagnostics_exporting.emit(True)
-        self._diagnostic_trace.record('export-request', 'Windows ' + __version__)
+        self._diagnostic_trace.record('export-request', 'Windows ' + display_version())
         future = self._diagnostic_trace.export(path)
 
         def completed(result):
@@ -276,7 +276,7 @@ class Connection(QObject):
         active_control = None
         active_control_command = None
         log_stream = ConsoleStream()
-        self._diagnostic_trace.record('connecting', f'Windows {__version__}; target={target} host={host} port={port} address={address}')
+        self._diagnostic_trace.record('connecting', f'Windows {display_version()}; target={target} host={host} port={port} address={address}')
 
         def show_reply(line):
             if line.startswith('$SPOTSTATE '):

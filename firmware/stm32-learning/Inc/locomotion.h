@@ -11,11 +11,14 @@ static inline int locomotion_profile_id(const char *name) {
     for(int i=0;i<LOCOMOTION_PROFILE_COUNT;i++) if(strcmp(name,locomotion_names[i])==0) return i;
     return -1;
 }
+static inline bool locomotion_is_navigation(int profile) {
+    return profile==locomotion_profile_id("attitudepd_v7") || profile==locomotion_profile_id("attitudepd_v8") || profile==locomotion_profile_id("attitudepd_v9") || profile==locomotion_profile_id("attitudepd_v10");
+}
 static inline bool locomotion_is_attitude_pd(int profile) {
-    return profile==locomotion_profile_id("attitudepd_v6") || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
+    return locomotion_is_navigation(profile) || profile==locomotion_profile_id("attitudepd_v6") || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd") || profile==locomotion_profile_id("attitudepd_v2") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
 }
 static inline bool locomotion_has_gait_stand(int profile) {
-    return profile==locomotion_profile_id("attitudepd_v6") || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
+    return locomotion_is_navigation(profile) || profile==locomotion_profile_id("attitudepd_v6") || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd_v3") || profile==locomotion_profile_id("attitudepd_v4");
 }
 static inline bool locomotion_is_native(int profile) {
     return profile==locomotion_profile_id("s_native_v6_1") ||
@@ -91,15 +94,17 @@ static inline bool locomotion_foot_targets(const float p[7],float phase,float sc
  * Native profiles retain their separate calibrated CAD/servo boundary. */
 static inline bool locomotion_stand_targets(int profile,GaitPolicyLegTarget out[4]) {
     if(locomotion_has_gait_stand(profile)) {
-        int stand_profile=(profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd_v6"))?locomotion_profile_id("attitudepd_v4"):profile;
+        int stand_profile=(locomotion_is_navigation(profile) || profile==locomotion_profile_id("attitudepd_v5") || profile==locomotion_profile_id("attitudepd_v6"))?locomotion_profile_id("attitudepd_v4"):profile;
         if(!center_pivot_targets(locomotion_parameters[stand_profile][1],0,1,0,0,out))return false;
         for(int i=0;i<4;i++)out[i].stance=true;
+        if(locomotion_is_navigation(profile))for(int i=0;i<2;i++)out[i].j1_deg=-out[i].j1_deg;
     } else for(int i=0;i<4;i++)out[i]=(GaitPolicyLegTarget){0,45,90,true};
     return true;
 }
 /* Forward V6 enters over two seconds without delaying the command or clock.
  * Reverse/pivot and every older profile retain the one-second envelope. */
 static inline float locomotion_start_scale(int profile,float elapsed,float linear) {
+    if(locomotion_is_navigation(profile))profile=locomotion_profile_id("attitudepd_v6");
     float recovery=profile==locomotion_profile_id("attitudepd_v6")?
         gait_policy_smootherstep(gait_policy_clampf(linear/.15f,0,1)):0;
     return gait_policy_smootherstep(fminf(1,elapsed/(1+recovery)));
@@ -113,6 +118,11 @@ static inline float locomotion_turn_assist(int profile,float linear,float yaw) {
 }
 static inline bool locomotion_targets_assisted(int profile,float phase,float scale,float linear,float yaw,float assist,GaitPolicyLegTarget out[4]) {
     if(profile<0 || profile>=LOCOMOTION_PROFILE_COUNT || !isfinite(assist) || assist<0 || assist>1) return false;
+    if(locomotion_is_navigation(profile)) {
+        bool ok=locomotion_targets_assisted(locomotion_profile_id("attitudepd_v6"),phase,scale,linear,yaw,assist,out);
+        if(ok)for(int i=0;i<2;i++)out[i].j1_deg=-out[i].j1_deg;
+        return ok;
+    }
     /* Native entry/stop has state and must use s_native_step, never legacy IK. */
     if(locomotion_is_native(profile))return false;
     if(profile==locomotion_profile_id("arcturn"))return arc_turn_targets(phase,scale,linear,yaw,out);
@@ -164,6 +174,8 @@ static inline bool locomotion_targets(int profile,float phase,float scale,float 
     return locomotion_targets_assisted(profile,phase,scale,linear,yaw,locomotion_turn_assist(profile,linear,yaw),out);
 }
 static inline float locomotion_period(int profile,float linear,float yaw) {
+    if(locomotion_is_navigation(profile))
+        return locomotion_period(locomotion_profile_id("attitudepd_v6"),linear,yaw)*(linear<0 && yaw==0?2.f:1.f);
     if(profile==0) return gait_policy_drive_period_ms(lroundf(linear*1000),lroundf(yaw*1000))*.001f;
     float p[7];locomotion_params(profile,linear,p);
     if(profile==locomotion_profile_id("arcturn") || profile==locomotion_profile_id("arcsupport"))p[0]-=.24f*fabsf(yaw)/fmaxf(fabsf(linear)+fabsf(yaw),1.e-9f);

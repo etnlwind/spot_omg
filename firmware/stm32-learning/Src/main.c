@@ -241,6 +241,7 @@ int main(void)
   robot_init(&robot, &servo_bus);
   flight_log_init(ROBOT_CONTROL_REV);
   (void)flight_log_load_foot_lift(robot.foot_lift_mm);
+  (void)flight_log_load_foot_width(robot.foot_width_mm);
   app_console_init(&console, &huart2, &robot, &imu055, &imu086, &imu_log_enabled);
   app_console_init(&wifi_console, &huart3, &robot, &imu055, &imu086, &imu_log_enabled);
   robot.realtime_service = service_realtime_console;

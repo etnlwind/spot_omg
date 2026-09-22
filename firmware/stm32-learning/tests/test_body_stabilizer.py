@@ -19,13 +19,9 @@ spec.loader.exec_module(generator)
 
 
 def test_nine_standalone_controller_groups(tmp_path):
-    cc = shutil.which('cc')
-    assert cc, 'A C11 host compiler is required'
-    binary = tmp_path / 'body-pd'
-    subprocess.run([cc, '-std=c11', '-O1', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=undefined', '-fno-sanitize-recover=all',
-                    '-I'+str(PROJECT/'Inc'), str(PROJECT/'tests/test_body_stabilizer.c'),
-                    '-lm', '-o', str(binary)], check=True, capture_output=True, text=True)
+    from servo.host_build import build_executable
+    binary=build_executable([PROJECT/'tests/test_body_stabilizer.c'],PROJECT/'Inc',tmp_path/'body-pd',
+        extra=['-UNDEBUG','-Wall','-Wextra','-Werror','-fsanitize=undefined','-fno-sanitize-recover=all'])
     result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
     assert '9 standalone groups passed' in result.stdout
 

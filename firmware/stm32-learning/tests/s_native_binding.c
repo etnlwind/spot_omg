@@ -27,3 +27,5 @@ int encode(const float cad[12],uint16_t ticks[12]) {
     for(int i=0;i<4;i++)target[i]=(GaitPolicyLegTarget){cad[3*i],cad[3*i+1],cad[3*i+2],true};
     return s_native_servo_targets(target,ticks);
 }
+
+void set_foot_width(int fl,int fr,int rl,int rr){state.foot_width_mm[0]=fl;state.foot_width_mm[1]=fr;state.foot_width_mm[2]=rl;state.foot_width_mm[3]=rr;}

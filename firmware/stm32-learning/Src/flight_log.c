@@ -118,6 +118,15 @@ bool flight_log_load_foot_lift(uint32_t values[4])
     return true;
 }
 
+bool flight_log_load_foot_width(int32_t values[4])
+{
+    const FlightLogRecord *record=latest_foot_lift();
+    if(!record)return false;
+    memset(values,0,4*sizeof(int32_t));
+    if(record->text_length==8*sizeof(uint32_t))memcpy(values,record->text+4*sizeof(uint32_t),4*sizeof(int32_t));
+    return true;
+}
+
 static bool rewrite_prefix(const void *calibration, size_t size)
 
 {
@@ -212,7 +221,7 @@ bool flight_log_prepare_entries(size_t count)
     return remaining>=count || erase_preserving_calibration();
 }
 
-static bool append_record(const char *text, const uint32_t *foot_lift)
+static bool append_record(const char *text, const uint32_t *foot_lift, const int32_t *foot_width)
 {
     if (!initialized || text == NULL) {
         return false;
@@ -244,7 +253,8 @@ static bool append_record(const char *text, const uint32_t *foot_lift)
     record.text_length = (uint16_t)length;
     if (foot_lift) {
         memcpy(record.text, foot_lift, 4*sizeof(uint32_t));
-        record.text_length = 4*sizeof(uint32_t);
+        record.text_length = 8*sizeof(uint32_t);
+        if(foot_width)memcpy(record.text+4*sizeof(uint32_t),foot_width,4*sizeof(int32_t));
         record.text[record.text_length] = 0;
     }
     record.checksum = record_checksum(&record);
@@ -271,16 +281,23 @@ static bool append_record(const char *text, const uint32_t *foot_lift)
     return true;
 }
 
-bool flight_log_append(const char *text) { return append_record(text, NULL); }
+bool flight_log_append(const char *text) { return append_record(text, NULL, NULL); }
 
+bool flight_log_save_foot_settings(const uint32_t values[4],const int32_t widths[4])
+{
+    if(!values || !widths || !initialized)return false;
+    for(int i=0;i<4;i++)if(values[i]>INT32_MAX)return false;
+    uint32_t previous[4];int32_t old_widths[4];
+    if(flight_log_load_foot_lift(previous) && flight_log_load_foot_width(old_widths) &&
+       !memcmp(previous,values,sizeof(previous)) && !memcmp(old_widths,widths,sizeof(old_widths)))return true;
+    if(!append_record("",values,widths))return false;
+    return flight_log_load_foot_lift(previous) && flight_log_load_foot_width(old_widths) &&
+       !memcmp(previous,values,sizeof(previous)) && !memcmp(old_widths,widths,sizeof(old_widths));
+}
 bool flight_log_save_foot_lift(const uint32_t values[4])
 {
-    if (!values || !initialized) return false;
-    for (int i=0;i<4;i++) if (values[i]>INT32_MAX) return false;
-    uint32_t previous[4];
-    if (flight_log_load_foot_lift(previous) && !memcmp(previous, values, sizeof(previous))) return true;
-    if (!append_record("", values)) return false;
-    return flight_log_load_foot_lift(previous) && !memcmp(previous, values, sizeof(previous));
+    int32_t widths[4]={0};(void)flight_log_load_foot_width(widths);
+    return flight_log_save_foot_settings(values,widths);
 }
 
 bool flight_log_appendf(const char *format, ...)

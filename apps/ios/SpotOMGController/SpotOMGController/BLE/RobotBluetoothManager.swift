@@ -96,7 +96,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var imuRecoveryAcknowledged = false
     private var imuRecoveryTimeout: DispatchWorkItem?
     var supportsIMURecovery: Bool {
-        target == .robot && ["attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"].contains(runtimeState.revision)
+        target == .robot && ["attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93"].contains(runtimeState.revision)
     }
     var canRecoverIMU: Bool {
         supportsIMURecovery && state.isReady && !driveSessionActive &&
@@ -397,6 +397,13 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private let settings: UserDefaults
     // The robot owns these values. Legacy UserDefaults must never be uploaded.
     var savedFootLift: [Int]? { footLiftApplied }
+    @Published private(set) var footWidthApplied: [Int]?
+    var supportsFootWidth: Bool { runtimeState.capabilities.contains("footwidth") }
+    var appliedFootSettings: [Int]? {
+        guard let lift = footLiftApplied else { return nil }
+        if supportsFootWidth { guard let width = footWidthApplied else { return nil }; return lift + width }
+        return lift + [0,0,0,0]
+    }
     var supportsPersistentFootLift: Bool { runtimeState.capabilities.contains("footliftpersist") }
     func refreshFootLift() {
         guard state.isReady, !motionControlsLocked, !driveSessionActive, pendingConsoleResponses == 0, !footLiftPending else { return }
@@ -406,8 +413,10 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         state.isReady && lastStateSync != nil && supportsPersistentFootLift &&
         !motionControlsLocked && !driveSessionActive && pendingConsoleResponses == 0 && !footLiftPending && !probeBusy
     }
-    func configureFootLift(_ values: [Int]) {
-        guard canConfigureFootLift, values.count == 4, values.allSatisfy({ (0...2147483647).contains($0) }) else { return }
+    func configureFootLift(_ lift: [Int], widths: [Int]? = nil) {
+        let values = lift + (widths ?? [])
+        guard canConfigureFootLift, lift.count == 4, lift.allSatisfy({ (0...2147483647).contains($0) }) else { return }
+        if let widths { guard supportsFootWidth, widths.count == 4, widths.allSatisfy({ (-2147483647...2147483647).contains($0) }) else { return } }
         footLiftExpected = values; footLiftPending = true; footLiftReadback = nil
         footLiftReadbackPending = false; footLiftSaveAcknowledged = false; footLiftMessage = "적용값 확인 중…"
         let id = UUID(); footLiftRequestID = id
@@ -430,9 +439,9 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     private var probeTimeout: DispatchWorkItem?
     private var probeStopAt: Date?
     var supportsProbe: Bool {
-        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1","attitudepd-v4-v90-r2","attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"].contains(runtimeState.revision)
+        !target.isSimulator && ["s-native-v6-2-7-v77-t1-param","s-native-v6-2-7-v77-t1-param-j1","s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1","attitudepd-v4-v90-r2","attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93"].contains(runtimeState.revision)
     }
-    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1","attitudepd-v4-v90-r2","attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"].contains(runtimeState.revision) && !target.isSimulator }
+    var supportsProbeWidth: Bool { ["s-native-v6-2-7-v77-t1-width","attitudepd-v2-v78","attitudepd-v3-v79","attitudepd-v4-v80","attitudepd-v4-v81","attitudepd-v4-v90-r1","attitudepd-v4-v90-r2","attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93"].contains(runtimeState.revision) && !target.isSimulator }
     var probeConfigurationBlockReason: String? {
         if !state.isReady { return "로봇에 연결한 뒤 설정을 적용할 수 있습니다." }
         if target.isSimulator { return "직접 설정 보행은 현재 실제 로봇 연결에서만 지원합니다." }
@@ -861,7 +870,8 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         }
         deferredDriveInput = nil
         driveVector = vector
-        driveStatus = "\(vector.statusTitle) · 속도 \(Int((vector.speedFraction * 100).rounded()))%"
+        let title = ["attitudepd_v7", "attitudepd_v8", "attitudepd_v9"].contains(runtimeState.simulationProfile) ? vector.navigationTitle : vector.statusTitle
+        driveStatus = "\(title) · 입력 \(Int((vector.speedFraction * 100).rounded()))%"
         if !driveSessionActive {
             stateRefreshWorkItem?.cancel()
             stateRefreshWorkItem = nil
@@ -955,7 +965,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
         imuRecoveryTimeout?.cancel(); imuRecoveryPending = false; imuRecoveryAcknowledged = false
         imuRecoveryMessage = "정지 상태에서 IMU 통신을 복구합니다."
         deferredDriveInput = nil; inputReleased = false; stopRearmed = false
-        footLiftApplied = nil
+        footLiftApplied = nil; footWidthApplied = nil
         finishFootLift(success: false, message: "연결 후 적용값 확인")
         joystickAutoReturn=true;joystickResetToken += 1
         parameterWalking=false;probeFromJoystick=false
@@ -1012,7 +1022,7 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
     // continues to show readback, never a locally invented firmware selection.
     private func selectDefaultValidationProfileIfIdle() {
         let profile = SimulatorGaitProfile.allCases.first {
-            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v6 || $0 == .attitudepd_v5 || $0 == .attitudepd_v4 || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
+            ($0.rawValue.hasPrefix("s_native_v") || $0 == .attitudepd_v9 || $0 == .attitudepd_v8 || $0 == .attitudepd_v7 || $0 == .attitudepd_v6 || $0 == .attitudepd_v5 || $0 == .attitudepd_v4 || $0 == .attitudepd_v3 || $0 == .attitudepd_v2 || $0 == .centerpivot) &&
             (target != .robot || !$0.simulatorOnly) && $0.isSupported(capabilities: runtimeState.capabilities)
         } ?? .centerpivot
         guard defaultValidationProfilePending, state.isReady,
@@ -1335,8 +1345,12 @@ final class RobotBluetoothManager: NSObject, ObservableObject {
             let liftKeys=["lift_fl","lift_fr","lift_rl","lift_rr"]
             let lift=liftKeys.compactMap { values[$0].flatMap(Int.init) }.filter { (0...2147483647).contains($0) }
             footLiftApplied=lift.count == 4 ? lift : nil
+            let widths=["width_fl","width_fr","width_rl","width_rr"].compactMap { values[$0].flatMap(Int.init) }.filter { (-2147483647...2147483647).contains($0) }
+            footWidthApplied=widths.count == 4 ? widths : nil
             if footLiftPending, footLiftReadbackPending, consoleCommands.first == "syncstate" {
-                footLiftReadback = lift.count == 4 ? lift : nil
+                if footLiftExpected?.count == 8 {
+                    footLiftReadback = lift.count == 4 && widths.count == 4 ? lift + widths : nil
+                } else { footLiftReadback = lift.count == 4 ? lift : nil }
             }
             if values["pose"] != runtimeState.pose || values["safety"] != runtimeState.safety || values["rev"] != runtimeState.revision {
                 appendConsole("[상태] \(values["pose"] ?? "unknown") · \(values["safety"] ?? "unknown") · \(values["rev"] ?? "unknown")\n")

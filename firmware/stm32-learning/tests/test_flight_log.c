@@ -61,11 +61,22 @@ int main(void) {
     assert(flight_log_save_foot_lift(values));
     assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
     before=flight_log_count();assert(flight_log_save_foot_lift(values));assert(flight_log_count()==before);
+    int32_t widths[4]={-5,6,-7,8}, width_read[4];
+    assert(flight_log_load_foot_width(width_read));
+    for(int i=0;i<4;i++)assert(width_read[i]==0);
+    assert(flight_log_save_foot_settings(values,widths));
+    flight_log_init("width-reboot");
+    assert(flight_log_load_foot_width(width_read) && !memcmp(widths,width_read,sizeof widths));
+    /* Legacy clients updating lift must not clear width. */
+    assert(flight_log_save_foot_lift(values));
+    assert(flight_log_load_foot_width(width_read) && !memcmp(widths,width_read,sizeof widths));
     /* Every word-boundary interruption keeps the last committed settings. */
     for (int cut=0;cut<32;cut++) {
         uint32_t changed[4]={70,80,9,10};
-        budget=cut;assert(!flight_log_save_foot_lift(changed));budget=-1;
+        int32_t changed_widths[4]={9,-10,11,-12};
+        budget=cut;assert(!flight_log_save_foot_settings(changed,changed_widths));budget=-1;
         flight_log_init("restart");
+        assert(flight_log_load_foot_width(width_read) && !memcmp(widths,width_read,sizeof widths));
         assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
     }
     assert(flight_log_clear());
@@ -81,5 +92,6 @@ int main(void) {
     assert(flight_log_prepare_entries(50));
     assert(flight_log_load_foot_lift(loaded) && !memcmp(values,loaded,sizeof(values)));
     uint32_t invalid[4]={0,0,0,0x80000000};assert(!flight_log_save_foot_lift(invalid));
+    assert(flight_log_load_foot_width(width_read) && !memcmp(widths,width_read,sizeof widths));
     puts("flight log: partial reset recovery, erased gaps, batch rotation and calibration preservation passed");
 }

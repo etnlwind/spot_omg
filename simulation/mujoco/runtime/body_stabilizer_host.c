@@ -18,6 +18,27 @@ int spot_pd_apply(AttitudePd *s,const BodyStabilizerConfig *c,const BodyImuState
     return 1;
 }
 void spot_pd_feet(const float q[12],float out[12]) {for(int i=0;i<4;i++)arc_foot(i,q+3*i,out+3*i,NULL);}
+int spot_pd_apply_pace(AttitudePd *s,const BodyStabilizerConfig *c,const BodyImuState *imu,
+        uint32_t now,float dt,int enabled,float phase,float period,float duty,int moving,
+        const float nominal[12],float output[12]) {
+    const float offsets[4]={0,.5f,0,.5f};
+    GaitPolicyLegTarget input[4],result[4];
+    for(int i=0;i<4;i++)input[i]=(GaitPolicyLegTarget){nominal[3*i],nominal[3*i+1],nominal[3*i+2],false};
+    if(!attitude_pd_apply_offsets(s,c,imu,now,dt,enabled,phase,period,duty,moving,offsets,input,result))return 0;
+    for(int i=0;i<4;i++){output[3*i]=result[i].j1_deg;output[3*i+1]=result[i].j2_deg;output[3*i+2]=result[i].j3_deg;}
+    return 1;
+}
+int spot_pd_apply_side(AttitudePd *s,const BodyStabilizerConfig *c,const BodyImuState *imu,
+        uint32_t now,float dt,int enabled,float phase,float period,float duty,int moving,
+        const float nominal[12],float output[12],int left) {
+    const float normal[4]={.8f,.3f,.05f,.55f},mirror[4]={.3f,.8f,.55f,.05f};
+    const float *offsets=left?mirror:normal;
+    GaitPolicyLegTarget input[4],result[4];
+    for(int i=0;i<4;i++)input[i]=(GaitPolicyLegTarget){nominal[3*i],nominal[3*i+1],nominal[3*i+2],false};
+    if(!attitude_pd_apply_offsets(s,c,imu,now,dt,enabled,phase,period,duty,moving,offsets,input,result))return 0;
+    for(int i=0;i<4;i++){output[3*i]=result[i].j1_deg;output[3*i+1]=result[i].j2_deg;output[3*i+2]=result[i].j3_deg;}
+    return 1;
+}
 static float finite_or_zero(float x) {return isfinite(x)?x:0;}
 static int json_array(char *out,int remaining,const char *name,const float *values,int count) {
     int n=snprintf(out,remaining,",\"%s\":[",name);

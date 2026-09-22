@@ -7,7 +7,7 @@ from .battery import BatteryWarning, reading as battery_reading
 
 NATIVE_PROFILES = ("s_native_v6_2_7", "s_native_v6_2_6", "s_native_v6_2_5", "s_native_v6_2_4", "s_native_v6_2_3", "s_native_v6_2_2", "s_native_v6_2_1", "s_native_v6_2", "s_native_v6_1") + tuple(f"s_native_v{version}" for version in range(6, 0, -1))
 SIMULATOR_NATIVE_PROFILES = frozenset(NATIVE_PROFILES) - {"s_native_v6_1", "s_native_v6_2_1", "s_native_v6_2_2", "s_native_v6_2_3", "s_native_v6_2_4", "s_native_v6_2_5", "s_native_v6_2_6", "s_native_v6_2_7"}
-PROFILES = ("attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
+PROFILES = ("attitudepd_v9", "attitudepd_v8", "attitudepd_v7", "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES + (
     "attitudepd", "centerpivot", "arcsupport", "arcturn", "legacy", "crawl",
     "cruise", "trot", "highstep", "lift", "imu", "level", "level15", "joint",
     "jointfast", "jointsport", "cushion_reach", "cushion_j2lift", "cushion_wbc",
@@ -22,7 +22,7 @@ DRAIN_IDLE_TIMEOUT = 5.
 DRAIN_TOTAL_TIMEOUT = 30.
 IMU_RECOVERY_REVISIONS = frozenset({
     "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3",
-    "attitudepd-v5-v91", "attitudepd-v6-v92",
+    "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93",
 })
 IMU_RECOVERY_ACK = "OK IMU recovered; no motion; faults unchanged"
 
@@ -161,7 +161,7 @@ class Controller:
     @property
     def supports_probe(self):
         return not self.simulator and self.state.get('rev') in {
-            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81', 'attitudepd-v4-v82', 'attitudepd-v4-v90-r1', 'attitudepd-v4-v90-r2', 'attitudepd-v4-v90-r3', 'attitudepd-v5-v91', 'attitudepd-v6-v92'}
+            's-native-v6-2-7-v77-t1-param', 's-native-v6-2-7-v77-t1-param-j1', 's-native-v6-2-7-v77-t1-width', 'attitudepd-v2-v78', 'attitudepd-v3-v79', 'attitudepd-v4-v80', 'attitudepd-v4-v81', 'attitudepd-v4-v82', 'attitudepd-v4-v90-r1', 'attitudepd-v4-v90-r2', 'attitudepd-v4-v90-r3', 'attitudepd-v5-v91', 'attitudepd-v6-v92', 'attitudepd-v6-v92-r1', 'attitudepd-v6-v92-r2', 'attitudepd-v7-v93'}
 
     @staticmethod
     def parse_probe(values):
@@ -251,14 +251,18 @@ class Controller:
             if self.phase != "idle":raise ValueError("정지 후 발 들림 보정을 적용하십시오.")
             if words[1:] != ["show"]:
                 if "footliftpersist" not in self.caps:raise ValueError("로봇 영구 저장 지원 펌웨어(V90-R2)가 필요합니다.")
-                if len(words)!=6 or words[1]!="save" or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:]):
+                if len(words) not in (6,10) or words[1]!="save" or any(not v.isascii() or not v.isdigit() or not 0<=int(v)<=2147483647 for v in words[2:6]):
                     raise ValueError("각 다리의 추가 들림은 0 이상의 정수 mm입니다.")
+                if len(words)==10:
+                    if 'footwidth' not in self.caps:raise ValueError('발 간격 보정 지원 펌웨어가 필요합니다.')
+                    if any(not v.isascii() or not v.lstrip('+-').isdigit() or not -2147483647<=int(v)<=2147483647 for v in words[6:]):
+                        raise ValueError('간격은 부호 있는 정수 mm입니다.')
         if words[0] == 'probeconfig':
             if not self.supports_probe:raise ValueError('파라미터 펌웨어가 필요합니다.')
             if words[1:] not in [['show'], ['reset']]:
                 if len(words) not in {6,7,8} or words[1] != 'set':raise ValueError('잘못된 파라미터 명령')
                 self.parse_probe(words[2:])
-                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
+                if len(words)>=7 and self.state.get("rev") not in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93"):raise ValueError("간격 지원 펌웨어가 필요합니다.")
         first = words[0]
         if first in POSTURES | {'relax', 'recover', 'hold'} and len(words) != 1:
             raise ValueError('자세 명령에는 추가 인자를 사용할 수 없습니다.')
@@ -279,7 +283,7 @@ class Controller:
             profile = words[1]
             if (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) and not self.simulator:
                 raise ValueError("이 보행 정책은 시뮬레이터 전용입니다.")
-            if profile in {*NATIVE_PROFILES, "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
+            if profile in {*NATIVE_PROFILES, "attitudepd_v9", "attitudepd_v8", "attitudepd_v7", "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} and profile not in self.caps:
                 raise ValueError("제어기가 선택한 실험 정책을 지원하지 않습니다.")
 
     def request(self, line, now):
@@ -331,10 +335,10 @@ class Controller:
         if line.startswith('probeconfig set '):
             self.probe_config = None
             self.probe_expected = self.parse_probe(line.split()[2:])
-            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"):self.probe_expected += (0,0)
+            if len(self.probe_expected)==4 and self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93"):self.probe_expected += (0,0)
         elif line == 'probeconfig reset':
             self.probe_config = None
-            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92") else ())
+            self.probe_expected = (20,344,4000,'all') + ((0,0) if self.state.get('rev') in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1", "attitudepd-v6-v92-r2", "attitudepd-v7-v93") else ())
         self.command = line
         self.command_ok = self.command_error = False
         self.command_state_seen = False
@@ -670,7 +674,9 @@ class Controller:
                 self._console('footlift show',now)
                 return
         if command == 'footlift show' and self.foot_lift_expected is not None:
-            try: actual=[int(self.state['lift_'+leg]) for leg in ('fl','fr','rl','rr')]
+            try:
+                actual=[int(self.state['lift_'+leg]) for leg in ('fl','fr','rl','rr')]
+                if len(self.foot_lift_expected)==8:actual += [int(self.state['width_'+leg]) for leg in ('fl','fr','rl','rr')]
             except (KeyError,ValueError): actual=None
             self.foot_lift_result=dict(ok=not self.command_error and self.command_state_seen and actual==self.foot_lift_expected,values=self.foot_lift_expected)
             self.foot_lift_expected=None
@@ -722,7 +728,7 @@ class Controller:
                 self._console("read 1", now)
         elif command == "read 1" and self.default_profile_pending and self.synced and self.state.get('safety') == 'ok' and self.state.get('pose') in {'stand', 'stand11', 'landing'}:
             self.default_profile_pending = False
-            profile = next((p for p in ("attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES if p in self.caps and
+            profile = next((p for p in ("attitudepd_v9", "attitudepd_v8", "attitudepd_v7", "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2") + NATIVE_PROFILES if p in self.caps and
                             (self.simulator or p not in SIMULATOR_NATIVE_PROFILES)), None)
             if profile and self.state.get('profile') != profile and self.caps & {'gaitprofiles', 'simprofiles'}:
                 prefix = 'gaitprofile' if 'gaitprofiles' in self.caps else 'simprofile'

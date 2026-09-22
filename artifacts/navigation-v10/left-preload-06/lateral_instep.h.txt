@@ -1,0 +1,27 @@
+#ifndef LATERAL_INSTEP_H
+#define LATERAL_INSTEP_H
+/* V10 revised LEFT first-step experiment. Positive CAD Y is left.
+ * FL/RL lift using J2/J3 and translate using J1. FR/RR stay planted;
+ * their J1 changes as the body translates left. IK also preserves stance
+ * X/Z rather than dragging a planted foot. The endpoint is held: no right
+ * recovery step or repeated stride is claimed by this experiment. */
+static inline float lateral_instep_progress(float phase,float begin,float end) {
+    return gait_policy_smootherstep(gait_policy_clampf((phase-begin)/(end-begin),0,1));
+}
+static inline bool lateral_instep_targets(float phase,float scale,float input,
+        const uint32_t lift_mm[4],GaitPolicyLegTarget target[4]) {
+    float p=gait_policy_clampf(phase,0,.45f),step=.02f*fabsf(input);
+    float body=fabsf(input)*(-.09f+0.f*lateral_instep_progress(p,0,.18f)+.12f*lateral_instep_progress(p,.2f,.45f));
+    for(int i=0;i<4;i++) {
+        bool left=i%2==0;
+        float u=gait_policy_clampf(p/.2f,0,1);
+        float travel=left?step*lateral_instep_progress(u,.35f,.8f):0;
+        float lift=left?(.02f+.001f*lift_mm[i])*lateral_instep_progress(u,0,.35f)*(1-lateral_instep_progress(u,.7f,1)):0;
+        float q[3]={target[i].j1_deg,target[i].j2_deg,target[i].j3_deg},goal[3];
+        arc_foot(i,q,goal,NULL);goal[1]+=scale*(travel-body);goal[2]+=scale*lift;
+        if(!arc_swing_shape_refine(i,goal,q))return false;
+        target[i]=(GaitPolicyLegTarget){q[0],q[1],q[2],!left || p>=.2f};
+    }
+    return true;
+}
+#endif

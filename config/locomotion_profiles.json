@@ -1,6 +1,6 @@
 {
   "status": "Shared deployment manifest for STM32 and MuJoCo; physical parameters require hardware measurement",
-  "default": "attitudepd_v6",
+  "default": "attitudepd_v10",
   "profiles": {
     "crawl": {
       "label": "Crawl / four-beat",
@@ -560,6 +560,114 @@
       "half_stick_linear": 0.588,
       "experimental": true,
       "validation": "Experimental V6 recovery: Stand B and stride retained, 25% longer forward cycle with V5 central push velocity; 18% lift-before-translation, C2 stance ramps, two-second forward entry. Zero-offset estimated contact improves; asymmetric +30mm half-stick gait remains unstable. Physical validation pending.",
+      "turn_input_limit": 0.5,
+      "forward_cadence_gain": 1.3
+    },
+    "attitudepd_v7": {
+      "label": "IMU 방향 제어 V7 · 옆걸음 · 후진 50% · 실험",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "half_stick_linear": 0.588,
+      "experimental": true,
+      "validation": "V6 preserved. V7 joystick navigation and separate heading stride feedback. Physical validation pending.",
+      "turn_input_limit": 0.5,
+      "forward_cadence_gain": 1.3
+    },
+    "attitudepd_v8": {
+      "label": "IMU 방향 제어 V8 · 대각선 두 발 옆걸음 · 실험",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "half_stick_linear": 0.588,
+      "experimental": true,
+      "validation": "V7 preserved; paired diagonal lateral steps. Simulation candidate; physical validation pending.",
+      "turn_input_limit": 0.5,
+      "forward_cadence_gain": 1.3
+    },
+    "attitudepd_v9": {
+      "label": "IMU 방향 제어 V9 · 같은 쪽 두 발 옆걸음 · 실험",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "half_stick_linear": 0.588,
+      "experimental": true,
+      "validation": "V8 preserved. Ipsilateral pairs with four-foot lateral load transfer. Experimental; physical validation pending.",
+      "turn_input_limit": 0.5,
+      "forward_cadence_gain": 1.3
+    },
+    "attitudepd_v10": {
+      "label": "V10 · 왼발 선행 한 걸음 · 실험",
+      "family": "trot",
+      "params": [
+        1.35,
+        0.52,
+        0.08,
+        0.024,
+        0.22,
+        -0.035,
+        0.75
+      ],
+      "turn_reverse_params": [
+        1.05,
+        0.52,
+        0.07,
+        0.022,
+        0.20175,
+        -0.035,
+        0.75
+      ],
+      "half_stick_linear": 0.588,
+      "experimental": true,
+      "validation": "Left-only FL/RL first, then FR/RR recovery to Stand. Offline experiment; no dynamically validated parameter set. Do not deploy to hardware.",
       "turn_input_limit": 0.5,
       "forward_cadence_gain": 1.3
     }

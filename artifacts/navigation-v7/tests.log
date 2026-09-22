@@ -1,0 +1,15 @@
+........................................................................ [ 17%]
+........................................................................ [ 35%]
+................................F....................................... [ 53%]
+........................................................................ [ 71%]
+........................................................................ [ 89%]
+...........................................                              [100%]
+================================== FAILURES ===================================
+_ test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_command _
+apps\windows\tests\test_control_channel.py:134: in test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_command
+    assert any(row['event'] == 'control-tx' and '@D ' in row['detail'] for row in rows)
+E   assert False
+E    +  where False = any(<generator object test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_command.<locals>.<genexpr> at 0x0000024F834C14D0>)
+=========================== short test summary info ===========================
+FAILED apps/windows/tests/test_control_channel.py::test_stop_ready_without_waiting_for_logs_and_old_reply_cannot_complete_new_command
+1 failed, 402 passed in 57.17s

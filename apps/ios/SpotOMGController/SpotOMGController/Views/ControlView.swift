@@ -380,7 +380,7 @@ struct ControlView: View {
                 }
                 Spacer()
                 Button { showFootLiftSettings = true } label: {
-                    Label("발 높이 설정", systemImage: "slider.horizontal.3")
+                    Label("발 위치 보정", systemImage: "slider.horizontal.3")
                 }.accessibilityIdentifier("footLiftShortcut")
             }.font(.caption).buttonStyle(.bordered)
             GeometryReader { area in
@@ -621,11 +621,11 @@ struct ControlView: View {
 struct FootLiftSettingsView: View {
     @EnvironmentObject private var bluetooth: RobotBluetoothManager
     @Environment(\.dismiss) private var dismiss
-    @State private var footLiftDraft = [0,0,0,0]
+    @State private var footLiftDraft = [0,0,0,0,0,0,0,0]
     @State private var footLiftBaseline: [Int]?
     private func loadFootLift() {
-        footLiftBaseline = bluetooth.footLiftApplied
-        footLiftDraft = footLiftBaseline ?? [0,0,0,0]
+        footLiftBaseline = bluetooth.appliedFootSettings
+        footLiftDraft = footLiftBaseline ?? [0,0,0,0,0,0,0,0]
     }
     private func footLiftField(_ index: Int,_ name: String) -> some View {
         VStack {
@@ -638,8 +638,20 @@ struct FootLiftSettingsView: View {
                     .onChange(of:footLiftDraft[index]) { _,value in footLiftDraft[index]=min(2147483647,max(0,value)) }
                 Text("mm").font(.caption).fixedSize().foregroundStyle(Color(white: 0.78))
             }
+            Text("추가 들림").font(.caption)
             Stepper("\(name) 발 높이",value:$footLiftDraft[index],in:0...2147483647)
                 .labelsHidden().disabled(bluetooth.footLiftPending)
+            Text("좌우 간격 · − 안쪽 / + 바깥").font(.caption)
+            HStack(spacing: 4) {
+                TextField("mm",value:$footLiftDraft[index+4],format:.number)
+                    .keyboardType(.numbersAndPunctuation).textFieldStyle(.roundedBorder)
+                    .font(.body.monospacedDigit())
+                    .accessibilityLabel("\(name) 좌우 간격 보정, 밀리미터")
+                    .onChange(of:footLiftDraft[index+4]) { _,value in footLiftDraft[index+4]=min(2147483647,max(-2147483647,value)) }
+                Text("mm").font(.caption)
+            }.disabled(!bluetooth.supportsFootWidth || bluetooth.footLiftPending)
+            Stepper("\(name) 좌우 간격",value:$footLiftDraft[index+4],in:-2147483647...2147483647)
+                .labelsHidden().disabled(!bluetooth.supportsFootWidth || bluetooth.footLiftPending)
         }
     }
     private var footLiftEditor: some View {
@@ -656,22 +668,25 @@ struct FootLiftSettingsView: View {
                             footLiftField(2,"RL · 뒤 왼쪽")
                             footLiftField(3,"RR · 뒤 오른쪽")
                         }
-                        Text("0 = 기본 보행 · 스윙 중에만 추가 들림 · 로봇 기준 좌우").font(.caption).foregroundStyle(Color(white: 0.78))
-                        if bluetooth.state.isReady, let applied=bluetooth.footLiftApplied {
-                            Text(zip(["FL","FR","RL","RR"],applied).map { "\($0.0) \($0.1)mm" }.joined(separator:" / ")).font(.caption.monospacedDigit())
+                        Text("0 = 모델 기본값 · 높이: 스윙 중 추가 들림 · 간격: − 안쪽 / + 바깥쪽").font(.caption).foregroundStyle(Color(white: 0.78))
+                        if bluetooth.state.isReady, let applied=bluetooth.appliedFootSettings {
+                            Text(zip(["FL","FR","RL","RR"],applied.prefix(4)).map { "\($0.0) 높이 \($0.1)mm" }.joined(separator:" / ")).font(.caption.monospacedDigit())
+                            if bluetooth.supportsFootWidth {
+                                Text(zip(["FL","FR","RL","RR"],applied.suffix(4)).map { "\($0.0) 간격 \($0.1)mm" }.joined(separator:" / ")).font(.caption.monospacedDigit())
+                            } else { Text("간격 보정은 지원 펌웨어 업데이트 후 사용할 수 있습니다.").font(.caption).foregroundStyle(.orange) }
                         }
                         Text(bluetooth.supportsPersistentFootLift ? bluetooth.footLiftMessage : "로봇 영구 저장 지원 펌웨어(V90-R2)가 필요합니다.").font(.caption)
                         HStack {
-                            Button("저장·반영") { bluetooth.configureFootLift(footLiftDraft) }.disabled(!bluetooth.canConfigureFootLift)
+                            Button("저장·반영") { bluetooth.configureFootLift(Array(footLiftDraft.prefix(4)), widths: bluetooth.supportsFootWidth ? Array(footLiftDraft.suffix(4)) : nil) }.disabled(!bluetooth.canConfigureFootLift)
                             Button("로봇 값 불러오기") { loadFootLift(); bluetooth.refreshFootLift() }.disabled(bluetooth.footLiftPending)
-                            Button("모두 0") { footLiftDraft=[0,0,0,0] }.disabled(bluetooth.footLiftPending)
+                            Button("모두 0") { footLiftDraft=[0,0,0,0,0,0,0,0] }.disabled(bluetooth.footLiftPending)
                         }.buttonStyle(.bordered)
-                        if let actual = bluetooth.footLiftApplied, actual != footLiftDraft, !bluetooth.footLiftPending {
+                        if let actual = bluetooth.appliedFootSettings, actual != footLiftDraft, !bluetooth.footLiftPending {
                             Text("아직 반영되지 않은 입력값입니다. 저장·반영을 눌러 주세요.").foregroundStyle(.orange).font(.subheadline)
                         }
                         Text("STM32에 영구 저장됩니다. Windows·Mac·iPhone이 같은 로봇의 설정을 공유합니다.").font(.caption).foregroundStyle(Color(white: 0.78))
                     }.onAppear { loadFootLift(); bluetooth.refreshFootLift() }
-                    .onChange(of: bluetooth.footLiftApplied) { _, actual in
+                    .onChange(of: bluetooth.appliedFootSettings) { _, actual in
                         if footLiftBaseline == nil || footLiftDraft == footLiftBaseline { loadFootLift() }
                     }
                     .onChange(of: bluetooth.footLiftPending) { old, pending in
@@ -681,8 +696,8 @@ struct FootLiftSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form { Section("발 추가 들림 · 모든 보행") { footLiftEditor } }
-                .navigationTitle("발 높이 설정")
+            Form { Section("발 위치 보정 · 모든 보행") { footLiftEditor } }
+                .navigationTitle("발 위치 보정")
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("완료") { dismiss() } } }
         }
         .preferredColorScheme(.dark).tint(.mint).toggleStyle(.switch)

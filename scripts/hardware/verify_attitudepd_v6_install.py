@@ -62,13 +62,15 @@ def healthy_stationary(text):
 
 
 async def run(args):
+    revision = getattr(args, 'revision', REVISION)
+    profile = 'attitudepd_v7' if revision == 'attitudepd-v7-v93' else PROFILE
     args.output.mkdir(parents=True, exist_ok=True)
     evidence = args.output / 'post-verify.json'
     # Exclusive creation protects earlier evidence, including failed attempts.
     with evidence.open('x', encoding='utf-8') as file:
         file.write('{}\n')
-    report = dict(stage='post-verify', success=False, expected_revision=REVISION,
-                  expected_profile=PROFILE, started_epoch=time.time(), events=[], console=[])
+    report = dict(stage='post-verify', success=False, expected_revision=revision,
+                  expected_profile=profile, started_epoch=time.time(), events=[], console=[])
     radio = None
     drainer = None
 
@@ -79,7 +81,7 @@ async def run(args):
         image = args.image.read_bytes()
         digest = hashlib.sha256(image).hexdigest()
         report['sha256'] = digest
-        require(REVISION.encode() in image and len(image) <= 320 * 1024, 'Expected a V92 application image within the OTA slot')
+        require(revision.encode() in image and len(image) <= 320 * 1024, 'Expected the selected application image within the OTA slot')
         prior = json.loads((args.output / 'prepare.json').read_text())
         ota = json.loads((args.output / 'ota.json').read_text())
         require(prior.get('success') is True and prior.get('landing_confirmed') is True and prior.get('torque_off') is True,
@@ -183,11 +185,16 @@ async def run(args):
             return text
 
         def check_state(state, torque, landed=False):
-            require(state.get('rev') == REVISION and state.get('profile') == PROFILE, f'Unexpected firmware/profile: {state}')
-            require({'controlv1', 'footliftpersist', PROFILE} <= set(state.get('caps', '').split(',')), f'Missing capabilities: {state}')
+            require(state.get('rev') == revision and state.get('profile') == profile, f'Unexpected firmware/profile: {state}')
+            require({'controlv1', 'footliftpersist', profile} <= set(state.get('caps', '').split(',')), f'Missing capabilities: {state}')
             require(state.get('safety') == 'ok' and state.get('fault_code') == '0' and state.get('torque') == torque,
                     f'Unexpected safety/torque state: {state}')
             require([int(state['lift_' + leg]) for leg in LEGS] == saved_lift, f'Saved foot heights changed: {state}')
+            if revision in ('attitudepd-v6-v92-r1', 'attitudepd-v6-v92-r2', 'attitudepd-v7-v93'):
+                require('footwidth' in state.get('caps', '').split(','), 'Missing footwidth capability')
+                saved_width = [int(prior['initial'].get('width_' + leg, '0')) for leg in LEGS]
+                require([int(state['width_' + leg]) for leg in LEGS] == saved_width,
+                        f'Saved foot widths changed: {state}')
             if landed:
                 require(state.get('pose') == 'landing' and int(state['error']) <= 40, f'Landing arrival not confirmed: {state}')
 
@@ -245,4 +252,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--image', type=Path, required=True)
+    parser.add_argument('--revision', choices=[REVISION, 'attitudepd-v6-v92-r1', 'attitudepd-v6-v92-r2', 'attitudepd-v7-v93'], default=REVISION)
     asyncio.run(run(parser.parse_args()))

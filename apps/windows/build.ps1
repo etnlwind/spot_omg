@@ -7,7 +7,18 @@ $versionSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "spot_co
 $versionMatch = [regex]::Match($versionSource, '__version__\s*=\s*"(\d+)\.(\d+)\.(\d+)"')
 if (-not $versionMatch.Success) { throw "App version must be a numeric major.minor.patch" }
 $appVersion = "$($versionMatch.Groups[1].Value).$($versionMatch.Groups[2].Value).$($versionMatch.Groups[3].Value)"
-$versionTuple = "$($versionMatch.Groups[1].Value), $($versionMatch.Groups[2].Value), $($versionMatch.Groups[3].Value), 0"
+$buildMatch = [regex]::Match($versionSource, '__build__\s*=\s*(\d+)')
+if (-not $buildMatch.Success) { throw "App build number is required" }
+$buildNumber = [int]$buildMatch.Groups[1].Value
+if ($buildNumber -lt 1 -or $buildNumber -gt 65535) { throw "App build must be in 1..65535" }
+$appleProject = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "../ios/SpotOMGController/SpotOMGController.xcodeproj/project.pbxproj"))
+$appleVersions = [regex]::Matches($appleProject, 'MARKETING_VERSION\s*=\s*([\d.]+);')
+$appleBuilds = [regex]::Matches($appleProject, 'CURRENT_PROJECT_VERSION\s*=\s*(\d+);')
+if ($appleVersions.Count -eq 0 -or $appleBuilds.Count -eq 0) { throw "Apple app version metadata missing" }
+foreach ($match in $appleVersions) { if ($match.Groups[1].Value -ne $appVersion) { throw "Windows and Apple app versions differ" } }
+foreach ($match in $appleBuilds) { if ([int]$match.Groups[1].Value -ne $buildNumber) { throw "Windows and Apple build numbers differ" } }
+$fileVersion = "$appVersion.$buildNumber"
+$versionTuple = "$($versionMatch.Groups[1].Value), $($versionMatch.Groups[2].Value), $($versionMatch.Groups[3].Value), $buildNumber"
 $buildDirectory = Join-Path $PSScriptRoot "build"
 New-Item -ItemType Directory -Force -Path $buildDirectory | Out-Null
 $versionFile = Join-Path $buildDirectory "windows-version.txt"
@@ -18,7 +29,7 @@ VSVersionInfo(
   kids=[StringFileInfo([StringTable('040904B0', [
     StringStruct('CompanyName', 'Spot OMG'),
     StringStruct('FileDescription', 'Spot OMG!'),
-    StringStruct('FileVersion', '$appVersion'),
+    StringStruct('FileVersion', '$fileVersion'),
     StringStruct('InternalName', 'SpotOMGController'),
     StringStruct('OriginalFilename', 'SpotOMGController.exe'),
     StringStruct('ProductName', 'Spot OMG!'),

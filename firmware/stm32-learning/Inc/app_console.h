@@ -14,7 +14,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 
-#define APP_CONSOLE_LINE_CAPACITY 96U
+#define APP_CONSOLE_LINE_CAPACITY 128U
 #define APP_CONSOLE_REALTIME_CAPACITY 144U
 #define APP_CONSOLE_LOG_CAPACITY 8192U
 

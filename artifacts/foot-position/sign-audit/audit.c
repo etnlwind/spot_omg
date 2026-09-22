@@ -1,0 +1,4 @@
+#include <stdio.h>
+#include "foot_lift.h"
+#include "locomotion_servo.h"
+int main(){for(int sign=-1;sign<=1;sign+=2){GaitPolicyLegTarget a[4],b[4];locomotion_targets(locomotion_profile_id("attitudepd_v6"),.35,1,1,0,a);memcpy(b,a,sizeof a);int32_t mm[4]={sign*5,sign*5,sign*5,sign*5};if(!foot_width_apply(mm,1,b))return 2;uint16_t ta[12],tb[12];locomotion_servo_targets(a,ta);locomotion_servo_targets(b,tb);for(int i=0;i<4;i++){float qa[3]={a[i].j1_deg,a[i].j2_deg,a[i].j3_deg},qb[3]={b[i].j1_deg,b[i].j2_deg,b[i].j3_deg},pa[3],pb[3];if(i<2){qa[0]=-qa[0];qb[0]=-qb[0];}arc_foot(i,qa,pa,0);arc_foot(i,qb,pb,0);printf("width=%+d leg=%d J1tick_delta=%+d physical_outward_mm=%+.3f dx=%.3f dz=%.3f\n",sign*5,i,(int)tb[3*i]-ta[3*i],(pb[1]-pa[1])*(i%2==0?1:-1)*1000,(pb[0]-pa[0])*1000,(pb[2]-pa[2])*1000);}}}

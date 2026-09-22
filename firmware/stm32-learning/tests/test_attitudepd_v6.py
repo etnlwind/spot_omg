@@ -51,7 +51,7 @@ static void sample(int profile,float phase,float scale,float linear,float yaw,
 
 int main(void) {
  int v5=locomotion_profile_id("attitudepd_v5"),v6=locomotion_profile_id("attitudepd_v6");
- assert(v5==27 && v6==28 && LOCOMOTION_DEFAULT_PROFILE==v6);
+ assert(v5==27 && v6==28); /* Older profile IDs and behavior stay fixed. */
  assert(locomotion_is_attitude_pd(v6) && locomotion_has_gait_stand(v6));
  assert(!locomotion_is_native(v6));
  const uint32_t lifts[2][4]={{0,0,0,0},{30,30,0,0}};
@@ -181,5 +181,5 @@ int main(void) {
     binary = build_executable(
         [source, ROOT/'firmware/stm32-learning/Src/robot_config.c'],
         ROOT/'firmware/stm32-learning/Inc', tmp_path/'v6',
-        extra=('-ffp-contract=off',))
+        extra=('-ffp-contract=off','-UNDEBUG'))
     subprocess.run([str(binary)], check=True)

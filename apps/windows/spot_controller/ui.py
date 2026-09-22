@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QPlainTextEdit, QFrame, QTabWidget, QMessageBox, QCheckBox, QSpinBox,
     QFileDialog, QSizePolicy, QScrollArea, QDialog, QListWidget, QListWidgetItem, QTabBar)
 
-from . import __version__
+from . import __version__, display_version
 from .connection import Connection
 from .foot_lift import FootLiftEditor
 from .assets import resource_path
@@ -271,7 +271,7 @@ class Window(QMainWindow):
         title.addWidget(label("Spot OMG!", "title"))
         version_parts = __version__.split(".")
         release = f"V{version_parts[0]}" + (f"-R{version_parts[1]}" if version_parts[1] != "0" else "")
-        title.addWidget(label(f"WINDOWS CONTROL STATION   /   {release}", "muted"))
+        title.addWidget(label(f"WINDOWS CONTROL STATION   /   {display_version()}", "muted"))
         icon = QLabel()
         icon.setPixmap(QPixmap(str(resource_path("app-icon.png"))).scaled(52, 52, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         header.addWidget(icon)
@@ -293,6 +293,7 @@ class Window(QMainWindow):
         self.target = QComboBox()
         for name, key in [("MuJoCo · TCP", "tcp"), ("실제 로봇 · BLE", "robot"), ("가상 로봇 · BLE", "simble")]:
             self.target.addItem(name, key)
+        self.target.setCurrentIndex(self.target.findData("robot"))
         layout.addWidget(self.target)
         row = QHBoxLayout()
         self.host = QLineEdit(str(self.settings.value("host", "127.0.0.1")))
@@ -371,8 +372,8 @@ class Window(QMainWindow):
         self.foot_lift=FootLiftEditor(self.settings)
         self.foot_lift.applyRequested.connect(self.send)
         self.foot_lift_dialog=QDialog(self)
-        self.foot_lift_dialog.setWindowTitle("Spot OMG! · 발 높이 설정")
-        self.foot_lift_dialog.resize(680,680)
+        self.foot_lift_dialog.setWindowTitle("Spot OMG! · 발 위치 보정")
+        self.foot_lift_dialog.resize(760,760)
         self.foot_lift_dialog.setModal(True)
         QVBoxLayout(self.foot_lift_dialog).addWidget(self.foot_lift)
         probe_card, probe_layout = card("파라미터 보행 시험 · V6.2.5")
@@ -426,7 +427,7 @@ class Window(QMainWindow):
         buttons.addWidget(self.probe_save);buttons.addWidget(self.probe_load)
         self.load_probe()
         self.probe_apply = QPushButton("설정 적용 + 조회")
-        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92") else "")))
+        self.probe_apply.clicked.connect(lambda: self.send(f"probeconfig set {self.probe_lift.value()} {self.probe_linear.value()} {self.probe_duration.value()} {self.probe_legs.currentText()}" + (f" {self.probe_width.value()} {int(self.probe_fr_extra.isChecked())}" if self.snapshot.get("state",{}).get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1") else "")))
         self.probe_read = QPushButton("설정 조회"); self.probe_read.clicked.connect(lambda: self.send("probeconfig show"))
         self.probe_start = QPushButton("시험 시작"); self.probe_start.clicked.connect(lambda: self.send("app_probe_start"))
         for button in [self.probe_apply,self.probe_read,self.probe_start]:buttons.addWidget(button)
@@ -483,7 +484,7 @@ class Window(QMainWindow):
         self.imu_recovery_button = QPushButton("IMU 복구")
         self.imu_recovery_button.clicked.connect(self.recover_imu)
         policy_row.addWidget(self.imu_recovery_button)
-        self.foot_lift_button=QPushButton("발 높이 설정")
+        self.foot_lift_button=QPushButton("발 위치 보정")
         self.foot_lift_button.clicked.connect(self.foot_lift.prepare_open)
         self.foot_lift_button.clicked.connect(self.foot_lift_dialog.open)
         policy_row.addWidget(self.foot_lift_button)
@@ -624,7 +625,7 @@ class Window(QMainWindow):
         self.fit_walking_page(int(parameter_mode))
         probe_idle = idle and parameter_mode and state.get('supports_probe',False) and not stowed
         for field in [self.probe_lift,self.probe_linear,self.probe_duration,self.probe_legs,self.probe_save,self.probe_load]:field.setEnabled(probe_idle)
-        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92"))
+        self.probe_width.setEnabled(probe_idle and robot.get("rev") in ("s-native-v6-2-7-v77-t1-width", "attitudepd-v2-v78", "attitudepd-v3-v79", "attitudepd-v4-v80", "attitudepd-v4-v81", "attitudepd-v4-v82", "attitudepd-v4-v90-r1", "attitudepd-v4-v90-r2", "attitudepd-v4-v90-r3", "attitudepd-v5-v91", "attitudepd-v6-v92", "attitudepd-v6-v92-r1"))
         self.probe_fr_extra.setEnabled(self.probe_width.isEnabled())
         self.probe_fr_extra.setToolTip("해제: 좌우 동일. 체크: 안쪽 간격에서 첫걸음 FR J1 변화량 2배, 다음 걸음에 복귀")
         self.probe_width.setToolTip("수직 0mm · 안쪽 음수 · 바깥 양수. 한쪽 발 기준입니다.")
@@ -647,7 +648,7 @@ class Window(QMainWindow):
         self.profile_button.setEnabled(profiles_ok)
         for index, profile in enumerate(PROFILES):
             allowed = not (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES) or state.get("simulator", False)
-            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
+            allowed &= profile not in {*NATIVE_PROFILES, "attitudepd_v9", "attitudepd_v8", "attitudepd_v7", "attitudepd_v6", "attitudepd_v5", "attitudepd_v4", "attitudepd_v3", "attitudepd_v2", "attitudepd", "centerpivot", "arcsupport"} or profile in caps
             item = self.profiles.item(index)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled if allowed else item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
             item.setHidden(not state.get("simulator", False) and (profile.startswith("cushion_") or profile in SIMULATOR_NATIVE_PROFILES))
@@ -686,6 +687,14 @@ class Window(QMainWindow):
         self.firmware.setText("펌웨어  " + robot.get("rev", "—") + "\n토크  " + robot.get("torque", "—") +
                               (" · 전용 제어 채널" if state.get("separate_control") else ""))
         drive_text = "조종 중  /  놓으면 정지" if phase == "drive" else names.get(phase, phase)
+        if phase == "drive" and robot.get("profile") in ("attitudepd_v7", "attitudepd_v8", "attitudepd_v9") and state.get("vector"):
+            a,b=state["vector"]
+            if a==0 and b:drive_text="오른쪽 옆걸음" if b>0 else "왼쪽 옆걸음"
+            elif a<0 and b:drive_text="제자리 우회전" if b>0 else "제자리 좌회전"
+            elif a<0:drive_text="후진 · 보행 속도 50%"
+            elif b:drive_text="전진 + 우회전" if b>0 else "전진 + 좌회전"
+            else:drive_text="전진 · 직진 보정" if robot.get("heading")=="on" else "전진"
+            drive_text+=" / 놓으면 정지"
         if ready and not state.get("controls_enabled", state.get("can_drive", False)):
             drive_text = "자세 전환 중 · 완료 후 조작 가능"
         elif ready and robot.get("safety") != "ok":

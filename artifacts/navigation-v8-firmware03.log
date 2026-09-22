@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "D:\project\spot_omg\tools\generate_locomotion_profiles.py", line 51, in <module>
+    if args.check:assert path.read_text()==render(),'Run profile generator'
+  File "D:\project\spot_omg\tools\generate_locomotion_profiles.py", line 8, in render
+    manifest=json.loads((ROOT/'config/locomotion_profiles.json').read_text())
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\pathlib.py", line 1135, in read_text
+    return f.read()
+UnicodeDecodeError: 'cp949' codec can't decode byte 0xec in position 4455: illegal multibyte sequence
+Traceback (most recent call last):
+  File "D:\project\spot_omg\firmware\stm32-learning\build_firmware.py", line 9, in <module>
+    subprocess.run([sys.executable,str(root.parents[1]/'tools/generate_locomotion_profiles.py'),'--check'],check=True)
+  File "C:\Users\etnlw\miniforge3\envs\spot_omg\lib\subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['C:\\Users\\etnlw\\miniforge3\\envs\\spot_omg\\python.exe', 'D:\\project\\spot_omg\\tools\\generate_locomotion_profiles.py', '--check']' returned non-zero exit status 1.

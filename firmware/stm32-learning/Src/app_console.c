@@ -741,11 +741,11 @@ static void command_sync_state(AppConsole *console)
     }
 
     if(console->robot->stow_active)pose=console->robot->stow_complete?"stow":"stow-paused";
-    char message[768];
+    char message[1024];
     (void)snprintf(
         message,
         sizeof(message),
-        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=footlift,footliftpersist,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754 lift_fl=%u lift_fr=%u lift_rl=%u lift_rr=%u\r\n",
+        "$SPOTSTATE pose=%s error=%u torque=%s safety=%s balance=%s rev=%s caps=footlift,footliftpersist,footwidth,controlv1,trot5,gaitprofiles,arcsupport,centerpivot,attitudepd,attitudepd_v2,attitudepd_v3,attitudepd_v4,attitudepd_v5,attitudepd_v6,attitudepd_v7,attitudepd_v8,attitudepd_v9,s_native_v6_1,s_native_v6_2_1,s_native_v6_2_2,s_native_v6_2_3,s_native_v6_2_4,s_native_v6_2_5,s_native_v6_2_6,s_native_v6_2_7,jointtrace,jointtracepage,imutrace,batterytelemetry,balancecontrol,commandretry,stow%s profile=%s heading=%s reverse_limit=%d recovery=%s fault_code=%u support=%s mass_g=2754 lift_fl=%u lift_fr=%u lift_rl=%u lift_rr=%u width_fl=%ld width_fr=%ld width_rl=%ld width_rr=%ld\r\n",
         pose,
         (unsigned int)pose_error,
         torque,
@@ -763,7 +763,8 @@ static void command_sync_state(AppConsole *console)
         "new-command",
         (unsigned)console->robot->locomotion_fault_reason,
         support_name(console->robot->support_decision),
-        (unsigned)console->robot->foot_lift_mm[0],(unsigned)console->robot->foot_lift_mm[1],(unsigned)console->robot->foot_lift_mm[2],(unsigned)console->robot->foot_lift_mm[3]);
+        (unsigned)console->robot->foot_lift_mm[0],(unsigned)console->robot->foot_lift_mm[1],(unsigned)console->robot->foot_lift_mm[2],(unsigned)console->robot->foot_lift_mm[3],
+        (long)console->robot->foot_width_mm[0],(long)console->robot->foot_width_mm[1],(long)console->robot->foot_width_mm[2],(long)console->robot->foot_width_mm[3]);
     write_text(console, message);
 }
 
@@ -2758,9 +2759,26 @@ static void execute_line(AppConsole *console)
                 }
                 value[i]=v;
             }
-            if(strtok(NULL," \t")){write_text(console,"ERROR: four values required\r\n");return;}
-            if (!flight_log_save_foot_lift(value)) {write_text(console,"ERROR: footlift flash save failed\r\n");return;}
+            int32_t widths[4];memcpy(widths,console->robot->foot_width_mm,sizeof(widths));
+            char *width=strtok(NULL," \t");
+            if(width) {
+                for(int i=0;i<4;i++) {
+                    if(i)width=strtok(NULL," \t");
+                    if(!width || !*width){write_text(console,"ERROR: four width values required\r\n");return;}
+                    const char *p=width;bool negative=*p=='-';if(*p=='-'||*p=='+')p++;
+                    uint32_t v=0;
+                    if(!*p){write_text(console,"ERROR: signed integer mm required\r\n");return;}
+                    for(;*p;p++) {
+                        if(*p<'0'||*p>'9'||v>(2147483647U-(unsigned)(*p-'0'))/10U){write_text(console,"ERROR: invalid width mm\r\n");return;}
+                        v=v*10U+(unsigned)(*p-'0');
+                    }
+                    widths[i]=negative?-(int32_t)v:(int32_t)v;
+                }
+                if(strtok(NULL," \t")){write_text(console,"ERROR: too many values\r\n");return;}
+            }
+            if (!flight_log_save_foot_settings(value,widths)) {write_text(console,"ERROR: footlift flash save failed\r\n");return;}
             for(int i=0;i<4;i++)console->robot->foot_lift_mm[i]=value[i];
+            memcpy(console->robot->foot_width_mm,widths,sizeof(widths));
             write_text(console,"OK footlift saved\r\n");
         } else if(!action || strcmp(action,"show") || strtok(NULL," \t")){write_text(console,"ERROR: footlift show|save FL FR RL RR\r\n");return;}
         command_sync_state(console);
@@ -3361,7 +3379,7 @@ void app_console_print_help(AppConsole *console)
                "  jump [C [MS]]    in-place repeat jump, C=0 continuous, Ctrl+C stop\r\n"
                "  relax [ID]       torque off all servos, or only ID\r\n"
                "  safety           stall detector state and the latched fault\r\n"
-               "  footlift show|save FL FR RL RR (nonnegative integer mm, STM32 flash)\r\n"
+               "  footlift show|save LFL LFR LRL LRR [WFL WFR WRL WRR] (mm; width signed)\r\n"
                "  probeconfig show|reset|set LIFT_MM LINEAR MS all|rl|rr\r\n"
                "  walkprobe        execute configured bounded V625 probe\r\n"
                "  rearprobe rl|rr  original rear trajectory; other three legs S\r\n"

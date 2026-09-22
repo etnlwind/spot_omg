@@ -1,12 +1,19 @@
-# Spot OMG! · Windows V92
+# Spot OMG! · Windows V92-R2
 
-Mac/iPhone과 같은 로봇 펌웨어 기준 버전 **92.0.0**입니다. Python/PySide6/Bleak 기반 Windows x64 앱이며, 실행 파일 이름은 `SpotOMGController.exe`, 표시 이름은 **Spot OMG!**입니다.
+앱 버전/빌드는 Apple과 동일한 **92.2.0 / 66**이며, 화면은 `V92-R2 (66) - Release`
+(소스 실행은 Debug)로 표시합니다. 수정 번호가 생기면 Apple처럼 `V92-R1`로
+표시합니다. Windows 빌드 시 Apple 프로젝트와 버전/빌드 일치를 검사합니다.
+기본 연결 대상은 실제 로봇 BLE이며 연결은 사용자가 시작합니다.
+
+Mac/iPhone과 같은 로봇 펌웨어 기준 버전 **92.2.0**입니다. Python/PySide6/Bleak 기반 Windows x64 앱이며, 실행 파일 이름은 `SpotOMGController.exe`, 표시 이름은 **Spot OMG!**입니다.
+
+앞다리 간격 부호 수정은 [V92-R2 원인·검증](../../docs/FOOT-WIDTH-FRONT-SIGN-V92-R2.md)을 참고하세요.
 
 ## 현재 기능
 
 - 기본 다크 화면, 읽기 쉬운 체크박스·보조 글자, Mac과 동일한 주황색 아이콘.
 - **모델 보행 / 직접 설정 보행** 탭. 다른 모드의 설정은 숨깁니다. 모델 목록은 탭 안에 한글 이름으로 표시하며 지원 연결에서 `IMU 자세 안정화 V6`를 맨 위·기본값으로 선택합니다. 이전 모델과 구 펌웨어 지원도 유지합니다.
-- **발 높이 설정** 팝업: 실제 MuJoCo CAD의 주황색 윗모습, FL/FR/RL/RR 추가 들림. `footlift save` 및 새 readback으로 STM32 영구 저장을 확인합니다. Windows·Mac·iPhone이 같은 로봇의 값을 공유합니다. 팝업을 여는 것만으로 로봇 값을 덮어쓰지 않습니다.
+- **발 위치 보정** 팝업: 실제 MuJoCo CAD의 주황색 윗모습, FL/FR/RL/RR 추가 들림과 좌우 간격(mm). 간격은 0 기본, 음수 안쪽, 양수 바깥쪽이며 V92-R1 펌웨어의 `footwidth` 지원이 필요합니다. `footlift save` 및 새 readback으로 STM32 영구 저장을 확인합니다. Windows·Mac·iPhone이 같은 로봇의 값을 공유합니다. 팝업을 여는 것만으로 로봇 값을 덮어쓰지 않습니다.
 - 전/후/좌/우 각 축의 ±20° 입력을 직진·후진·제자리 회전으로 맞춥니다. 나머지는 이동과 회전의 혼합이며 자동 복귀/입력 유지, WASD/방향키 조종을 제공합니다.
 - Landing, Stow, Stand, Stand11, Recover, Relax, 수평 보정, 직진 유지, **IMU 복구**. 수동 IMU 복구는 완료 응답과 새 상태를 확인한 뒤 스틱을 놓고 다시 조작해야 합니다. 보호를 해제하거나 이전 보행 입력을 재생하지 않습니다.
 - BLE 제어 응답과 상세 진단 로그를 분리합니다. `@D`·`@S` 등 조종 명령이 로그 표시·파일 저장을 기다리지 않습니다. 구 브리지와 시뮬레이터의 기존 통신도 지원합니다.
@@ -34,7 +41,7 @@ Python을 직접 지정할 수도 있습니다.
 
 빌드 결과는 `apps/windows/dist/SpotOMGController/SpotOMGController.exe`입니다. **같은 폴더의 `_internal`을 포함한 폴더 전체**가 필요합니다. 빌드에는 아이콘·로봇 이미지·버전 정보가 포함됩니다. 구 앱을 종료하고 기존 설치 폴더를 백업한 뒤 새 폴더로 교체하세요. 사용자 설정과 진단 기록은 실행 파일 폴더 밖에 보관됩니다.
 
-이 Mac에서 Windows용 `.exe`를 생성하거나 Windows PC 설치를 검증한 것은 아닙니다. Python 소스와 Qt 화면을 검사했으며 Windows 실행 파일은 Windows 환경에서 빌드해야 합니다.
+Windows V92-R2 (65) 실행 파일을 빌드했습니다. Apple 앱의 빌드 및 기기 설치는 별도 Mac 환경에서 필요합니다.
 
 ## 로봇 연결과 조작
 

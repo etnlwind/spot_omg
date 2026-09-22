@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "D:\project\spot_omg\firmware\stm32-learning\build_firmware.py", line 45, in <module>
+    run([str(tool), *flags, '-o',str(elf),*objects,'-T'+str(root/'STM32F446RETX_FLASH.ld'),'--specs=nosys.specs','-Wl,-Map='+str(out/(revision+'.map')),'-Wl,--gc-sections','-static','-Wl,--start-group','-lc','-lm','-Wl,--end-group'])
+  File "D:\project\spot_omg\firmware\stm32-learning\build_firmware.py", line 29, in run
+    raise RuntimeError('Build failed: ' + str(out/'build.log'))
+RuntimeError: Build failed: D:\project\spot_omg\artifacts\navigation-v8\firmware-build02\build.log
