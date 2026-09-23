@@ -12,3 +12,11 @@ def test_packet_adapter_optimization(tmp_path,optimization):
     include=ROOT/'Inc';extra=['-include',str(ROOT/'tests/host_hal.h')]
     exe=build_executable([ROOT/p for p in paths],include,tmp_path/'coordinates',extra=[optimization,*extra])
     subprocess.run([str(exe)],check=True)
+
+
+@pytest.mark.parametrize('optimization',['-O0','-Os'])
+def test_actuator_limits_under_size_optimization(tmp_path,optimization):
+    paths=['Src/actuator_control.c','Src/robot_config.c','tests/test_actuator_control.c']
+    exe=build_executable([ROOT/p for p in paths],ROOT/'Inc',tmp_path/'actuator',
+        extra=[optimization,'-ffp-contract=off','-UNDEBUG'])
+    subprocess.run([str(exe)],check=True)

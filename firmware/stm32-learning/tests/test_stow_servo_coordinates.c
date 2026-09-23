@@ -49,6 +49,10 @@ int main(void){
   int raw=1900+4096*turns;sensed=stow_wire(raw);
   assert(sts3215_read_state_raw(&b,id,&s)==SERVO_BUS_OK && s.position==sensed);
   assert(sts3215_read_state(&b,id,&s)==SERVO_BUS_OK && s.position==1900);
+  uint8_t feedback[15]={0};feetech_encode_u16(sensed,feedback);
+  Sts3215State asynchronous;
+  sts3215_decode_feedback(&b,id,feedback,&asynchronous);
+  assert(asynchronous.position==s.position);
   uint16_t target=1905;uint8_t axis=id;
   assert(sts3215_sync_positions(&b,&axis,&target,1)==SERVO_BUS_OK && stow_unwire(goal)==raw+5);
   assert(sts3215_sync_move(&b,&axis,&target,1,800,30)==SERVO_BUS_OK && stow_unwire(goal)==raw+5);
@@ -58,6 +62,9 @@ int main(void){
  b.front_origin_valid[0]=true;b.front_position_bias[0]=4096;sensed=861;
  assert(sts3215_read_state(&b,2,&s)==SERVO_BUS_OK && s.position==861);
  assert(b.front_position_bias[0]==4096);
+ uint8_t feedback[15]={0};feetech_encode_u16(sensed,feedback);
+ sts3215_decode_feedback(&b,2,feedback,&s);
+ assert(s.position==861 && b.front_position_bias[0]==4096);
  assert(sts3215_write_position(&b,2,861,40,10)==SERVO_BUS_OK && stow_unwire(goal)==4957);
  b.front_origin_valid[1]=true;b.front_position_bias[1]=-4096;sensed=3159;
  assert(sts3215_read_state(&b,5,&s)==SERVO_BUS_OK && s.position==3159);

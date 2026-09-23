@@ -1,0 +1,48 @@
+{
+  "revision": "attitudepd-v9-v96-async-feedback",
+  "date": "2026-09-23",
+  "hardware_connected": false,
+  "firmware_installed": false,
+  "register_readback_verified": false,
+  "loaded_motion_verified": false,
+  "pytest": {
+    "passed": 141,
+    "skipped": 13,
+    "log": "regression.log",
+    "skip_reason": "Legacy firmware C test wrapper discovers cc/gcc, not the installed Windows Zig toolchain.",
+    "files": [
+      "firmware/stm32-learning/tests/test_servo_async.py",
+      "firmware/stm32-learning/tests/test_firmware_c.py",
+      "firmware/stm32-learning/tests/test_control_transport_host.py",
+      "firmware/stm32-learning/tests/test_stabilize_console.py",
+      "firmware/stm32-learning/tests/test_packet_size_optimization.py",
+      "firmware/stm32-learning/tests/test_ota_layout.py",
+      "simulation/mujoco/tests/test_servo_profile.py",
+      "simulation/mujoco/tests/test_shared_locomotion.py",
+      "simulation/mujoco/tests/test_heading_controller.py",
+      "simulation/mujoco/tests/test_gait_tracking.py",
+      "simulation/mujoco/tests/test_drive_transition.py",
+      "simulation/mujoco/tests/test_navigation_v7.py",
+      "simulation/mujoco/tests/test_navigation_v8.py",
+      "simulation/mujoco/tests/test_navigation_v9.py",
+      "simulation/mujoco/tests/test_navigation_v10.py"
+    ]
+  },
+  "portable_c_regressions": {
+    "passed": 14,
+    "report": "c-tests/results.json",
+    "coverage": "The 13 skipped C cases plus servo profile registers, compiled using servo.host_build and Zig. Do not count the skipped cases as passed pytest cases."
+  },
+  "final_async_regression": {
+    "passed": 4,
+    "log": "async-final.log",
+    "note": "Subset repeated after extending diagnostic ring rollover/freeze assertions; not additional independent test count."
+  },
+  "firmware": {
+    "manifest": "firmware/manifest.json",
+    "size": 327328,
+    "slot_size": 327680,
+    "sha256": "fd70b04878976a5a4e0e2e1aed88672fbb3d2df610f6e43a66c2ae746a155126"
+  },
+  "timing_scope": "The host UART model uses a 12ms foreground compute interval. Its 20ms write spacing is not MCU WCET or hardware timing validation."
+}

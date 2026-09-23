@@ -265,7 +265,7 @@ class Simulation:
         from simulation.mujoco.runtime.servo_profile import ServoProfile
         self.servo_profile=ServoProfile(self.p.get('servo_goal_speed_register',3400),
             self.p.get('servo_acceleration_register',254),
-            self.p.get('servo_acceleration_cap_register',[50,254,50]*4))
+            self.p.get('servo_acceleration_cap_register',254))
         self.filtered=self.desired.copy();self.target_velocity=np.zeros(12)
         self.delay=collections.deque([self.desired.copy() for _ in range(max(0,round(self.p['command_delay_s']/.02)))])
         self.voltage=self.p['pack_open_circuit_voltage'];self.current=0.;self.limits=self.stall.copy();self.saturated=0.

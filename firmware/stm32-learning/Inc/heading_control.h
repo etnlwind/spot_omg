@@ -2,6 +2,10 @@
 #define HEADING_CONTROL_H
 #include <stdbool.h>
 #include <math.h>
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("Os", "fp-contract=off")
+#endif
 
 typedef struct {
     float reference, error, integral, correction, settling;
@@ -50,4 +54,7 @@ static inline float heading_update(HeadingControl *s, float heading,
     s->correction += heading_clip(wanted - s->correction, .5f * dt);
     return s->correction;
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 #endif

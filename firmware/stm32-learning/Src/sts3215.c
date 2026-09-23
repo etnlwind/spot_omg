@@ -58,25 +58,8 @@ ServoBusResult sts3215_read_position(ServoBus *bus,
     return result;
 }
 
-ServoBusResult sts3215_read_state_raw(ServoBus *bus,
-                                  uint8_t servo_id,
-                                  Sts3215State *state)
+static void decode_state(const uint8_t raw[15],Sts3215State *state)
 {
-    uint8_t raw[15];
-
-    if (state == NULL) {
-        return SERVO_BUS_INVALID_ARGUMENT;
-    }
-
-    ServoBusResult result = servo_bus_read(bus,
-                                           servo_id,
-                                           STS3215_ADDR_PRESENT_POSITION,
-                                           raw,
-                                           sizeof(raw));
-    if (result != SERVO_BUS_OK) {
-        return result;
-    }
-
     const uint16_t load_raw = feetech_decode_u16(&raw[4]);
     const int16_t load_magnitude = (int16_t)(load_raw & 0x03FFU);
     state->position = feetech_decode_u16(&raw[0]);
@@ -89,6 +72,21 @@ ServoBusResult sts3215_read_state_raw(ServoBus *bus,
     state->hardware_error = raw[9];
     state->moving = raw[10] != 0U;
     state->current = feetech_decode_sign_magnitude(&raw[13]);
+}
+
+void sts3215_decode_feedback(ServoBus *bus,uint8_t id,const uint8_t raw[15],Sts3215State *state)
+{
+    decode_state(raw,state);
+    state->position=normalize_position(bus,id,state->position);
+}
+
+ServoBusResult sts3215_read_state_raw(ServoBus *bus,uint8_t id,Sts3215State *state)
+{
+    uint8_t raw[15];
+    if(!state)return SERVO_BUS_INVALID_ARGUMENT;
+    ServoBusResult result=servo_bus_read(bus,id,STS3215_ADDR_PRESENT_POSITION,raw,sizeof raw);
+    if(result!=SERVO_BUS_OK)return result;
+    decode_state(raw,state);
     return SERVO_BUS_OK;
 }
 

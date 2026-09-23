@@ -4,12 +4,10 @@
 
 uint8_t robot_servo_profile_acceleration(uint8_t servo_id, uint8_t requested)
 {
-    for(unsigned i=0;i<ROBOT_JOINT_COUNT;i++) {
-        if(g_robot_joints[i].servo_id==servo_id) {
-            uint8_t observed=g_robot_joints[i].joint_index==2U?254U:50U;
-            return requested>observed?observed:requested;
-        }
-    }
+    /* Send the requested profile to every joint. Historical ACC=50 readback
+     * is not a measured actuator limit; the caller verifies actual registers.
+     * Lower explicit requests (e.g. slow pose transitions) remain valid. */
+    (void)servo_id;
     return requested;
 }
 

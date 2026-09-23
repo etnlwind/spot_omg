@@ -2948,6 +2948,38 @@ static void execute_line(AppConsole *console)
             }
             if(end==total)write_text(console,"$JT,END\r\n");
         }
+    } else if (strcmp(command, "busdiag") == 0) {
+        ServoFeedback *f=&console->robot->bus->feedback;
+        if(f->enabled || robot_drive_is_active(console->robot)) {
+            write_text(console,"ERROR: stop before busdiag\r\n");return;
+        }
+        char *action=strtok(NULL," \t"),line[240];
+        uint32_t first=0,count=8;
+        if(action) {
+            char *a=strtok(NULL," \t"),*b=strtok(NULL," \t");
+            if(strcmp(action,"dump") || (a&&!parse_u32(a,0,32,&first)) ||
+               (b&&!parse_u32(b,1,8,&count)) || strtok(NULL," \t")) {
+                write_text(console,"usage: busdiag [dump OFFSET COUNT(1..8)]\r\n");return;
+            }
+        }
+        snprintf(line,sizeof line,"$BUS,M,1,%lu,%lu,%lu,%lu,%lu,%lu,%u,%u,%u,%lu\r\n",
+            (unsigned long)f->ok,(unsigned long)f->timeouts,(unsigned long)f->errors,
+            (unsigned long)f->late_bytes,(unsigned long)f->refused_writes,(unsigned long)f->max_us,
+            f->trace_count,f->trace_triggered,f->trace_frozen,(unsigned long)f->irq_peak_cycles);
+        write_text(console,line);
+        if(action) {
+            if(first>f->trace_count){write_text(console,"ERROR: offset beyond trace\r\n");return;}
+            uint32_t end=first+count;if(end>f->trace_count)end=f->trace_count;
+            for(uint32_t n=first;n<end;++n) {
+                ServoReadTrace *t=&f->trace[(f->trace_write+32-f->trace_count+n)%32];
+                snprintf(line,sizeof line,"$BUS,R,%lu,%lu,%u,%u,%u,%lu,%lu,%lu,%lu,%u,%u,%u\r\n",
+                    (unsigned long)n,(unsigned long)t->start_ms,t->id,t->attempt,t->result,
+                    (unsigned long)t->duration_us,(unsigned long)t->first_rx_us,
+                    (unsigned long)t->last_rx_us,(unsigned long)t->uart_errors,t->received,t->stage,t->sent);
+                write_text(console,line);
+            }
+            if(end==f->trace_count)write_text(console,"$BUS,END\r\n");
+        }
     } else if (strcmp(command, "gaitdiag") == 0) {
         command_gait_diagnostics(console);
     } else if (strcmp(command, "baldiag") == 0) {
@@ -3385,6 +3417,7 @@ void app_console_print_help(AppConsole *console)
                "  rearprobe rl|rr  original rear trajectory; other three legs S\r\n"
                "  jointtrace arm|off|status|dump  raw timed gait feedback (RAM)\r\n"
                "  gaitdiag         last gait tracking/current/voltage report\r\n"
+               "  busdiag [dump OFFSET COUNT]  last asynchronous bus timing/errors\r\n"
                "  imutrace status|dump  paged timed gait IMU; armed with jointtrace\r\n"
                "  baldiag          recent balance frames and tilt snapshot\r\n"
                "  baltest          preview static balance correction; no servo motion\r\n"

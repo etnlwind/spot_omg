@@ -862,31 +862,31 @@ static void safety_trip(RobotController *robot)
 }
 
 /*
- * Read one joint and hand it to the detector.  Full state costs the same as
- * position alone here -- both pay the 10 ms bus settle in servo_bus_request,
- * and the extra thirteen bytes are 0.13 ms at 1 Mbps -- so there is no reason
- * to read less.
+ * All transports feed the same tracking and safety decisions. Full-state
+ * payload adds only 0.13 ms of wire time over a position-only read at 1 Mbps.
  *
  * *tripped is set when this sample latched the fault; torque is already off by
  * the time it returns.
  */
-static RobotResult sample_joint(RobotController *robot,
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC push_options
+#pragma GCC optimize ("Os", "fp-contract=off")
+#endif
+static RobotResult process_joint_sample(RobotController *robot,
                                 size_t index,
                                 const uint16_t targets[ROBOT_JOINT_COUNT],
                                 uint16_t gait_phase,
                                 uint16_t *position,
-                                bool *tripped)
+                                bool *tripped,Sts3215State state,
+                                ServoBusResult bus_result,uint32_t read_begin,uint32_t read_end)
 {
-    Sts3215State state = {0};
     const uint8_t id = g_robot_servo_ids[index];
 
     if (tripped != NULL) {
         *tripped = false;
     }
 
-    uint32_t read_begin=HAL_GetTick();
-    ServoBusResult bus_result = sts3215_read_state(robot->bus, id, &state);
-    JointTraceSample captured={.begin_ms=read_begin,.end_ms=HAL_GetTick(),
+    JointTraceSample captured={.begin_ms=read_begin,.end_ms=read_end,
         .joint=(uint8_t)index,.status=(uint8_t)bus_result,.position=state.position,
         .speed=state.speed,.load=state.load,.current=state.current,
         .voltage_mv=state.voltage_mv,.temperature=state.temperature_c,.hardware_error=state.hardware_error};
@@ -962,6 +962,7 @@ static RobotResult sample_joint(RobotController *robot,
         state.hardware_error,
     };
     if (safety_update(&robot->safety, &sample, HAL_GetTick(), gait_phase)) {
+        if(robot->bus->feedback.enabled)servo_bus_feedback_end(robot->bus);
         safety_trip(robot);
         if (tripped != NULL) {
             *tripped = true;
@@ -970,6 +971,77 @@ static RobotResult sample_joint(RobotController *robot,
     }
     return ROBOT_OK;
 }
+
+static RobotResult sample_joint(RobotController *robot,size_t index,
+    const uint16_t targets[ROBOT_JOINT_COUNT],uint16_t phase,uint16_t *position,bool *tripped)
+{
+    Sts3215State state={0};uint32_t begin=HAL_GetTick();
+    ServoBusResult result=sts3215_read_state(robot->bus,g_robot_servo_ids[index],&state);
+    return process_joint_sample(robot,index,targets,phase,position,tripped,state,result,begin,HAL_GetTick());
+}
+
+typedef struct {
+    uint32_t fresh[12],attempt_frame;
+    uint16_t phase;
+    uint8_t index;
+    bool waiting,retry;
+} GaitFeedback;
+
+static RobotResult gait_feedback_take(RobotController *robot,GaitFeedback *f,
+    const uint16_t targets[12],uint16_t phase)
+{
+    (void)phase;
+    if(!f->waiting)return ROBOT_OK;
+    uint8_t raw[15];uint32_t begin,end;
+    ServoBusResult result=servo_bus_feedback_take(robot->bus,raw,&begin,&end);
+    if(result==SERVO_BUS_BUSY)return ROBOT_OK;
+    f->waiting=false;Sts3215State state={0};
+    if(result==SERVO_BUS_OK) {
+        sts3215_decode_feedback(robot->bus,g_robot_servo_ids[f->index],raw,&state);
+        f->fresh[f->index]=end;
+        if(f->retry)++robot->bus->read_retry_recoveries;
+        f->retry=false;
+        return process_joint_sample(robot,f->index,targets,f->phase,NULL,NULL,state,result,begin,end);
+    }
+    JointTraceSample failed={.begin_ms=begin,.end_ms=end,.joint=f->index,.status=(uint8_t)result};
+    joint_trace_sample(&robot->joint_trace,failed);
+    if(!f->retry && (result==SERVO_BUS_TIMEOUT || result==SERVO_BUS_HAL_ERROR || result==SERVO_BUS_PROTOCOL_ERROR)) {
+        f->retry=true;++robot->bus->read_retry_attempts;return ROBOT_OK;
+    }
+    ++robot->bus->read_retry_failures;
+    return bus_failure(robot,g_robot_servo_ids[f->index],result);
+}
+
+static void gait_feedback_start(RobotController *robot,GaitFeedback *f,uint32_t frame)
+{
+    /* An error never retries on the same frame. Normal samples may use the
+     * legacy V625 second slot before the next frame's computation. */
+    if(f->waiting || (f->retry && f->attempt_frame==frame))return;
+    uint8_t index=f->index,watched=0;
+    if(!f->retry) {
+        index=robot->safety_scan_index%12;
+        if(safety_watching(&robot->safety,&watched)) {
+            for(uint8_t j=0;j<12;++j)if(g_robot_servo_ids[j]==watched)index=j;
+        }
+    }
+    ServoBusResult result=servo_bus_feedback_start(robot->bus,g_robot_servo_ids[index],
+        STS3215_ADDR_PRESENT_POSITION,15,f->retry?1:0);
+    if(result==SERVO_BUS_OK) {
+        f->index=index;f->waiting=true;f->attempt_frame=frame;
+        f->phase=(uint16_t)(robot->drive_control.phase*1000);
+        if(!f->retry && !watched)robot->safety_scan_index=(index+1)%12;
+    }
+}
+
+static RobotResult gait_feedback_fresh(RobotController *robot,const GaitFeedback *f,uint32_t now)
+{
+    for(unsigned j=0;j<12;++j)if((uint32_t)(now-f->fresh[j])>500U)
+        return bus_failure(robot,g_robot_servo_ids[j],SERVO_BUS_TIMEOUT);
+    return ROBOT_OK;
+}
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC pop_options
+#endif
 
 static void capture_joint_command(RobotController *robot,uint32_t begin,uint32_t end,const uint16_t targets[12]) {
     JointTrace *t=&robot->joint_trace;
@@ -998,8 +1070,8 @@ static void gait_target_history_push(
 /*
  * Sample one joint per control frame.
  *
- * Reading all twelve takes about 123 ms, so it cannot happen inside a 20 ms
- * frame; this walks them instead, a sweep every 240 ms.  When a joint is
+ * This is the synchronous sampler for pose/legacy paths; the shared drive
+ * uses GaitFeedback instead. A scan visits one axis at a time. When a joint is
  * already a stall candidate it stays selected rather than advancing, which is
  * what keeps confirmation inside the sustain window instead of waiting for the
  * cursor to come round again.
@@ -2107,7 +2179,20 @@ static RobotResult robot_shared_drive(RobotController *robot)
     balance_trace_reset(robot);robot->balance_late_frames=0;
     robot->drive_peak_compute_ms=0;robot->drive_peak_io_ms=0;
     robot->balance_peak_roll_error_tenths=0;robot->balance_peak_pitch_error_tenths=0;
+    GaitFeedback feedback={.attempt_frame=UINT32_MAX};
+    for(unsigned j=0;j<12;++j)feedback.fresh[j]=started;
+    uint32_t feedback_frame=0;
+    const bool double_feedback=robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5") ||
+        robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_6") ||
+        robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_7");
+    servo_bus_clear_retry_diagnostics(robot->bus);
+    servo_bus_feedback_begin(robot->bus);
     for(;;) {
+        result=gait_feedback_take(robot,&feedback,previous_command,(uint16_t)(robot->drive_control.phase*1000));
+        if(result!=ROBOT_OK)break;
+        result=gait_feedback_fresh(robot,&feedback,HAL_GetTick());if(result!=ROBOT_OK)break;
+        if(double_feedback && have_previous_command && !feedback.retry)
+            gait_feedback_start(robot,&feedback,feedback_frame);
         uint32_t compute_started=HAL_GetTick();
         float frame_dt=compute_started==started?.02f:(compute_started-previous_frame)*.001f;
         previous_frame=compute_started;
@@ -2223,6 +2308,9 @@ static RobotResult robot_shared_drive(RobotController *robot)
         }
         uint16_t positions[12];
         if(!((native || navigation)?s_native_servo_targets(command,positions):gait_policy_to_servo_targets(command,positions))) {result=ROBOT_CONFIG_ERROR;break;}
+        /* Finish the previous sample BEFORE tagging this frame's new target. */
+        result=gait_feedback_take(robot,&feedback,previous_command,(uint16_t)(robot->drive_control.phase*1000));
+        if(result!=ROBOT_OK)break;
         uint32_t compute_ms=HAL_GetTick()-compute_started;
         if(compute_ms>robot->drive_peak_compute_ms)robot->drive_peak_compute_ms=(uint16_t)(compute_ms>65535U?65535U:compute_ms);
         uint32_t io_started=HAL_GetTick();
@@ -2243,12 +2331,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
         }
         have_previous_command=true;
         gait_target_history_push(robot,positions);
-        result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
-        if(result!=ROBOT_OK)break;
-        if(robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_5") || (robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_6") || robot->locomotion_profile==locomotion_profile_id("s_native_v6_2_7"))) {
-            result=sample_next_joint(robot,positions,(uint16_t)(robot->drive_control.phase*1000));
-            if(result!=ROBOT_OK)break;
-        }
+        if(stage!=0)gait_feedback_start(robot,&feedback,feedback_frame++);
         result=shared_observe(robot);
         uint32_t io_ms=HAL_GetTick()-io_started;
         if(io_ms>robot->drive_peak_io_ms)robot->drive_peak_io_ms=(uint16_t)(io_ms>65535U?65535U:io_ms);
@@ -2279,6 +2362,7 @@ static RobotResult robot_shared_drive(RobotController *robot)
             deadline=now; /* Never burst stale targets to catch up. */
         }
     }
+    servo_bus_feedback_end(robot->bus);
     robot->gait_elapsed_ms=HAL_GetTick()-started;robot->gait_diagnostics_active=false;
     memset(&robot->drive_control.heading,0,sizeof(robot->drive_control.heading));
     if(result!=ROBOT_OK) {robot_latch_locomotion_fault(robot,result);return result;}

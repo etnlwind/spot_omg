@@ -33,10 +33,11 @@ with (out/'build.log').open('w') as log:
         dest.parent.mkdir(parents=True, exist_ok=True)
         cmd = [str(tool), *flags, '-g3', '-DDEBUG', '-c']
         if src.suffix == '.c':
-            # Keep existing motion code at O0. Console/diagnostic and pure
-            # packet/configuration and servo packet-adapter code use
+            # Keep robot motion sequencing at O0. Console/diagnostic and pure
+            # actuator math, packet/configuration and servo packet-adapter code use
             # size optimization so the image still fits the fixed OTA slot.
-            optimization = '-Os' if src.name in ('app_console.c','servo_response_probe.c','command_recovery.c','flight_log.c','mechanical_diagnostics.c','sh2_SensorValue.c','feetech_protocol.c','robot_config.c','sts3215.c') else '-O0'
+            optimization = '-Os' if src.name in ('bno055.c','servo_bus.c','servo_bus_async.c','actuator_control.c','app_console.c','servo_response_probe.c','command_recovery.c','flight_log.c','mechanical_diagnostics.c','sh2_SensorValue.c','feetech_protocol.c','robot_config.c','sts3215.c') else '-O0'
+            if src.name in ('actuator_control.c','bno055.c'):cmd += ['-ffp-contract=off']
             cmd += ['-std=gnu11','-DUSE_HAL_DRIVER','-DSTM32F446xx',optimization,'-ffunction-sections','-fdata-sections','-Wall','-Werror'] + ['-I'+str(root/p) for p in includes]
         else:
             cmd += ['-x','assembler-with-cpp']

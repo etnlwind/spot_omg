@@ -92,9 +92,11 @@ def test_gait_diagnostics_reuse_the_existing_round_robin_read() -> None:
     sample_end = source.index("static RobotResult sample_next_joint(", sample_start)
     sample_body = source[sample_start:sample_end]
     assert sample_body.count("sts3215_read_state") == 1
-    assert sample_body.count("actuator_diagnostics_update") == 1
-    assert "gait_command_velocity_deg_s" in sample_body
-    assert "gait_command_acceleration_deg_s2" in sample_body
+    assert "process_joint_sample" in sample_body
+    shared_sample=source[source.index("static RobotResult process_joint_sample("):sample_start]
+    assert shared_sample.count("actuator_diagnostics_update") == 1
+    assert "gait_command_velocity_deg_s" in shared_sample
+    assert "gait_command_acceleration_deg_s2" in shared_sample
 
 
 def test_balance_off_keeps_observation_and_tilt_snapshot() -> None:
@@ -384,12 +386,14 @@ def test_shared_drive_diagnostics_do_not_add_motor_reads_or_flash_writes() -> No
     source = (PROJECT / "Src/robot.c").read_text()
     start=source.index("static RobotResult robot_shared_drive(")
     body=source[start:source.index("void robot_control_idle(",start)]
-    # V625+ intentionally performs two reads per frame (120ms per joint).
-    assert body.count("sample_next_joint(")==2
+    # Shared drive queues feedback, with an extra V625 slot before computation.
+    # Pose/legacy reads and initial profile verification remain synchronous.
+    assert body.count("sample_next_joint(")==0
+    assert body.count("gait_feedback_start(")==2
     assert "sts3215_read_state" not in body
     assert "flight_log" not in body and "mechanical_log" not in body
-    assert body.index("gait_target_history_push(robot,positions)") < body.index("sample_next_joint(")
-    assert body.index("robot->gait_support_mask=gait_policy_support_mask(robot->rear_probe_leg?command:nominal)") < body.index("sample_next_joint(")
+    assert body.index("gait_target_history_push(robot,positions)") < body.rindex("gait_feedback_start(")
+    assert body.index("robot->gait_support_mask=gait_policy_support_mask(robot->rear_probe_leg?command:nominal)") < body.rindex("gait_feedback_start(")
 
 
 def test_command_recovery_runtime() -> None:

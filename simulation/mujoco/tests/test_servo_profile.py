@@ -26,7 +26,7 @@ def test_stand_drive_restore_and_reproduce_previous_firmware_bug():
         robot.request=(1.,0.);robot.last_packet=0;robot.tick(0)
         assert np.all(plant.servo_profile.speed==(3400 if restore else 300))
         np.testing.assert_array_equal(plant.servo_profile.acceleration,
-                                      [50,254,50]*4 if restore else [30]*12)
+                                      [254]*12 if restore else [30]*12)
 
 def test_v67_mixed_readback_keeps_per_servo_acceleration_limits():
     rows=json.loads((ROOT/'artifacts/servo-profile-restore-v67/hardware-pilot-10s-retry/servo-registers.json').read_text())
@@ -36,14 +36,25 @@ def test_v67_mixed_readback_keeps_per_servo_acceleration_limits():
     np.testing.assert_allclose(np.degrees(p.acceleration_limit()),
                                np.array([r['acceleration'] for r in rows])*100*360/4096)
 
-def test_installed_profile_matches_all_twelve_v68_readbacks():
+def test_explicit_historical_cap_reproduces_all_twelve_v68_readbacks():
     rows=json.loads((ROOT/'artifacts/servo-profile-restore-v68/hardware-30s/servo-registers.json').read_text())
-    plant=Simulation(load_parameters(parse_args([])))
+    parameters=load_parameters(parse_args([]))
+    parameters['servo_acceleration_cap_register']=[r['acceleration'] for r in rows]
+    plant=Simulation(parameters)
     np.testing.assert_array_equal(plant.servo_profile.acceleration,[r['acceleration'] for r in rows])
     plant.servo_profile.set(300,30)
     np.testing.assert_array_equal(plant.servo_profile.acceleration,[30]*12)
     plant.servo_profile.set(3400,254)
     np.testing.assert_array_equal(plant.servo_profile.acceleration,[r['acceleration'] for r in rows])
+
+
+def test_default_requests_maximum_for_all_joints_without_removing_explicit_profiles():
+    plant=Simulation(load_parameters(parse_args([])))
+    np.testing.assert_array_equal(plant.servo_profile.acceleration,[254]*12)
+    plant.servo_profile.set(3400,100)
+    np.testing.assert_array_equal(plant.servo_profile.acceleration,[100]*12)
+    plant.servo_profile.set(3400,254)
+    np.testing.assert_array_equal(plant.servo_profile.acceleration,[254]*12)
 
 def test_plant_internal_reference_obeys_register_acceleration_and_speed():
     plant=Simulation(load_parameters(parse_args([])));plant.servo_profile.set(300,30)

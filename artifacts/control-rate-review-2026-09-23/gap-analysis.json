@@ -1,0 +1,346 @@
+{
+  "schema": 1,
+  "threshold_ms": 30,
+  "traces": [
+    {
+      "source": "artifacts/servo-profile-restore-v69/hardware-30s/jointtrace.txt",
+      "source_sha256": "8a42d0ccf50b4a1adc6dc4cb45caf0487fa4c79bc5fa961eae60fc0f20af6f74",
+      "metadata": {
+        "version": 1,
+        "commands": 256,
+        "samples": 256,
+        "armed": 0,
+        "full": 1,
+        "profile": 20,
+        "speed": 3400,
+        "acceleration": 254,
+        "revision": "s-native-v6-2-4-v69"
+      },
+      "timestamp_origin_mcu_ms": 33571,
+      "csv_timing_crosscheck": "all command and sample records match",
+      "read_duration_histogram_ms": {
+        "2": 254,
+        "3": 2
+      },
+      "max_interval_ms": 22,
+      "full_trial_retry_counts": {
+        "attempts": 9,
+        "recovered": 9,
+        "failed": 0
+      },
+      "full_trial_late_frames": 3,
+      "imu_console_off_commands": [
+        {
+          "host_s": 2.64648929098621,
+          "kind": "tx",
+          "text": "imu off"
+        }
+      ],
+      "events": []
+    },
+    {
+      "source": "artifacts/s-native-v6-2-5/hardware-pilot-15s/jointtrace.txt",
+      "source_sha256": "64e6520f28874247a6ff5c58519a83c2b32e3f88017eb80494d3ad44f1bb79c7",
+      "metadata": {
+        "version": 1,
+        "commands": 256,
+        "samples": 512,
+        "armed": 0,
+        "full": 1,
+        "profile": 21,
+        "speed": 3400,
+        "acceleration": 254,
+        "revision": "s-native-v6-2-5-v70"
+      },
+      "timestamp_origin_mcu_ms": 165098,
+      "csv_timing_crosscheck": "all command and sample records match",
+      "read_duration_histogram_ms": {
+        "2": 509,
+        "3": 1,
+        "6": 1,
+        "31": 1
+      },
+      "max_interval_ms": 46,
+      "full_trial_retry_counts": {
+        "attempts": 5,
+        "recovered": 5,
+        "failed": 0
+      },
+      "full_trial_late_frames": 1,
+      "imu_console_off_commands": [
+        {
+          "host_s": 1.0682168750208803,
+          "kind": "tx",
+          "text": "imu off"
+        }
+      ],
+      "events": [
+        {
+          "command_index": 24,
+          "next_command_index": 25,
+          "command_raw_line": 42,
+          "next_command_raw_line": 43,
+          "begin_ms": 483,
+          "send_end_ms": 484,
+          "next_begin_ms": 529,
+          "interval_ms": 46,
+          "send_duration_ms": 1,
+          "read_duration_sum_ms": 33,
+          "other_uninstrumented_ms": 12,
+          "reads": [
+            {
+              "begin": 484,
+              "end": 486,
+              "command": 24,
+              "joint": 9,
+              "status": 0,
+              "raw": 1946,
+              "speed_raw": 0,
+              "load_raw": -48,
+              "current_raw": 1,
+              "voltage_mv": 10900,
+              "temperature_c": 33,
+              "hardware_error": 0,
+              "raw_line": 345,
+              "duration_ms": 2,
+              "servo_id": 10,
+              "joint_name": "RR-J1"
+            },
+            {
+              "begin": 486,
+              "end": 517,
+              "command": 24,
+              "joint": 10,
+              "status": 0,
+              "raw": 2880,
+              "speed_raw": 900,
+              "load_raw": -172,
+              "current_raw": 10,
+              "voltage_mv": 10900,
+              "temperature_c": 32,
+              "hardware_error": 0,
+              "raw_line": 346,
+              "duration_ms": 31,
+              "servo_id": 11,
+              "joint_name": "RR-J2"
+            }
+          ],
+          "neighboring_commands": [
+            {
+              "index": 22,
+              "begin_ms": 443,
+              "end_ms": 443
+            },
+            {
+              "index": 23,
+              "begin_ms": 463,
+              "end_ms": 464
+            },
+            {
+              "index": 24,
+              "begin_ms": 483,
+              "end_ms": 484
+            },
+            {
+              "index": 25,
+              "begin_ms": 529,
+              "end_ms": 530
+            },
+            {
+              "index": 26,
+              "begin_ms": 550,
+              "end_ms": 550
+            },
+            {
+              "index": 27,
+              "begin_ms": 568,
+              "end_ms": 569
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "source": "artifacts/s-native-v6-2-5/hardware-30s/jointtrace-retry.txt",
+      "source_sha256": "3b77f82d7a221ebf7ae521ae9e4cb8c24f1df57479975867491786ddba85f49b",
+      "metadata": {
+        "version": 1,
+        "commands": 256,
+        "samples": 512,
+        "armed": 0,
+        "full": 1,
+        "profile": 21,
+        "speed": 3400,
+        "acceleration": 254,
+        "revision": "s-native-v6-2-5-v70"
+      },
+      "timestamp_origin_mcu_ms": 546158,
+      "csv_timing_crosscheck": "all command and sample records match",
+      "read_duration_histogram_ms": {
+        "2": 510,
+        "3": 1,
+        "31": 1
+      },
+      "max_interval_ms": 46,
+      "full_trial_retry_counts": {
+        "attempts": 10,
+        "recovered": 10,
+        "failed": 0
+      },
+      "full_trial_late_frames": 8,
+      "imu_console_off_commands": [
+        {
+          "host_s": 1.8232152079581283,
+          "kind": "tx",
+          "text": "imu off"
+        }
+      ],
+      "events": [
+        {
+          "command_index": 212,
+          "next_command_index": 213,
+          "command_raw_line": 245,
+          "next_command_raw_line": 246,
+          "begin_ms": 4241,
+          "send_end_ms": 4242,
+          "next_begin_ms": 4287,
+          "interval_ms": 46,
+          "send_duration_ms": 1,
+          "read_duration_sum_ms": 33,
+          "other_uninstrumented_ms": 12,
+          "reads": [
+            {
+              "begin": 4242,
+              "end": 4273,
+              "command": 212,
+              "joint": 8,
+              "status": 0,
+              "raw": 3092,
+              "speed_raw": -300,
+              "load_raw": 176,
+              "current_raw": 4,
+              "voltage_mv": 10800,
+              "temperature_c": 35,
+              "hardware_error": 0,
+              "raw_line": 752,
+              "duration_ms": 31,
+              "servo_id": 9,
+              "joint_name": "RL-J3"
+            },
+            {
+              "begin": 4273,
+              "end": 4275,
+              "command": 212,
+              "joint": 9,
+              "status": 0,
+              "raw": 1886,
+              "speed_raw": 0,
+              "load_raw": -48,
+              "current_raw": 1,
+              "voltage_mv": 10900,
+              "temperature_c": 33,
+              "hardware_error": 0,
+              "raw_line": 753,
+              "duration_ms": 2,
+              "servo_id": 10,
+              "joint_name": "RR-J1"
+            }
+          ],
+          "neighboring_commands": [
+            {
+              "index": 210,
+              "begin_ms": 4203,
+              "end_ms": 4204
+            },
+            {
+              "index": 211,
+              "begin_ms": 4222,
+              "end_ms": 4222
+            },
+            {
+              "index": 212,
+              "begin_ms": 4241,
+              "end_ms": 4242
+            },
+            {
+              "index": 213,
+              "begin_ms": 4287,
+              "end_ms": 4287
+            },
+            {
+              "index": 214,
+              "begin_ms": 4306,
+              "end_ms": 4306
+            },
+            {
+              "index": 215,
+              "begin_ms": 4326,
+              "end_ms": 4326
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "source": "artifacts/s-native-v6-2-7/resume-hardware-first-step-06/jointtrace.txt",
+      "source_sha256": "509fdac8d3c145b48ae147a584032aeb3675bf104820db729e7eadfb9b217122",
+      "metadata": {
+        "version": 1,
+        "commands": 231,
+        "samples": 462,
+        "armed": 0,
+        "full": 0,
+        "profile": 23,
+        "speed": 3400,
+        "acceleration": 254,
+        "revision": "s-native-v6-2-7-v76"
+      },
+      "timestamp_origin_mcu_ms": 32871,
+      "csv_timing_crosscheck": "all command and sample records match",
+      "read_duration_histogram_ms": {
+        "2": 455,
+        "3": 7
+      },
+      "max_interval_ms": 22,
+      "full_trial_retry_counts": null,
+      "full_trial_late_frames": null,
+      "imu_console_off_commands": [],
+      "events": []
+    },
+    {
+      "source": "artifacts/attitudepd-v2/hardware-eight-steps/trial-02/jointtrace.txt",
+      "source_sha256": "e834f6dedff783fbdfc9b95a9e5d0a99aa544005c97f868869766d27ab59174c",
+      "metadata": {
+        "version": 1,
+        "commands": 256,
+        "samples": 256,
+        "armed": 0,
+        "full": 1,
+        "profile": 24,
+        "speed": 3400,
+        "acceleration": 254,
+        "revision": "attitudepd-v2-v78"
+      },
+      "timestamp_origin_mcu_ms": 65875,
+      "csv_timing_crosscheck": "all command and sample records match",
+      "read_duration_histogram_ms": {
+        "2": 254,
+        "3": 2
+      },
+      "max_interval_ms": 21,
+      "full_trial_retry_counts": null,
+      "full_trial_late_frames": null,
+      "imu_console_off_commands": [],
+      "events": []
+    }
+  ],
+  "limitations": [
+    "Historical V69-V78 captures; not measurements of the current build.",
+    "MCU timestamps have 1 ms resolution; send duration zero is not instantaneous.",
+    "Read intervals include retries and interrupts, not just wire transmission.",
+    "Final status zero does not imply every attempt succeeded.",
+    "Retry counters and late_frames cover the full trial, unlike finite trace captures.",
+    "The remainder includes uninstrumented processing, IMU, scheduling and next computation.",
+    "No per-attempt error flags, first-byte timing, ISR duration or electrical waveform."
+  ]
+}

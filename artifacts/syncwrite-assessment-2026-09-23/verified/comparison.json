@@ -1,0 +1,208 @@
+{
+  "wire": {
+    "positions_only": {
+      "bytes": 44,
+      "wire_ms": 0.44,
+      "write_only_bus_percent": 2.1999999999999997
+    },
+    "position_speed_acceleration": {
+      "bytes": 104,
+      "wire_ms": 1.0399999999999998,
+      "write_only_bus_percent": 5.2
+    }
+  },
+  "ideal_profile": [
+    {
+      "acc_register": 50,
+      "assumed_deg_s2": 439.453125,
+      "fold_20deg_ms": 426.6666666666667,
+      "fold_and_unfold_ms": 853.3333333333334,
+      "acceleration_only_travel_100ms_deg": 2.1972656250000004
+    },
+    {
+      "acc_register": 254,
+      "assumed_deg_s2": 2232.421875,
+      "fold_20deg_ms": 189.30272200877093,
+      "fold_and_unfold_ms": 378.60544401754186,
+      "acceleration_only_travel_100ms_deg": 11.162109375000002
+    }
+  ],
+  "simulations": [
+    {
+      "passed": false,
+      "left_air_s": 0.0,
+      "right_air_s": 0.0,
+      "late_left_air_s": 0.1,
+      "left_touchdown_s": null,
+      "right_touchdown_s": null,
+      "dx_mm": -71.77411303520906,
+      "dy_mm": -16.340209904095065,
+      "peak_roll_deg": 9.744944276258037,
+      "right_stance_slip_mm": 1.7330556689088747,
+      "stand_error_deg": 0.85725961809311,
+      "fault": null,
+      "name": "short_baseline",
+      "swing_ms": 200.0,
+      "cap": [
+        50,
+        254,
+        50,
+        50,
+        254,
+        50,
+        50,
+        254,
+        50,
+        50,
+        254,
+        50
+      ],
+      "peak_tracking_error_deg": 19.079917308158738
+    },
+    {
+      "passed": false,
+      "left_air_s": 0.0,
+      "right_air_s": 0.0,
+      "late_left_air_s": 0.1,
+      "left_touchdown_s": null,
+      "right_touchdown_s": null,
+      "dx_mm": -71.77411303520906,
+      "dy_mm": -16.340209904095065,
+      "peak_roll_deg": 9.744944276258037,
+      "right_stance_slip_mm": 1.7330556689088747,
+      "stand_error_deg": 0.85725961809311,
+      "fault": null,
+      "name": "short_same_values_rewritten",
+      "swing_ms": 200.0,
+      "cap": [
+        50,
+        254,
+        50,
+        50,
+        254,
+        50,
+        50,
+        254,
+        50,
+        50,
+        254,
+        50
+      ],
+      "peak_tracking_error_deg": 19.079917308158738
+    },
+    {
+      "passed": false,
+      "left_air_s": 0.02,
+      "right_air_s": 0.04,
+      "late_left_air_s": 0.0,
+      "left_touchdown_s": 3.7600000000004163,
+      "right_touchdown_s": null,
+      "dx_mm": 20.82267780048469,
+      "dy_mm": -16.16396374873839,
+      "peak_roll_deg": 15.084562942439778,
+      "right_stance_slip_mm": 1.1914514397531537,
+      "stand_error_deg": 0.8501817214905998,
+      "fault": {
+        "t": 3.8600000000004497,
+        "safety": "tilt"
+      },
+      "name": "short_hypothetical_j3_254",
+      "swing_ms": 200.0,
+      "cap": [
+        50,
+        254,
+        254,
+        50,
+        254,
+        254,
+        50,
+        254,
+        254,
+        50,
+        254,
+        254
+      ],
+      "peak_tracking_error_deg": 23.301476472673805
+    },
+    {
+      "passed": false,
+      "left_air_s": 0.0,
+      "right_air_s": 0.0,
+      "late_left_air_s": 0.0,
+      "left_touchdown_s": null,
+      "right_touchdown_s": null,
+      "dx_mm": -27.85695321363099,
+      "dy_mm": -14.115210034431565,
+      "peak_roll_deg": 13.119268223317992,
+      "right_stance_slip_mm": 24.517196821254753,
+      "stand_error_deg": 0.8554512920565429,
+      "fault": {
+        "t": 4.0000000000004965,
+        "safety": "tilt"
+      },
+      "name": "long_baseline",
+      "swing_ms": 450.0,
+      "cap": [
+        50,
+        254,
+        50,
+        50,
+        254,
+        50,
+        50,
+        254,
+        50,
+        50,
+        254,
+        50
+      ],
+      "peak_tracking_error_deg": 23.523365165792328
+    },
+    {
+      "passed": false,
+      "left_air_s": 0.0,
+      "right_air_s": 0.0,
+      "late_left_air_s": 0.0,
+      "left_touchdown_s": null,
+      "right_touchdown_s": null,
+      "dx_mm": 21.588046597714985,
+      "dy_mm": -15.814056103852485,
+      "peak_roll_deg": 14.073998277143124,
+      "right_stance_slip_mm": 10.506791990465311,
+      "stand_error_deg": 0.8509177639380425,
+      "fault": {
+        "t": 3.8800000000004564,
+        "safety": "tilt"
+      },
+      "name": "long_hypothetical_j3_254",
+      "swing_ms": 450.0,
+      "cap": [
+        50,
+        254,
+        254,
+        50,
+        254,
+        254,
+        50,
+        254,
+        254,
+        50,
+        254,
+        254
+      ],
+      "peak_tracking_error_deg": 13.956263277284235
+    }
+  ],
+  "limitations": [
+    "Wire times exclude CPU, adapters, other bus traffic, and motor processing.",
+    "100 steps/s^2 per ACC unit is the existing model assumption, not identified acceleration.",
+    "Repeated same-value writes preserve the model reference; real firmware behavior remains unmeasured.",
+    "J3 ACC254 overrides only the offline model cap; neither firmware nor robot was changed.",
+    "All contact, actuator, inertia, friction, and delay estimates remain enabled."
+  ],
+  "same_value_model_max_difference": {
+    "actual_deg": 0.0,
+    "position_mm": 0.0,
+    "load_n": 0.0
+  }
+}

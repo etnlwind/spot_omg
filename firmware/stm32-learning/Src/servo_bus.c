@@ -22,11 +22,6 @@ ServoBusResult read_byte_until(ServoBus *bus,
     for (;;) {
         const uint32_t status = bus->uart->Instance->SR;
 
-        if ((status & USART_SR_RXNE) != 0U) {
-            *value = (uint8_t)bus->uart->Instance->DR;
-            return SERVO_BUS_OK;
-        }
-
         if ((status & (USART_SR_ORE | USART_SR_NE |
                        USART_SR_FE | USART_SR_PE)) != 0U) {
             volatile uint32_t discarded_status = bus->uart->Instance->SR;
@@ -38,6 +33,10 @@ ServoBusResult read_byte_until(ServoBus *bus,
 
         if (timeout_elapsed(started_at, bus->timeout_ms)) {
             return SERVO_BUS_TIMEOUT;
+        }
+        if ((status & USART_SR_RXNE) != 0U) {
+            *value = (uint8_t)bus->uart->Instance->DR;
+            return SERVO_BUS_OK;
         }
     }
 }
@@ -113,6 +112,7 @@ void servo_bus_init(ServoBus *bus,
     }
 
     bus->uart = uart;
+    memset(&bus->feedback,0,sizeof(bus->feedback));
     bus->front_position_bias[0] = bus->front_position_bias[1] = 0;
     bus->front_stow_origin[0] = bus->front_stow_origin[1] = 0;
     bus->front_origin_valid[0] = bus->front_origin_valid[1] = false;
@@ -170,6 +170,10 @@ ServoBusResult servo_bus_request(ServoBus *bus,
     if (tx_length == 0U) {
         return SERVO_BUS_INVALID_ARGUMENT;
     }
+    /* Walking owns the bus: synchronous reads must never sneak into a frame. */
+    if(bus->feedback.enabled && (expect_response || !servo_bus_feedback_can_write(bus)))
+        return SERVO_BUS_BUSY;
+    servo_bus_feedback_legacy_guard(bus);
 
     if (response_count != NULL) {
         *response_count = 0U;
@@ -187,7 +191,7 @@ ServoBusResult servo_bus_request(ServoBus *bus,
     }
 
     /* Drop stale bytes and UART error state from an earlier transaction. */
-    flush_uart_rx(bus->uart);
+    if(!bus->feedback.enabled)flush_uart_rx(bus->uart);
 
     /*
      * The Waveshare Bus Servo Adapter (A), and some similar automatic UART
@@ -196,13 +200,14 @@ ServoBusResult servo_bus_request(ServoBus *bus,
      * blocking transmit is in progress; the adapter still controls the
      * single-wire bus direction automatically.
      */
-    CLEAR_BIT(bus->uart->Instance->CR1, USART_CR1_RE);
+    if(!bus->feedback.enabled)CLEAR_BIT(bus->uart->Instance->CR1, USART_CR1_RE);
     const HAL_StatusTypeDef transmit_status = HAL_UART_Transmit(
         bus->uart,
         tx_packet,
         (uint16_t)tx_length,
-        bus->timeout_ms);
+        bus->feedback.enabled?1U:bus->timeout_ms);
     SET_BIT(bus->uart->Instance->CR1, USART_CR1_RE);
+    if(bus->feedback.enabled)servo_bus_feedback_written(bus);
 
     if (transmit_status != HAL_OK) {
         return SERVO_BUS_HAL_ERROR;
@@ -415,6 +420,8 @@ const char *servo_bus_result_string(ServoBusResult result)
         return "protocol error";
     case SERVO_BUS_SERVO_ERROR:
         return "servo error";
+    case SERVO_BUS_BUSY:
+        return "bus busy";
     default:
         return "unknown";
     }

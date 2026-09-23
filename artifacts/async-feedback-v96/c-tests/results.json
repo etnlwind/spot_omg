@@ -1,0 +1,173 @@
+{
+  "compiler": "project Zig cc host toolchain",
+  "hardware": false,
+  "cases": [
+    {
+      "case": "imu_trace",
+      "sources": [
+        "tests/test_imu_trace.c"
+      ],
+      "flags": [],
+      "returncode": 0
+    },
+    {
+      "case": "joint_trace",
+      "sources": [
+        "tests/test_joint_trace.c"
+      ],
+      "flags": [],
+      "returncode": 0
+    },
+    {
+      "case": "drive_watchdog",
+      "sources": [
+        "tests/test_drive_watchdog.c"
+      ],
+      "flags": [],
+      "returncode": 0
+    },
+    {
+      "case": "safety",
+      "sources": [
+        "Src/safety.c",
+        "tests/test_safety.c"
+      ],
+      "flags": [],
+      "returncode": 0
+    },
+    {
+      "case": "actuator_control",
+      "sources": [
+        "Src/actuator_control.c",
+        "Src/robot_config.c",
+        "tests/test_actuator_control.c"
+      ],
+      "flags": [],
+      "returncode": 0
+    },
+    {
+      "case": "feetech_protocol",
+      "sources": [
+        "Src/feetech_protocol.c",
+        "tests/test_feetech_protocol.c"
+      ],
+      "flags": [],
+      "returncode": 0
+    },
+    {
+      "case": "forward_pose",
+      "sources": [
+        "Src/forward_pose.c",
+        "Src/robot_config.c",
+        "Src/safety.c",
+        "tests/test_forward_pose.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "mechanical_diagnostics",
+      "sources": [
+        "Src/mechanical_diagnostics.c",
+        "Src/actuator_control.c",
+        "Src/robot_config.c",
+        "Src/feetech_protocol.c",
+        "tests/test_mechanical_diagnostics.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "command_recovery",
+      "sources": [
+        "Src/command_recovery.c",
+        "Src/robot_config.c",
+        "Src/safety.c",
+        "tests/test_command_recovery.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "stow_motion",
+      "sources": [
+        "Src/stow_motion.c",
+        "Src/command_recovery.c",
+        "Src/robot_config.c",
+        "Src/safety.c",
+        "Src/feetech_protocol.c",
+        "tests/test_stow_motion.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "stow_servo_coordinates",
+      "sources": [
+        "Src/sts3215.c",
+        "Src/robot_config.c",
+        "Src/feetech_protocol.c",
+        "tests/test_stow_servo_coordinates.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "pose_supervisor",
+      "sources": [
+        "Src/pose_supervisor.c",
+        "Src/command_recovery.c",
+        "Src/robot_config.c",
+        "Src/safety.c",
+        "tests/test_pose_supervisor.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "servo_profile_registers",
+      "sources": [
+        "Src/sts3215.c",
+        "Src/robot_config.c",
+        "Src/feetech_protocol.c",
+        "tests/test_servo_profile_registers.c"
+      ],
+      "flags": [
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\host_hal.h"
+      ],
+      "returncode": 0
+    },
+    {
+      "case": "flight_log",
+      "sources": [
+        "Src/flight_log.c",
+        "tests/test_flight_log.c"
+      ],
+      "flags": [
+        "-DFLIGHT_LOG_HOST_TEST",
+        "-include",
+        "D:\\project\\spot_omg\\firmware\\stm32-learning\\tests\\flight_log_test_hal.h"
+      ],
+      "returncode": 0
+    }
+  ]
+}

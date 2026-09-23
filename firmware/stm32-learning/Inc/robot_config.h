@@ -30,7 +30,7 @@ extern const RobotJointConfig g_robot_joints[ROBOT_JOINT_COUNT];
 extern const uint8_t g_robot_servo_ids[ROBOT_JOINT_COUNT];
 
 bool robot_config_valid(void);
-/* Installed-unit acceleration readback: STS3215=50, STS3250 J2=254. */
+/* Preserve requested ACC on every joint; do not clamp historical readbacks. */
 uint8_t robot_servo_profile_acceleration(uint8_t servo_id, uint8_t requested);
 
 bool robot_angle_to_position(size_t joint_array_index,
